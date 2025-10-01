@@ -541,7 +541,8 @@ class JSONParser {
   }
 
  private:
-  explicit JSONParser(String json_str) : ctx_(json_str.data(), json_str.data() + json_str.size()) {}
+  explicit JSONParser(const String& json_str)
+      : ctx_(json_str.data(), json_str.data() + json_str.size()) {}
 
   bool ParseTail() {
     ctx_.SkipSpaces();

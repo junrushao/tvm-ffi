@@ -34,6 +34,7 @@
 #include <cstdint>
 #include <limits>
 #include <string>
+#include <utility>
 
 namespace tvm {
 namespace ffi {
@@ -41,7 +42,7 @@ namespace json {
 
 class JSONWriter {
  public:
-  static String Stringify(const json::Value& value, Optional<int> indent) {
+  static String Stringify(const json::Value& value, const Optional<int>& indent) {
     JSONWriter writer(indent.value_or(0));
     writer.WriteValue(value);
     return String(std::move(writer.result_));
@@ -249,7 +250,7 @@ class JSONWriter {
 };
 
 String Stringify(const json::Value& value, Optional<int> indent) {
-  return JSONWriter::Stringify(value, indent);
+  return JSONWriter::Stringify(value, std::move(indent));
 }
 
 TVM_FFI_STATIC_INIT_BLOCK() {

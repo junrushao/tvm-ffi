@@ -38,7 +38,7 @@ namespace ffi {
 
 class ObjectGraphSerializer {
  public:
-  static json::Value Serialize(const Any& value, Any metadata) {
+  static json::Value Serialize(const Any& value, const Any& metadata) {
     ObjectGraphSerializer serializer;
     json::Object result;
     result.Set("root_index", serializer.GetOrCreateNodeIndex(value));
@@ -306,8 +306,8 @@ class ObjectGraphDeserializer {
   Array<Any> DecodeArrayData(const json::Array& data) {
     Array<Any> array;
     array.reserve(data.size());
-    for (size_t i = 0; i < data.size(); i++) {
-      array.push_back(GetOrDecodeNode(data[i].cast<int64_t>()));
+    for (const auto& i : data) {
+      array.push_back(GetOrDecodeNode(i.cast<int64_t>()));
     }
     return array;
   }
@@ -340,7 +340,8 @@ class ObjectGraphDeserializer {
     ObjectPtr<Object> ptr =
         details::ObjectUnsafe::ObjectPtrFromOwned<Object>(static_cast<TVMFFIObject*>(handle));
 
-    auto decode_field_value = [&](const TVMFFIFieldInfo* field_info, json::Value data) -> Any {
+    auto decode_field_value = [&](const TVMFFIFieldInfo* field_info,
+                                  const json::Value& data) -> Any {
       switch (field_info->field_static_type_index) {
         case TypeIndex::kTVMFFINone: {
           return nullptr;
@@ -381,7 +382,7 @@ class ObjectGraphDeserializer {
     return ObjectRef(ptr);
   }
 
-  explicit ObjectGraphDeserializer(json::Value serialized) {
+  explicit ObjectGraphDeserializer(const json::Value& serialized) {
     if (!serialized.as<json::Object>()) {
       TVM_FFI_THROW(ValueError) << "Invalid JSON Object Graph, expected an object";
     }

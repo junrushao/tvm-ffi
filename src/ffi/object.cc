@@ -299,8 +299,7 @@ class TypeTable {
         }
         std::cerr << "\tnum_child_slots=" << ptr->num_slots - 1
                   << "\tnum_children=" << num_children[ptr->type_index]
-                  << "\texpected_child_slots=" << expected_child_slots[ptr->type_index]
-                  << std::endl;
+                  << "\texpected_child_slots=" << expected_child_slots[ptr->type_index] << '\n';
       }
     }
   }

@@ -82,6 +82,16 @@ repos:
         args: [--fix]
       - id: ruff-format
         types_or: [python, pyi, jupyter]
+  # - repo: local
+  #   hooks:
+  #     - id: clang-tidy-precommit
+  #       name: clang-tidy (C/C++)
+  #       entry: python tests/lint/clang_tidy_precommit.py --build-dir=build-pre-commit --jobs=8 --fix ./src/
+  #       language: python
+  #       language_version: python3
+  #       pass_filenames: false
+  #       additional_dependencies:
+  #         - clang-tidy
   - repo: https://github.com/pre-commit/mirrors-clang-format
     rev: "v20.1.8"
     hooks:

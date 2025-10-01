@@ -1,0 +1,17 @@
+Checks: >
+  clang-diagnostic-*,
+  clang-analyzer-*,
+  modernize-*,
+  bugprone-*,
+  performance-*,
+  portability-*,
+  google-*,
+  -modernize-use-trailing-return-type,
+  -modernize-concat-nested-namespaces,
+  -modernize-use-auto,
+  -modernize-use-nodiscard,
+  -modernize-return-braced-init-list,
+  -modernize-avoid-c-arrays,
+  -bugprone-easily-swappable-parameters,
+  -google-build-using-namespace
+WarningsAsErrors: true

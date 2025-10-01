@@ -255,7 +255,7 @@ class StructEqualHandler {
     }
   }
 
-  bool CompareMap(Map<Any, Any> lhs, Map<Any, Any> rhs) {
+  bool CompareMap(const Map<Any, Any>& lhs, const Map<Any, Any>& rhs) {
     if (lhs.size() != rhs.size()) {
       // size mismatch, and there is no path tracing
       // return false since we don't need informative error message
@@ -299,7 +299,7 @@ class StructEqualHandler {
     return false;
   }
 
-  bool CompareArray(ffi::Array<Any> lhs, ffi::Array<Any> rhs) {
+  bool CompareArray(const ffi::Array<Any>& lhs, const ffi::Array<Any>& rhs) {
     if (lhs.size() != rhs.size()) {
       // fast path, size mismatch, and there is no path tracing
       // return false since we don't need informative error message
@@ -329,7 +329,7 @@ class StructEqualHandler {
     return false;
   }
 
-  bool CompareShape(Shape lhs, Shape rhs) {
+  bool CompareShape(const Shape& lhs, const Shape& rhs) {
     if (lhs.size() != rhs.size()) {
       return false;
     }
@@ -341,7 +341,7 @@ class StructEqualHandler {
     return true;
   }
 
-  bool CompareTensor(Tensor lhs, Tensor rhs) {
+  bool CompareTensor(const Tensor& lhs, const Tensor& rhs) {
     if (lhs.same_as(rhs)) return true;
     if (lhs->ndim != rhs->ndim) return false;
     for (int i = 0; i < lhs->ndim; ++i) {

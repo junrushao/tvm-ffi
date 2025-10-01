@@ -59,7 +59,7 @@ function(_libbacktrace_compile)
   add_dependencies(libbacktrace project_libbacktrace)
   set_target_properties(libbacktrace PROPERTIES
     IMPORTED_LOCATION ${_libbacktrace_prefix}/lib/libbacktrace.a
-    INTERFACE_INCLUDE_DIRECTORIES ${_libbacktrace_prefix}/include
+    INTERFACE_INCLUDE_DIRECTORIES ${CMAKE_CURRENT_LIST_DIR}/../../3rdparty/libbacktrace/
   )
 endfunction()
 
