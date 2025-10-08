@@ -18,37 +18,67 @@
 Apache TVM FFI Documentation
 ============================
 
-Welcome to the documentation for TVM FFI. You can get started by reading the get started section,
-or reading through the guides and concepts sections.
+TVM FFI is a pybind-style bridge that allows convenient distribution and interoperation of ML system components,
+across ABIs, languages and platforms, with ultra low overhead.
 
+.. figure:: https://gist.githubusercontent.com/junrushao/66c2decdf145e74022135fedd9daa053/raw/b44967433e1f80a6ea9f6a3f4a03364d23c435d8/tvm-ffi-bridge.svg
+   :alt: TVM FFI as a universal bridge across languages
+   :align: center
+   :name: fig-arch
+
+   Figure 1. TVM FFI is a universal bridge across languages
+
+
+Installation
+------------
+
+To install via pip, run:
+
+.. code-block:: bash
+
+   pip install apache-tvm-ffi
+
+
+Documentation Structure
+-----------------------
+
+This documentation is structured as follows:
+
+- **Quick Start.** Simple examples, e.g. exposing C++/CUDA code and interacting with PyTorch and numpy;
+- **Guides.** Developer-facing, such as wrapping kernels as packages and integrating with ML compilers;
+- **Core Designs.** Learn the core design, and how tvm-ffi works under the hood;
+- **API Reference.** Complete detailed reference of all the c++ and python APIs.
+
+
+Table of Contents
+-----------------
 
 .. toctree::
    :maxdepth: 1
-   :caption: Get Started
+   :caption: Quick Start
 
-   get_started/install.md
-   get_started/quick_start.md
+   get_started/01_ship_cpp_addone.rst
+   get_started/03_package_as_a_wheel.rst
 
 .. toctree::
    :maxdepth: 1
    :caption: Guides
 
    guides/packaging.md
-   guides/cpp_guide.md
-   guides/python_guide.md
    guides/compiler_integration.md
-
 
 .. toctree::
    :maxdepth: 1
-   :caption: Concepts
+   :caption: Designs
 
    concepts/abi_overview.md
-
+   guides/cpp_guide.md
+   guides/python_guide.md
 
 .. toctree::
    :maxdepth: 1
    :caption: Reference
 
+   guides/build_from_source.md
    reference/python/index.rst
    reference/cpp/index.rst
