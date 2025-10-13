@@ -159,12 +159,13 @@ import dataclasses
 import difflib
 import logging
 import sys
-from io import StringIO
 from pathlib import Path
 from typing import Callable
 
 from tvm_ffi.core import TypeSchema, _lookup_or_register_type_info_from_type_key
-from tvm_ffi.registry import get_global_func_metadata, list_global_func_names
+from tvm_ffi.registry import get_global_func_metadata
+
+from .utils import _as_func_signature, _compute_global_func_tab
 
 DEFAULT_SOURCE_EXTS = {".py", ".pyi"}
 STUB_BEGIN = "# tvm-ffi-stubgen(begin):"
@@ -207,32 +208,6 @@ class StubConfig:
             }
         )
     )
-
-
-def _as_func_signature(
-    schema: TypeSchema,
-    func_name: str,
-    ty_map: Callable[[str], str],
-) -> str:
-    buf = StringIO()
-    buf.write(f"def {func_name}(")
-    if schema.origin != "Callable":
-        raise ValueError(f"Expected Callable type schema, but got: {schema}")
-    if not schema.args:
-        buf.write("*args: Any) -> Any:")
-        return buf.getvalue()
-    arg_ret = schema.args[0]
-    arg_args = schema.args[1:]
-    for i, arg in enumerate(arg_args):
-        buf.write(f"_{i}: ")
-        buf.write(arg.repr(ty_map))
-        buf.write(", ")
-    if arg_args:
-        buf.write("/")
-    buf.write(") -> ")
-    buf.write(arg_ret.repr(ty_map))
-    buf.write(":")
-    return buf.getvalue()
 
 
 def _filter_files(paths: list[Path]) -> list[Path]:
@@ -413,18 +388,6 @@ def _main(  # noqa: PLR0912, PLR0915
             file.write_text("\n".join(lines_new) + "\n", encoding="utf-8")
         elif not opt.suppress_print:
             print(f"{TERM_BOLD}[Unchanged] {file}{TERM_RESET}")
-
-
-def _compute_global_func_tab() -> dict[str, list[str]]:
-    # Build global function table only if we are going to process blocks.
-    global_func_tab: dict[str, list[str]] = {}
-    for name in list_global_func_names():
-        prefix, suffix = name.rsplit(".", 1)
-        global_func_tab.setdefault(prefix, []).append(suffix)
-    # Ensure stable ordering for deterministic output.
-    for k in list(global_func_tab.keys()):
-        global_func_tab[k].sort()
-    return global_func_tab
 
 
 def __main__() -> int:
