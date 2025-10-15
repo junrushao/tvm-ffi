@@ -26,10 +26,10 @@ __version__ = "0.1.0b19"
 # 1. GitHub action on Windows X64
 # 2. Python 3.12
 # 3. torch 2.9.0
-try:
-    import torch  # type: ignore
-except ImportError:
-    pass
+# try:
+#     import torch  # type: ignore
+# except ImportError:
+#     pass
 
 # base always go first to load the libtvm_ffi
 from . import base
