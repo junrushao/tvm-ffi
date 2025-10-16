@@ -60,18 +60,18 @@ set(_tvm_ffi_objs_sources
 )
 
 set(_tvm_ffi_extra_objs_sources
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/ffi/extra/structural_equal.cc"
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/ffi/extra/structural_hash.cc"
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/ffi/extra/json_parser.cc"
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/ffi/extra/json_writer.cc"
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/ffi/extra/serialization.cc"
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/ffi/extra/reflection_extra.cc"
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/ffi/extra/module.cc"
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/ffi/extra/library_module.cc"
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/ffi/extra/library_module_system_lib.cc"
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/ffi/extra/library_module_dynamic_lib.cc"
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/ffi/extra/env_context.cc"
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/ffi/extra/env_c_api.cc"
+    # "${CMAKE_CURRENT_SOURCE_DIR}/src/ffi/extra/structural_equal.cc"
+    # "${CMAKE_CURRENT_SOURCE_DIR}/src/ffi/extra/structural_hash.cc"
+    # "${CMAKE_CURRENT_SOURCE_DIR}/src/ffi/extra/json_parser.cc"
+    # "${CMAKE_CURRENT_SOURCE_DIR}/src/ffi/extra/json_writer.cc"
+    # "${CMAKE_CURRENT_SOURCE_DIR}/src/ffi/extra/serialization.cc"
+    # "${CMAKE_CURRENT_SOURCE_DIR}/src/ffi/extra/reflection_extra.cc"
+    # "${CMAKE_CURRENT_SOURCE_DIR}/src/ffi/extra/module.cc"
+    # "${CMAKE_CURRENT_SOURCE_DIR}/src/ffi/extra/library_module.cc"
+    # "${CMAKE_CURRENT_SOURCE_DIR}/src/ffi/extra/library_module_system_lib.cc"
+    # "${CMAKE_CURRENT_SOURCE_DIR}/src/ffi/extra/library_module_dynamic_lib.cc"
+    # "${CMAKE_CURRENT_SOURCE_DIR}/src/ffi/extra/env_context.cc"
+    # "${CMAKE_CURRENT_SOURCE_DIR}/src/ffi/extra/env_c_api.cc"
 )
 if (TVM_FFI_USE_EXTRA_CXX_API)
   list(APPEND _tvm_ffi_objs_sources ${_tvm_ffi_extra_objs_sources})
@@ -131,31 +131,31 @@ target_link_libraries(tvm_ffi_objs PUBLIC tvm_ffi_header)
 target_link_libraries(tvm_ffi_shared PUBLIC tvm_ffi_header)
 target_link_libraries(tvm_ffi_static PUBLIC tvm_ffi_header)
 
-# ######### Target: `tvm_ffi_testing` ##########
-# Build testing utilities as a separate shared library that can be loaded on demand
-# `tvm_ffi_testing` won't be inlcuded in `libtvm_ffi` and contains functions that are registered
-# only for testing purposes
-target_sources(tvm_ffi_testing PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src/ffi/testing/testing.cc")
-target_compile_features(tvm_ffi_testing PRIVATE cxx_std_17)
-set_target_properties(
-  tvm_ffi_testing
-  PROPERTIES CXX_EXTENSIONS OFF
-             CXX_STANDARD_REQUIRED ON
-             LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
-)
-target_link_libraries(tvm_ffi_testing PRIVATE tvm_ffi_shared)
-target_link_libraries(tvm_ffi_testing PUBLIC tvm_ffi_header)
-tvm_ffi_add_msvc_flags(tvm_ffi_testing)
-tvm_ffi_add_apple_dsymutil(tvm_ffi_testing)
+# # ######### Target: `tvm_ffi_testing` ##########
+# # Build testing utilities as a separate shared library that can be loaded on demand
+# # `tvm_ffi_testing` won't be inlcuded in `libtvm_ffi` and contains functions that are registered
+# # only for testing purposes
+# target_sources(tvm_ffi_testing PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src/ffi/testing/testing.cc")
+# target_compile_features(tvm_ffi_testing PRIVATE cxx_std_17)
+# set_target_properties(
+#   tvm_ffi_testing
+#   PROPERTIES CXX_EXTENSIONS OFF
+#              CXX_STANDARD_REQUIRED ON
+#              LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
+# )
+# target_link_libraries(tvm_ffi_testing PRIVATE tvm_ffi_shared)
+# target_link_libraries(tvm_ffi_testing PUBLIC tvm_ffi_header)
+# tvm_ffi_add_msvc_flags(tvm_ffi_testing)
+# tvm_ffi_add_apple_dsymutil(tvm_ffi_testing)
 
-# Set the install RPATH for tvm_ffi_testing so it can find tvm_ffi.so relatively
-if (APPLE)
-  # macOS uses @loader_path
-  set_target_properties(tvm_ffi_testing PROPERTIES INSTALL_RPATH "@loader_path")
-elseif (UNIX AND NOT APPLE)
-  # Linux uses $ORIGIN
-  set_target_properties(tvm_ffi_testing PROPERTIES INSTALL_RPATH "\$ORIGIN")
-endif ()
+# # Set the install RPATH for tvm_ffi_testing so it can find tvm_ffi.so relatively
+# if (APPLE)
+#   # macOS uses @loader_path
+#   set_target_properties(tvm_ffi_testing PROPERTIES INSTALL_RPATH "@loader_path")
+# elseif (UNIX AND NOT APPLE)
+#   # Linux uses $ORIGIN
+#   set_target_properties(tvm_ffi_testing PROPERTIES INSTALL_RPATH "\$ORIGIN")
+# endif ()
 
 # ----------------------------------------------------------------------------
 # The following code section only is triggered when the project is the root and will be skipped when
@@ -258,7 +258,7 @@ if (TVM_FFI_BUILD_PYTHON_MODULE)
   target_link_libraries(tvm_ffi_cython PRIVATE tvm_ffi_header)
   target_link_libraries(tvm_ffi_cython PRIVATE tvm_ffi_shared)
   # link against testing to ensure right unloading order (cython first then testing)
-  target_link_libraries(tvm_ffi_cython PRIVATE tvm_ffi_testing)
+  # target_link_libraries(tvm_ffi_cython PRIVATE tvm_ffi_testing)
   # Set RPATH for tvm_ffi_cython to find tvm_ffi_shared.so relatively
   if (APPLE)
     # macOS uses @loader_path
@@ -296,7 +296,7 @@ endif ()
 install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include/tvm/ffi/ DESTINATION include/tvm/ffi/)
 install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/dlpack/include/ DESTINATION include/)
 install(TARGETS tvm_ffi_shared DESTINATION lib)
-install(TARGETS tvm_ffi_testing DESTINATION lib)
+# install(TARGETS tvm_ffi_testing DESTINATION lib)
 # ship additional dSYM files for debugging symbols on if available
 if (APPLE)
   install(

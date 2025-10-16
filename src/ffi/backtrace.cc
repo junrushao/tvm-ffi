@@ -21,6 +21,7 @@
  * \brief Backtrace implementation on non-windows platforms
  * \note We use the term "backtrace" to be consistent with python naming convention.
  */
+#include "tvm/ffi/extra/c_env_api.h"
 #ifndef _MSC_VER
 
 #include <tvm/ffi/c_api.h>
@@ -41,6 +42,30 @@
 #if TVM_FFI_BACKTRACE_ON_SEGFAULT
 #include <csignal>
 #endif
+
+int TVMFFIEnvCheckSignals() { return 0; }
+int TVMFFIEnvSetStream(int32_t device_type, int32_t device_id, TVMFFIStreamHandle stream,
+                       TVMFFIStreamHandle* opt_out_original_stream) {
+  return 0;
+}
+TVMFFIStreamHandle TVMFFIEnvGetStream(int32_t device_type, int32_t device_id) { return nullptr; }
+
+int TVMFFIEnvSetDLPackManagedTensorAllocator(
+    DLPackManagedTensorAllocator allocator, int write_to_global_context,
+    DLPackManagedTensorAllocator* opt_out_original_allocator) {
+  return 0;
+}
+
+DLPackManagedTensorAllocator TVMFFIEnvGetDLPackManagedTensorAllocator() { return nullptr; }
+int TVMFFIEnvTensorAlloc(DLTensor* prototype, TVMFFIObjectHandle* out) { return 0; }
+int TVMFFIEnvRegisterCAPI(const char* name, void* symbol) { return 0; }
+int TVMFFIEnvModLookupFromImports(TVMFFIObjectHandle library_ctx, const char* func_name,
+                                  TVMFFIObjectHandle* out) {
+  return 0;
+}
+int TVMFFIEnvModRegisterContextSymbol(const char* name, void* symbol) { return 0; }
+int TVMFFIEnvModRegisterSystemLibSymbol(const char* name, void* symbol) { return 0; }
+extern "C" TVM_FFI_DLL_EXPORT int TVMFFITestingDummyTarget() { return 0; }
 
 namespace tvm {
 namespace ffi {
