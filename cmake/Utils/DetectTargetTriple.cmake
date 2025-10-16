@@ -51,12 +51,14 @@ function (detect_target_triple out_var)
       OUTPUT_VARIABLE ret
       OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET
     )
+    message(STATUS "From ${cc} -dumpmachine: ${ret}")
     if (NOT ret)
       execute_process(
         COMMAND "${cc}" --print-target-triple
         OUTPUT_VARIABLE ret
         OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET
       )
+      message(STATUS "From ${cc} --print-target-triple: ${ret}")
     endif ()
     if (ret)
       set(${out_var}
