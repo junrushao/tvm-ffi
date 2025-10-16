@@ -45,16 +45,27 @@ function (detect_target_triple out_var)
   if (NOT cc AND CMAKE_CXX_COMPILER)
     set(cc "${CMAKE_CXX_COMPILER}")
   endif ()
+
+  set(_probe_args "")
+  if(APPLE AND CMAKE_SYSTEM_NAME STREQUAL "Darwin" AND CMAKE_OSX_ARCHITECTURES)
+    list(GET CMAKE_OSX_ARCHITECTURES 0 _arch_for_target)
+    if(_arch_for_target MATCHES "^(arm64|x86_64)$")
+      # clang understands -target; prefer this over -arch for -dumpmachine
+      set(_probe_args "-target" "${_arch_for_target}-apple-darwin")
+    endif()
+  endif()
+  message(STATUS "probe_args = ${_probe_args}")
+
   if (cc)
     execute_process(
-      COMMAND "${cc}" -dumpmachine
+      COMMAND "${cc}" ${_probe_args} -dumpmachine
       OUTPUT_VARIABLE ret
       OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET
     )
     message(STATUS "From ${cc} -dumpmachine: ${ret}")
     if (NOT ret)
       execute_process(
-        COMMAND "${cc}" --print-target-triple
+        COMMAND "${cc}" ${_probe_args} --print-target-triple
         OUTPUT_VARIABLE ret
         OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET
       )
