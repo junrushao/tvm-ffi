@@ -59,6 +59,7 @@ extensions = [
     "nbsphinx",
     "autodocsumm",
     "sphinx_design",
+    "autoapi.extension",
     "sphinx.ext.autodoc",
     "sphinx.ext.autosectionlabel",
     "sphinx.ext.autosummary",
@@ -243,6 +244,31 @@ def setup(app: sphinx.application.Sphinx) -> None:
     app.connect("config-inited", _apply_config_overrides)
     app.connect("build-finished", _copy_rust_docs_to_output)
 
+
+# --- AutoAPI (Python API generation from sources, preferring .pyi) -------
+# Point AutoAPI to the Python package sources (relative to docs/)
+autoapi_dirs = ["../python/tvm_ffi"]
+
+# Where to place generated pages in the docs tree
+autoapi_root = "reference/python/generated"
+
+# Prefer .pyi stubs over .py implementations; ignore Cython sources/dir
+autoapi_file_patterns = ["*.pyi", "*.py"]
+autoapi_ignore = [
+    "*/cython/*",
+    "**/*.pyx",
+    "**/*.pxd",
+    "**/*.pxi",
+]
+
+# Control page content and ordering
+autoapi_options = [
+    "members",
+    "undoc-members",
+    "show-inheritance",
+]
+
+autoapi_python_class_content = "both"  # class doc + __init__ doc
 
 autodoc_mock_imports = ["torch"]
 autodoc_default_options = {

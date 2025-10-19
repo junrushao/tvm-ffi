@@ -71,22 +71,25 @@ docs = [
   "myst-parser",
   "nbconvert",
   "nbsphinx",
+  # AutoAPI + Sphinx pins to avoid path mangling bug on py3.13
+  "sphinx-autoapi==3.6.1",
   "nbstripout",
-  "sphinx",
+  # Sphinx 8.x (works with Python 3.13). Limit to <8.2 due to AutoAPI compat.
+  "sphinx>=8.0,<8.2",
   "sphinx-autobuild",
   "sphinx-book-theme",
   "sphinx-copybutton",
   "sphinx-design",
-  "sphinx-reredirects==0.1.2",
-  "sphinx-tabs==3.4.1",
-  "sphinx-toolbox==3.4.0",
+  "sphinx-reredirects",
+  "sphinx-tabs",
+  "sphinx-toolbox",
   "sphinx-autodoc-typehints",
   "sphinxcontrib-mermaid",
-  "sphinxcontrib-napoleon==0.7",
-  "sphinxcontrib_httpdomain==1.8.1",
-  "setuptools<81",
+  "sphinxcontrib-napoleon",
+  "sphinxcontrib_httpdomain",
+  "setuptools",
   "tomli",
-  "urllib3>=2.5.0",
+  "urllib3",
 ]
 
 [project.scripts]
