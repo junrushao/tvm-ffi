@@ -182,6 +182,15 @@ logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
 
+def _make_type_map(name_map: dict[str, str]) -> Callable[[str], str]:
+    def map_type(name: str) -> str:
+        if (ret := name_map.get(name)) is not None:
+            name = ret
+        return name.rsplit(".", 1)[-1]
+
+    return map_type
+
+
 @dataclasses.dataclass
 class Options:
     """Command line options for stub generation."""
@@ -199,12 +208,14 @@ class StubConfig:
     name: str
     indent: int
     lineno: int
-    ty_map: dict[str, str] = dataclasses.field(
-        default_factory=lambda: dict(
-            {
-                "list": "Sequence",
-                "dict": "Mapping",
-            }
+    ty_map: Callable[[str], str] = dataclasses.field(
+        default_factory=_make_type_map(
+            lambda: dict(
+                {
+                    "list": "collections.abc.Sequence",
+                    "dict": "collections.abc.Mapping",
+                }
+            )
         )
     )
 
@@ -252,15 +263,6 @@ def _filter_files(paths: list[Path]) -> list[Path]:
     return sorted(set(results))
 
 
-def _make_type_map(name_map: dict[str, str]) -> Callable[[str], str]:
-    def map_type(name: str) -> str:
-        if (ret := name_map.get(name)) is not None:
-            return ret
-        return name.rsplit(".", 1)[-1]
-
-    return map_type
-
-
 def _generate_global(
     stub: StubConfig,
     global_func_tab: dict[str, list[str]],
@@ -268,7 +270,6 @@ def _generate_global(
 ) -> list[str]:
     assert stub.name.startswith("global/")
     prefix = stub.name[len("global/") :].strip()
-    ty_map = _make_type_map(stub.ty_map)
     indent = " " * (stub.indent + opt.indent)
     results: list[str] = [
         " " * stub.indent + "if TYPE_CHECKING:",
@@ -277,7 +278,7 @@ def _generate_global(
     for name in global_func_tab.get(prefix, []):
         schema_str = get_global_func_metadata(f"{prefix}.{name}")["type_schema"]
         schema = TypeSchema.from_json_str(schema_str)
-        sig = _as_func_signature(schema, name, ty_map=ty_map)
+        sig = _as_func_signature(schema, name, ty_map=stub.ty_map)
         func = f"{indent}{sig} ..."
         results.append(func)
     if len(results) > 2:
@@ -308,7 +309,6 @@ def _generate_object(
 ) -> list[str]:
     assert stub.name.startswith("object/")
     type_key = stub.name[len("object/") :].strip()
-    ty_map = _make_type_map(stub.ty_map)
     indent = " " * (stub.indent + opt.indent)
     results: list[str] = [
         " " * stub.indent + "if TYPE_CHECKING:",
@@ -318,14 +318,14 @@ def _generate_object(
     type_info = _lookup_or_register_type_info_from_type_key(type_key)
     for field in type_info.fields:
         schema = TypeSchema.from_json_str(field.metadata["type_schema"])
-        schema_str = schema.repr(ty_map=ty_map)
+        schema_str = schema.repr(ty_map=stub.ty_map)
         results.append(f"{indent}{field.name}: {schema_str}")
     for method in type_info.methods:
         name = method.name
         if name == "__ffi_init__":
             name = "__c_ffi_init__"
         schema = TypeSchema.from_json_str(method.metadata["type_schema"])
-        schema_str = _as_func_signature(schema, name, ty_map=ty_map)
+        schema_str = _as_func_signature(schema, name, ty_map=stub.ty_map)
         if method.is_static:
             results.append(f"{indent}@staticmethod")
         results.append(f"{indent}{schema_str} ...")
@@ -350,17 +350,21 @@ def _main(  # noqa: PLR0912, PLR0915
 ) -> None:
     assert file.is_file(), f"Expected a file, but got: {file}"
 
-    lines_now = file.read_text(encoding="utf-8").splitlines()
-
+    lines_original = file.read_text(encoding="utf-8").splitlines()
     # directive(skip-file): skip processing this file entirely if present.
-    if _has_skip_file_marker(lines_now):
+    if _has_skip_file_marker(lines_original):
         if not opt.suppress_print:
             print(f"{TERM_YELLOW}[Skipped]  {file}{TERM_RESET}")
         return
 
+    lines_now = list(lines_original)  # Make a copy to modify in place
     if global_func_tab is None:
         global_func_tab = _compute_global_func_tab()
 
+    # 1st pass: scan for
+    # - global/{namespace} for global function
+    # - object/{namespace} for object types
+    # - ty_map for type mapping hints
     lines_new: list[str] = []
     stub: StubConfig | None = None
     skipped: bool = True
@@ -383,6 +387,8 @@ def _main(  # noqa: PLR0912, PLR0915
                 lines_new.extend(_generate_global(stub, global_func_tab, opt))
             elif stub.name.startswith("object/"):
                 lines_new.extend(_generate_object(stub, opt))
+            elif stub.name == "import":
+                pass  # Skip `import` blocks for now; they will be scanned in the 2nd pass
             else:
                 raise ValueError(f"Unknown stub type `{stub.name}` at {file}:{stub.lineno}")
             stub = None
@@ -405,11 +411,42 @@ def _main(  # noqa: PLR0912, PLR0915
             lines_new.append(line)
     if stub is not None:
         raise ValueError(f"Unclosed stub block at end of file: {file}")
+
+    # 2nd pass: scan for:
+    # - import
+    lines_now = lines_new
+    lines_new = []
+    stub: StubConfig | None = None
+    for lineno, line in enumerate(lines_now, 1):
+        clean_line = line.strip()
+        if clean_line.startswith(STUB_BEGIN):
+            if stub is not None:
+                raise ValueError(f"Nested stub not permitted, but found at {file}:{lineno}")
+            stub = StubConfig(
+                name=clean_line[len(STUB_BEGIN) :].strip(),
+                indent=len(line) - len(clean_line),
+                lineno=lineno,
+            )
+            lines_new.append(line)
+        elif clean_line.startswith(STUB_END):
+            if stub is None:
+                raise ValueError(f"Unmatched stub end found at {file}:{lineno}")
+            if stub.name == "import":
+                # For import blocks, we just copy the content as-is.
+                pass
+            elif stub.name.startswith("global/") or stub.name.startswith("object/"):
+                # Skip all other blocks since they were already generated in the 1st pass.
+                lines_new.extend(lines_now[stub.lineno : lineno - 1])
+            stub = None
+            lines_new.append(line)
+        elif stub is None:
+            lines_new.append(line)
+
     if not skipped:
-        if lines_now != lines_new:
+        if lines_original != lines_new:
             if not opt.suppress_print:
                 print(f"{TERM_GREEN}[Updated] {file}{TERM_RESET}")
-                _show_diff(lines_now, lines_new)
+                _show_diff(lines_original, lines_new)
             file.write_text("\n".join(lines_new) + "\n", encoding="utf-8")
         elif not opt.suppress_print:
             print(f"{TERM_BOLD}[Unchanged] {file}{TERM_RESET}")
@@ -419,8 +456,12 @@ def _compute_global_func_tab() -> dict[str, list[str]]:
     # Build global function table only if we are going to process blocks.
     global_func_tab: dict[str, list[str]] = {}
     for name in list_global_func_names():
-        prefix, suffix = name.rsplit(".", 1)
-        global_func_tab.setdefault(prefix, []).append(suffix)
+        try:
+            prefix, suffix = name.rsplit(".", 1)
+        except ValueError:
+            print(f"{TERM_YELLOW}[Skipped] Invalid name of global function: {name}{TERM_RESET}")
+        else:
+            global_func_tab.setdefault(prefix, []).append(suffix)
     # Ensure stable ordering for deterministic output.
     for k in list(global_func_tab.keys()):
         global_func_tab[k].sort()

@@ -17,7 +17,13 @@
 # pylint: disable=invalid-name
 """Access path classes."""
 
-from __future__ import annotations
+# fmt: off
+from __future__ import annotations  # isort: skip
+from typing import TYPE_CHECKING  # isort: skip
+if TYPE_CHECKING:
+    from collections.abc import Sequence  # isort: skip
+    from tvm_ffi.access_path import AccessPath  # isort: skip
+# fmt: on
 
 from collections.abc import Sequence
 from enum import IntEnum

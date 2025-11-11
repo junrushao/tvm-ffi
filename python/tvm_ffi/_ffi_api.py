@@ -16,18 +16,20 @@
 # under the License.
 """FFI API."""
 
+# tvm-ffi-stubgen(begin): import
+# fmt: off
+# isort: off
 from __future__ import annotations
-
-from typing import TYPE_CHECKING, Any, Callable
-
-from . import registry
-
+from typing import TYPE_CHECKING
 if TYPE_CHECKING:
+    from typing import Any, Callable
     from collections.abc import Mapping, Sequence
-
     from tvm_ffi import Module
     from tvm_ffi.access_path import AccessPath
-
+# isort: on
+# fmt: on
+# tvm-ffi-stubgen(end): import
+from . import registry
 
 # tvm-ffi-stubgen(begin): global/ffi
 if TYPE_CHECKING:
