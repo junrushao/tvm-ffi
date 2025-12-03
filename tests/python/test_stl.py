@@ -14,15 +14,37 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
+import gc
 import pathlib
+from typing import Any
 
 import pytest
 import tvm_ffi.cpp
 from tvm_ffi.module import Module
 
 
-def test_stl() -> None:
-    return
+@pytest.fixture
+def check_for_deleter_cycles() -> Any:
+    # Setup phase (nothing to do here)
+    yield
+    # Teardown phase: Force a full collection (Generation 2)
+    print("!!!!!!!!! Starting garbage collection check !!!!!!!!!\n")
+    gc.collect()
+
+    if gc.garbage:
+        print(f"\n--- {len(gc.garbage)} UNCOLLECTABLE OBJECTS FOUND ---\n")
+        for obj in gc.garbage:
+            # Printing the repr() can reveal the object's identity
+            try:
+                print(f"Type: {type(obj)}, Repr: {obj!r}\n")
+            except Exception as e:
+                print(f"Could not print object: {e}\n")
+        print("-------------------------------------------\n")
+    else:
+        print("!!!!!!!!!!!! NO GARBAGE OBJECTS FOUND !!!!!!!!!!!!!!!!!!!!!")
+
+
+def test_stl(check_for_deleter_cycles: Any) -> None:
     cpp_path = pathlib.Path(__file__).parent.resolve() / "cpp_src" / "test_stl.cc"
     output_lib_path = tvm_ffi.cpp.build(
         name="test_stl",
