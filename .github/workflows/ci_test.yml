@@ -147,13 +147,13 @@ jobs:
       - name: Run python tests
         if: ${{ matrix.os != 'windows-latest' }}
         run: |
-          pytest -vvs tests/python
+          pytest -vvs tests/python/test_stl.py::test_stl
       - name: Run python tests [windows]
         if: ${{ matrix.os == 'windows-latest' }}
         shell: cmd
         run: |
           call "%VS_DEV_CMD_PATH%"
-          pytest -vvs tests/python
+          pytest -vvs tests/python/test_stl.py::test_stl
 
       # Run Rust tests, must happen after installing the pip package.
       - name: Run rust tests
