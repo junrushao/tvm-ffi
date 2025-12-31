@@ -66,6 +66,7 @@ Table of Contents
    :caption: Packaging
 
    packaging/python_packaging.rst
+   packaging/cpp_tooling.rst
    packaging/cpp_packaging.md
 
 .. toctree::
