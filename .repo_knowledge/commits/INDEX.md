@@ -1,0 +1,102 @@
+# Commit Ledger Index
+
+- 2026-02-21 `ecc7471` [feat] [python/tvm_ffi, cython] → .repo_knowledge/commits/ecc747115d95d89cb0074617f4c8c7c9e125b4ad.md
+- 2026-02-21 `83daf69` [feat] [python/cython, object-system] → .repo_knowledge/commits/83daf69ac85aeb8d0e4fb76f1df2bd77dca07470.md
+- 2026-02-21 `7786133` [feat] [python/stub, python/cython, docs] → .repo_knowledge/commits/7786133167902a810dd4717fd0e7d39f4c6f7e99.md
+- 2026-02-21 `49ff2aa` [docs] [docs, tooling] → .repo_knowledge/commits/49ff2aa32c407df92004bef37387822953c21496.md
+- 2026-02-20 `37d0485` [fix] [python/torch-dlpack, rocm] → .repo_knowledge/commits/37d0485b2058885bf4e7a486f7d7b2174a8ac1ce.md
+- 2026-02-20 `07546c7` [fix] [cpp/container] → .repo_knowledge/commits/07546c750337c73e1d74cf4e1a29c32fbee0c139.md
+- 2026-02-19 `35cbc32` [feat] [cpp/error] → .repo_knowledge/commits/35cbc3274cf4b02d8d2e34d2510be5b34d0046ea.md
+- 2026-02-19 `c1af3b3` [feat] [cpp/container, python/container, c-api] → .repo_knowledge/commits/c1af3b337645bed13f573560910dee2743d7d3b1.md
+- 2026-02-19 `65b5e90` [feat] [python/cpp-extension] → .repo_knowledge/commits/65b5e90576185cb6300f43bc1307158dc99afb54.md
+- 2026-02-18 `5a6b211` [refactor] [cpp/container] → .repo_knowledge/commits/5a6b211612c4f0360f49a7a17a809d80460f557d.md
+- 2026-02-18 `b648c5d` [feat] [cpp/extra, python/cython, python/container, python/dataclasses] → .repo_knowledge/commits/b648c5d6b7981350c165096efbb98d00787e2900.md
+- 2026-02-17 `3b26a09` [docs] [c_api, serialization, reflection, tests] → .repo_knowledge/commits/3b26a09a1e47a55e641f2267317c97114b27ab36.md
+- 2026-02-16 `6adc8df` [feat] [extra, python, structural] → .repo_knowledge/commits/6adc8df7d2180ea14e463d3beeaa3d7eecb6f897.md
+- 2026-02-15 `4f91e9c` [test] [c_api, tests] → .repo_knowledge/commits/4f91e9cbf3126c46bdaa24f3178aaef59ffaa62f.md
+- 2026-02-15 `39d9b2b` [feat] [core, any, object, tests] → .repo_knowledge/commits/39d9b2b400646be720e98f001353cc0d8d4b0234.md
+- 2026-02-15 `86c4042` [feat] [python, container, core] → .repo_knowledge/commits/86c4042d66bf432a3c4a217be1eeab3568329b5b.md
+- 2026-02-14 `5e564cd` [feat] [reflection, c_api, serialization, python, rust] → .repo_knowledge/commits/5e564cdfb932af63915fbeb5a5aa30671f55ae2c.md
+- 2026-02-14 `934f2d1` [docs] [devtools] → .repo_knowledge/commits/934f2d187c7fb51ab32b9351f8e56a865241aff4.md
+- 2026-02-14 `395db3c` [fix] [python, cuda] → .repo_knowledge/commits/395db3cef62f430831eb9e927357334ed3fdfade.md
+- 2026-02-14 `0f45528` [fix] [core, string] → .repo_knowledge/commits/0f45528277dd024cd0a9abdeb6dcf1b97ebf8c42.md
+- 2026-02-13 `c73d61a` [feat] [core, reflection, python, dataclasses, tests] → .repo_knowledge/commits/c73d61a423edf69483676f727cf272feebbe4d49.md
+- 2026-02-13 `9513c2f` [feat] [container, c-api, python, serialization] → .repo_knowledge/commits/9513c2f8a57f64ad7473d7cd06084719f6d5e70e.md
+- 2026-02-11 `d3b5532` [fix] [json-parser] → .repo_knowledge/commits/d3b5532fe68ad0d76dd8e8636a000629a7ec4716.md
+- 2026-02-11 `89cb606` [fix] [build, ci] → .repo_knowledge/commits/89cb6066d1d8851e61e6201ca0782d78a4ed8160.md
+- 2026-02-11 `e08dd68` [chore] [build, ci, lint, python] → .repo_knowledge/commits/e08dd6839a10d77d05ddef649840bcea99659d2f.md
+- 2026-02-10 `731955b` [refactor] [examples] → .repo_knowledge/commits/731955b304d0f4445b981e4bb9417e49209c6c37.md
+- 2026-02-08 `245bd0d` [docs] [docs, build] → .repo_knowledge/commits/245bd0d2512ca164eb57b1c18da12245981a9b17.md
+- 2026-02-08 `90162dd` [docs] [docs] → .repo_knowledge/commits/90162ddc42c81bbe2913ada3fe1734d4805f741e.md
+- 2026-02-08 `37f45c3` [fix] [torch-dlpack, addons] → .repo_knowledge/commits/37f45c3ed834d57de3a3513457ab239c13881272.md
+- 2026-02-07 `7619669` [chore] [lint, ci, python] → .repo_knowledge/commits/761966953fec7e8ceba0fcc20dc003e39cf2692d.md
+- 2026-02-06 `b17709a` [docs] [docs, examples, c-api] → .repo_knowledge/commits/b17709aabcc2f1bd776fb001bd05a9c1b4cfe421.md
+- 2026-02-06 `0a9d4b6` [feat] [cpp-core, expected, function] → .repo_knowledge/commits/0a9d4b681cb017e9103efa6cc20d687c065a26fe.md
+- 2026-02-05 `437323c` [docs] [docs] → .repo_knowledge/commits/437323c9aecce445409820527abcf237c1c66dc1.md
+- 2026-02-05 `e7c42f6` [docs] [docs] → .repo_knowledge/commits/e7c42f61a430f97d5977c1a5da6ae7adc66c8edd.md
+- 2026-02-05 `463083f` [docs] [docs, stubgen] → .repo_knowledge/commits/463083f9fdc7abeef3d0e0db22d4f27d5cf8e5ef.md
+- 2026-02-03 `b1611e0` [refactor] [cpp-core, python-cython, error] → .repo_knowledge/commits/b1611e0cf669518dd01367806ab0bfda7b20841d.md
+- 2026-01-30 `b508698` [fix] [cpp-core, string, object] → .repo_knowledge/commits/b50869806f26d57bf84f52d2d532c82b02d60b1b.md
+- 2026-01-30 `d0d0e2f` [feat] [rust] → .repo_knowledge/commits/d0d0e2f935cda443bd85e097a3cfb18de2a96f4d.md
+- 2026-01-27 `ed067c1` [build] [examples, cmake] → .repo_knowledge/commits/ed067c17b259774f4ddc23ba7de937a90642bbb1.md
+- 2026-01-27 `668ce83` [fix] [python] → .repo_knowledge/commits/668ce835939ff60a99c7d982266cf4bdc90ca35b.md
+- 2026-01-25 `e6e5d3a` [deps] [3rdparty, dlpack] → .repo_knowledge/commits/e6e5d3a20bf8e04f88d0de3623b243a3a97593b4.md
+- 2026-01-18 `3a5bf5e` [feat] [python/dataclasses, testing] → .repo_knowledge/commits/3a5bf5e68ad1b4108045ef6b336a13efcd2037d9.md
+- 2026-01-18 `2702f2b` [docs] [docs, examples] → .repo_knowledge/commits/2702f2b08721b1ea45f2f7858e3be88b02378731.md
+- 2026-01-18 `360648f` [feat] [python/dataclasses] → .repo_knowledge/commits/360648f30ccb14523ab6fbb81f37eb085b801f98.md
+- 2026-01-17 `4fec972` [feat] [python/cython] → .repo_knowledge/commits/4fec9721c6bd6862bd371cf65d3ac6a1e8eb737e.md
+- 2026-01-13 `c78e8b4` [docs] [docs, examples, include/c_api] → .repo_knowledge/commits/c78e8b4eefa076c457af97bd3930dd664aec71c3.md
+- 2026-01-13 `e1bd421` [fix] [python/cython, src/ffi, include/c_api] → .repo_knowledge/commits/e1bd42189949b360753f50784ceb5e64cb08254f.md
+- 2026-01-13 `692a41a` [fix] [include/cuda] → .repo_knowledge/commits/692a41a3a221897501e145a0c102ab8b055bc1e7.md
+- 2026-01-12 `10cb004` [refactor] [include/cuda, examples/cubin_launcher, ci] → .repo_knowledge/commits/10cb0048cef8f3a37282f403cded9eb96aa59464.md
+- 2026-01-12 `91fcaa8` [fix] [python/cython, include, tests] → .repo_knowledge/commits/91fcaa8bd261d55255fe658ce026ce6840547234.md
+- 2026-01-12 `a78ef90` [chore] [include/c_api] → .repo_knowledge/commits/a78ef906f37a086054bc52cf212630cfd76516fb.md
+- 2026-01-11 `dcd07cf` [build] [cmake] → .repo_knowledge/commits/dcd07cfe27465287ee5b203b742e85dcfb99606a.md
+- 2026-01-11 `3b4a532` [build] [cmake] → .repo_knowledge/commits/3b4a532763159d7810bf7094152860c97511a546.md
+- 2026-01-11 `0d157dc` [build] [cmake] → .repo_knowledge/commits/0d157dc81551bdf57b26ae9cde62bf37fdc0f8ca.md
+- 2026-01-11 `4c712ca` [feat] [c-api, error, cpp] → .repo_knowledge/commits/4c712ca3ec72ad18c10e42e5ef8b7f91ec23a803.md
+- 2026-01-12 `f9b5e7d` [deps] [addons] → .repo_knowledge/commits/f9b5e7ddeef75d32f042901b25a3f5b40c1c383e.md
+- 2026-01-10 `f173692` [docs] [docs] → .repo_knowledge/commits/f1736924f80fe12b79752e1b0713dbb843eb01e6.md
+- 2026-01-10 `8786670` [feat] [python, cython, cpp] → .repo_knowledge/commits/8786670af20e9005ec1dd50d7872ee9e2b8b89cd.md
+- 2026-01-10 `38914fa` [fix] [cpp, reflection] → .repo_knowledge/commits/38914fa7a13fce9eb32462d649b0d2f1d11553d1.md
+- 2026-01-09 `6643e2c` [docs] [python] → .repo_knowledge/commits/6643e2c0579c8a4ea80cc59948fcbc2a76743a57.md
+- 2026-01-09 `e8028e8` [docs] [docs] → .repo_knowledge/commits/e8028e826b78ed4c2848e8f64194dff4ba271bf8.md
+- 2026-01-09 `02d1a96` [feat] [cpp-string, tests-cpp] → .repo_knowledge/commits/02d1a9600ac195fc320fe10fe42c978bcdb5e727.md
+- 2026-01-09 `181e1b8` [ci] [ci] → .repo_knowledge/commits/181e1b8b5d81599a4c6215375d07162d3d750438.md
+- 2026-01-09 `ae30cd6` [fix] [cpp-dtype, tests-cpp] → .repo_knowledge/commits/ae30cd67763ac7bb36a8fccd322590763bcbeed9.md
+- 2026-01-08 `9422dca` [docs] [docs] → .repo_knowledge/commits/9422dca062574ba1f5bd0f9270fe52dbf786db84.md
+- 2026-01-08 `34ad335` [docs] [docs, python-dataclasses] → .repo_knowledge/commits/34ad335202b27cc802441675571e07ec161556b2.md
+- 2026-01-08 `86bbddf` [feat] [cpp-type-traits, cpp-structural-hash, tests-cpp] → .repo_knowledge/commits/86bbddfdbaa9103016e3f39633b8b2402ea24428.md
+- 2026-01-07 `4a8a0b0` [chore] [cpp-string] → .repo_knowledge/commits/4a8a0b01f45f726147cbf75742d6b772eceab369.md
+- 2026-01-07 `bd12b26` [feat] [cpp-string, tests-cpp, tests-python] → .repo_knowledge/commits/bd12b26ac36ae6e770d128710fba13108957ee52.md
+- 2026-01-06 `5bf7e8c` [chore] [addons-torch-dlpack, lint] → .repo_knowledge/commits/5bf7e8ce20fae0df47dd0adf7b39919ac6fafa11.md
+- 2026-01-05 `71bbe91` [fix] [cpp-env-context, tests-cpp] → .repo_knowledge/commits/71bbe91737afd58a330c735369c069317f48cc29.md
+- 2026-01-05 `46ab644` [feat] [python/container] → .repo_knowledge/commits/46ab64481c60478f5ca3081b26607f4ae525f76a.md
+- 2026-01-04 `ad195eb` [docs] [docs/packaging] → .repo_knowledge/commits/ad195eb766fb1658612e034f19e93cae1f67360a.md
+- 2026-01-04 `0369a07` [docs] [docs/concepts, docs/get_started, docs/packaging] → .repo_knowledge/commits/0369a07158685dd260f00f81b5ccfa67c35634c6.md
+- 2026-01-04 `46cb971` [docs] [docs/packaging] → .repo_knowledge/commits/46cb971d89be8d445847c08299a060b7df7f6c04.md
+- 2026-01-04 `8caa0cb` [feat] [include/tvm/ffi, examples, docs] → .repo_knowledge/commits/8caa0cbe70e369a525192be0e0f159702dacb71c.md
+- 2026-01-03 `ec56178` [fix] [include/tvm/ffi/container, tests/cpp] → .repo_knowledge/commits/ec56178e587a5ca585fecac60823b8e55fa267d7.md
+- 2026-01-03 `c22e10e` [chore] [include/tvm/ffi/reflection, examples, src/ffi, tests] → .repo_knowledge/commits/c22e10e8aed646b58d6afa9cbd0597989ce51587.md
+- 2026-01-02 `5bc7fcd` [feat] [python/container, src/ffi/container, tests/cpp, tests/python] → .repo_knowledge/commits/5bc7fcdebd0fae2d3650a5b18ae69154c1c92d70.md
+- 2026-01-02 `e54d15d` [fix] [include/tvm/ffi/container, tests/cpp, tests/python] → .repo_knowledge/commits/e54d15d71c64da72e84cc831def06dc525e31e18.md
+- 2026-01-02 `c51e519` [feat] [include/tvm/ffi/extra, python/tvm_ffi/cpp] → .repo_knowledge/commits/c51e519b2253c2c8754bebaf2f9af0434d89e1fc.md
+- 2025-12-29 `6e7cafa` [docs] [docs] → .repo_knowledge/commits/6e7cafab78cb007d066bc860c600e2ba80b4d1a7.md
+- 2025-12-28 `7ed97ca` [chore] [build] → .repo_knowledge/commits/7ed97cafb215d8ff4e29835e294ee8ae656224e5.md
+- 2025-12-25 `b16f11f` [refactor] [cuda, cmake, examples, docs] → .repo_knowledge/commits/b16f11f60156cf07c6e5d3f9ddfa9e2273bdea03.md
+- 2025-12-24 `8b9f28d` [fix] [build, cmake] → .repo_knowledge/commits/8b9f28d484d568f4d5d410cb860759e0a6d87657.md
+- 2025-12-24 `22f22e8` [fix] [cpp] → .repo_knowledge/commits/22f22e8d15f6b2eb88db19767706a82f4f3c457f.md
+- 2025-12-23 `84c5bdb` [feat] [cpp, function, reflection] → .repo_knowledge/commits/84c5bdbcd11ae0e5bc921db4f35d3fd1d3ae762c.md
+- 2025-12-22 `89be2d3` [docs] [docs, examples] → .repo_knowledge/commits/89be2d3ff90d021355975a52d72e5eefc02bc335.md
+- 2025-12-22 `a1cb746` [refactor] [cmake, examples, docs] → .repo_knowledge/commits/a1cb746201412a943c29d942e6b2c29b36d97c48.md
+- 2025-12-22 `dc0dd2f` [docs] [docs, examples, ci, python] → .repo_knowledge/commits/dc0dd2f6e8367e3bb244e0dc09c6a1a41495499d.md
+- 2025-12-22 `9268e67` [docs] [docs] → .repo_knowledge/commits/9268e6740f968d5fdd70ced548d2534f3a27d337.md
+- 2025-12-21 `19da7e8` [docs] [docs, c++-headers, python-cython, stubgen] → .repo_knowledge/commits/19da7e8f07bd85245ceddb6084f2b44afbfeadc1.md
+- 2025-12-21 `a754afe` [ci] [ci, examples] → .repo_knowledge/commits/a754afe248c0a29509236b5e0c8d2e30a26f7ffa.md
+- 2025-12-20 `ccd19f8` [feat] [cmake, examples] → .repo_knowledge/commits/ccd19f8202a980bd03501a62600e338fa883f80c.md
+- 2025-12-18 `b58c2e3` [feat] [stubgen, python-testing, examples] → .repo_knowledge/commits/b58c2e3d7deadbd60c7480f5c84633966260bc9a.md
+- 2025-12-18 `a7ebc65` [feat] [python-cython] → .repo_knowledge/commits/a7ebc65f14eecd1592d407f1d5c952c65603a9aa.md
+- 2025-12-16 `3ab699d` [chore] [c-api] → .repo_knowledge/commits/3ab699d48fdea2db341f1306f979ce8d0f773e3c.md
+- 2025-12-12 `438f643` [fix] [python, c++] → .repo_knowledge/commits/438f6439148b059d424ce2cc2a348736923f6948.md
+- 2025-12-12 `639cc63` [ci] [ci] → .repo_knowledge/commits/639cc63dee4321d0a01e0f1009e952bc0355daa2.md
+- 2025-12-12 `8b46833` [chore] [lint, python] → .repo_knowledge/commits/8b4683385fd60b5b89f23cc8d4ab53d3a7c1aebb.md

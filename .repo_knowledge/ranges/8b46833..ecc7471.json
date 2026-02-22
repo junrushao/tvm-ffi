@@ -1,0 +1,1719 @@
+{
+  "base": "8b4683385fd60b5b89f23cc8d4ab53d3a7c1aebb",
+  "head": "ecc747115d95d89cb0074617f4c8c7c9e125b4ad",
+  "base7": "8b46833",
+  "head7": "ecc7471",
+  "commit_count": 100,
+  "file_count": 250,
+  "insertions": 24240,
+  "deletions": 5530,
+  "commits": [
+    {
+      "sha": "ecc747115d95d89cb0074617f4c8c7c9e125b4ad",
+      "sha7": "ecc7471",
+      "date": "2026-02-21T21:40:59-08:00",
+      "author": "Junru Shao",
+      "subject": "feat: Add `tvm_ffi.Function.__init__` (#28)"
+    },
+    {
+      "sha": "83daf69ac85aeb8d0e4fb76f1df2bd77dca07470",
+      "sha7": "83daf69",
+      "date": "2026-02-21T21:08:47-08:00",
+      "author": "Junru Shao",
+      "subject": "feat: Restrict `__slots__=()` for subclasses of `tvm_ffi.Object` by default (#27)"
+    },
+    {
+      "sha": "7786133167902a810dd4717fd0e7d39f4c6f7e99",
+      "sha7": "7786133",
+      "date": "2026-02-21T20:36:48-08:00",
+      "author": "Junru Shao",
+      "subject":
+          "feat(stub): use distinct container type origins in type schema and stub generation (#469)"
+    },
+    {
+      "sha": "49ff2aa32c407df92004bef37387822953c21496",
+      "sha7": "49ff2aa",
+      "date": "2026-02-21T06:08:42-08:00",
+      "author": "Junru Shao",
+      "subject": "feat: add CLAUDE.md and dev server launch config (#468)"
+    },
+    {
+      "sha": "37d0485b2058885bf4e7a486f7d7b2174a8ac1ce",
+      "sha7": "37d0485",
+      "date": "2026-02-20T07:07:07-08:00",
+      "author": "Hubert Lu",
+      "subject":
+          "ROCm: fix DLPack current_work_stream and force addon override for Torch exchange API (#466)"
+    },
+    {
+      "sha": "07546c750337c73e1d74cf4e1a29c32fbee0c139",
+      "sha7": "07546c7",
+      "date": "2026-02-20T10:03:16-05:00",
+      "author": "Tianqi Chen",
+      "subject": "[COMPACT][TEMP] Array compact temp fix  (#467)"
+    },
+    {
+      "sha": "35cbc3274cf4b02d8d2e34d2510be5b34d0046ea",
+      "sha7": "35cbc32",
+      "date": "2026-02-19T18:10:22-05:00",
+      "author": "Tianqi Chen",
+      "subject": "[ERROR] Complete support of CHECK macros (#465)"
+    },
+    {
+      "sha": "c1af3b337645bed13f573560910dee2743d7d3b1",
+      "sha7": "c1af3b3",
+      "date": "2026-02-19T11:50:02-05:00",
+      "author": "Tianqi Chen",
+      "subject": "[FEAT] Introduce mutable Dict  (#463)"
+    },
+    {
+      "sha": "5a6b211612c4f0360f49a7a17a809d80460f557d",
+      "sha7": "5a6b211",
+      "date": "2026-02-18T13:36:25-05:00",
+      "author": "Tianqi Chen",
+      "subject": "[REACTOR] Cleanup and improve map array containers (#462)"
+    },
+    {
+      "sha": "b648c5d6b7981350c165096efbb98d00787e2900",
+      "sha7": "b648c5d",
+      "date": "2026-02-18T10:31:07-08:00",
+      "author": "Junru Shao",
+      "subject": "feat: add DFS-based ffi.ReprPrint for unified object repr (#454)"
+    },
+    {
+      "sha": "65b5e90576185cb6300f43bc1307158dc99afb54",
+      "sha7": "65b5e90",
+      "date": "2026-02-19T01:54:32+08:00",
+      "author": "DarkSharpness",
+      "subject": "[Feature] Support AMD HIP for cpp extension (#460)"
+    },
+    {
+      "sha": "3b26a09a1e47a55e641f2267317c97114b27ab36",
+      "sha7": "3b26a09",
+      "date": "2026-02-17T07:04:43-08:00",
+      "author": "Junru Shao",
+      "subject": "doc: Properly document `field_static_type_index` and add more tests (#456)"
+    },
+    {
+      "sha": "6adc8df7d2180ea14e463d3beeaa3d7eecb6f897",
+      "sha7": "6adc8df",
+      "date": "2026-02-16T21:08:20-05:00",
+      "author": "Tianqi Chen",
+      "subject": "[EXTRA] Introduce StructuralKey (#453)"
+    },
+    {
+      "sha": "4f91e9cbf3126c46bdaa24f3178aaef59ffaa62f",
+      "sha7": "4f91e9c",
+      "date": "2026-02-15T22:26:50-05:00",
+      "author": "Tianqi Chen",
+      "subject": "[TEST] Addback missing test for init once (#452)"
+    },
+    {
+      "sha": "39d9b2b400646be720e98f001353cc0d8d4b0234",
+      "sha7": "39d9b2b",
+      "date": "2026-02-15T21:33:01-05:00",
+      "author": "Tianqi Chen",
+      "subject": "[CORE] Enable customized AnyHash/Equal in Object Type attr (#451)"
+    },
+    {
+      "sha": "86c4042d66bf432a3c4a217be1eeab3568329b5b",
+      "sha7": "86c4042",
+      "date": "2026-02-15T04:15:57-08:00",
+      "author": "Junru Shao",
+      "subject": "feat: add `ffi.GetInvalidObject` global function for MISSING singleton (#447)"
+    },
+    {
+      "sha": "5e564cdfb932af63915fbeb5a5aa30671f55ae2c",
+      "sha7": "5e564cd",
+      "date": "2026-02-14T18:14:35-08:00",
+      "author": "Junru Shao",
+      "subject": "feat: add `DefaultFactory` support to field reflection (#446)"
+    },
+    {
+      "sha": "934f2d187c7fb51ab32b9351f8e56a865241aff4",
+      "sha7": "934f2d1",
+      "date": "2026-02-14T14:34:30-08:00",
+      "author": "Junru Shao",
+      "subject": "feat: Claude Skill for TVM-FFI Development (#445)"
+    },
+    {
+      "sha": "c73d61a423edf69483676f727cf272feebbe4d49",
+      "sha7": "c73d61a",
+      "date": "2026-02-13T19:01:46-08:00",
+      "author": "Junru Shao",
+      "subject": "feat: add `__copy__`, `__deepcopy__`, and `__replace__` for FFI objects (#438)"
+    },
+    {
+      "sha": "395db3cef62f430831eb9e927357334ed3fdfade",
+      "sha7": "395db3c",
+      "date": "2026-02-14T04:54:45+08:00",
+      "author": "Yuhong Guo",
+      "subject": "Add Support for NVIDIA Ampere GPUs in _get_cuda_target (#440)"
+    },
+    {
+      "sha": "0f45528277dd024cd0a9abdeb6dcf1b97ebf8c42",
+      "sha7": "0f45528",
+      "date": "2026-02-14T04:36:52+08:00",
+      "author": "Yichen Yan",
+      "subject": "fix: Suppress GCC warning for array bounds in String class (#439)"
+    },
+    {
+      "sha": "9513c2f8a57f64ad7473d7cd06084719f6d5e70e",
+      "sha7": "9513c2f",
+      "date": "2026-02-13T12:36:34-08:00",
+      "author": "Junru Shao",
+      "subject": "feat: Introduce List as Mutable Sequence (#443)"
+    },
+    {
+      "sha": "d3b5532fe68ad0d76dd8e8636a000629a7ec4716",
+      "sha7": "d3b5532",
+      "date": "2026-02-11T21:07:49-05:00",
+      "author": "Ruihang Lai",
+      "subject": "fix: handle UTF-8 bytes correctly in JSON parser control character check (#442)"
+    },
+    {
+      "sha": "89cb6066d1d8851e61e6201ca0782d78a4ed8160",
+      "sha7": "89cb606",
+      "date": "2026-02-11T17:58:14-08:00",
+      "author": "Junru Shao",
+      "subject": "fix(build): Broken Wheel Testing (#444)"
+    },
+    {
+      "sha": "e08dd6839a10d77d05ddef649840bcea99659d2f",
+      "sha7": "e08dd68",
+      "date": "2026-02-11T16:35:16-08:00",
+      "author": "Junru Shao",
+      "subject": "chore: Run ty in dev environment (#441)"
+    },
+    {
+      "sha": "731955b304d0f4445b981e4bb9417e49209c6c37",
+      "sha7": "731955b",
+      "date": "2026-02-10T03:29:37+08:00",
+      "author": "Jinjie Liu",
+      "subject": "refactor: Get `compiled_kernel` from Triton Call Directly (#423)"
+    },
+    {
+      "sha": "245bd0d2512ca164eb57b1c18da12245981a9b17",
+      "sha7": "245bd0d",
+      "date": "2026-02-08T14:04:43-08:00",
+      "author": "Junru Shao",
+      "subject": "doc: More Developer Manuals (#437)"
+    },
+    {
+      "sha": "90162ddc42c81bbe2913ada3fe1734d4805f741e",
+      "sha7": "90162dd",
+      "date": "2026-02-08T04:14:19-08:00",
+      "author": "Junru Shao",
+      "subject": "doc: Export Functions and Classes (#436)"
+    },
+    {
+      "sha": "37f45c3ed834d57de3a3513457ab239c13881272",
+      "sha7": "37f45c3",
+      "date": "2026-02-08T09:43:50+08:00",
+      "author": "Yichen Yan",
+      "subject": "Reliability update (#435)"
+    },
+    {
+      "sha": "761966953fec7e8ceba0fcc20dc003e39cf2692d",
+      "sha7": "7619669",
+      "date": "2026-02-07T04:12:46-08:00",
+      "author": "Junru Shao",
+      "subject": "chore: Switch from mypy to ty (#432)"
+    },
+    {
+      "sha": "b17709aabcc2f1bd776fb001bd05a9c1b4cfe421",
+      "sha7": "b17709a",
+      "date": "2026-02-06T12:13:36-08:00",
+      "author": "Junru Shao",
+      "subject": "doc: Update Kernel Library Guide (#431)"
+    },
+    {
+      "sha": "0a9d4b681cb017e9103efa6cc20d687c065a26fe",
+      "sha7": "0a9d4b6",
+      "date": "2026-02-06T21:57:46+08:00",
+      "author": "Guan-Ming (Wesley) Chiu",
+      "subject": "feat: add ffi::Expected<T> for exception-free error handling (#399)"
+    },
+    {
+      "sha": "437323c9aecce445409820527abcf237c1c66dc1",
+      "sha7": "437323c",
+      "date": "2026-02-05T14:35:20-08:00",
+      "author": "Junru Shao",
+      "subject": "doc: Merge C++ tooling and C++ packaging (#429)"
+    },
+    {
+      "sha": "e7c42f61a430f97d5977c1a5da6ae7adc66c8edd",
+      "sha7": "e7c42f6",
+      "date": "2026-02-05T11:57:16-08:00",
+      "author": "Junru Shao",
+      "subject": "doc: Standalone Exception Handling (#428)"
+    },
+    {
+      "sha": "463083f9fdc7abeef3d0e0db22d4f27d5cf8e5ef",
+      "sha7": "463083f",
+      "date": "2026-02-05T09:36:04-08:00",
+      "author": "Junru Shao",
+      "subject": "doc: Standalone Stub Generation Doc (#427)"
+    },
+    {
+      "sha": "b1611e0cf669518dd01367806ab0bfda7b20841d",
+      "sha7": "b1611e0",
+      "date": "2026-02-03T10:50:25-05:00",
+      "author": "Tianqi Chen",
+      "subject": "[Error] Unify EnvErrorAlreadySet to error.kind (#425)"
+    },
+    {
+      "sha": "b50869806f26d57bf84f52d2d532c82b02d60b1b",
+      "sha7": "b508698",
+      "date": "2026-01-30T07:31:39-08:00",
+      "author": "Henry Tsang",
+      "subject": "Fix two issues that undefined behavior sanitizer caught (#419)"
+    },
+    {
+      "sha": "d0d0e2f935cda443bd85e097a3cfb18de2a96f4d",
+      "sha7": "d0d0e2f",
+      "date": "2026-01-30T22:11:57+09:00",
+      "author": "Haejoon Kim",
+      "subject": "feat: add Rust binding for `Array<T>` (#348)"
+    },
+    {
+      "sha": "ed067c17b259774f4ddc23ba7de937a90642bbb1",
+      "sha7": "ed067c1",
+      "date": "2026-01-27T11:08:24+08:00",
+      "author": "Yichen Yan",
+      "subject": "Update the logic of checking `#embed` (#418)"
+    },
+    {
+      "sha": "668ce835939ff60a99c7d982266cf4bdc90ca35b",
+      "sha7": "668ce83",
+      "date": "2026-01-27T06:09:27+08:00",
+      "author": "Guan-Ming (Wesley) Chiu",
+      "subject": "fix: handle empty metadata in get_global_func_metadata (#417)"
+    },
+    {
+      "sha": "e6e5d3a20bf8e04f88d0de3623b243a3a97593b4",
+      "sha7": "e6e5d3a",
+      "date": "2026-01-25T21:07:10+08:00",
+      "author": "Guan-Ming (Wesley) Chiu",
+      "subject": "[DLPack] bump to latest version (#420)"
+    },
+    {
+      "sha": "3a5bf5e68ad1b4108045ef6b336a13efcd2037d9",
+      "sha7": "3a5bf5e",
+      "date": "2026-01-18T15:13:10+08:00",
+      "author": "Guan-Ming (Wesley) Chiu",
+      "subject": "feat: add kw_only support for dataclass init generation (#384)"
+    },
+    {
+      "sha": "2702f2b08721b1ea45f2f7858e3be88b02378731",
+      "sha7": "2702f2b",
+      "date": "2026-01-18T12:08:11+08:00",
+      "author": "Nyakku Shigure",
+      "subject": "docs: add PaddlePaddle quickstart and load example (#415)"
+    },
+    {
+      "sha": "360648f30ccb14523ab6fbb81f37eb085b801f98",
+      "sha7": "360648f",
+      "date": "2026-01-18T11:30:53+08:00",
+      "author": "Dayuxiaoshui",
+      "subject": "feat: Add __repr__ generation support for @c_class dataclasses (#411)"
+    },
+    {
+      "sha": "4fec9721c6bd6862bd371cf65d3ac6a1e8eb737e",
+      "sha7": "4fec972",
+      "date": "2026-01-17T11:29:51+08:00",
+      "author": "Nan",
+      "subject": "[Feat] Support lower PyTorch versions in dtype handling (#414)"
+    },
+    {
+      "sha": "c78e8b4eefa076c457af97bd3930dd664aec71c3",
+      "sha7": "c78e8b4",
+      "date": "2026-01-13T11:15:06-08:00",
+      "author": "Junru Shao",
+      "subject": "doc: abi overview (#402)"
+    },
+    {
+      "sha": "e1bd42189949b360753f50784ceb5e64cb08254f",
+      "sha7": "e1bd421",
+      "date": "2026-01-13T12:37:38-05:00",
+      "author": "Tianqi Chen",
+      "subject": "[FIX] Fix the error propagation in the case of tensor arguments (#409)"
+    },
+    {
+      "sha": "10cb0048cef8f3a37282f403cded9eb96aa59464",
+      "sha7": "10cb004",
+      "date": "2026-01-12T21:08:36-05:00",
+      "author": "Tianqi Chen",
+      "subject": "[CUDA] Isolate unified api to only in cubin launcher (#408)"
+    },
+    {
+      "sha": "91fcaa8bd261d55255fe658ce026ce6840547234",
+      "sha7": "91fcaa8",
+      "date": "2026-01-12T10:16:47-08:00",
+      "author": "Junru Shao",
+      "subject": "Revert \"feat: Add `tvm_ffi.Function.__init__`\" (#406)"
+    },
+    {
+      "sha": "692a41a3a221897501e145a0c102ab8b055bc1e7",
+      "sha7": "692a41a",
+      "date": "2026-01-13T02:02:22+08:00",
+      "author": "Yaxing Cai",
+      "subject": "fix: add unified_api.h include to device_guard.h (#405)"
+    },
+    {
+      "sha": "a78ef906f37a086054bc52cf212630cfd76516fb",
+      "sha7": "a78ef90",
+      "date": "2026-01-12T06:28:58-08:00",
+      "author": "Junru Shao",
+      "subject": "chore(release): Version bump after release v0.1.8 (#404)"
+    },
+    {
+      "sha": "dcd07cfe27465287ee5b203b742e85dcfb99606a",
+      "sha7": "dcd07cf",
+      "date": "2026-01-11T21:13:50-05:00",
+      "author": "Tianqi Chen",
+      "subject": "[CMAKE] Allow explcitly turning dl off (#401)"
+    },
+    {
+      "sha": "3b4a532763159d7810bf7094152860c97511a546",
+      "sha7": "3b4a532",
+      "date": "2026-01-11T17:49:46-05:00",
+      "author": "Tianqi Chen",
+      "subject": "[CMAKE] Allow explicit turning threads off (#400)"
+    },
+    {
+      "sha": "0d157dc81551bdf57b26ae9cde62bf37fdc0f8ca",
+      "sha7": "0d157dc",
+      "date": "2026-01-11T14:50:32-05:00",
+      "author": "Tianqi Chen",
+      "subject": "[CMAKE] Allow threads to be not found for cross compilation (#397)"
+    },
+    {
+      "sha": "4c712ca3ec72ad18c10e42e5ef8b7f91ec23a803",
+      "sha7": "4c712ca",
+      "date": "2026-01-11T12:26:05-05:00",
+      "author": "Tianqi Chen",
+      "subject": "[RFC][Error][ABI] Update Error to enable future compact to cause chaining (#396)"
+    },
+    {
+      "sha": "f9b5e7ddeef75d32f042901b25a3f5b40c1c383e",
+      "sha7": "f9b5e7d",
+      "date": "2026-01-12T01:25:22+08:00",
+      "author": "Yaxing Cai",
+      "subject": "[ADDONS] Update torch-c-dlpack-ext to 0.1.5 (#398)"
+    },
+    {
+      "sha": "f1736924f80fe12b79752e1b0713dbb843eb01e6",
+      "sha7": "f173692",
+      "date": "2026-01-10T18:19:04-08:00",
+      "author": "Junru Shao",
+      "subject": "doc: Function, Exception and Module (#394)"
+    },
+    {
+      "sha": "8786670af20e9005ec1dd50d7872ee9e2b8b89cd",
+      "sha7": "8786670",
+      "date": "2026-01-10T09:29:52-08:00",
+      "author": "Junru Shao",
+      "subject": "feat: Add `tvm_ffi.Function.__init__` (#395)"
+    },
+    {
+      "sha": "38914fa7a13fce9eb32462d649b0d2f1d11553d1",
+      "sha7": "38914fa",
+      "date": "2026-01-10T16:59:01+08:00",
+      "author": "Guan-Ming (Wesley) Chiu",
+      "subject": "fix: TypeStr support for Any type in reflection Init (#393)"
+    },
+    {
+      "sha": "6643e2c0579c8a4ea80cc59948fcbc2a76743a57",
+      "sha7": "6643e2c",
+      "date": "2026-01-09T21:59:31+08:00",
+      "author": "Guan-Ming (Wesley) Chiu",
+      "subject": "docs: document structural_equal and structural_hash for Array and Map (#379)"
+    },
+    {
+      "sha": "e8028e826b78ed4c2848e8f64194dff4ba271bf8",
+      "sha7": "e8028e8",
+      "date": "2026-01-09T05:58:49-08:00",
+      "author": "Junru Shao",
+      "subject": "doc: Object and Class (#392)"
+    },
+    {
+      "sha": "02d1a9600ac195fc320fe10fe42c978bcdb5e727",
+      "sha7": "02d1a96",
+      "date": "2026-01-09T15:36:26+08:00",
+      "author": "Guan-Ming (Wesley) Chiu",
+      "subject": "feat: add starts_with and ends_with to String (#388)"
+    },
+    {
+      "sha": "181e1b8b5d81599a4c6215375d07162d3d750438",
+      "sha7": "181e1b8",
+      "date": "2026-01-09T03:16:48+08:00",
+      "author": "Guan-Ming (Wesley) Chiu",
+      "subject": "ci: add clang-tidy to ci_test (#389)"
+    },
+    {
+      "sha": "ae30cd67763ac7bb36a8fccd322590763bcbeed9",
+      "sha7": "ae30cd6",
+      "date": "2026-01-09T04:14:33+09:00",
+      "author": "Haejoon Kim",
+      "subject":
+          "fix: out-of-bounds read in `StringViewToDLDataType_` with non-null-terminated strings (#387)"
+    },
+    {
+      "sha": "9422dca062574ba1f5bd0f9270fe52dbf786db84",
+      "sha7": "9422dca",
+      "date": "2026-01-08T09:33:54-08:00",
+      "author": "Junru Shao",
+      "subject": "doc: Tensor Usage (#390)"
+    },
+    {
+      "sha": "34ad335202b27cc802441675571e07ec161556b2",
+      "sha7": "34ad335",
+      "date": "2026-01-08T09:33:21-08:00",
+      "author": "Junru Shao",
+      "subject": "doc: Any and AnyView (#382)"
+    },
+    {
+      "sha": "86bbddfdbaa9103016e3f39633b8b2402ea24428",
+      "sha7": "86bbddf",
+      "date": "2026-01-08T17:49:37+08:00",
+      "author": "Nan",
+      "subject":
+          "feat: Add overflow check for uint64_t/size_t in TypeTraits<Int>::CopyToAnyView (#370)"
+    },
+    {
+      "sha": "4a8a0b01f45f726147cbf75742d6b772eceab369",
+      "sha7": "4a8a0b0",
+      "date": "2026-01-07T10:28:42+08:00",
+      "author": "Guan-Ming (Wesley) Chiu",
+      "subject": "chore: replace C-style cast with static_cast in String::substr (#386)"
+    },
+    {
+      "sha": "bd12b26ac36ae6e770d128710fba13108957ee52",
+      "sha7": "bd12b26",
+      "date": "2026-01-07T00:50:35+08:00",
+      "author": "Guan-Ming (Wesley) Chiu",
+      "subject": "feat: add find and substr methods to String (#383)"
+    },
+    {
+      "sha": "5bf7e8ce20fae0df47dd0adf7b39919ac6fafa11",
+      "sha7": "5bf7e8c",
+      "date": "2026-01-06T20:38:14+08:00",
+      "author": "Yaxing Cai",
+      "subject": "[ADDONS] Add licence and notice for torch-c-dlpack-ext (#385)"
+    },
+    {
+      "sha": "71bbe91737afd58a330c735369c069317f48cc29",
+      "sha7": "71bbe91",
+      "date": "2026-01-05T21:19:35+08:00",
+      "author": "Nan",
+      "subject":
+          "Fix TVMFFIEnvSetDLPackManagedTensorAllocator to correctly return the original allocator (#371)"
+    },
+    {
+      "sha": "46ab64481c60478f5ca3081b26607f4ae525f76a",
+      "sha7": "46ab644",
+      "date": "2026-01-05T15:42:10+08:00",
+      "author": "Guan-Ming (Wesley) Chiu",
+      "subject": "feat: add __bool__ support for Array and Map (#380)"
+    },
+    {
+      "sha": "ad195eb766fb1658612e034f19e93cae1f67360a",
+      "sha7": "ad195eb",
+      "date": "2026-01-04T16:36:44-08:00",
+      "author": "Junru Shao",
+      "subject": "doc: Reorder Sections in Python Packaging (#372)"
+    },
+    {
+      "sha": "0369a07158685dd260f00f81b5ccfa67c35634c6",
+      "sha7": "0369a07",
+      "date": "2026-01-04T15:00:16-08:00",
+      "author": "Junru Shao",
+      "subject": "doc: Tensor and DLPack (#363)"
+    },
+    {
+      "sha": "46cb971d89be8d445847c08299a060b7df7f6c04",
+      "sha7": "46cb971",
+      "date": "2026-01-04T14:51:39-08:00",
+      "author": "Junru Shao",
+      "subject": "doc: c++ toolchain (#373)"
+    },
+    {
+      "sha": "8caa0cbe70e369a525192be0e0f159702dacb71c",
+      "sha7": "8caa0cb",
+      "date": "2026-01-04T14:50:44-08:00",
+      "author": "Junru Shao",
+      "subject": "feat: Introduce `<tvm/ffi/tvm_ffi.h>` (#369)"
+    },
+    {
+      "sha": "ec56178e587a5ca585fecac60823b8e55fa267d7",
+      "sha7": "ec56178",
+      "date": "2026-01-03T07:39:03+08:00",
+      "author": "Guan-Ming (Wesley) Chiu",
+      "subject": "fix: add negative index bounds check in ArrayObj (#376)"
+    },
+    {
+      "sha": "c22e10e8aed646b58d6afa9cbd0597989ce51587",
+      "sha7": "c22e10e",
+      "date": "2026-01-03T07:38:48+08:00",
+      "author": "Guan-Ming (Wesley) Chiu",
+      "subject": "chore: fix compiler warnings (#378)"
+    },
+    {
+      "sha": "5bc7fcdebd0fae2d3650a5b18ae69154c1c92d70",
+      "sha7": "5bc7fcd",
+      "date": "2026-01-02T16:52:24+08:00",
+      "author": "Guan-Ming (Wesley) Chiu",
+      "subject": "feat: add array __contains__ support (#377)"
+    },
+    {
+      "sha": "e54d15d71c64da72e84cc831def06dc525e31e18",
+      "sha7": "e54d15d",
+      "date": "2026-01-02T02:45:26+08:00",
+      "author": "Guan-Ming (Wesley) Chiu",
+      "subject": "fix: add bounds checking for size() and stride() methods (#375)"
+    },
+    {
+      "sha": "c51e519b2253c2c8754bebaf2f9af0434d89e1fc",
+      "sha7": "c51e519",
+      "date": "2026-01-02T02:43:05+08:00",
+      "author": "DarkSharpness",
+      "subject": "[Feature] support C++ dtype_trait and Python-side mapping to C++ dtype (#374)"
+    },
+    {
+      "sha": "6e7cafab78cb007d066bc860c600e2ba80b4d1a7",
+      "sha7": "6e7cafa",
+      "date": "2025-12-29T02:02:57-08:00",
+      "author": "Junru Shao",
+      "subject": "doc: Add release_process.rst (#368)"
+    },
+    {
+      "sha": "7ed97cafb215d8ff4e29835e294ee8ae656224e5",
+      "sha7": "7ed97ca",
+      "date": "2025-12-28T16:21:52-08:00",
+      "author": "Junru Shao",
+      "subject": "chore(release): Version bump after v0.1.7 release (#367)"
+    },
+    {
+      "sha": "8b9f28d484d568f4d5d410cb860759e0a6d87657",
+      "sha7": "8b9f28d",
+      "date": "2025-12-24T13:57:00-08:00",
+      "author": "Junru Shao",
+      "subject": "fix(build): Link dl and pthread dependencies for tvm_ffi (#360)"
+    },
+    {
+      "sha": "b16f11f60156cf07c6e5d3f9ddfa9e2273bdea03",
+      "sha7": "b16f11f",
+      "date": "2025-12-25T01:19:51+08:00",
+      "author": "Yichen Yan",
+      "subject": "[Enhancement] Refactor cubin launcher (#300)"
+    },
+    {
+      "sha": "22f22e8d15f6b2eb88db19767706a82f4f3c457f",
+      "sha7": "22f22e8",
+      "date": "2025-12-24T04:46:19-08:00",
+      "author": "Junru Shao",
+      "subject": "fix(lint): Suppress latest clang-tidy warnings (#361)"
+    },
+    {
+      "sha": "84c5bdbcd11ae0e5bc921db4f35d3fd1d3ae762c",
+      "sha7": "84c5bdb",
+      "date": "2025-12-23T14:45:32+08:00",
+      "author": "DarkSharpness",
+      "subject": "[Feature] Support dynamic-style overload for FFI object types (#286)"
+    },
+    {
+      "sha": "89be2d3ff90d021355975a52d72e5eefc02bc335",
+      "sha7": "89be2d3",
+      "date": "2025-12-22T10:46:45-08:00",
+      "author": "Junru Shao",
+      "subject": "doc: Final tweaks on Python Packaging (#358)"
+    },
+    {
+      "sha": "a1cb746201412a943c29d942e6b2c29b36d97c48",
+      "sha7": "a1cb746",
+      "date": "2025-12-22T10:15:18-08:00",
+      "author": "Junru Shao",
+      "subject": "build: Rename Import Targets (#354)"
+    },
+    {
+      "sha": "dc0dd2f6e8367e3bb244e0dc09c6a1a41495499d",
+      "sha7": "dc0dd2f",
+      "date": "2025-12-22T06:38:27-08:00",
+      "author": "Junru Shao",
+      "subject": "doc: Improve python packaging doc (#355)"
+    },
+    {
+      "sha": "9268e6740f968d5fdd70ced548d2534f3a27d337",
+      "sha7": "9268e67",
+      "date": "2025-12-22T06:38:12-08:00",
+      "author": "Junru Shao",
+      "subject": "doc: Update README.md (#352)"
+    },
+    {
+      "sha": "19da7e8f07bd85245ceddb6084f2b44afbfeadc1",
+      "sha7": "19da7e8",
+      "date": "2025-12-21T19:12:40-08:00",
+      "author": "Junru Shao",
+      "subject": "doc: Revamp Python Packaging (#349)"
+    },
+    {
+      "sha": "a754afe248c0a29509236b5e0c8d2e30a26f7ffa",
+      "sha7": "a754afe",
+      "date": "2025-12-21T16:55:00-08:00",
+      "author": "Junru Shao",
+      "subject": "chore: Run examples on `main` commits (#353)"
+    },
+    {
+      "sha": "ccd19f8202a980bd03501a62600e338fa883f80c",
+      "sha7": "ccd19f8",
+      "date": "2025-12-20T10:17:56-08:00",
+      "author": "Junru Shao",
+      "subject": "feat(cmake): Introduce `tvm_ffi_configure_target` and `tvm_ffi_install` (#351)"
+    },
+    {
+      "sha": "b58c2e3d7deadbd60c7480f5c84633966260bc9a",
+      "sha7": "b58c2e3",
+      "date": "2025-12-18T08:39:10-08:00",
+      "author": "Junru Shao",
+      "subject": "feat(stubgen): Package generation with `--init-*` flags (#295)"
+    },
+    {
+      "sha": "a7ebc65f14eecd1592d407f1d5c952c65603a9aa",
+      "sha7": "a7ebc65",
+      "date": "2025-12-18T02:17:15+08:00",
+      "author": "wrongtest",
+      "subject": "Allow `tvm_ffi.device(..., id)` where id is numpy or torch scalar (#347)"
+    },
+    {
+      "sha": "3ab699d48fdea2db341f1306f979ce8d0f773e3c",
+      "sha7": "3ab699d",
+      "date": "2025-12-16T15:42:07-08:00",
+      "author": "Junru Shao",
+      "subject": "chore(release): Bump version after v0.1.6 release (#346)"
+    },
+    {
+      "sha": "438f6439148b059d424ce2cc2a348736923f6948",
+      "sha7": "438f643",
+      "date": "2025-12-12T13:08:38-08:00",
+      "author": "Junru Shao",
+      "subject": "feat: Fix perf issue in `Map.get` (#341)"
+    },
+    {
+      "sha": "639cc63dee4321d0a01e0f1009e952bc0355daa2",
+      "sha7": "639cc63",
+      "date": "2025-12-12T11:26:17-08:00",
+      "author": "Junru Shao",
+      "subject": "chore(ci): Run wheel testing per-mainline-commit (#337)"
+    },
+    {
+      "sha": "8b4683385fd60b5b89f23cc8d4ab53d3a7c1aebb",
+      "sha7": "8b46833",
+      "date": "2025-12-12T11:24:54-08:00",
+      "author": "Junru Shao",
+      "subject": "chore(lint): Update pre-commit hooks; Enable docstring formatter (#339)"
+    }
+  ],
+  "files": [
+    {
+      "status": "A",
+      "path": ".claude/launch.json"
+    },
+    {
+      "status": "A",
+      "path": ".claude/skills/devtools/SKILL.md"
+    },
+    {
+      "status": "A",
+      "path": ".github/actions/build-wheel-for-publish/action.yml"
+    },
+    {
+      "status": "M",
+      "path": ".github/workflows/ci_mainline_only.yml"
+    },
+    {
+      "status": "M",
+      "path": ".github/workflows/ci_test.yml"
+    },
+    {
+      "status": "M",
+      "path": ".github/workflows/publish_wheel.yml"
+    },
+    {
+      "status": "M",
+      "path": ".gitignore"
+    },
+    {
+      "status": "M",
+      "path": ".markdownlint-cli2.yaml"
+    },
+    {
+      "status": "M",
+      "path": ".pre-commit-config.yaml"
+    },
+    {
+      "status": "M",
+      "path": "3rdparty/dlpack"
+    },
+    {
+      "status": "A",
+      "path": "CLAUDE.md"
+    },
+    {
+      "status": "M",
+      "path": "CMakeLists.txt"
+    },
+    {
+      "status": "M",
+      "path": "CONTRIBUTING.md"
+    },
+    {
+      "status": "M",
+      "path": "README.md"
+    },
+    {
+      "status": "A",
+      "path": "addons/torch_c_dlpack_ext/LICENSE"
+    },
+    {
+      "status": "A",
+      "path": "addons/torch_c_dlpack_ext/NOTICE"
+    },
+    {
+      "status": "M",
+      "path": "addons/torch_c_dlpack_ext/build_backend.py"
+    },
+    {
+      "status": "M",
+      "path": "addons/torch_c_dlpack_ext/pyproject.toml"
+    },
+    {
+      "status": "M",
+      "path": "cmake/Utils/EmbedCubin.cmake"
+    },
+    {
+      "status": "M",
+      "path": "cmake/Utils/Library.cmake"
+    },
+    {
+      "status": "A",
+      "path": "cmake/Utils/ObjectCopyUtil.cmake"
+    },
+    {
+      "status": "M",
+      "path": "cmake/tvm_ffi-config.cmake"
+    },
+    {
+      "status": "M",
+      "path": "docs/.rstcheck.cfg"
+    },
+    {
+      "status": "M",
+      "path": "docs/README.md"
+    },
+    {
+      "status": "M",
+      "path": "docs/_stubs/cpp_index.rst"
+    },
+    {
+      "status": "D",
+      "path": "docs/concepts/abi_overview.md"
+    },
+    {
+      "status": "A",
+      "path": "docs/concepts/abi_overview.rst"
+    },
+    {
+      "status": "A",
+      "path": "docs/concepts/any.rst"
+    },
+    {
+      "status": "A",
+      "path": "docs/concepts/containers.rst"
+    },
+    {
+      "status": "A",
+      "path": "docs/concepts/exception_handling.rst"
+    },
+    {
+      "status": "A",
+      "path": "docs/concepts/func_module.rst"
+    },
+    {
+      "status": "A",
+      "path": "docs/concepts/object_and_class.rst"
+    },
+    {
+      "status": "A",
+      "path": "docs/concepts/tensor.rst"
+    },
+    {
+      "status": "M",
+      "path": "docs/conf.py"
+    },
+    {
+      "status": "A",
+      "path": "docs/dev/ci_cd.rst"
+    },
+    {
+      "status": "A",
+      "path": "docs/dev/doc_build.rst"
+    },
+    {
+      "status": "A",
+      "path": "docs/dev/release_process.rst"
+    },
+    {
+      "status": "A",
+      "path": "docs/dev/source_build.rst"
+    },
+    {
+      "status": "M",
+      "path": "docs/get_started/quickstart.rst"
+    },
+    {
+      "status": "M",
+      "path": "docs/get_started/stable_c_abi.rst"
+    },
+    {
+      "status": "D",
+      "path": "docs/guides/build_from_source.md"
+    },
+    {
+      "status": "M",
+      "path": "docs/guides/compiler_integration.md"
+    },
+    {
+      "status": "R087",
+      "path": "docs/guides/cpp_lang_guide.md"
+    },
+    {
+      "status": "D",
+      "path": "docs/guides/cpp_packaging.md"
+    },
+    {
+      "status": "M",
+      "path": "docs/guides/cubin_launcher.rst"
+    },
+    {
+      "status": "A",
+      "path": "docs/guides/export_func_cls.rst"
+    },
+    {
+      "status": "M",
+      "path": "docs/guides/kernel_library_guide.rst"
+    },
+    {
+      "status": "R079",
+      "path": "docs/guides/python_lang_guide.md"
+    },
+    {
+      "status": "D",
+      "path": "docs/guides/python_packaging.md"
+    },
+    {
+      "status": "R097",
+      "path": "docs/guides/rust_lang_guide.md"
+    },
+    {
+      "status": "M",
+      "path": "docs/index.rst"
+    },
+    {
+      "status": "A",
+      "path": "docs/packaging/cpp_tooling.rst"
+    },
+    {
+      "status": "A",
+      "path": "docs/packaging/python_packaging.rst"
+    },
+    {
+      "status": "A",
+      "path": "docs/packaging/stubgen.rst"
+    },
+    {
+      "status": "M",
+      "path": "docs/reference/cpp/index.rst"
+    },
+    {
+      "status": "M",
+      "path": "docs/reference/python/index.rst"
+    },
+    {
+      "status": "A",
+      "path": "examples/abi_overview/example_code.c"
+    },
+    {
+      "status": "M",
+      "path": "examples/cubin_launcher/README.md"
+    },
+    {
+      "status": "M",
+      "path": "examples/cubin_launcher/benchmark_overhead.py"
+    },
+    {
+      "status": "M",
+      "path": "examples/cubin_launcher/dynamic_cubin/CMakeLists.txt"
+    },
+    {
+      "status": "M",
+      "path": "examples/cubin_launcher/dynamic_cubin/src/lib_dynamic.cc"
+    },
+    {
+      "status": "A",
+      "path": "examples/cubin_launcher/embedded_cubin/cpp_embed/CMakeLists.txt"
+    },
+    {
+      "status": "R100",
+      "path": "examples/cubin_launcher/embedded_cubin/cpp_embed/main.py"
+    },
+    {
+      "status": "R100",
+      "path": "examples/cubin_launcher/embedded_cubin/cpp_embed/src/kernel.cu"
+    },
+    {
+      "status": "A",
+      "path": "examples/cubin_launcher/embedded_cubin/cpp_embed/src/lib_embedded.cc"
+    },
+    {
+      "status": "R050",
+      "path": "examples/cubin_launcher/embedded_cubin/embed_with_tvm_ffi/CMakeLists.txt"
+    },
+    {
+      "status": "A",
+      "path": "examples/cubin_launcher/embedded_cubin/embed_with_tvm_ffi/main.py"
+    },
+    {
+      "status": "A",
+      "path": "examples/cubin_launcher/embedded_cubin/embed_with_tvm_ffi/src/kernel.cu"
+    },
+    {
+      "status": "R082",
+      "path": "examples/cubin_launcher/embedded_cubin/embed_with_tvm_ffi/src/lib_embedded.cc"
+    },
+    {
+      "status": "A",
+      "path": "examples/cubin_launcher/embedded_cubin/include_bin2c/CMakeLists.txt"
+    },
+    {
+      "status": "A",
+      "path": "examples/cubin_launcher/embedded_cubin/include_bin2c/main.py"
+    },
+    {
+      "status": "A",
+      "path": "examples/cubin_launcher/embedded_cubin/include_bin2c/src/.gitignore"
+    },
+    {
+      "status": "A",
+      "path": "examples/cubin_launcher/embedded_cubin/include_bin2c/src/kernel.cu"
+    },
+    {
+      "status": "A",
+      "path": "examples/cubin_launcher/embedded_cubin/include_bin2c/src/lib_embedded.cc"
+    },
+    {
+      "status": "M",
+      "path": "examples/cubin_launcher/example_nvrtc_cubin.py"
+    },
+    {
+      "status": "M",
+      "path": "examples/cubin_launcher/example_triton_cubin.py"
+    },
+    {
+      "status": "A",
+      "path": "examples/kernel_library/load_scale.py"
+    },
+    {
+      "status": "A",
+      "path": "examples/kernel_library/scale_kernel.cu"
+    },
+    {
+      "status": "A",
+      "path": "examples/kernel_library/tvm_ffi_utils.h"
+    },
+    {
+      "status": "D",
+      "path": "examples/packaging/CMakeLists.txt"
+    },
+    {
+      "status": "D",
+      "path": "examples/packaging/python/my_ffi_extension/__init__.py"
+    },
+    {
+      "status": "D",
+      "path": "examples/packaging/src/extension.cc"
+    },
+    {
+      "status": "A",
+      "path": "examples/python_packaging/CMakeLists.txt"
+    },
+    {
+      "status": "R070",
+      "path": "examples/python_packaging/README.md"
+    },
+    {
+      "status": "R076",
+      "path": "examples/python_packaging/pyproject.toml"
+    },
+    {
+      "status": "R071",
+      "path": "examples/python_packaging/python/my_ffi_extension/__init__.py"
+    },
+    {
+      "status": "A",
+      "path": "examples/python_packaging/python/my_ffi_extension/_ffi_api.py"
+    },
+    {
+      "status": "R064",
+      "path": "examples/python_packaging/run_example.py"
+    },
+    {
+      "status": "A",
+      "path": "examples/python_packaging/src/extension.cc"
+    },
+    {
+      "status": "M",
+      "path": "examples/quickstart/CMakeLists.txt"
+    },
+    {
+      "status": "M",
+      "path": "examples/quickstart/README.md"
+    },
+    {
+      "status": "M",
+      "path": "examples/quickstart/compile/add_one_cpu.cc"
+    },
+    {
+      "status": "M",
+      "path": "examples/quickstart/compile/add_one_cuda.cu"
+    },
+    {
+      "status": "M",
+      "path": "examples/quickstart/load/load_cpp.cc"
+    },
+    {
+      "status": "M",
+      "path": "examples/quickstart/load/load_cuda.cc"
+    },
+    {
+      "status": "R059",
+      "path": "examples/quickstart/load/load_paddle.py"
+    },
+    {
+      "status": "A",
+      "path": "examples/quickstart/run_all_cpu.bat"
+    },
+    {
+      "status": "M",
+      "path": "examples/quickstart/run_all_cuda.sh"
+    },
+    {
+      "status": "M",
+      "path": "examples/stable_c_abi/CMakeLists.txt"
+    },
+    {
+      "status": "M",
+      "path": "examples/stable_c_abi/README.md"
+    },
+    {
+      "status": "A",
+      "path": "examples/stable_c_abi/run_all.bat"
+    },
+    {
+      "status": "M",
+      "path": "examples/stable_c_abi/src/add_one_cpu.c"
+    },
+    {
+      "status": "M",
+      "path": "include/tvm/ffi/any.h"
+    },
+    {
+      "status": "M",
+      "path": "include/tvm/ffi/base_details.h"
+    },
+    {
+      "status": "M",
+      "path": "include/tvm/ffi/c_api.h"
+    },
+    {
+      "status": "M",
+      "path": "include/tvm/ffi/container/array.h"
+    },
+    {
+      "status": "M",
+      "path": "include/tvm/ffi/container/container_details.h"
+    },
+    {
+      "status": "A",
+      "path": "include/tvm/ffi/container/dict.h"
+    },
+    {
+      "status": "A",
+      "path": "include/tvm/ffi/container/list.h"
+    },
+    {
+      "status": "M",
+      "path": "include/tvm/ffi/container/map.h"
+    },
+    {
+      "status": "A",
+      "path": "include/tvm/ffi/container/map_base.h"
+    },
+    {
+      "status": "A",
+      "path": "include/tvm/ffi/container/seq_base.h"
+    },
+    {
+      "status": "M",
+      "path": "include/tvm/ffi/container/tensor.h"
+    },
+    {
+      "status": "M",
+      "path": "include/tvm/ffi/container/tuple.h"
+    },
+    {
+      "status": "M",
+      "path": "include/tvm/ffi/endian.h"
+    },
+    {
+      "status": "M",
+      "path": "include/tvm/ffi/error.h"
+    },
+    {
+      "status": "A",
+      "path": "include/tvm/ffi/expected.h"
+    },
+    {
+      "status": "M",
+      "path": "include/tvm/ffi/extra/cuda/base.h"
+    },
+    {
+      "status": "M",
+      "path": "include/tvm/ffi/extra/cuda/cubin_launcher.h"
+    },
+    {
+      "status": "M",
+      "path": "include/tvm/ffi/extra/cuda/device_guard.h"
+    },
+    {
+      "status": "A",
+      "path": "include/tvm/ffi/extra/cuda/internal/unified_api.h"
+    },
+    {
+      "status": "A",
+      "path": "include/tvm/ffi/extra/deep_copy.h"
+    },
+    {
+      "status": "A",
+      "path": "include/tvm/ffi/extra/dtype.h"
+    },
+    {
+      "status": "M",
+      "path": "include/tvm/ffi/extra/module.h"
+    },
+    {
+      "status": "M",
+      "path": "include/tvm/ffi/extra/stl.h"
+    },
+    {
+      "status": "A",
+      "path": "include/tvm/ffi/extra/structural_key.h"
+    },
+    {
+      "status": "M",
+      "path": "include/tvm/ffi/function.h"
+    },
+    {
+      "status": "M",
+      "path": "include/tvm/ffi/function_details.h"
+    },
+    {
+      "status": "M",
+      "path": "include/tvm/ffi/object.h"
+    },
+    {
+      "status": "M",
+      "path": "include/tvm/ffi/reflection/accessor.h"
+    },
+    {
+      "status": "M",
+      "path": "include/tvm/ffi/reflection/creator.h"
+    },
+    {
+      "status": "A",
+      "path": "include/tvm/ffi/reflection/overload.h"
+    },
+    {
+      "status": "M",
+      "path": "include/tvm/ffi/reflection/registry.h"
+    },
+    {
+      "status": "M",
+      "path": "include/tvm/ffi/rvalue_ref.h"
+    },
+    {
+      "status": "M",
+      "path": "include/tvm/ffi/string.h"
+    },
+    {
+      "status": "A",
+      "path": "include/tvm/ffi/tvm_ffi.h"
+    },
+    {
+      "status": "M",
+      "path": "include/tvm/ffi/type_traits.h"
+    },
+    {
+      "status": "M",
+      "path": "pyproject.toml"
+    },
+    {
+      "status": "M",
+      "path": "python/tvm_ffi/__init__.py"
+    },
+    {
+      "status": "M",
+      "path": "python/tvm_ffi/_convert.py"
+    },
+    {
+      "status": "M",
+      "path": "python/tvm_ffi/_dtype.py"
+    },
+    {
+      "status": "M",
+      "path": "python/tvm_ffi/_ffi_api.py"
+    },
+    {
+      "status": "M",
+      "path": "python/tvm_ffi/_optional_torch_c_dlpack.py"
+    },
+    {
+      "status": "M",
+      "path": "python/tvm_ffi/_tensor.py"
+    },
+    {
+      "status": "M",
+      "path": "python/tvm_ffi/access_path.py"
+    },
+    {
+      "status": "M",
+      "path": "python/tvm_ffi/container.py"
+    },
+    {
+      "status": "M",
+      "path": "python/tvm_ffi/core.pyi"
+    },
+    {
+      "status": "M",
+      "path": "python/tvm_ffi/cpp/__init__.py"
+    },
+    {
+      "status": "A",
+      "path": "python/tvm_ffi/cpp/dtype.py"
+    },
+    {
+      "status": "M",
+      "path": "python/tvm_ffi/cpp/extension.py"
+    },
+    {
+      "status": "M",
+      "path": "python/tvm_ffi/cpp/nvrtc.py"
+    },
+    {
+      "status": "M",
+      "path": "python/tvm_ffi/cython/base.pxi"
+    },
+    {
+      "status": "M",
+      "path": "python/tvm_ffi/cython/core.pyx"
+    },
+    {
+      "status": "M",
+      "path": "python/tvm_ffi/cython/device.pxi"
+    },
+    {
+      "status": "M",
+      "path": "python/tvm_ffi/cython/dtype.pxi"
+    },
+    {
+      "status": "M",
+      "path": "python/tvm_ffi/cython/error.pxi"
+    },
+    {
+      "status": "M",
+      "path": "python/tvm_ffi/cython/function.pxi"
+    },
+    {
+      "status": "M",
+      "path": "python/tvm_ffi/cython/object.pxi"
+    },
+    {
+      "status": "M",
+      "path": "python/tvm_ffi/cython/string.pxi"
+    },
+    {
+      "status": "M",
+      "path": "python/tvm_ffi/cython/tensor.pxi"
+    },
+    {
+      "status": "M",
+      "path": "python/tvm_ffi/cython/tvm_ffi_python_helpers.h"
+    },
+    {
+      "status": "M",
+      "path": "python/tvm_ffi/cython/type_info.pxi"
+    },
+    {
+      "status": "M",
+      "path": "python/tvm_ffi/dataclasses/__init__.py"
+    },
+    {
+      "status": "M",
+      "path": "python/tvm_ffi/dataclasses/_utils.py"
+    },
+    {
+      "status": "M",
+      "path": "python/tvm_ffi/dataclasses/c_class.py"
+    },
+    {
+      "status": "M",
+      "path": "python/tvm_ffi/dataclasses/field.py"
+    },
+    {
+      "status": "M",
+      "path": "python/tvm_ffi/error.py"
+    },
+    {
+      "status": "M",
+      "path": "python/tvm_ffi/libinfo.py"
+    },
+    {
+      "status": "M",
+      "path": "python/tvm_ffi/module.py"
+    },
+    {
+      "status": "M",
+      "path": "python/tvm_ffi/registry.py"
+    },
+    {
+      "status": "A",
+      "path": "python/tvm_ffi/structural.py"
+    },
+    {
+      "status": "D",
+      "path": "python/tvm_ffi/stub/analysis.py"
+    },
+    {
+      "status": "M",
+      "path": "python/tvm_ffi/stub/cli.py"
+    },
+    {
+      "status": "M",
+      "path": "python/tvm_ffi/stub/codegen.py"
+    },
+    {
+      "status": "M",
+      "path": "python/tvm_ffi/stub/consts.py"
+    },
+    {
+      "status": "M",
+      "path": "python/tvm_ffi/stub/file_utils.py"
+    },
+    {
+      "status": "A",
+      "path": "python/tvm_ffi/stub/lib_state.py"
+    },
+    {
+      "status": "M",
+      "path": "python/tvm_ffi/stub/utils.py"
+    },
+    {
+      "status": "A",
+      "path": "python/tvm_ffi/testing/__init__.py"
+    },
+    {
+      "status": "A",
+      "path": "python/tvm_ffi/testing/_ffi_api.py"
+    },
+    {
+      "status": "R083",
+      "path": "python/tvm_ffi/testing/testing.py"
+    },
+    {
+      "status": "M",
+      "path": "python/tvm_ffi/utils/_build_optional_torch_c_dlpack.py"
+    },
+    {
+      "status": "M",
+      "path": "python/tvm_ffi/utils/embed_cubin.py"
+    },
+    {
+      "status": "M",
+      "path": "rust/tvm-ffi-sys/src/c_api.rs"
+    },
+    {
+      "status": "M",
+      "path": "rust/tvm-ffi/src/any.rs"
+    },
+    {
+      "status": "A",
+      "path": "rust/tvm-ffi/src/collections/array.rs"
+    },
+    {
+      "status": "M",
+      "path": "rust/tvm-ffi/src/collections/mod.rs"
+    },
+    {
+      "status": "M",
+      "path": "rust/tvm-ffi/src/lib.rs"
+    },
+    {
+      "status": "A",
+      "path": "rust/tvm-ffi/tests/test_array.rs"
+    },
+    {
+      "status": "M",
+      "path": "src/ffi/container.cc"
+    },
+    {
+      "status": "M",
+      "path": "src/ffi/dtype.cc"
+    },
+    {
+      "status": "M",
+      "path": "src/ffi/error.cc"
+    },
+    {
+      "status": "A",
+      "path": "src/ffi/extra/deep_copy.cc"
+    },
+    {
+      "status": "M",
+      "path": "src/ffi/extra/env_context.cc"
+    },
+    {
+      "status": "M",
+      "path": "src/ffi/extra/json_parser.cc"
+    },
+    {
+      "status": "M",
+      "path": "src/ffi/extra/json_writer.cc"
+    },
+    {
+      "status": "M",
+      "path": "src/ffi/extra/reflection_extra.cc"
+    },
+    {
+      "status": "A",
+      "path": "src/ffi/extra/repr_print.cc"
+    },
+    {
+      "status": "M",
+      "path": "src/ffi/extra/serialization.cc"
+    },
+    {
+      "status": "M",
+      "path": "src/ffi/extra/structural_equal.cc"
+    },
+    {
+      "status": "M",
+      "path": "src/ffi/extra/structural_hash.cc"
+    },
+    {
+      "status": "M",
+      "path": "src/ffi/object.cc"
+    },
+    {
+      "status": "M",
+      "path": "src/ffi/testing/testing.cc"
+    },
+    {
+      "status": "M",
+      "path": "tests/cpp/extra/test_c_env_api.cc"
+    },
+    {
+      "status": "M",
+      "path": "tests/cpp/extra/test_json_parser.cc"
+    },
+    {
+      "status": "M",
+      "path": "tests/cpp/extra/test_serialization.cc"
+    },
+    {
+      "status": "M",
+      "path": "tests/cpp/extra/test_structural_equal_hash.cc"
+    },
+    {
+      "status": "A",
+      "path": "tests/cpp/extra/test_structural_key.cc"
+    },
+    {
+      "status": "M",
+      "path": "tests/cpp/test_any.cc"
+    },
+    {
+      "status": "M",
+      "path": "tests/cpp/test_array.cc"
+    },
+    {
+      "status": "A",
+      "path": "tests/cpp/test_dict.cc"
+    },
+    {
+      "status": "M",
+      "path": "tests/cpp/test_dtype.cc"
+    },
+    {
+      "status": "M",
+      "path": "tests/cpp/test_error.cc"
+    },
+    {
+      "status": "A",
+      "path": "tests/cpp/test_expected.cc"
+    },
+    {
+      "status": "M",
+      "path": "tests/cpp/test_function.cc"
+    },
+    {
+      "status": "A",
+      "path": "tests/cpp/test_init_once.cc"
+    },
+    {
+      "status": "A",
+      "path": "tests/cpp/test_list.cc"
+    },
+    {
+      "status": "A",
+      "path": "tests/cpp/test_overload.cc"
+    },
+    {
+      "status": "M",
+      "path": "tests/cpp/test_reflection.cc"
+    },
+    {
+      "status": "M",
+      "path": "tests/cpp/test_string.cc"
+    },
+    {
+      "status": "M",
+      "path": "tests/cpp/test_tensor.cc"
+    },
+    {
+      "status": "M",
+      "path": "tests/cpp/testing_object.h"
+    },
+    {
+      "status": "M",
+      "path": "tests/lint/check_file_type.py"
+    },
+    {
+      "status": "M",
+      "path": "tests/python/cpp_src/test_stl.cc"
+    },
+    {
+      "status": "M",
+      "path": "tests/python/test_build.cc"
+    },
+    {
+      "status": "M",
+      "path": "tests/python/test_container.py"
+    },
+    {
+      "status": "A",
+      "path": "tests/python/test_copy.py"
+    },
+    {
+      "status": "M",
+      "path": "tests/python/test_cubin_launcher.py"
+    },
+    {
+      "status": "A",
+      "path": "tests/python/test_current_work_stream_gpu.py"
+    },
+    {
+      "status": "M",
+      "path": "tests/python/test_dataclasses_c_class.py"
+    },
+    {
+      "status": "M",
+      "path": "tests/python/test_device.py"
+    },
+    {
+      "status": "M",
+      "path": "tests/python/test_dlpack_exchange_api.py"
+    },
+    {
+      "status": "M",
+      "path": "tests/python/test_dtype.py"
+    },
+    {
+      "status": "M",
+      "path": "tests/python/test_error.py"
+    },
+    {
+      "status": "M",
+      "path": "tests/python/test_function.py"
+    },
+    {
+      "status": "M",
+      "path": "tests/python/test_load_inline.py"
+    },
+    {
+      "status": "M",
+      "path": "tests/python/test_metadata.py"
+    },
+    {
+      "status": "M",
+      "path": "tests/python/test_object.py"
+    },
+    {
+      "status": "M",
+      "path": "tests/python/test_optional_torch_c_dlpack.py"
+    },
+    {
+      "status": "A",
+      "path": "tests/python/test_repr.py"
+    },
+    {
+      "status": "A",
+      "path": "tests/python/test_serialization.py"
+    },
+    {
+      "status": "M",
+      "path": "tests/python/test_stream.py"
+    },
+    {
+      "status": "M",
+      "path": "tests/python/test_string.py"
+    },
+    {
+      "status": "A",
+      "path": "tests/python/test_structural.py"
+    },
+    {
+      "status": "M",
+      "path": "tests/python/test_stubgen.py"
+    },
+    {
+      "status": "M",
+      "path": "tests/python/test_tensor.py"
+    },
+    {
+      "status": "M",
+      "path": "tests/python/utils/test_embed_cubin.py"
+    },
+    {
+      "status": "M",
+      "path": "tests/python/utils/test_kwargs_wrapper.py"
+    },
+    {
+      "status": "M",
+      "path": "tests/scripts/benchmark_dlpack.py"
+    },
+    {
+      "status": "M",
+      "path": "tests/scripts/benchmark_kwargs_wrapper.py"
+    }
+  ]
+}
