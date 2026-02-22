@@ -1,0 +1,41 @@
+{
+  "sha": "be3de4c075dba71b5bb99c9d64a8a8f21b122c00",
+  "sha7": "be3de4c",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-10-17T15:44:55-04:00",
+  "subject": "[DOCS] Minor the to the binding doc (#165)",
+  "body":
+      "This PR does minor updates to the binding doc.\n\n---------\n\nCo-authored-by: gemini-code-assist[bot] <176961590+gemini-code-assist[bot]@users.noreply.github.com>",
+  "is_merge": false,
+  "parents": [
+    "426ec96c1b9234d1f63ed430d315e9c5ea5628c1"
+  ],
+  "name_status": [
+    [
+      "M",
+      "docs/guides/python_packaging.md"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "docs/guides/python_packaging.md",
+      "additions": 4,
+      "deletions": 3
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/docs/guides/python_packaging.md b/docs/guides/python_packaging.md\nindex 0c191e9..3934b1f 100644\n--- a/docs/guides/python_packaging.md\n+++ b/docs/guides/python_packaging.md\n@@ -20,7 +20,7 @@ This guide explains how to leverage tvm-ffi to expose C++ functions into Python\n At a high level, packaging with tvm-ffi offers several benefits:\n \n - **Ship one wheel** that can be used across Python versions, including free-threaded Python.\n-- **Multi-language access** to functions from Python, C++, Rust and other languages that connect to the ABI.\n+- **Multi-language access** to functions from Python, C++, Rust and other languages that support the ABI.\n - **ML Systems Interop** with ML frameworks, DSLs, and libraries while maintaining minimal dependency.\n \n ## Directly using Exported Library\n@@ -54,7 +54,8 @@ def add_one(x):\n \n This approach is like using {py:mod}`ctypes` to load and run DLLs, except we have more powerful features:\n \n-- We can pass in and return a richer set of data types such as {py:class}`tvm_ffi.Tensor` and strings.\n+- We can pass in `torch.Tensor` (or any other DLPack-compatible arrays).\n+- We can pass in a richer set of data structures such as strings, tuples, and dicts.\n - {py:class}`tvm_ffi.Function` enables natural callbacks to Python lambdas or other languages.\n - Exceptions are propagated naturally across language boundaries.\n \n@@ -406,7 +407,7 @@ def raise_error(msg):\n     return _ffi_api.raise_error(msg)\n ```\n \n-## Build and Use the Package\n+### Build and Use the Package\n \n First, build the wheel:\n ",
+  "heuristics": {
+    "tags": [
+      "docs"
+    ],
+    "extensions": [
+      ".md"
+    ],
+    "scopes_guess": [
+      "docs"
+    ]
+  }
+}

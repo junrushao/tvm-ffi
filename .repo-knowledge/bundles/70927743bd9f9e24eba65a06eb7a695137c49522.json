@@ -1,0 +1,73 @@
+{
+  "sha": "70927743bd9f9e24eba65a06eb7a695137c49522",
+  "sha7": "7092774",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-10-03T16:41:38-04:00",
+  "subject": "[CYTHON] Fix memory leak when tensor alloc returns to python (#87)",
+  "body":
+      "This PR fixes a memory leak when tensor alloc inside the function and\nreturn to python. We need to delete the chandle to prevent memory leak\nas the ownership count is transfered to DLManagedTensor.",
+  "is_merge": false,
+  "parents": [
+    "5fba9e8ff31940855b4abfa664c3369513814aa4"
+  ],
+  "name_status": [
+    [
+      "M",
+      "pyproject.toml"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/__init__.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/cython/tensor.pxi"
+    ],
+    [
+      "M",
+      "tests/python/test_load_inline.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "pyproject.toml",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "python/tvm_ffi/__init__.py",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "python/tvm_ffi/cython/tensor.pxi",
+      "additions": 6,
+      "deletions": 0
+    },
+    {
+      "path": "tests/python/test_load_inline.py",
+      "additions": 31,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/pyproject.toml b/pyproject.toml\nindex f63e89e..acf62e2 100644\n--- a/pyproject.toml\n+++ b/pyproject.toml\n@@ -17,7 +17,7 @@\n \n [project]\n name = \"apache-tvm-ffi\"\n-version = \"0.1.0b14\"\n+version = \"0.1.0b15\"\n description = \"tvm ffi\"\n \n authors = [{ name = \"TVM FFI team\" }]\ndiff --git a/python/tvm_ffi/__init__.py b/python/tvm_ffi/__init__.py\nindex c9b6da5..caf994f 100644\n--- a/python/tvm_ffi/__init__.py\n+++ b/python/tvm_ffi/__init__.py\n@@ -17,7 +17,7 @@\n \"\"\"TVM FFI Python package.\"\"\"\n \n # version\n-__version__ = \"0.1.0b14\"\n+__version__ = \"0.1.0b15\"\n \n # order matters here so we need to skip isort here\n # isort: skip_file\ndiff --git a/python/tvm_ffi/cython/tensor.pxi b/python/tvm_ffi/cython/tensor.pxi\nindex dc8b75e..74b065b 100644\n--- a/python/tvm_ffi/cython/tensor.pxi\n+++ b/python/tvm_ffi/cython/tensor.pxi\n@@ -349,8 +349,14 @@ cdef inline object make_tensor_from_chandle(TVMFFIObjectHandle chandle, DLPackTo\n                 c_dlpack_to_pyobject(dlpack, &py_obj)\n                 tensor = <Tensor>(<PyObject*>py_obj)\n                 Py_DECREF(tensor)\n+                # decref original handle to prevent leak.\n+                # note that DLManagedTensor also hold a reference to the tensor\n+                # so we need to decref the original handle if the conversion is successful\n+                TVMFFIObjectDecRef(chandle)\n                 return tensor\n             except Exception:\n+                # call the deleter to free the memory since we will continue to use the chandle\n+                dlpack.deleter(dlpack)\n                 pass\n     # default return the tensor\n     tensor = _CLASS_TENSOR.__new__(_CLASS_TENSOR)\ndiff --git a/tests/python/test_load_inline.py b/tests/python/test_load_inline.py\nindex cd61c57..b30471b 100644\n--- a/tests/python/test_load_inline.py\n+++ b/tests/python/test_load_inline.py\n@@ -318,3 +318,34 @@ def test_load_inline_both() -> None:\n     y_cuda = torch.empty_like(x_cuda)\n     mod.add_one_cuda(x_cuda, y_cuda)\n     torch.testing.assert_close(x_cuda + 1, y_cuda)\n+\n+\n+@pytest.mark.skipif(\n+    torch is None or not torch.cuda.is_available(), reason=\"Requires torch and CUDA\"\n+)\n+def test_cuda_memory_alloc_noleak() -> None:\n+    assert torch is not None\n+    mod = tvm_ffi.cpp.load_inline(\n+        name=\"hello\",\n+        cuda_sources=r\"\"\"\n+            #include <tvm/ffi/function.h>\n+            #include <tvm/ffi/container/tensor.h>\n+\n+            namespace ffi = tvm::ffi;\n+\n+            ffi::Tensor return_tensor(tvm::ffi::TensorView x) {\n+                ffi::Tensor y = ffi::Tensor::FromDLPackAlloc(\n+                    TVMFFIEnvGetTensorAllocator(), x.shape(), x.dtype(), x->device);\n+                return y;\n+            }\n+        \"\"\",\n+        functions=[\"return_tensor\"],\n+    )\n+    x = torch.arange(1024 * 1024, dtype=torch.float32, device=\"cuda\")\n+    current_allocated = torch.cuda.memory_allocated()\n+    repeat = 8\n+    for i in range(repeat):\n+        mod.return_tensor(x)\n+        diff = torch.cuda.memory_allocated() - current_allocated\n+        # memory should not grow as we loop over\n+        assert diff <= 1024**2 * 8",
+  "heuristics": {
+    "tags": [
+      "build",
+      "test"
+    ],
+    "extensions": [
+      ".pxi",
+      ".py",
+      ".toml"
+    ],
+    "scopes_guess": [
+      "pyproject.toml",
+      "python",
+      "tests"
+    ]
+  }
+}

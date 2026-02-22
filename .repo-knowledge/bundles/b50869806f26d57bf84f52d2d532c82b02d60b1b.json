@@ -1,0 +1,48 @@
+{
+  "sha": "b50869806f26d57bf84f52d2d532c82b02d60b1b",
+  "sha7": "b508698",
+  "author_name": "Henry Tsang",
+  "author_email": "henrylhtsang@meta.com",
+  "date_iso": "2026-01-30T07:31:39-08:00",
+  "subject": "Fix two issues that undefined behavior sanitizer caught (#419)",
+  "body":
+      "Fixes https://github.com/apache/tvm-ffi/issues/413\n\n### Changes\n1. **string.h**: Guard `std::memcpy` call with size check to avoid\npassing null source pointer with size 0\n2. **object.h**: Replace null pointer member access with standard\n`offsetof` macro for computing object header offsets\n\nI tested manually for clang and gcc. Didn't test locally for msvc since\nI don't have access to windows. CI should test that.\n\nscript:\n```\n#include <tvm/ffi/string.h>\n#include <tvm/ffi/object.h>\n#include <iostream>\n\nclass TestObj : public tvm::ffi::Object {\n  public:\n  static constexpr const char* _type_key = \"test.TestObj\";\n};\n\nint main() {\n  std::cout << \"Test 1: Creating string from null TVMFFIByteArray...\\n\";\n  TVMFFIByteArray null_bytes{nullptr, 0};\n  tvm::ffi::String str_from_null(null_bytes);\n  std::cout << \"String size: \" << str_from_null.size() << \"\\n\";\n\n  std::cout << \"Test 2: Computing object offset...\\n\";\n  int64_t offset = tvm::ffi::details::ObjectUnsafe::GetObjectOffsetToSubclass<TestObj>();\n  std::cout << \"Offset: \" << offset << \"\\n\";\n\n  std::cout << \"Done - no UBSan errors!\\n\";\n  return 0;\n}\n```\n\ncommands:\n```\ncd ~/tvm-ffi\ngit submodule update --init --recursive\n\nclang++ -std=c++17 -fsanitize=undefined -I./include -I./3rdparty/dlpack/include -x c++  repro.cpp  -o repro\n\ng++ -std=c++17 -fsanitize=undefined -I./include -I./3rdparty/dlpack/include repro.cpp -o repro\n```",
+  "is_merge": false,
+  "parents": [
+    "d0d0e2f935cda443bd85e097a3cfb18de2a96f4d"
+  ],
+  "name_status": [
+    [
+      "M",
+      "include/tvm/ffi/object.h"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/string.h"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "include/tvm/ffi/object.h",
+      "additions": 11,
+      "deletions": 2
+    },
+    {
+      "path": "include/tvm/ffi/string.h",
+      "additions": 6,
+      "deletions": 2
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/include/tvm/ffi/object.h b/include/tvm/ffi/object.h\nindex 1f0fe4c..b15363e 100644\n--- a/include/tvm/ffi/object.h\n+++ b/include/tvm/ffi/object.h\n@@ -1092,11 +1092,20 @@ struct ObjectUnsafe {\n     return const_cast<TVMFFIObject*>(&(src->header_));\n   }\n \n+// Suppress -Winvalid-offsetof: we intentionally use offsetof on non-standard-layout types\n+// to avoid undefined behavior from null pointer arithmetic that sanitizers flag.\n+#if defined(__clang__) || defined(__GNUC__)\n+#pragma GCC diagnostic push\n+#pragma GCC diagnostic ignored \"-Winvalid-offsetof\"\n+#endif\n   template <typename Class>\n   TVM_FFI_INLINE static int64_t GetObjectOffsetToSubclass() {\n-    return (reinterpret_cast<int64_t>(&(static_cast<Class*>(nullptr)->header_)) -\n-            reinterpret_cast<int64_t>(&(static_cast<Object*>(nullptr)->header_)));\n+    return static_cast<int64_t>(__builtin_offsetof(Class, header_)) -\n+           static_cast<int64_t>(__builtin_offsetof(Object, header_));\n   }\n+#if defined(__clang__) || defined(__GNUC__)\n+#pragma GCC diagnostic pop\n+#endif\n \n   template <typename T>\n   TVM_FFI_INLINE static T ObjectRefFromObjectPtr(const ObjectPtr<Object>& ptr) {\ndiff --git a/include/tvm/ffi/string.h b/include/tvm/ffi/string.h\nindex 9c1057a..0c885e9 100644\n--- a/include/tvm/ffi/string.h\n+++ b/include/tvm/ffi/string.h\n@@ -385,7 +385,9 @@ class Bytes {\n   }\n   void InitData(const char* data, size_t size) {\n     char* dest_data = InitSpaceForSize(size);\n-    std::memcpy(dest_data, data, size);\n+    if (size > 0) {\n+      std::memcpy(dest_data, data, size);\n+    }\n     // mainly to be compat with string\n     dest_data[size] = '\\0';\n   }\n@@ -754,7 +756,9 @@ class String {\n   }\n   void InitData(const char* data, size_t size) {\n     char* dest_data = InitSpaceForSize(size);\n-    std::memcpy(dest_data, data, size);\n+    if (size > 0) {\n+      std::memcpy(dest_data, data, size);\n+    }\n     dest_data[size] = '\\0';\n   }\n   /*!",
+  "heuristics": {
+    "tags": [],
+    "extensions": [
+      ".h"
+    ],
+    "scopes_guess": [
+      "include"
+    ]
+  }
+}

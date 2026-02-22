@@ -1,0 +1,48 @@
+{
+  "sha": "731955b304d0f4445b981e4bb9417e49209c6c37",
+  "sha7": "731955b",
+  "author_name": "Jinjie Liu",
+  "author_email": "sgjzfzzf@gmail.com",
+  "date_iso": "2026-02-10T03:29:37+08:00",
+  "subject": "refactor: Get `compiled_kernel` from Triton Call Directly (#423)",
+  "body":
+      "Triton call will return the `CompiledKernel` directly to get the cubin.\nThe previous code searches the cubin by cache, which is unnecessary and\nnot robust.\n\nThis PR refactors that by taking compiled_kernel directly from the\nTriton kernel call.\n\nSigned-off-by: Jinjie Liu <jjliu@baai.ac.cn>",
+  "is_merge": false,
+  "parents": [
+    "245bd0d2512ca164eb57b1c18da12245981a9b17"
+  ],
+  "name_status": [
+    [
+      "M",
+      "examples/cubin_launcher/benchmark_overhead.py"
+    ],
+    [
+      "M",
+      "examples/cubin_launcher/example_triton_cubin.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "examples/cubin_launcher/benchmark_overhead.py",
+      "additions": 1,
+      "deletions": 7
+    },
+    {
+      "path": "examples/cubin_launcher/example_triton_cubin.py",
+      "additions": 1,
+      "deletions": 7
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/examples/cubin_launcher/benchmark_overhead.py b/examples/cubin_launcher/benchmark_overhead.py\nindex efc82b2..230c013 100644\n--- a/examples/cubin_launcher/benchmark_overhead.py\n+++ b/examples/cubin_launcher/benchmark_overhead.py\n@@ -132,13 +132,7 @@ def generate_cubin() -> bytes:\n     a_dummy = torch.empty(n, dtype=torch.float32, device=\"cuda\")\n     b_dummy = torch.empty(n, dtype=torch.float32, device=\"cuda\")\n     c_dummy = torch.empty(n, dtype=torch.float32, device=\"cuda\")\n-    empty_kernel[1,](a_dummy, b_dummy, c_dummy, n)\n-\n-    # Extract compiled CUBIN from the device cache\n-    device_caches = empty_kernel.device_caches\n-    device_id = next(iter(device_caches.keys()))\n-    cache_tuple = device_caches[device_id]\n-    compiled_kernel = next(iter(cache_tuple[0].values()))\n+    compiled_kernel = empty_kernel[1,](a_dummy, b_dummy, c_dummy, n)\n \n     # Get CUBIN bytes\n     cubin_bytes = compiled_kernel.kernel\ndiff --git a/examples/cubin_launcher/example_triton_cubin.py b/examples/cubin_launcher/example_triton_cubin.py\nindex b127cd2..90243b7 100644\n--- a/examples/cubin_launcher/example_triton_cubin.py\n+++ b/examples/cubin_launcher/example_triton_cubin.py\n@@ -67,13 +67,7 @@ def generate_cubin() -> bytes:\n     # Trigger kernel compilation by doing a dummy call\n     x_dummy = torch.ones(1024, dtype=torch.float32, device=\"cuda\")\n     y_dummy = torch.empty(1024, dtype=torch.float32, device=\"cuda\")\n-    square_kernel[1, 1](x_dummy, y_dummy, 1024)\n-\n-    # Extract compiled CUBIN from the device cache\n-    device_caches = square_kernel.device_caches\n-    device_id = next(iter(device_caches.keys()))\n-    cache_tuple = device_caches[device_id]\n-    compiled_kernel = next(iter(cache_tuple[0].values()))\n+    compiled_kernel = square_kernel[1, 1](x_dummy, y_dummy, 1024)\n \n     # Get CUBIN bytes\n     cubin_bytes = compiled_kernel.kernel",
+  "heuristics": {
+    "tags": [],
+    "extensions": [
+      ".py"
+    ],
+    "scopes_guess": [
+      "examples"
+    ]
+  }
+}

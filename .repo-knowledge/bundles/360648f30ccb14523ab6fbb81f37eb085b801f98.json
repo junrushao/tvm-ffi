@@ -1,0 +1,69 @@
+{
+  "sha": "360648f30ccb14523ab6fbb81f37eb085b801f98",
+  "sha7": "360648f",
+  "author_name": "Dayuxiaoshui",
+  "author_email": "158081477+Dayuxiaoshui@users.noreply.github.com",
+  "date_iso": "2026-01-18T11:30:53+08:00",
+  "subject": "feat: Add __repr__ generation support for @c_class dataclasses (#411)",
+  "body":
+      "- Add `repr` parameter to `c_class()` decorator (default: True)\n- Add `repr` parameter to `field()` function (default: True)\n- Implement `method_repr()` to generate __repr__ methods\n- Generated repr format: ClassName(field1=value1, field2=value2, ...)\n- Fields with repr=False are excluded from the representation\n\nThis implements part of #356 dataclass feature parity.",
+  "is_merge": false,
+  "parents": [
+    "4fec9721c6bd6862bd371cf65d3ac6a1e8eb737e"
+  ],
+  "name_status": [
+    [
+      "M",
+      "python/tvm_ffi/dataclasses/_utils.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/dataclasses/c_class.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/dataclasses/field.py"
+    ],
+    [
+      "M",
+      "tests/python/test_dataclasses_c_class.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "python/tvm_ffi/dataclasses/_utils.py",
+      "additions": 54,
+      "deletions": 9
+    },
+    {
+      "path": "python/tvm_ffi/dataclasses/c_class.py",
+      "additions": 9,
+      "deletions": 3
+    },
+    {
+      "path": "python/tvm_ffi/dataclasses/field.py",
+      "additions": 10,
+      "deletions": 2
+    },
+    {
+      "path": "tests/python/test_dataclasses_c_class.py",
+      "additions": 35,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/python/tvm_ffi/dataclasses/_utils.py b/python/tvm_ffi/dataclasses/_utils.py\nindex bd647a6..5ed4e96 100644\n--- a/python/tvm_ffi/dataclasses/_utils.py\n+++ b/python/tvm_ffi/dataclasses/_utils.py\n@@ -58,14 +58,13 @@ def type_info_to_cls(\n     def _add_method(name: str, func: Callable[..., Any]) -> None:\n         if name == \"__ffi_init__\":\n             name = \"__c_ffi_init__\"\n-        if name in attrs:  # already defined\n-            return\n+        # Allow overriding methods (including from base classes like Object.__repr__)\n+        # by always adding to attrs, which will be used when creating the new class\n         func.__module__ = cls.__module__\n         func.__name__ = name\n         func.__qualname__ = f\"{cls.__qualname__}.{name}\"\n         func.__doc__ = f\"Method `{name}` of class `{cls.__qualname__}`\"\n         attrs[name] = func\n-        setattr(cls, name, func)\n \n     for name, method_impl in methods.items():\n         if method_impl is not None:\n@@ -98,6 +97,57 @@ def fill_dataclass_field(type_cls: type, type_field: TypeField) -> None:\n     type_field.dataclass_field = rhs\n \n \n+def _get_all_fields(type_info: TypeInfo) -> list[TypeField]:\n+    \"\"\"Collect all fields from the type hierarchy, from parents to children.\"\"\"\n+    fields: list[TypeField] = []\n+    cur_type_info: TypeInfo | None = type_info\n+    while cur_type_info is not None:\n+        fields.extend(reversed(cur_type_info.fields))\n+        cur_type_info = cur_type_info.parent_type_info\n+    fields.reverse()\n+    return fields\n+\n+\n+def method_repr(type_cls: type, type_info: TypeInfo) -> Callable[..., str]:\n+    \"\"\"Generate a ``__repr__`` method for the dataclass.\n+\n+    The generated representation includes all fields with ``repr=True`` in\n+    the format ``ClassName(field1=value1, field2=value2, ...)``.\n+    \"\"\"\n+    # Step 0. Collect all fields from the type hierarchy\n+    fields = _get_all_fields(type_info)\n+\n+    # Step 1. Filter fields that should appear in repr\n+    repr_fields: list[str] = []\n+    for field in fields:\n+        assert field.name is not None\n+        assert field.dataclass_field is not None\n+        if field.dataclass_field.repr:\n+            repr_fields.append(field.name)\n+\n+    # Step 2. Generate the repr method\n+    if not repr_fields:\n+        # No fields to show, return a simple class name representation\n+        body_lines = [f\"return f'{type_cls.__name__}()'\"]\n+    else:\n+        # Build field representations\n+        fields_str = \", \".join(\n+            f\"{field_name}={{self.{field_name}!r}}\" for field_name in repr_fields\n+        )\n+        body_lines = [f\"return f'{type_cls.__name__}({fields_str})'\"]\n+\n+    source_lines = [\"def __repr__(self) -> str:\"]\n+    source_lines.extend(f\"    {line}\" for line in body_lines)\n+    source = \"\\n\".join(source_lines)\n+\n+    # Note: Code generation in this case is guaranteed to be safe,\n+    # because the generated code does not contain any untrusted input.\n+    namespace: dict[str, Any] = {}\n+    exec(source, {}, namespace)\n+    __repr__ = namespace[\"__repr__\"]\n+    return __repr__\n+\n+\n def method_init(type_cls: type, type_info: TypeInfo) -> Callable[..., None]:\n     \"\"\"Generate an ``__init__`` that forwards to the FFI constructor.\n \n@@ -105,12 +155,7 @@ def method_init(type_cls: type, type_info: TypeInfo) -> Callable[..., None]:\n     reflected field list, supporting default values and ``__post_init__``.\n     \"\"\"\n     # Step 0. Collect all fields from the type hierarchy\n-    fields: list[TypeField] = []\n-    cur_type_info: TypeInfo | None = type_info\n-    while cur_type_info is not None:\n-        fields.extend(reversed(cur_type_info.fields))\n-        cur_type_info = cur_type_info.parent_type_info\n-    fields.reverse()\n+    fields = _get_all_fields(type_info)\n     # sanity check\n     for type_method in type_info.methods:\n         if type_method.name == \"__ffi_init__\":\ndiff --git a/python/tvm_ffi/dataclasses/c_class.py b/python/tvm_ffi/dataclasses/c_class.py\nindex 65d7c73..8171b1b 100644\n--- a/python/tvm_ffi/dataclasses/c_class.py\n+++ b/python/tvm_ffi/dataclasses/c_class.py\n@@ -41,7 +41,7 @@ _InputClsType = TypeVar(\"_InputClsType\")\n \n @dataclass_transform(field_specifiers=(field,))\n def c_class(\n-    type_key: str, init: bool = True\n+    type_key: str, init: bool = True, repr: bool = True\n ) -> Callable[[Type[_InputClsType]], Type[_InputClsType]]:  # noqa: UP006\n     \"\"\"(Experimental) Create a dataclass-like proxy for a C++ class registered with TVM FFI.\n \n@@ -71,6 +71,10 @@ def c_class(\n         signature.  The generated initializer calls the C++ ``__init__``\n         function registered with ``ObjectDef`` and invokes ``__post_init__`` if\n         it exists on the Python class.\n+    repr\n+        If ``True`` and the Python class does not define ``__repr__``, a\n+        representation method is auto-generated that includes all fields with\n+        ``repr=True``.\n \n     Returns\n     -------\n@@ -118,8 +122,9 @@ def c_class(\n     \"\"\"\n \n     def decorator(super_type_cls: Type[_InputClsType]) -> Type[_InputClsType]:  # noqa: UP006\n-        nonlocal init\n+        nonlocal init, repr\n         init = init and \"__init__\" not in super_type_cls.__dict__\n+        repr = repr and \"__repr__\" not in super_type_cls.__dict__\n         # Step 1. Retrieve `type_info` from registry\n         type_info: TypeInfo = _lookup_or_register_type_info_from_type_key(type_key)\n         assert type_info.parent_type_info is not None\n@@ -129,10 +134,11 @@ def c_class(\n             _utils.fill_dataclass_field(super_type_cls, type_field)\n         # Step 3. Create the proxy class with the fields as properties\n         fn_init = _utils.method_init(super_type_cls, type_info) if init else None\n+        fn_repr = _utils.method_repr(super_type_cls, type_info) if repr else None\n         type_cls: Type[_InputClsType] = _utils.type_info_to_cls(  # noqa: UP006\n             type_info=type_info,\n             cls=super_type_cls,\n-            methods={\"__init__\": fn_init},\n+            methods={\"__init__\": fn_init, \"__repr__\": fn_repr},\n         )\n         _set_type_cls(type_info, type_cls)\n         return type_cls\ndiff --git a/python/tvm_ffi/dataclasses/field.py b/python/tvm_ffi/dataclasses/field.py\nindex d10612c..d0e27b1 100644\n--- a/python/tvm_ffi/dataclasses/field.py\n+++ b/python/tvm_ffi/dataclasses/field.py\n@@ -37,7 +37,7 @@ class Field:\n     way the decorator understands.\n     \"\"\"\n \n-    __slots__ = (\"default_factory\", \"init\", \"name\")\n+    __slots__ = (\"default_factory\", \"init\", \"name\", \"repr\")\n \n     def __init__(\n         self,\n@@ -45,11 +45,13 @@ class Field:\n         name: str | None = None,\n         default_factory: Callable[[], _FieldValue] | _MISSING_TYPE = MISSING,\n         init: bool = True,\n+        repr: bool = True,\n     ) -> None:\n         \"\"\"Do not call directly; use :func:`field` instead.\"\"\"\n         self.name = name\n         self.default_factory = default_factory\n         self.init = init\n+        self.repr = repr\n \n \n def field(\n@@ -57,6 +59,7 @@ def field(\n     default: _FieldValue | _MISSING_TYPE = MISSING,  # type: ignore[assignment]\n     default_factory: Callable[[], _FieldValue] | _MISSING_TYPE = MISSING,  # type: ignore[assignment]\n     init: bool = True,\n+    repr: bool = True,\n ) -> _FieldValue:\n     \"\"\"(Experimental) Declare a dataclass-style field on a :func:`c_class` proxy.\n \n@@ -78,6 +81,9 @@ def field(\n     init\n         If ``True`` the field is included in the generated ``__init__``.\n         If ``False`` the field is omitted from input arguments of ``__init__``.\n+    repr\n+        If ``True`` the field is included in the generated ``__repr__``.\n+        If ``False`` the field is omitted from the ``__repr__`` output.\n \n     Note\n     ----\n@@ -123,9 +129,11 @@ def field(\n         raise ValueError(\"Cannot specify both `default` and `default_factory`\")\n     if not isinstance(init, bool):\n         raise TypeError(\"`init` must be a bool\")\n+    if not isinstance(repr, bool):\n+        raise TypeError(\"`repr` must be a bool\")\n     if default is not MISSING:\n         default_factory = _make_default_factory(default)\n-    ret = Field(default_factory=default_factory, init=init)\n+    ret = Field(default_factory=default_factory, init=init, repr=repr)\n     return cast(_FieldValue, ret)\n \n \ndiff --git a/tests/python/test_dataclasses_c_class.py b/tests/python/test_dataclasses_c_class.py\nindex 676bbf5..5361cb6 100644\n--- a/tests/python/test_dataclasses_c_class.py\n+++ b/tests/python/test_dataclasses_c_class.py\n@@ -94,3 +94,38 @@ def test_cxx_class_init_subset_positional() -> None:\n     assert obj.optional_field == -1\n     obj.optional_field = 11\n     assert obj.optional_field == 11\n+\n+\n+def test_cxx_class_repr() -> None:\n+    obj = _TestCxxClassDerived(v_i64=123, v_i32=456, v_f64=4.0, v_f32=8.0)\n+    repr_str = repr(obj)\n+    assert \"_TestCxxClassDerived\" in repr_str\n+    if \"__repr__\" in _TestCxxClassDerived.__dict__:\n+        assert \"v_i64=123\" in repr_str\n+        assert \"v_i32=456\" in repr_str\n+        assert \"v_f64=4.0\" in repr_str\n+        assert \"v_f32=8.0\" in repr_str\n+\n+\n+def test_cxx_class_repr_default() -> None:\n+    obj = _TestCxxClassDerived(v_i64=123, v_i32=456, v_f64=4.0)\n+    repr_str = repr(obj)\n+    assert \"_TestCxxClassDerived\" in repr_str\n+    if \"__repr__\" in _TestCxxClassDerived.__dict__:\n+        assert \"v_i64=123\" in repr_str\n+        assert \"v_i32=456\" in repr_str\n+        assert \"v_f64=4.0\" in repr_str\n+        assert \"v_f32=8.0\" in repr_str\n+\n+\n+def test_cxx_class_repr_derived_derived() -> None:\n+    obj = _TestCxxClassDerivedDerived(\n+        v_i64=123, v_i32=456, v_f64=4.0, v_f32=8.0, v_str=\"hello\", v_bool=True\n+    )\n+    repr_str = repr(obj)\n+    assert \"_TestCxxClassDerivedDerived\" in repr_str\n+    if \"__repr__\" in _TestCxxClassDerivedDerived.__dict__:\n+        assert \"v_i64=123\" in repr_str\n+        assert \"v_i32=456\" in repr_str\n+        assert \"v_str='hello'\" in repr_str or 'v_str=\"hello\"' in repr_str\n+        assert \"v_bool=True\" in repr_str",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".py"
+    ],
+    "scopes_guess": [
+      "python",
+      "tests"
+    ]
+  }
+}

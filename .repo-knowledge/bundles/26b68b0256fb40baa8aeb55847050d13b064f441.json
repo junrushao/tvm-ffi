@@ -1,0 +1,39 @@
+{
+  "sha": "26b68b0256fb40baa8aeb55847050d13b064f441",
+  "sha7": "26b68b0",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-07-15T13:59:25-04:00",
+  "subject": "[FFI][REFACTOR] Phase out TVM_FFI_REGISTER_GLOBAL in favor of GlobalDef (#18148)",
+  "body":
+      "This PR migrates the remaining global def reg to use the new mechanism.\nIt also phases out the TVM_FFI_REGISTER_GLOBAL macro in favor of\nthe GlobalDef mechanism.",
+  "is_merge": false,
+  "parents": [
+    "e95b43b0a36325fc17ad3918e3572cf11fabae13"
+  ],
+  "name_status": [
+    [
+      "M",
+      "include/tvm/ffi/function.h"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "include/tvm/ffi/function.h",
+      "additions": 0,
+      "deletions": 144
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/include/tvm/ffi/function.h b/include/tvm/ffi/function.h\nindex 34d994b..5a30f25 100644\n--- a/include/tvm/ffi/function.h\n+++ b/include/tvm/ffi/function.h\n@@ -756,135 +756,6 @@ struct TypeTraits<TypedFunction<FType>> : public TypeTraitsBase {\n   TVM_FFI_INLINE static std::string TypeStr() { return details::FunctionInfo<FType>::Sig(); }\n };\n \n-/*! \\brief Registry for global function */\n-class Function::Registry {\n- public:\n-  /*! \\brief constructor */\n-  explicit Registry(const char* name) : name_(name) {}\n-\n-  /*!\n-   * \\brief Set body to be to use the packed convention.\n-   *\n-   * \\tparam FLambda The signature of the function.\n-   * \\param f The body of the function.\n-   */\n-  template <typename FLambda>\n-  Registry& set_body_packed(FLambda f) {\n-    return Register(ffi::Function::FromPacked(f));\n-  }\n-  /*!\n-   * \\brief set the body of the function to the given function.\n-   *        Note that this will ignore default arg values and always require all arguments to be\n-   * provided.\n-   *\n-   * \\code\n-   *\n-   * int multiply(int x, int y) {\n-   *   return x * y;\n-   * }\n-   *\n-   * TVM_FFI_REGISTER_GLOBAL(\"multiply\")\n-   * .set_body_typed(multiply); // will have type int(int, int)\n-   *\n-   * // will have type int(int, int)\n-   * TVM_FFI_REGISTER_GLOBAL(\"sub\")\n-   * .set_body_typed([](int a, int b) -> int { return a - b; });\n-   *\n-   * \\endcode\n-   *\n-   * \\param f The function to forward to.\n-   * \\tparam FLambda The signature of the function.\n-   */\n-  template <typename FLambda>\n-  Registry& set_body_typed(FLambda f) {\n-    return Register(Function::FromTyped(f, name_));\n-  }\n-\n-  /*!\n-   * \\brief set the body of the function to be the passed method pointer.\n-   *        Note that this will ignore default arg values and always require all arguments to be\n-   * provided.\n-   *\n-   * \\code\n-   *\n-   * // objectRef subclass:\n-   * struct Example : ObjectRef {\n-   *    int DoThing(int x);\n-   * }\n-   * TVM_FFI_REGISTER_GLOBAL(\"Example_DoThing\")\n-   * .set_body_method(&Example::DoThing); // will have type int(self, int)\n-   *\n-   * // Object subclass:\n-   * struct Example : Object {\n-   *    int DoThing(int x);\n-   * }\n-   *\n-   * TVM_FFI_REGISTER_GLOBAL(\"Example_DoThing\")\n-   * .set_body_method(&Example::DoThing); // will have type int(self, int)\n-   *\n-   * \\endcode\n-   *\n-   * \\param f the method pointer to forward to.\n-   * \\tparam T the type containing the method (inferred).\n-   * \\tparam R the return type of the function (inferred).\n-   * \\tparam Args the argument types of the function (inferred).\n-   */\n-  template <typename T, typename R, typename... Args>\n-  Registry& set_body_method(R (T::*f)(Args...)) {\n-    static_assert(std::is_base_of_v<ObjectRef, T> || std::is_base_of_v<Object, T>,\n-                  \"T must be derived from ObjectRef or Object\");\n-    if constexpr (std::is_base_of_v<ObjectRef, T>) {\n-      auto fwrap = [f](T target, Args... params) -> R {\n-        // call method pointer\n-        return (target.*f)(std::forward<Args>(params)...);\n-      };\n-      return Register(ffi::Function::FromTyped(fwrap, name_));\n-    }\n-    if constexpr (std::is_base_of_v<Object, T>) {\n-      auto fwrap = [f](const T* target, Args... params) -> R {\n-        // call method pointer\n-        return (const_cast<T*>(target)->*f)(std::forward<Args>(params)...);\n-      };\n-      return Register(ffi::Function::FromTyped(fwrap, name_));\n-    }\n-    return *this;\n-  }\n-\n-  template <typename T, typename R, typename... Args>\n-  Registry& set_body_method(R (T::*f)(Args...) const) {\n-    static_assert(std::is_base_of_v<ObjectRef, T> || std::is_base_of_v<Object, T>,\n-                  \"T must be derived from ObjectRef or Object\");\n-    if constexpr (std::is_base_of_v<ObjectRef, T>) {\n-      auto fwrap = [f](const T target, Args... params) -> R {\n-        // call method pointer\n-        return (target.*f)(std::forward<Args>(params)...);\n-      };\n-      return Register(ffi::Function::FromTyped(fwrap, name_));\n-    }\n-    if constexpr (std::is_base_of_v<Object, T>) {\n-      auto fwrap = [f](const T* target, Args... params) -> R {\n-        // call method pointer\n-        return (target->*f)(std::forward<Args>(params)...);\n-      };\n-      return Register(ffi::Function::FromTyped(fwrap, name_));\n-    }\n-    return *this;\n-  }\n-\n- protected:\n-  /*!\n-   * \\brief set the body of the function to be f\n-   * \\param f The body of the function.\n-   */\n-  Registry& Register(Function f) {\n-    Function::SetGlobal(name_, f);\n-    return *this;\n-  }\n-\n-  /*! \\brief name of the function */\n-  const char* name_;\n-};\n-\n /*!\n  * \\brief helper function to get type index from key\n  */\n@@ -895,21 +766,6 @@ inline int32_t TypeKeyToIndex(std::string_view type_key) {\n   return type_index;\n }\n \n-#define TVM_FFI_FUNC_REG_VAR_DEF \\\n-  TVM_FFI_ATTRIBUTE_UNUSED static inline ::tvm::ffi::Function::Registry& __##TVMFFIFuncReg\n-\n-/*!\n- * \\brief Register a function globally.\n- * \\code\n- *   TVM_FFI_REGISTER_GLOBAL(\"MyAdd\")\n- *   .set_body_typed([](int a, int b) {\n- *      return a + b;\n- *   });\n- * \\endcode\n- */\n-#define TVM_FFI_REGISTER_GLOBAL(OpName) \\\n-  TVM_FFI_STR_CONCAT(TVM_FFI_FUNC_REG_VAR_DEF, __COUNTER__) = ::tvm::ffi::Function::Registry(OpName)\n-\n /*!\n  * \\brief Export typed function as a SafeCallType symbol.\n  *",
+  "heuristics": {
+    "tags": [],
+    "extensions": [
+      ".h"
+    ],
+    "scopes_guess": [
+      "include"
+    ]
+  }
+}

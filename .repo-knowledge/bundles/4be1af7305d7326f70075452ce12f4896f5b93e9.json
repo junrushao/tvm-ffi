@@ -1,0 +1,61 @@
+{
+  "sha": "4be1af7305d7326f70075452ce12f4896f5b93e9",
+  "sha7": "4be1af7",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-08-08T14:57:00-04:00",
+  "subject": "[FFI][REFACTOR] Move Downcast out of ffi for now (#18198)",
+  "body":
+      "Downcast was added for backward compact reasons and it have\nduplicated features as Any.cast. This PR moves it out of ffi\nto node for now so the ffi part contains minimal set of implementations.",
+  "is_merge": false,
+  "parents": [
+    "ed56a5e768b417c0d44332f5dda08a0971193677"
+  ],
+  "name_status": [
+    [
+      "M",
+      "include/tvm/ffi/any.h"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/cast.h"
+    ],
+    [
+      "M",
+      "tests/cpp/test_string.cc"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "include/tvm/ffi/any.h",
+      "additions": 0,
+      "deletions": 1
+    },
+    {
+      "path": "include/tvm/ffi/cast.h",
+      "additions": 4,
+      "deletions": 90
+    },
+    {
+      "path": "tests/cpp/test_string.cc",
+      "additions": 1,
+      "deletions": 2
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/include/tvm/ffi/any.h b/include/tvm/ffi/any.h\nindex 55eff88..ed34328 100644\n--- a/include/tvm/ffi/any.h\n+++ b/include/tvm/ffi/any.h\n@@ -635,7 +635,6 @@ struct AnyEqual {\n     }\n   }\n };\n-\n }  // namespace ffi\n \n // Expose to the tvm namespace for usability\ndiff --git a/include/tvm/ffi/cast.h b/include/tvm/ffi/cast.h\nindex 997c0bb..c75d4a0 100644\n--- a/include/tvm/ffi/cast.h\n+++ b/include/tvm/ffi/cast.h\n@@ -18,21 +18,18 @@\n  */\n /*!\n  * \\file tvm/ffi/cast.h\n- * \\brief Value casting support\n+ * \\brief Extra value casting helpers\n  */\n #ifndef TVM_FFI_CAST_H_\n #define TVM_FFI_CAST_H_\n \n #include <tvm/ffi/any.h>\n-#include <tvm/ffi/dtype.h>\n-#include <tvm/ffi/error.h>\n #include <tvm/ffi/object.h>\n #include <tvm/ffi/optional.h>\n \n-#include <utility>\n-\n namespace tvm {\n namespace ffi {\n+\n /*!\n  * \\brief Get a reference type from a raw object ptr type\n  *\n@@ -46,7 +43,7 @@ namespace ffi {\n  * \\return The corresponding RefType\n  */\n template <typename RefType, typename ObjectType>\n-TVM_FFI_INLINE RefType GetRef(const ObjectType* ptr) {\n+inline RefType GetRef(const ObjectType* ptr) {\n   static_assert(std::is_base_of_v<typename RefType::ContainerType, ObjectType>,\n                 \"Can only cast to the ref of same container type\");\n \n@@ -75,92 +72,9 @@ inline ObjectPtr<BaseType> GetObjectPtr(ObjectType* ptr) {\n                 \"Can only cast to the ref of same container type\");\n   return details::ObjectUnsafe::ObjectPtrFromUnowned<BaseType>(ptr);\n }\n-\n-/*!\n- * \\brief Downcast a base reference type to a more specific type.\n- *\n- * \\param ref The input reference\n- * \\return The corresponding SubRef.\n- * \\tparam SubRef The target specific reference type.\n- * \\tparam BaseRef the current reference type.\n- */\n-template <typename SubRef, typename BaseRef,\n-          typename = std::enable_if_t<std::is_base_of_v<ObjectRef, BaseRef>>>\n-inline SubRef Downcast(BaseRef ref) {\n-  if (ref.defined()) {\n-    if (!ref->template IsInstance<typename SubRef::ContainerType>()) {\n-      TVM_FFI_THROW(TypeError) << \"Downcast from \" << ref->GetTypeKey() << \" to \"\n-                               << SubRef::ContainerType::_type_key << \" failed.\";\n-    }\n-    return SubRef(details::ObjectUnsafe::ObjectPtrFromObjectRef<Object>(std::move(ref)));\n-  } else {\n-    if constexpr (is_optional_type_v<SubRef> || SubRef::_type_is_nullable) {\n-      return SubRef(ObjectPtr<Object>(nullptr));\n-    }\n-    TVM_FFI_THROW(TypeError) << \"Downcast from undefined(nullptr) to `\"\n-                             << SubRef::ContainerType::_type_key\n-                             << \"` is not allowed. Use Downcast<Optional<T>> instead.\";\n-    TVM_FFI_UNREACHABLE();\n-  }\n-}\n-\n-/*!\n- * \\brief Downcast any to a specific type\n- *\n- * \\param ref The input reference\n- * \\return The corresponding SubRef.\n- * \\tparam T The target specific reference type.\n- */\n-template <typename T>\n-inline T Downcast(const Any& ref) {\n-  if constexpr (std::is_same_v<T, Any>) {\n-    return ref;\n-  } else {\n-    return ref.cast<T>();\n-  }\n-}\n-\n-/*!\n- * \\brief Downcast any to a specific type\n- *\n- * \\param ref The input reference\n- * \\return The corresponding SubRef.\n- * \\tparam T The target specific reference type.\n- */\n-template <typename T>\n-inline T Downcast(Any&& ref) {\n-  if constexpr (std::is_same_v<T, Any>) {\n-    return std::move(ref);\n-  } else {\n-    return std::move(ref).cast<T>();\n-  }\n-}\n-\n-/*!\n- * \\brief Downcast std::optional<Any> to std::optional<T>\n- *\n- * \\param ref The input reference\n- * \\return The corresponding SubRef.\n- * \\tparam OptionalType The target optional type\n- */\n-template <typename OptionalType, typename = std::enable_if_t<is_optional_type_v<OptionalType>>>\n-inline OptionalType Downcast(const std::optional<Any>& ref) {\n-  if (ref.has_value()) {\n-    if constexpr (std::is_same_v<OptionalType, Any>) {\n-      return *ref;\n-    } else {\n-      return (*ref).cast<OptionalType>();\n-    }\n-  } else {\n-    return OptionalType(std::nullopt);\n-  }\n-}\n-\n }  // namespace ffi\n \n-// Expose to the tvm namespace\n-// Rationale: convinience and no ambiguity\n-using ffi::Downcast;\n+using ffi::GetObjectPtr;\n using ffi::GetRef;\n }  // namespace tvm\n #endif  // TVM_FFI_CAST_H_\ndiff --git a/tests/cpp/test_string.cc b/tests/cpp/test_string.cc\nindex 364f2f6..8522aa9 100644\n--- a/tests/cpp/test_string.cc\n+++ b/tests/cpp/test_string.cc\n@@ -18,7 +18,6 @@\n  */\n #include <gtest/gtest.h>\n #include <tvm/ffi/any.h>\n-#include <tvm/ffi/cast.h>\n #include <tvm/ffi/string.h>\n \n namespace {\n@@ -266,7 +265,7 @@ TEST(String, Cast) {\n   string source = \"this is a string\";\n   String s{source};\n   Any r = s;\n-  String s2 = Downcast<String>(r);\n+  String s2 = r.cast<String>();\n }\n \n TEST(String, Concat) {",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".cc",
+      ".h"
+    ],
+    "scopes_guess": [
+      "include",
+      "tests"
+    ]
+  }
+}

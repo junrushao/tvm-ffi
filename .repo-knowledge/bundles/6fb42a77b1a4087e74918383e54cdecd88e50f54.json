@@ -1,0 +1,39 @@
+{
+  "sha": "6fb42a77b1a4087e74918383e54cdecd88e50f54",
+  "sha7": "6fb42a7",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-09-27T17:13:32-04:00",
+  "subject": "[MEMORY] Use raw alloc for memory (#66)",
+  "body":
+      "This PR updates the memory allocator to use raw aligned alloc for\nallocation. The change likely can help to improve the total size\nallocated in inplace array where previously it needs to be multiple of\nArrayType, it now only have to multiple of align type.",
+  "is_merge": false,
+  "parents": [
+    "cfff30bd59e401e426ed6f3a3de5f7280ce5aed0"
+  ],
+  "name_status": [
+    [
+      "M",
+      "include/tvm/ffi/memory.h"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "include/tvm/ffi/memory.h",
+      "additions": 62,
+      "deletions": 19
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/include/tvm/ffi/memory.h b/include/tvm/ffi/memory.h\nindex 76c9003..6d1a766 100644\n--- a/include/tvm/ffi/memory.h\n+++ b/include/tvm/ffi/memory.h\n@@ -25,13 +25,13 @@\n \n #include <tvm/ffi/object.h>\n \n+#include <cstddef>\n #include <cstdlib>\n #include <type_traits>\n #include <utility>\n \n namespace tvm {\n namespace ffi {\n-\n /*! \\brief Deleter function for obeject */\n typedef void (*FObjectDeleter)(void* obj, int flags);\n \n@@ -45,6 +45,53 @@ typedef void (*FObjectDeleter)(void* obj, int flags);\n // - Thread-local object pools: one pool per size and alignment requirement.\n // - Can specialize by type of object to give the specific allocator to each object.\n namespace details {\n+\n+/*!\n+ * \\brief Allocate aligned memory.\n+ * \\param size The size.\n+ * \\tparam align The alignment, must be a power of 2.\n+ * \\return The pointer to the allocated memory.\n+ */\n+template <size_t align>\n+TVM_FFI_INLINE void* AlignedAlloc(size_t size) {\n+  static_assert(align != 0 && (align & (align - 1)) == 0, \"align must be a power of 2\");\n+#ifdef _MSC_VER\n+  // MSVC have to use _aligned_malloc\n+  if (void* ptr = _aligned_malloc(size, align)) {\n+    return ptr;\n+  }\n+  throw std::bad_alloc();\n+#else\n+  if constexpr (align <= alignof(std::max_align_t)) {\n+    // malloc guarantees alignment of std::max_align_t\n+    if (void* ptr = std::malloc(size)) {\n+      return ptr;\n+    }\n+    throw std::bad_alloc();\n+  } else {\n+    void* ptr;\n+    // for other alignments, use posix_memalign\n+    if (posix_memalign(&ptr, align, size) != 0) {\n+      throw std::bad_alloc();\n+    }\n+    return ptr;\n+  }\n+#endif\n+}\n+\n+/*!\n+ * \\brief Free aligned memory.\n+ * \\param data The pointer to the memory to free.\n+ */\n+TVM_FFI_INLINE void AlignedFree(void* data) {\n+#ifdef _MSC_VER\n+  // MSVC have to use _aligned_free\n+  _aligned_free(data);\n+#else\n+  std::free(data);\n+#endif\n+}\n+\n /*!\n  * \\brief Base class of object allocators that implements make.\n  *  Use curiously recurring template pattern.\n@@ -100,10 +147,6 @@ class SimpleObjAllocator : public ObjAllocatorBase<SimpleObjAllocator> {\n   template <typename T>\n   class Handler {\n    public:\n-    struct alignas(T) StorageType {\n-      char data[sizeof(T)];\n-    };\n-\n     template <typename... Args>\n     static T* New(SimpleObjAllocator*, Args&&... args) {\n       // NOTE: the first argument is not needed for SimpleObjAllocator\n@@ -119,7 +162,7 @@ class SimpleObjAllocator : public ObjAllocatorBase<SimpleObjAllocator> {\n       // class with non-virtual destructor.\n       // We are fine here as we captured the right deleter during construction.\n       // This is also the right way to get storage type for an object pool.\n-      StorageType* data = new StorageType();\n+      void* data = AlignedAlloc<alignof(T)>(sizeof(T));\n       new (data) T(std::forward<Args>(args)...);\n       return reinterpret_cast<T*>(data);\n     }\n@@ -138,7 +181,7 @@ class SimpleObjAllocator : public ObjAllocatorBase<SimpleObjAllocator> {\n         tptr->T::~T();\n       }\n       if (flags & kTVMFFIObjectDeleterFlagBitMaskWeak) {\n-        delete reinterpret_cast<StorageType*>(tptr);\n+        AlignedFree(static_cast<void*>(tptr));\n       }\n     }\n   };\n@@ -147,12 +190,6 @@ class SimpleObjAllocator : public ObjAllocatorBase<SimpleObjAllocator> {\n   template <typename ArrayType, typename ElemType>\n   class ArrayHandler {\n    public:\n-    using StorageType = typename std::aligned_storage<sizeof(ArrayType), alignof(ArrayType)>::type;\n-    // for now only support elements that aligns with array header.\n-    static_assert(alignof(ArrayType) % alignof(ElemType) == 0 &&\n-                      sizeof(ArrayType) % alignof(ElemType) == 0,\n-                  \"element alignment constraint\");\n-\n     template <typename... Args>\n     static ArrayType* New(SimpleObjAllocator*, size_t num_elems, Args&&... args) {\n       // NOTE: the first argument is not needed for ArrayObjAllocator\n@@ -167,10 +204,17 @@ class SimpleObjAllocator : public ObjAllocatorBase<SimpleObjAllocator> {\n       // class with non-virtual destructor.\n       // We are fine here as we captured the right deleter during construction.\n       // This is also the right way to get storage type for an object pool.\n-      size_t unit = sizeof(StorageType);\n-      size_t requested_size = num_elems * sizeof(ElemType) + sizeof(ArrayType);\n-      size_t num_storage_slots = (requested_size + unit - 1) / unit;\n-      StorageType* data = new StorageType[num_storage_slots];\n+\n+      // for now only support elements that aligns with array header.\n+      static_assert(\n+          alignof(ArrayType) % alignof(ElemType) == 0 && sizeof(ArrayType) % alignof(ElemType) == 0,\n+          \"element alignment constraint\");\n+      size_t size = sizeof(ArrayType) + sizeof(ElemType) * num_elems;\n+      // round up to the nearest multiple of align\n+      constexpr size_t align = alignof(ArrayType);\n+      // C++ standard always guarantees that alignof operator returns a power of 2\n+      size_t aligned_size = (size + (align - 1)) & ~(align - 1);\n+      void* data = AlignedAlloc<align>(aligned_size);\n       new (data) ArrayType(std::forward<Args>(args)...);\n       return reinterpret_cast<ArrayType*>(data);\n     }\n@@ -189,8 +233,7 @@ class SimpleObjAllocator : public ObjAllocatorBase<SimpleObjAllocator> {\n         tptr->ArrayType::~ArrayType();\n       }\n       if (flags & kTVMFFIObjectDeleterFlagBitMaskWeak) {\n-        StorageType* p = reinterpret_cast<StorageType*>(tptr);\n-        delete[] p;\n+        AlignedFree(static_cast<void*>(tptr));\n       }\n     }\n   };",
+  "heuristics": {
+    "tags": [],
+    "extensions": [
+      ".h"
+    ],
+    "scopes_guess": [
+      "include"
+    ]
+  }
+}

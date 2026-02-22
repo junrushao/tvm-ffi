@@ -1,0 +1,51 @@
+{
+  "sha": "4ffbc88b60f659a74619035e699986792c071e8d",
+  "sha7": "4ffbc88",
+  "author_name": "Yaoyao Ding",
+  "author_email": "dingyaoyao.cs@gmail.com",
+  "date_iso": "2025-09-08T22:19:34-04:00",
+  "subject": "[FFI][Bugfix] Enable `load_inline` on macos (#18285)",
+  "body":
+      "This PR fix the bug to enable `tvm_ffi.cpp.load_inline` on macos.\nWe need to link the `libtvm_ffi.dylib` to the custom module.",
+  "is_merge": false,
+  "parents": [
+    "472e10c4086e91fb788ffe1f0eee10df4bcf5db2"
+  ],
+  "name_status": [
+    [
+      "M",
+      "python/tvm_ffi/cpp/load_inline.py"
+    ],
+    [
+      "M",
+      "tests/python/test_load_inline.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "python/tvm_ffi/cpp/load_inline.py",
+      "additions": 4,
+      "deletions": 7
+    },
+    {
+      "path": "tests/python/test_load_inline.py",
+      "additions": 0,
+      "deletions": 16
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/python/tvm_ffi/cpp/load_inline.py b/python/tvm_ffi/cpp/load_inline.py\nindex 754a9d7..111dee8 100644\n--- a/python/tvm_ffi/cpp/load_inline.py\n+++ b/python/tvm_ffi/cpp/load_inline.py\n@@ -140,6 +140,9 @@ def _generate_ninja_build(\n     \"\"\"Generate the content of build.ninja for building the module.\"\"\"\n     default_include_paths = [find_include_path(), find_dlpack_include_path()]\n \n+    tvm_ffi_lib = find_libtvm_ffi()\n+    tvm_ffi_lib_path = os.path.dirname(tvm_ffi_lib)\n+    tvm_ffi_lib_name = os.path.splitext(os.path.basename(tvm_ffi_lib))[0]\n     if IS_WINDOWS:\n         default_cflags = [\n             \"/std:c++17\",\n@@ -157,17 +160,11 @@ def _generate_ninja_build(\n             \"/EHsc\",\n         ]\n         default_cuda_cflags = [\"-Xcompiler\", \"/std:c++17\", \"/O2\"]\n-        # Find the TVM FFI library for linking\n-        tvm_ffi_lib = find_libtvm_ffi()\n-        tvm_ffi_lib_path = os.path.dirname(tvm_ffi_lib)\n-        tvm_ffi_lib_name = os.path.splitext(os.path.basename(tvm_ffi_lib))[\n-            0\n-        ]  # Remove .dll extension\n         default_ldflags = [\"/DLL\", f\"/LIBPATH:{tvm_ffi_lib_path}\", f\"{tvm_ffi_lib_name}.lib\"]\n     else:\n         default_cflags = [\"-std=c++17\", \"-fPIC\", \"-O2\"]\n         default_cuda_cflags = [\"-Xcompiler\", \"-fPIC\", \"-std=c++17\", \"-O2\"]\n-        default_ldflags = [\"-shared\"]\n+        default_ldflags = [\"-shared\", \"-L{}\".format(tvm_ffi_lib_path), \"-ltvm_ffi\"]\n \n         if with_cuda:\n             # determine the compute capability of the current GPU\ndiff --git a/tests/python/test_load_inline.py b/tests/python/test_load_inline.py\nindex dbaf439..6510cca 100644\n--- a/tests/python/test_load_inline.py\n+++ b/tests/python/test_load_inline.py\n@@ -28,10 +28,6 @@ import tvm_ffi.cpp\n from tvm_ffi.module import Module\n \n \n-@pytest.mark.xfail(\n-    not sys.platform.startswith(\"linux\") and not sys.platform.startswith(\"win32\"),\n-    reason=\"need to support other platforms\",\n-)\n def test_load_inline_cpp():\n     mod: Module = tvm_ffi.cpp.load_inline(\n         name=\"hello\",\n@@ -58,10 +54,6 @@ def test_load_inline_cpp():\n     numpy.testing.assert_equal(x + 1, y)\n \n \n-@pytest.mark.xfail(\n-    not sys.platform.startswith(\"linux\") and not sys.platform.startswith(\"win32\"),\n-    reason=\"need to support other platforms\",\n-)\n def test_load_inline_cpp_with_docstrings():\n     mod: Module = tvm_ffi.cpp.load_inline(\n         name=\"hello\",\n@@ -88,10 +80,6 @@ def test_load_inline_cpp_with_docstrings():\n     numpy.testing.assert_equal(x + 1, y)\n \n \n-@pytest.mark.xfail(\n-    not sys.platform.startswith(\"linux\") and not sys.platform.startswith(\"win32\"),\n-    reason=\"need to support other platforms\",\n-)\n def test_load_inline_cpp_multiple_sources():\n     mod: Module = tvm_ffi.cpp.load_inline(\n         name=\"hello\",\n@@ -134,10 +122,6 @@ def test_load_inline_cpp_multiple_sources():\n     numpy.testing.assert_equal(x + 1, y)\n \n \n-@pytest.mark.xfail(\n-    not sys.platform.startswith(\"linux\") and not sys.platform.startswith(\"win32\"),\n-    reason=\"need to support other platforms\",\n-)\n def test_load_inline_cpp_build_dir():\n     mod: Module = tvm_ffi.cpp.load_inline(\n         name=\"hello\",",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".py"
+    ],
+    "scopes_guess": [
+      "python",
+      "tests"
+    ]
+  }
+}

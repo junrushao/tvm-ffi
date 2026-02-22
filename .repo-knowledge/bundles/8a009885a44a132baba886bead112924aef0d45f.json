@@ -1,0 +1,48 @@
+{
+  "sha": "8a009885a44a132baba886bead112924aef0d45f",
+  "sha7": "8a00988",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-05-24T11:58:20-04:00",
+  "subject": "[REFACTOR][FFI] Phase out legacy C API (#18010)",
+  "body":
+      "This PR phases out the legacy c api in favor of the new FFI C API.\nAlso removes the redirection sccafolding for registry.h\n\n- include <tvm/runtime/registry.h> => include <tvm/ffi/function.h>\n- include <tvm/runtime/c_runtime_api.h> => include <tvm/runtime/base.h>\n- TVM_REGISTER_GLOBAL => TVM_FFI_REGISTER_GLOBAL\n\nThe cleanup will greatly simplify the overall FFI surface of the project\nand allows us to move towards an unified clean API based on tvm ffi.",
+  "is_merge": false,
+  "parents": [
+    "37a2e7c521435cbe2bd772480f0389c18bd9ce2c"
+  ],
+  "name_status": [
+    [
+      "M",
+      "include/tvm/ffi/c_api.h"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/function.h"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "include/tvm/ffi/c_api.h",
+      "additions": 7,
+      "deletions": 0
+    },
+    {
+      "path": "include/tvm/ffi/function.h",
+      "additions": 1,
+      "deletions": 1
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/include/tvm/ffi/c_api.h b/include/tvm/ffi/c_api.h\nindex 131f2e7..df8265d 100644\n--- a/include/tvm/ffi/c_api.h\n+++ b/include/tvm/ffi/c_api.h\n@@ -27,6 +27,13 @@\n #include <dlpack/dlpack.h>\n #include <stdint.h>\n \n+// Macros to do weak linking\n+#ifdef _MSC_VER\n+#define TVM_FFI_WEAK __declspec(selectany)\n+#else\n+#define TVM_FFI_WEAK __attribute__((weak))\n+#endif\n+\n #if !defined(TVM_FFI_DLL) && defined(__EMSCRIPTEN__)\n #include <emscripten/emscripten.h>\n #define TVM_FFI_DLL EMSCRIPTEN_KEEPALIVE\ndiff --git a/include/tvm/ffi/function.h b/include/tvm/ffi/function.h\nindex 5162df6..753d4f5 100644\n--- a/include/tvm/ffi/function.h\n+++ b/include/tvm/ffi/function.h\n@@ -787,7 +787,7 @@ class Function::Registry {\n    * .set_body_typed(multiply); // will have type int(int, int)\n    *\n    * // will have type int(int, int)\n-   * TVM_REGISTER_GLOBAL(\"sub\")\n+   * TVM_FFI_REGISTER_GLOBAL(\"sub\")\n    * .set_body_typed([](int a, int b) -> int { return a - b; });\n    *\n    * \\endcode",
+  "heuristics": {
+    "tags": [],
+    "extensions": [
+      ".h"
+    ],
+    "scopes_guess": [
+      "include"
+    ]
+  }
+}

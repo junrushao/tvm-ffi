@@ -1,0 +1,59 @@
+{
+  "sha": "c51e519b2253c2c8754bebaf2f9af0434d89e1fc",
+  "sha7": "c51e519",
+  "author_name": "DarkSharpness",
+  "author_email": "76582120+DarkSharpness@users.noreply.github.com",
+  "date_iso": "2026-01-02T02:43:05+08:00",
+  "subject": "[Feature] support C++ dtype_trait and Python-side mapping to C++ dtype (#374)",
+  "body":
+      "related issue #365 \n\nreferences:\n\n1.\nhttps://github.com/ROCm/clr/tree/amd-staging/hipamd/include/hip/amd_detail\n2.\nhttps://github.com/pytorch/pytorch/blob/f7f91ec63a6575443b2b06ded791ac7fd9a7f66d/aten/src/ATen/DLConvertor.cpp\n3.\nhttps://github.com/flashinfer-ai/flashinfer/blob/main/csrc/tvm_ffi_utils.h",
+  "is_merge": false,
+  "parents": [
+    "6e7cafab78cb007d066bc860c600e2ba80b4d1a7"
+  ],
+  "name_status": [
+    [
+      "A",
+      "include/tvm/ffi/extra/dtype.h"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/cpp/__init__.py"
+    ],
+    [
+      "A",
+      "python/tvm_ffi/cpp/dtype.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "include/tvm/ffi/extra/dtype.h",
+      "additions": 206,
+      "deletions": 0
+    },
+    {
+      "path": "python/tvm_ffi/cpp/__init__.py",
+      "additions": 2,
+      "deletions": 0
+    },
+    {
+      "path": "python/tvm_ffi/cpp/dtype.py",
+      "additions": 104,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/include/tvm/ffi/extra/dtype.h b/include/tvm/ffi/extra/dtype.h\nnew file mode 100644\nindex 0000000..4187d0f\n--- /dev/null\n+++ b/include/tvm/ffi/extra/dtype.h\n@@ -0,0 +1,206 @@\n+/*\n+ * Licensed to the Apache Software Foundation (ASF) under one\n+ * or more contributor license agreements.  See the NOTICE file\n+ * distributed with this work for additional information\n+ * regarding copyright ownership.  The ASF licenses this file\n+ * to you under the Apache License, Version 2.0 (the\n+ * \"License\"); you may not use this file except in compliance\n+ * with the License.  You may obtain a copy of the License at\n+ *\n+ *   http://www.apache.org/licenses/LICENSE-2.0\n+ *\n+ * Unless required by applicable law or agreed to in writing,\n+ * software distributed under the License is distributed on an\n+ * \"AS IS\" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY\n+ * KIND, either express or implied.  See the License for the\n+ * specific language governing permissions and limitations\n+ * under the License.\n+ */\n+/*!\n+ * \\file tvm/ffi/extra/dtype.h\n+ * \\brief Type traits to map C++ types to DLPack dtypes.\n+ */\n+#ifndef TVM_FFI_EXTRA_DTYPE_H_\n+#define TVM_FFI_EXTRA_DTYPE_H_\n+\n+#include <dlpack/dlpack.h>\n+\n+#include <type_traits>\n+\n+// Common for both CUDA and HIP\n+struct __half;\n+\n+// CUDA\n+struct __nv_fp8_e4m3;\n+struct __nv_bfloat16;\n+struct __nv_fp8_e5m2;\n+struct __nv_fp8_e8m0;\n+struct __nv_fp4_e2m1;\n+struct __nv_fp4x2_e2m1;\n+\n+// HIP\n+struct __hip_bfloat16;\n+struct hip_bfloat16;  // i don't know why this is a struct instead of alias...\n+struct __hip_fp8_e4m3;\n+struct __hip_fp8_e4m3_fnuz;\n+struct __hip_fp8_e5m2;\n+struct __hip_fp8_e5m2_fnuz;\n+struct __hip_fp4_e2m1;\n+struct __hip_fp4x2_e2m1;\n+\n+namespace tvm_ffi {\n+\n+/// \\cond Doxygen_Suppress\n+\n+template <typename T>\n+struct dtype_trait {};\n+\n+namespace details::dtypes {\n+\n+template <typename T>\n+struct integer_trait {\n+  static constexpr DLDataType value = {\n+      /* code = */ std::is_signed_v<T> ? kDLInt : kDLUInt,\n+      /* bits = */ static_cast<uint8_t>(sizeof(T) * 8),\n+      /* lanes = */ 1,\n+  };\n+};\n+\n+template <typename T>\n+struct float_trait {\n+  static constexpr DLDataType value = {\n+      /* code = */ kDLFloat,\n+      /* bits = */ static_cast<uint8_t>(sizeof(T) * 8),\n+      /* lanes = */ 1,\n+  };\n+};\n+\n+}  // namespace details::dtypes\n+\n+template <>\n+struct dtype_trait<signed char> : details::dtypes::integer_trait<signed char> {};\n+\n+template <>\n+struct dtype_trait<unsigned char> : details::dtypes::integer_trait<unsigned char> {};\n+\n+template <>\n+struct dtype_trait<signed short> : details::dtypes::integer_trait<signed short> {};\n+\n+template <>\n+struct dtype_trait<unsigned short> : details::dtypes::integer_trait<unsigned short> {};\n+\n+template <>\n+struct dtype_trait<signed int> : details::dtypes::integer_trait<signed int> {};\n+\n+template <>\n+struct dtype_trait<unsigned int> : details::dtypes::integer_trait<unsigned int> {};\n+\n+template <>\n+struct dtype_trait<signed long> : details::dtypes::integer_trait<signed long> {};\n+\n+template <>\n+struct dtype_trait<unsigned long> : details::dtypes::integer_trait<unsigned long> {};\n+\n+template <>\n+struct dtype_trait<signed long long> : details::dtypes::integer_trait<signed long long> {};\n+\n+template <>\n+struct dtype_trait<unsigned long long> : details::dtypes::integer_trait<unsigned long long> {};\n+\n+template <>\n+struct dtype_trait<float> : details::dtypes::float_trait<float> {};\n+\n+template <>\n+struct dtype_trait<double> : details::dtypes::float_trait<double> {};\n+\n+// Specialization for bool\n+\n+template <>\n+struct dtype_trait<bool> {\n+  static constexpr DLDataType value = {DLDataTypeCode::kDLBool, 8, 1};\n+};\n+\n+// Specializations for CUDA\n+\n+template <>\n+struct dtype_trait<__half> {\n+  static constexpr DLDataType value = {DLDataTypeCode::kDLFloat, 16, 1};\n+};\n+\n+template <>\n+struct dtype_trait<__nv_bfloat16> {\n+  static constexpr DLDataType value = {DLDataTypeCode::kDLBfloat, 16, 1};\n+};\n+\n+template <>\n+struct dtype_trait<__nv_fp8_e4m3> {\n+  static constexpr DLDataType value = {DLDataTypeCode::kDLFloat8_e4m3fn, 8, 1};\n+};\n+\n+template <>\n+struct dtype_trait<__nv_fp8_e5m2> {\n+  static constexpr DLDataType value = {DLDataTypeCode::kDLFloat8_e5m2, 8, 1};\n+};\n+\n+template <>\n+struct dtype_trait<__nv_fp8_e8m0> {\n+  static constexpr DLDataType value = {DLDataTypeCode::kDLFloat8_e8m0fnu, 8, 1};\n+};\n+\n+template <>\n+struct dtype_trait<__nv_fp4_e2m1> {\n+  static constexpr DLDataType value = {DLDataTypeCode::kDLFloat4_e2m1fn, 4, 1};\n+};\n+\n+template <>\n+struct dtype_trait<__nv_fp4x2_e2m1> {\n+  static constexpr DLDataType value = {DLDataTypeCode::kDLFloat4_e2m1fn, 4, 2};\n+};\n+\n+// Specializations for HIP\n+\n+template <>\n+struct dtype_trait<__hip_bfloat16> {\n+  static constexpr DLDataType value = {DLDataTypeCode::kDLBfloat, 16, 1};\n+};\n+\n+template <>\n+struct dtype_trait<hip_bfloat16> {\n+  static constexpr DLDataType value = {DLDataTypeCode::kDLBfloat, 16, 1};\n+};\n+\n+template <>\n+struct dtype_trait<__hip_fp8_e4m3> {\n+  static constexpr DLDataType value = {DLDataTypeCode::kDLFloat8_e4m3fn, 8, 1};\n+};\n+\n+template <>\n+struct dtype_trait<__hip_fp8_e4m3_fnuz> {\n+  static constexpr DLDataType value = {DLDataTypeCode::kDLFloat8_e4m3fnuz, 8, 1};\n+};\n+\n+template <>\n+struct dtype_trait<__hip_fp8_e5m2> {\n+  static constexpr DLDataType value = {DLDataTypeCode::kDLFloat8_e5m2, 8, 1};\n+};\n+\n+template <>\n+struct dtype_trait<__hip_fp8_e5m2_fnuz> {\n+  static constexpr DLDataType value = {DLDataTypeCode::kDLFloat8_e5m2fnuz, 8, 1};\n+};\n+\n+template <>\n+struct dtype_trait<__hip_fp4_e2m1> {\n+  static constexpr DLDataType value = {DLDataTypeCode::kDLFloat4_e2m1fn, 4, 1};\n+};\n+\n+template <>\n+struct dtype_trait<__hip_fp4x2_e2m1> {\n+  static constexpr DLDataType value = {DLDataTypeCode::kDLFloat4_e2m1fn, 4, 2};\n+};\n+\n+/// \\endcond\n+\n+}  // namespace tvm_ffi\n+\n+#endif  // TVM_FFI_EXTRA_DTYPE_H_\ndiff --git a/python/tvm_ffi/cpp/__init__.py b/python/tvm_ffi/cpp/__init__.py\nindex e3deb12..f2d4ce2 100644\n--- a/python/tvm_ffi/cpp/__init__.py\n+++ b/python/tvm_ffi/cpp/__init__.py\n@@ -16,6 +16,7 @@\n # under the License.\n \"\"\"C++ integration helpers for building and loading inline modules.\"\"\"\n \n+from .dtype import to_cpp_dtype\n from .extension import build, build_inline, load, load_inline\n \n __all__ = [\n@@ -23,4 +24,5 @@ __all__ = [\n     \"build_inline\",\n     \"load\",\n     \"load_inline\",\n+    \"to_cpp_dtype\",\n ]\ndiff --git a/python/tvm_ffi/cpp/dtype.py b/python/tvm_ffi/cpp/dtype.py\nnew file mode 100644\nindex 0000000..4a782b0\n--- /dev/null\n+++ b/python/tvm_ffi/cpp/dtype.py\n@@ -0,0 +1,104 @@\n+# Licensed to the Apache Software Foundation (ASF) under one\n+# or more contributor license agreements.  See the NOTICE file\n+# distributed with this work for additional information\n+# regarding copyright ownership.  The ASF licenses this file\n+# to you under the Apache License, Version 2.0 (the\n+# \"License\"); you may not use this file except in compliance\n+# with the License.  You may obtain a copy of the License at\n+#\n+#   http://www.apache.org/licenses/LICENSE-2.0\n+#\n+# Unless required by applicable law or agreed to in writing,\n+# software distributed under the License is distributed on an\n+# \"AS IS\" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY\n+# KIND, either express or implied.  See the License for the\n+# specific language governing permissions and limitations\n+# under the License.\n+\"\"\"Utilities for C++ dtype conversion.\"\"\"\n+\n+from __future__ import annotations\n+\n+import functools\n+from typing import Any, Literal\n+\n+CPU_DTYPE_MAP = {\n+    \"int8\": \"int8_t\",\n+    \"int16\": \"int16_t\",\n+    \"int32\": \"int32_t\",\n+    \"int64\": \"int64_t\",\n+    \"uint8\": \"uint8_t\",\n+    \"uint16\": \"uint16_t\",\n+    \"uint32\": \"uint32_t\",\n+    \"uint64\": \"uint64_t\",\n+    \"float32\": \"float\",\n+    \"float64\": \"double\",\n+    \"bool\": \"bool\",\n+}\n+\n+CUDA_DTYPE_MAP = {\n+    \"float16\": \"__half\",\n+    \"bfloat16\": \"__nv_bfloat16\",\n+    \"float8_e4m3fn\": \"__nv_fp8_e4m3\",\n+    # \"float8_e4m3fnuz\": \"__nv_fp8_e4m3\",\n+    \"float8_e5m2\": \"__nv_fp8_e5m2\",\n+    # \"float8_e5m2fnuz\": \"__nv_fp8_e5m2\",\n+    \"float8_e8m0fnu\": \"__nv_fp8_e8m0\",\n+    \"float4_e2m1\": \"__nv_fp4_e2m1\",\n+    \"float4_e2m1fn_x2\": \"__nv_fp4x2_e2m1\",\n+}\n+\n+ROCM_DTYPE_MAP = {\n+    \"float16\": \"__half\",\n+    \"bfloat16\": \"__hip_bfloat16\",\n+    \"float8_e4m3fn\": \"__hip_fp8_e4m3\",\n+    \"float8_e4m3fnuz\": \"__hip_fp8_e4m3_fnuz\",\n+    \"float8_e5m2\": \"__hip_fp8_e5m2\",\n+    \"float8_e5m2fnuz\": \"__hip_fp8_e5m2_fnuz\",\n+    \"float4_e2m1\": \"__hip_fp4_e2m1\",\n+    \"float4_e2m1fn_x2\": \"__hip_fp4x2_e2m1\",\n+}\n+\n+\n+@functools.lru_cache(maxsize=None)\n+def _determine_backend_once() -> Literal[\"cpu\", \"cuda\", \"rocm\"]:\n+    try:\n+        import torch  # noqa: PLC0415\n+\n+        if torch.cuda.is_available():\n+            if torch.version.cuda is not None:\n+                return \"cuda\"\n+            elif torch.version.hip is not None:\n+                return \"rocm\"\n+    except ImportError:\n+        pass\n+    return \"cpu\"\n+\n+\n+def to_cpp_dtype(dtype_str: str | Any) -> str:\n+    \"\"\"Convert a dtype to its corresponding C++ dtype string.\n+\n+    Parameters\n+    ----------\n+    dtype_str : `str` or `torch.dtype`\n+        The dtype string or object to convert.\n+\n+    Returns\n+    -------\n+    str\n+        The corresponding C++ dtype string.\n+\n+    \"\"\"\n+    if not isinstance(dtype_str, str):\n+        dtype_str = str(dtype_str)\n+    if dtype_str.startswith(\"torch.\"):\n+        dtype_str = dtype_str[6:]\n+    cpp_str = CPU_DTYPE_MAP.get(dtype_str)\n+    if cpp_str is not None:\n+        return cpp_str\n+    backend = _determine_backend_once()\n+    if backend in (\"cuda\", \"rocm\"):\n+        dtype_map = CUDA_DTYPE_MAP if backend == \"cuda\" else ROCM_DTYPE_MAP\n+        cpp_str = dtype_map.get(dtype_str)\n+        if cpp_str is not None:\n+            return cpp_str\n+    raise ValueError(f\"Unsupported dtype string: {dtype_str} for {backend = }\")",
+  "heuristics": {
+    "tags": [],
+    "extensions": [
+      ".h",
+      ".py"
+    ],
+    "scopes_guess": [
+      "include",
+      "python"
+    ]
+  }
+}

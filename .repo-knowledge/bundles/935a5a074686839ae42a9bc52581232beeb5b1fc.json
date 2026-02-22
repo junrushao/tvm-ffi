@@ -1,0 +1,97 @@
+{
+  "sha": "935a5a074686839ae42a9bc52581232beeb5b1fc",
+  "sha7": "935a5a0",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-10-01T09:20:53-04:00",
+  "subject": "[ABI] Stablize doc and metadata for functions (#79)",
+  "body":
+      "This PR stablizes the doc and metadata abi for functions.\n\n- doc will store optional unstructured docstring about the function\n- metadata will store structured json about extra information about the\nfunction\n\nThe PR changes the ModuleObj c++ ABI, but given it is part of extra and\npython is directly accessing function through packed registry, it won't\nimpact python side users. For python users it remains ABI compatible.",
+  "is_merge": false,
+  "parents": [
+    "ffa2dbf8bc18edb3114f18f619da08c4e3289de6"
+  ],
+  "name_status": [
+    [
+      "M",
+      "include/tvm/ffi/c_api.h"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/extra/module.h"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/reflection/registry.h"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/cython/base.pxi"
+    ],
+    [
+      "M",
+      "src/ffi/extra/module.cc"
+    ],
+    [
+      "M",
+      "src/ffi/function.cc"
+    ],
+    [
+      "M",
+      "src/ffi/object.cc"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "include/tvm/ffi/c_api.h",
+      "additions": 7,
+      "deletions": 4
+    },
+    {
+      "path": "include/tvm/ffi/extra/module.h",
+      "additions": 16,
+      "deletions": 0
+    },
+    {
+      "path": "include/tvm/ffi/reflection/registry.h",
+      "additions": 3,
+      "deletions": 3
+    },
+    {
+      "path": "python/tvm_ffi/cython/base.pxi",
+      "additions": 2,
+      "deletions": 2
+    },
+    {
+      "path": "src/ffi/extra/module.cc",
+      "additions": 18,
+      "deletions": 0
+    },
+    {
+      "path": "src/ffi/function.cc",
+      "additions": 3,
+      "deletions": 3
+    },
+    {
+      "path": "src/ffi/object.cc",
+      "additions": 2,
+      "deletions": 2
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/include/tvm/ffi/c_api.h b/include/tvm/ffi/c_api.h\nindex c688aee..619dd5b 100644\n--- a/include/tvm/ffi/c_api.h\n+++ b/include/tvm/ffi/c_api.h\n@@ -810,8 +810,8 @@ typedef struct {\n   TVMFFIByteArray name;\n   /*! \\brief The docstring about the field. */\n   TVMFFIByteArray doc;\n-  /*! \\brief The type schema of the field in JSON string. */\n-  TVMFFIByteArray type_schema;\n+  /*! \\brief The structured metadata of the field in JSON string. */\n+  TVMFFIByteArray metadata;\n   /*!\n    * \\brief bitmask flags of the field.\n    */\n@@ -864,8 +864,11 @@ typedef struct {\n   TVMFFIByteArray name;\n   /*! \\brief The docstring about the method. */\n   TVMFFIByteArray doc;\n-  /*! \\brief Optional type schema of the method in JSON string. */\n-  TVMFFIByteArray type_schema;\n+  // Rationale: We separate the docstring from the metadata since docstrings\n+  // can be unstructured and sometimes large, while metadata can be focused\n+  // on storing structured information.\n+  /*! \\brief Optional structured metadata of the method in JSON string. */\n+  TVMFFIByteArray metadata;\n   /*! \\brief bitmask flags of the method. */\n   int64_t flags;\n   /*!\ndiff --git a/include/tvm/ffi/extra/module.h b/include/tvm/ffi/extra/module.h\nindex fd6bf19..500a4b2 100644\n--- a/include/tvm/ffi/extra/module.h\n+++ b/include/tvm/ffi/extra/module.h\n@@ -69,6 +69,15 @@ class TVM_FFI_EXTRA_CXX_API ModuleObj : public Object {\n    * \\return True if the module implements the function, false otherwise.\n    */\n   virtual bool ImplementsFunction(const String& name) { return GetFunction(name).defined(); }\n+  /*!\n+   * \\brief Get the docstring of the function, if available.\n+   * \\param name The name of the function.\n+   * \\return The docstring of the function.\n+   */\n+  virtual Optional<String> GetFunctionDoc(const String& name) { return std::nullopt; }\n+  // Rationale: We separate the docstring from the metadata since docstrings\n+  // can be unstructured and sometimes large, while metadata can be focused\n+  // on storing structured information.\n   /*!\n    * \\brief Get the metadata of the function, if available.\n    * \\param name The name of the function.\n@@ -128,6 +137,13 @@ class TVM_FFI_EXTRA_CXX_API ModuleObj : public Object {\n    * \\return True if the module implements the function, false otherwise.\n    */\n   bool ImplementsFunction(const String& name, bool query_imports);\n+  /*!\n+   * \\brief Get the function docstring of the function if available.\n+   * \\param name The name of the function.\n+   * \\param query_imports Whether to query imported modules.\n+   * \\return The function docstring of the function.\n+   */\n+  Optional<String> GetFunctionDoc(const String& name, bool query_imports);\n   /*!\n    * \\brief Get the function metadata of the function if available.\n    * \\param name The name of the function.\ndiff --git a/include/tvm/ffi/reflection/registry.h b/include/tvm/ffi/reflection/registry.h\nindex e989530..30f3a11 100644\n--- a/include/tvm/ffi/reflection/registry.h\n+++ b/include/tvm/ffi/reflection/registry.h\n@@ -300,7 +300,7 @@ class GlobalDef : public ReflectionDefBase {\n     TVMFFIMethodInfo info;\n     info.name = TVMFFIByteArray{name, std::char_traits<char>::length(name)};\n     info.doc = TVMFFIByteArray{nullptr, 0};\n-    info.type_schema = TVMFFIByteArray{nullptr, 0};\n+    info.metadata = TVMFFIByteArray{nullptr, 0};\n     info.flags = 0;\n     // obtain the method function\n     info.method = AnyView(func).CopyToTVMFFIAny();\n@@ -447,7 +447,7 @@ class ObjectDef : public ReflectionDefBase {\n     // initialize default value to nullptr\n     info.default_value = AnyView(nullptr).CopyToTVMFFIAny();\n     info.doc = TVMFFIByteArray{nullptr, 0};\n-    info.type_schema = TVMFFIByteArray{nullptr, 0};\n+    info.metadata = TVMFFIByteArray{nullptr, 0};\n     // apply field info traits\n     ((ApplyFieldInfoTrait(&info, std::forward<ExtraArgs>(extra_args)), ...));\n     // call register\n@@ -460,7 +460,7 @@ class ObjectDef : public ReflectionDefBase {\n     TVMFFIMethodInfo info;\n     info.name = TVMFFIByteArray{name, std::char_traits<char>::length(name)};\n     info.doc = TVMFFIByteArray{nullptr, 0};\n-    info.type_schema = TVMFFIByteArray{nullptr, 0};\n+    info.metadata = TVMFFIByteArray{nullptr, 0};\n     info.flags = 0;\n     if (is_static) {\n       info.flags |= kTVMFFIFieldFlagBitMaskIsStaticMethod;\ndiff --git a/python/tvm_ffi/cython/base.pxi b/python/tvm_ffi/cython/base.pxi\nindex a3ab73e..633ace4 100644\n--- a/python/tvm_ffi/cython/base.pxi\n+++ b/python/tvm_ffi/cython/base.pxi\n@@ -166,7 +166,7 @@ cdef extern from \"tvm/ffi/c_api.h\":\n     ctypedef struct TVMFFIFieldInfo:\n         TVMFFIByteArray name\n         TVMFFIByteArray doc\n-        TVMFFIByteArray type_schema\n+        TVMFFIByteArray metadata\n         int64_t flags\n         int64_t size\n         int64_t alignment\n@@ -179,7 +179,7 @@ cdef extern from \"tvm/ffi/c_api.h\":\n     ctypedef struct TVMFFIMethodInfo:\n         TVMFFIByteArray name\n         TVMFFIByteArray doc\n-        TVMFFIByteArray type_schema\n+        TVMFFIByteArray metadata\n         int64_t flags\n         TVMFFIAny method\n \ndiff --git a/src/ffi/extra/module.cc b/src/ffi/extra/module.cc\nindex d2ebcd1..9601ef1 100644\n--- a/src/ffi/extra/module.cc\n+++ b/src/ffi/extra/module.cc\n@@ -58,6 +58,20 @@ Optional<String> ModuleObj::GetFunctionMetadata(const String& name, bool query_i\n   return std::nullopt;\n }\n \n+Optional<String> ModuleObj::GetFunctionDoc(const String& name, bool query_imports) {\n+  if (auto opt_str = this->GetFunctionDoc(name)) {\n+    return opt_str;\n+  }\n+  if (query_imports) {\n+    for (const Any& import : imports_) {\n+      if (auto opt_str = import.cast<Module>()->GetFunctionDoc(name, query_imports)) {\n+        return *opt_str;\n+      }\n+    }\n+  }\n+  return std::nullopt;\n+}\n+\n void ModuleObj::ImportModule(const Module& other) {\n   std::unordered_set<const ModuleObj*> visited{other.operator->()};\n   std::vector<const ModuleObj*> stack{other.operator->()};\n@@ -133,6 +147,10 @@ TVM_FFI_STATIC_INIT_BLOCK() {\n                   [](Module mod, String name, bool query_imports) {\n                     return mod->GetFunctionMetadata(name, query_imports);\n                   })\n+      .def_method(\"ffi.ModuleGetFunctionDoc\",\n+                  [](Module mod, String name, bool query_imports) {\n+                    return mod->GetFunctionDoc(name, query_imports);\n+                  })\n       .def_method(\"ffi.ModuleGetFunction\",\n                   [](Module mod, String name, bool query_imports) {\n                     return mod->GetFunction(name, query_imports);\ndiff --git a/src/ffi/function.cc b/src/ffi/function.cc\nindex b1bee7e..954608f 100644\n--- a/src/ffi/function.cc\n+++ b/src/ffi/function.cc\n@@ -54,14 +54,14 @@ class GlobalFunctionTable {\n    public:\n     String name_data;\n     String doc_data;\n-    String type_schema_data;\n+    String metadata_data;\n     ffi::Function func_data;\n \n     explicit Entry(const TVMFFIMethodInfo* method_info) {\n       // make copy of the metadata\n       name_data = String(method_info->name.data, method_info->name.size);\n       doc_data = String(method_info->doc.data, method_info->doc.size);\n-      type_schema_data = String(method_info->type_schema.data, method_info->type_schema.size);\n+      metadata_data = String(method_info->metadata.data, method_info->metadata.size);\n       func_data = AnyView::CopyFromTVMFFIAny(method_info->method).cast<ffi::Function>();\n       this->SyncMethodInfo(method_info->flags);\n       // no need to update method pointer as it would remain the same as func and we retained\n@@ -75,7 +75,7 @@ class GlobalFunctionTable {\n       this->flags = flags;\n       this->name = TVMFFIByteArray{name_data.data(), name_data.size()};\n       this->doc = TVMFFIByteArray{doc_data.data(), doc_data.size()};\n-      this->type_schema = TVMFFIByteArray{type_schema_data.data(), type_schema_data.size()};\n+      this->metadata = TVMFFIByteArray{metadata_data.data(), metadata_data.size()};\n     }\n   };\n \ndiff --git a/src/ffi/object.cc b/src/ffi/object.cc\nindex aa7edbb..2f25506 100644\n--- a/src/ffi/object.cc\n+++ b/src/ffi/object.cc\n@@ -198,7 +198,7 @@ class TypeTable {\n     TVMFFIFieldInfo field_data = *info;\n     field_data.name = this->CopyString(info->name);\n     field_data.doc = this->CopyString(info->doc);\n-    field_data.type_schema = this->CopyString(info->type_schema);\n+    field_data.metadata = this->CopyString(info->metadata);\n     if (info->flags & kTVMFFIFieldFlagBitMaskHasDefault) {\n       field_data.default_value =\n           this->CopyAny(AnyView::CopyFromTVMFFIAny(info->default_value)).CopyToTVMFFIAny();\n@@ -216,7 +216,7 @@ class TypeTable {\n     TVMFFIMethodInfo method_data = *info;\n     method_data.name = this->CopyString(info->name);\n     method_data.doc = this->CopyString(info->doc);\n-    method_data.type_schema = this->CopyString(info->type_schema);\n+    method_data.metadata = this->CopyString(info->metadata);\n     method_data.method = this->CopyAny(AnyView::CopyFromTVMFFIAny(info->method)).CopyToTVMFFIAny();\n     entry->type_methods_data.push_back(method_data);\n     entry->methods = entry->type_methods_data.data();",
+  "heuristics": {
+    "tags": [],
+    "extensions": [
+      ".cc",
+      ".h",
+      ".pxi"
+    ],
+    "scopes_guess": [
+      "include",
+      "python",
+      "src"
+    ]
+  }
+}

@@ -1,0 +1,40 @@
+{
+  "sha": "d72019c41fb041675dc1ef2bc1f1ba28c18cac01",
+  "sha7": "d72019c",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-09-30T08:29:05-04:00",
+  "subject": "[DOCS] Auto expand right sidebar (#74)",
+  "body": "This PR set auto expand of right sidebar to two so contents are more\ndiscoverable.",
+  "is_merge": false,
+  "parents": [
+    "4fcf94f6e2dcce9901e0e42c30c7d4d57487619d"
+  ],
+  "name_status": [
+    [
+      "M",
+      "docs/conf.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "docs/conf.py",
+      "additions": 1,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/docs/conf.py b/docs/conf.py\nindex 0d4c3f1..e2f0666 100644\n--- a/docs/conf.py\n+++ b/docs/conf.py\n@@ -264,6 +264,7 @@ def footer_html() -> str:\n html_theme_options = {\n     \"repository_url\": \"https://github.com/apache/tvm-ffi\",\n     \"use_repository_button\": True,\n+    \"show_toc_level\": 2,\n     \"extra_footer\": footer_html(),\n }\n ",
+  "heuristics": {
+    "tags": [
+      "docs"
+    ],
+    "extensions": [
+      ".py"
+    ],
+    "scopes_guess": [
+      "docs"
+    ]
+  }
+}

@@ -1,0 +1,52 @@
+{
+  "sha": "3e07df45afbc8ea968ef03c34d84dc348ba6dfb0",
+  "sha7": "3e07df4",
+  "author_name": "tqchen",
+  "author_email": "tianqi.tchen@gmail.com",
+  "date_iso": "2025-09-13T20:52:50-04:00",
+  "subject": "[VERSION] Bump to beta version",
+  "body":
+      "This PR updates the default version to beta version.\nThe version should change to normal once after we formally release",
+  "is_merge": false,
+  "parents": [
+    "306c8d0d2c591954d41ccffabfd4b7fb22d315b1"
+  ],
+  "name_status": [
+    [
+      "M",
+      ".asf.yaml"
+    ],
+    [
+      "M",
+      "pyproject.toml"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": ".asf.yaml",
+      "additions": 10,
+      "deletions": 0
+    },
+    {
+      "path": "pyproject.toml",
+      "additions": 1,
+      "deletions": 1
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/.asf.yaml b/.asf.yaml\nindex fe05d01..79666ef 100644\n--- a/.asf.yaml\n+++ b/.asf.yaml\n@@ -33,6 +33,16 @@ github:\n       required_pull_request_reviews:\n         required_approving_review_count: 1\n \n+  enabled_merge_buttons:\n+    # enable squash button:\n+    squash:  true\n+    # default commit message when merging with a squash commit\n+    squash_commit_message: DEFAULT\n+    # enable merge button:\n+    merge:   false\n+    # disable rebase button:\n+    rebase:  false\n+\n notifications:\n   commits: commits@tvm.apache.org\n   issues: discuss-archive@tvm.apache.org\ndiff --git a/pyproject.toml b/pyproject.toml\nindex 98c4aba..4892161 100644\n--- a/pyproject.toml\n+++ b/pyproject.toml\n@@ -17,7 +17,7 @@\n \n [project]\n name = \"apache-tvm-ffi\"\n-version = \"0.1.0a13\"\n+version = \"0.1.0b0\"\n description = \"tvm ffi\"\n \n authors = [{ name = \"TVM FFI team\" }]",
+  "heuristics": {
+    "tags": [
+      "build"
+    ],
+    "extensions": [
+      ".toml",
+      ".yaml"
+    ],
+    "scopes_guess": [
+      ".asf.yaml",
+      "pyproject.toml"
+    ]
+  }
+}

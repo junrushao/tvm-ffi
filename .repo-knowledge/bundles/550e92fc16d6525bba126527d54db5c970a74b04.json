@@ -1,0 +1,125 @@
+{
+  "sha": "550e92fc16d6525bba126527d54db5c970a74b04",
+  "sha7": "550e92f",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-10-13T14:14:05-04:00",
+  "subject": "[C-API] TVMFFIErrorSetRaisedFromCStrParts (#107)",
+  "body":
+      "This PR introduces a new C API TVMFFIErrorSetRaisedFromCStrParts.\n\nBackground: when DSL compilers report errors, sometimes there are common\nparts that appears multiple times, such as function signature.\n\nFor example, the following are possible error messages from a DSL.\n\n- Argument 1 mismatch in `matmul(x: Tensor, y: Tensor)`, dtype mismatch\n- Argument 2 mismatch in `matmul(x: Tensor, y: Tensor)`, shape[0]\nmismatch\n\nWhile we can store each message as const string and pass them to\n`TVMFFIErrorSetRaisedFromCStr`. There are quite a bit of duplication\nhere.\n\nThis API allows us to store the error messages in parts, so parts like\n\"mismatch in `matmul(x: Tensor, y: Tensor)`,\" get reused across multiple\nerror messages. Because DSLs usually have minimal runtime, having a\nminimal helper C API would simplify the possible overhead of compiler\nconstruction side.",
+  "is_merge": false,
+  "parents": [
+    "4bc892542b937074e1d813ae7e7f8ea204be4aac"
+  ],
+  "name_status": [
+    [
+      "M",
+      "docs/concepts/abi_overview.md"
+    ],
+    [
+      "M",
+      "docs/guides/compiler_integration.md"
+    ],
+    [
+      "M",
+      "examples/quick_start/src/add_one_c.c"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/c_api.h"
+    ],
+    [
+      "M",
+      "pyproject.toml"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/__init__.py"
+    ],
+    [
+      "M",
+      "src/ffi/backtrace_utils.h"
+    ],
+    [
+      "M",
+      "src/ffi/error.cc"
+    ],
+    [
+      "M",
+      "tests/cpp/test_function.cc"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "docs/concepts/abi_overview.md",
+      "additions": 3,
+      "deletions": 1
+    },
+    {
+      "path": "docs/guides/compiler_integration.md",
+      "additions": 3,
+      "deletions": 2
+    },
+    {
+      "path": "examples/quick_start/src/add_one_c.c",
+      "additions": 2,
+      "deletions": 2
+    },
+    {
+      "path": "include/tvm/ffi/c_api.h",
+      "additions": 28,
+      "deletions": 1
+    },
+    {
+      "path": "pyproject.toml",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "python/tvm_ffi/__init__.py",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "src/ffi/backtrace_utils.h",
+      "additions": 3,
+      "deletions": 0
+    },
+    {
+      "path": "src/ffi/error.cc",
+      "additions": 28,
+      "deletions": 0
+    },
+    {
+      "path": "tests/cpp/test_function.cc",
+      "additions": 15,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/docs/concepts/abi_overview.md b/docs/concepts/abi_overview.md\nindex 47639b5..c8e0cd5 100644\n--- a/docs/concepts/abi_overview.md\n+++ b/docs/concepts/abi_overview.md\n@@ -397,7 +397,9 @@ File \"src/extension.cc\", line 45, in void my_ffi_extension::RaiseError(tvm::ffi:\n We provide C++ object `ffi::Error` that can be throwed as exception in c++ environment. When we encounter\n the C ABI boundary, we will catch the error and call `TVMFFIErrorSetRaised` to propagate the error\n to the caller safely.\n-`TVMFFIErrorSetRaisedFromCStr` is a convenient method to set error directly from C string and can be useful in compiler backend construction to implement features such as assert.\n+`TVMFFIErrorSetRaisedFromCStr` is a convenient method to set error directly from C string and can be useful in compiler\n+backend construction to implement features such as assert.\n+We also provide `TVMFFIErrorSetRaisedFromCStrParts` to concat reusable parts in the error message.\n \n **Rationales:** The error object contains minimal but sufficient information to reconstruct structured\n error in python side. We opt-for thread-local error state as it simplifies overall support.\ndiff --git a/docs/guides/compiler_integration.md b/docs/guides/compiler_integration.md\nindex 1c8fa58..aff6f90 100644\n--- a/docs/guides/compiler_integration.md\n+++ b/docs/guides/compiler_integration.md\n@@ -50,7 +50,7 @@ int ReadDLTensorPtr(const TVMFFIAny *value, DLTensor** out) {\n     return 0;\n   }\n   if (value->type_index != kTVMFFITensor) {\n-    // Use TVMFFIErrorSetRaisedFromCStr to set an error which will\n+    // Use TVMFFIErrorSetRaisedFromCStr / TVMFFIErrorSetRaisedFromCStrParts to set an error which will\n     // be propagated to the caller\n     TVMFFIErrorSetRaisedFromCStr(\"ValueError\", \"Expects a Tensor input\");\n     return -1;\n@@ -86,7 +86,8 @@ Some of the key takeaways include:\n \n - Prefix the symbol with `__tvm_ffi_`\n - Call {cpp:func}`TVMFFIEnvGetStream` to get the current environment stream\n-- Use return value for error handling, set error via {cpp:func}`TVMFFIErrorSetRaisedFromCStr`.\n+- Use return value for error handling, set error via {cpp:func}`TVMFFIErrorSetRaisedFromCStr`\n+  or {cpp:func}`TVMFFIErrorSetRaisedFromCStrParts`.\n \n You can also check out the [ABI overview](../concepts/abi_overview.md) for a more complete guide.\n \ndiff --git a/examples/quick_start/src/add_one_c.c b/examples/quick_start/src/add_one_c.c\nindex a12987e..9997027 100644\n--- a/examples/quick_start/src/add_one_c.c\n+++ b/examples/quick_start/src/add_one_c.c\n@@ -40,8 +40,8 @@ int ReadDLTensorPtr(const TVMFFIAny* value, DLTensor** out) {\n     return 0;\n   }\n   if (value->type_index != kTVMFFITensor) {\n-    // Use TVMFFIErrorSetRaisedFromCStr to set an error which will\n-    // be propagated to the caller\n+    // Use TVMFFIErrorSetRaisedFromCStr or TVMFFIErrorSetRaisedFromCStrParts to set an\n+    // error which will be propagated to the caller\n     TVMFFIErrorSetRaisedFromCStr(\"ValueError\", \"Expects a Tensor input\");\n     return -1;\n   }\ndiff --git a/include/tvm/ffi/c_api.h b/include/tvm/ffi/c_api.h\nindex e14c7e4..88d91f8 100644\n--- a/include/tvm/ffi/c_api.h\n+++ b/include/tvm/ffi/c_api.h\n@@ -424,6 +424,7 @@ typedef struct {\n  * \\sa TVMFFIErrorMoveFromRaised\n  * \\sa TVMFFIErrorSetRaised\n  * \\sa TVMFFIErrorSetRaisedFromCStr\n+ * \\sa TVMFFIErrorSetRaisedFromCStrParts\n  */\n typedef int (*TVMFFISafeCallType)(void* handle, const TVMFFIAny* args, int32_t num_args,\n                                   TVMFFIAny* result);\n@@ -566,13 +567,39 @@ TVM_FFI_DLL void TVMFFIErrorMoveFromRaised(TVMFFIObjectHandle* result);\n TVM_FFI_DLL void TVMFFIErrorSetRaised(TVMFFIObjectHandle error);\n \n /*!\n- * \\brief Set a raised error in TLS, which can be fetched by TVMFFIMoveFromRaised.\n+ * \\brief Set a raised error in TLS, which can be fetched by TVMFFIErrorMoveFromRaised.\n  * \\param kind The kind of the error.\n  * \\param message The error message.\n  * \\note This is a convenient method for the C API side to set an error directly from a string.\n  */\n TVM_FFI_DLL void TVMFFIErrorSetRaisedFromCStr(const char* kind, const char* message);\n \n+/*!\n+ * \\brief Set a raised error in TLS, which can be fetched by TVMFFIErrorMoveFromRaised.\n+ *\n+ * Rationale: This function can be used by compilers to create error messages by\n+ * concatenating multiple parts of the error message, which can reduce the\n+ * storage size for common parts such as function signatures.\n+ *\n+ * For example, the following are possible error messages from a kernel DSL\n+ *\n+ * - Argument 1 mismatch in `matmul(x: Tensor, y: Tensor, z: Tensor)`, dtype mismatch\n+ * - Argument 2 mismatch in `matmul(x: Tensor, y: Tensor, z: Tensor)`, shape[0] mismatch\n+ * - Argument 2 mismatch in `matmul(x: Tensor, y: Tensor, z: Tensor)`, shape[1] mismatch\n+ *\n+ * Storing each part of the error message as a separate global string can cause quite\n+ * a bit of duplication, especially considering the kinds of error reports we may have.\n+ * Instead, compilers can store error messages in parts, where items like\n+ * `matmul(x: Tensor, y: Tensor, z: Tensor)` can be reused across multiple error messages.\n+ * This API simplifies error reporting for such cases.\n+ *\n+ * \\param kind The kind of the error.\n+ * \\param message_parts The error message parts, each part can be NULL and will be skipped.\n+ * \\param num_parts The number of error message parts.\n+ */\n+TVM_FFI_DLL void TVMFFIErrorSetRaisedFromCStrParts(const char* kind, const char** message_parts,\n+                                                   int32_t num_parts);\n+\n /*!\n  * \\brief Create an initial error object.\n  * \\param kind The kind of the error.\ndiff --git a/pyproject.toml b/pyproject.toml\nindex a76862d..def1d80 100644\n--- a/pyproject.toml\n+++ b/pyproject.toml\n@@ -17,7 +17,7 @@\n \n [project]\n name = \"apache-tvm-ffi\"\n-version = \"0.1.0b16\"\n+version = \"0.1.0b17\"\n description = \"tvm ffi\"\n \n authors = [{ name = \"TVM FFI team\" }]\ndiff --git a/python/tvm_ffi/__init__.py b/python/tvm_ffi/__init__.py\nindex 6ddf32f..5d32c92 100644\n--- a/python/tvm_ffi/__init__.py\n+++ b/python/tvm_ffi/__init__.py\n@@ -17,7 +17,7 @@\n \"\"\"TVM FFI Python package.\"\"\"\n \n # version\n-__version__ = \"0.1.0b16\"\n+__version__ = \"0.1.0b17\"\n \n # order matters here so we need to skip isort here\n # isort: skip_file\ndiff --git a/src/ffi/backtrace_utils.h b/src/ffi/backtrace_utils.h\nindex 8dd9223..346d51c 100644\n--- a/src/ffi/backtrace_utils.h\n+++ b/src/ffi/backtrace_utils.h\n@@ -67,6 +67,9 @@ inline bool ShouldExcludeFrame(const char* filename, const char* symbol) {\n     if (strncmp(symbol, \"TVMFFIErrorSetRaisedFromCStr\", 28) == 0) {\n       return true;\n     }\n+    if (strncmp(symbol, \"TVMFFIErrorSetRaisedFromCStrParts\", 33) == 0) {\n+      return true;\n+    }\n     // C++ stdlib frames\n     if (strncmp(symbol, \"__libc_\", 7) == 0) {\n       return true;\ndiff --git a/src/ffi/error.cc b/src/ffi/error.cc\nindex c65fd2b..6358c75 100644\n--- a/src/ffi/error.cc\n+++ b/src/ffi/error.cc\n@@ -23,6 +23,8 @@\n #include <tvm/ffi/c_api.h>\n #include <tvm/ffi/error.h>\n \n+#include <cstring>\n+\n namespace tvm {\n namespace ffi {\n \n@@ -38,6 +40,25 @@ class SafeCallContext {\n     last_error_ = details::ObjectUnsafe::ObjectPtrFromObjectRef<ErrorObj>(std::move(error));\n   }\n \n+  void SetRaisedByCstrParts(const char* kind, const char** message_parts, int32_t num_parts,\n+                            const TVMFFIByteArray* backtrace) {\n+    std::string message;\n+    size_t total_len = 0;\n+    for (int i = 0; i < num_parts; ++i) {\n+      if (message_parts[i] != nullptr) {\n+        total_len += std::strlen(message_parts[i]);\n+      }\n+    }\n+    message.reserve(total_len);\n+    for (int i = 0; i < num_parts; ++i) {\n+      if (message_parts[i] != nullptr) {\n+        message.append(message_parts[i]);\n+      }\n+    }\n+    Error error(kind, message, backtrace);\n+    last_error_ = details::ObjectUnsafe::ObjectPtrFromObjectRef<ErrorObj>(std::move(error));\n+  }\n+\n   void MoveFromRaised(TVMFFIObjectHandle* result) {\n     result[0] = details::ObjectUnsafe::MoveObjectPtrToTVMFFIObjectPtr(std::move(last_error_));\n   }\n@@ -60,6 +81,13 @@ void TVMFFIErrorSetRaisedFromCStr(const char* kind, const char* message) {\n       kind, message, TVMFFIBacktrace(nullptr, 0, nullptr, 0));\n }\n \n+void TVMFFIErrorSetRaisedFromCStrParts(const char* kind, const char** message_parts,\n+                                       int32_t num_parts) {\n+  // NOTE: run backtrace here to simplify the depth of tracekback\n+  tvm::ffi::SafeCallContext::ThreadLocal()->SetRaisedByCstrParts(\n+      kind, message_parts, num_parts, TVMFFIBacktrace(nullptr, 0, nullptr, 0));\n+}\n+\n void TVMFFIErrorSetRaised(TVMFFIObjectHandle error) {\n   tvm::ffi::SafeCallContext::ThreadLocal()->SetRaised(error);\n }\ndiff --git a/tests/cpp/test_function.cc b/tests/cpp/test_function.cc\nindex 00f5098..f075f7f 100644\n--- a/tests/cpp/test_function.cc\n+++ b/tests/cpp/test_function.cc\n@@ -238,6 +238,21 @@ TEST(Func, ObjectRefWithFallbackTraits) {\n       ::tvm::ffi::Error);\n }\n \n+TEST(SetRaisedFromCStr, ValueError) {\n+  TVMFFIErrorSetRaisedFromCStr(\"ValueError\", \"Value must be non-negative, got -5\");\n+  Error error = tvm::ffi::details::MoveFromSafeCallRaised();\n+  EXPECT_EQ(error.kind(), \"ValueError\");\n+  EXPECT_EQ(error.message(), \"Value must be non-negative, got -5\");\n+}\n+\n+TEST(SetRaisedFromCStrParts, TypeError) {\n+  const char* message_parts[] = {\"Mismatched\", nullptr, \" got Tensor\"};\n+  TVMFFIErrorSetRaisedFromCStrParts(\"TypeError\", message_parts, 3);\n+  Error error = tvm::ffi::details::MoveFromSafeCallRaised();\n+  EXPECT_EQ(error.kind(), \"TypeError\");\n+  EXPECT_EQ(error.message(), \"Mismatched got Tensor\");\n+}\n+\n int testing_add1(int x) { return x + 1; }\n \n TVM_FFI_DLL_EXPORT_TYPED_FUNC(testing_add1, testing_add1);",
+  "heuristics": {
+    "tags": [
+      "build",
+      "test"
+    ],
+    "extensions": [
+      ".c",
+      ".cc",
+      ".h",
+      ".md",
+      ".py",
+      ".toml"
+    ],
+    "scopes_guess": [
+      "docs",
+      "examples",
+      "include",
+      "pyproject.toml",
+      "python",
+      "src",
+      "tests"
+    ]
+  }
+}

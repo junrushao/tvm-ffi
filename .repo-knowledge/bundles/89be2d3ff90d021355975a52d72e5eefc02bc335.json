@@ -1,0 +1,59 @@
+{
+  "sha": "89be2d3ff90d021355975a52d72e5eefc02bc335",
+  "sha7": "89be2d3",
+  "author_name": "Junru Shao",
+  "author_email": "junrushao@apache.org",
+  "date_iso": "2025-12-22T10:46:45-08:00",
+  "subject": "doc: Final tweaks on Python Packaging (#358)",
+  "body": "",
+  "is_merge": false,
+  "parents": [
+    "a1cb746201412a943c29d942e6b2c29b36d97c48"
+  ],
+  "name_status": [
+    [
+      "M",
+      "docs/concepts/abi_overview.md"
+    ],
+    [
+      "M",
+      "docs/packaging/python_packaging.rst"
+    ],
+    [
+      "M",
+      "examples/python_packaging/src/extension.cc"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "docs/concepts/abi_overview.md",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "docs/packaging/python_packaging.rst",
+      "additions": 11,
+      "deletions": 0
+    },
+    {
+      "path": "examples/python_packaging/src/extension.cc",
+      "additions": 8,
+      "deletions": 3
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/docs/concepts/abi_overview.md b/docs/concepts/abi_overview.md\nindex 125de21..c8e0cd5 100644\n--- a/docs/concepts/abi_overview.md\n+++ b/docs/concepts/abi_overview.md\n@@ -15,7 +15,7 @@\n <!--- specific language governing permissions and limitations -->\n <!--- under the License. -->\n \n-# ABI Specification\n+# ABI Overview\n \n This section provides an overview of the ABI convention of TVM FFI. The ABI\n is designed around the following key principles:\ndiff --git a/docs/packaging/python_packaging.rst b/docs/packaging/python_packaging.rst\nindex 3166fdb..c4856cf 100644\n--- a/docs/packaging/python_packaging.rst\n+++ b/docs/packaging/python_packaging.rst\n@@ -144,6 +144,17 @@ It registry handles type translation, error handling, and metadata.\n       def add_one(x: int) -> int: ...\n \n \n+.. note::\n+\n+  Global functions can be retrieved via :py:func:`tvm_ffi.get_global_func` in Python, :cpp:func:`TVMFFIFunctionGetGlobal` in C,\n+  or :cpp:func:`tvm::ffi::Function::GetGlobal` in C++.\n+\n+  .. code-block:: python\n+\n+    func = tvm_ffi.get_global_func(\"my_ffi_extension.add_one\")\n+    func(3)  # -> 4\n+\n+\n Class\n ~~~~~\n \ndiff --git a/examples/python_packaging/src/extension.cc b/examples/python_packaging/src/extension.cc\nindex ee66a04..fc06625 100644\n--- a/examples/python_packaging/src/extension.cc\n+++ b/examples/python_packaging/src/extension.cc\n@@ -39,6 +39,13 @@ TVM_FFI_DLL_EXPORT_TYPED_FUNC(add_two, AddTwo);\n // [global_function.begin]\n static int AddOne(int x) { return x + 1; }\n \n+TVM_FFI_STATIC_INIT_BLOCK() {\n+  namespace refl = tvm::ffi::reflection;\n+  refl::GlobalDef()  //\n+      .def(\"my_ffi_extension.add_one\", AddOne);\n+}\n+// [global_function.end]\n+\n /*!\n  * \\brief Raise a runtime error to demonstrate error propagation.\n  *\n@@ -56,11 +63,9 @@ static void RaiseError(const ffi::String& msg) { TVM_FFI_THROW(RuntimeError) <<\n \n TVM_FFI_STATIC_INIT_BLOCK() {\n   namespace refl = tvm::ffi::reflection;\n-  refl::GlobalDef()\n-      .def(\"my_ffi_extension.add_one\", AddOne)\n+  refl::GlobalDef()  //\n       .def(\"my_ffi_extension.raise_error\", RaiseError);\n }\n-// [global_function.end]\n \n // [object.begin]\n class IntPairObj : public ffi::Object {",
+  "heuristics": {
+    "tags": [],
+    "extensions": [
+      ".cc",
+      ".md",
+      ".rst"
+    ],
+    "scopes_guess": [
+      "docs",
+      "examples"
+    ]
+  }
+}

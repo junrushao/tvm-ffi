@@ -1,0 +1,52 @@
+{
+  "sha": "71bbe91737afd58a330c735369c069317f48cc29",
+  "sha7": "71bbe91",
+  "author_name": "Nan",
+  "author_email": "hydzhang@hotmail.com",
+  "date_iso": "2026-01-05T21:19:35+08:00",
+  "subject":
+      "Fix TVMFFIEnvSetDLPackManagedTensorAllocator to correctly return the original allocator (#371)",
+  "body":
+      "Before this commit, TVMFFIEnvSetDLPackManagedTensorAllocator incorrectly\nset the previous allocator in:\nTVMFFIEnvSetDLPackManagedTensorAllocator(NewAllocator, 0,\n&pre_allocator);\n\n---------\n\nCo-authored-by: nan <hydzhagn@hotmail.com>",
+  "is_merge": false,
+  "parents": [
+    "46ab64481c60478f5ca3081b26607f4ae525f76a"
+  ],
+  "name_status": [
+    [
+      "M",
+      "src/ffi/extra/env_context.cc"
+    ],
+    [
+      "M",
+      "tests/cpp/extra/test_c_env_api.cc"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "src/ffi/extra/env_context.cc",
+      "additions": 3,
+      "deletions": 4
+    },
+    {
+      "path": "tests/cpp/extra/test_c_env_api.cc",
+      "additions": 8,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/src/ffi/extra/env_context.cc b/src/ffi/extra/env_context.cc\nindex cde76c4..9b2fb25 100644\n--- a/src/ffi/extra/env_context.cc\n+++ b/src/ffi/extra/env_context.cc\n@@ -65,13 +65,12 @@ class EnvContext {\n   void SetDLPackManagedTensorAllocator(DLPackManagedTensorAllocator allocator,\n                                        int write_to_global_context,\n                                        DLPackManagedTensorAllocator* opt_out_original_allocator) {\n-    dlpack_allocator_ = allocator;\n+    if (opt_out_original_allocator != nullptr) {\n+      *opt_out_original_allocator = GetDLPackManagedTensorAllocator();\n+    }\n     if (write_to_global_context != 0) {\n       GlobalTensorAllocator() = allocator;\n     }\n-    if (opt_out_original_allocator != nullptr) {\n-      *opt_out_original_allocator = dlpack_allocator_;\n-    }\n     dlpack_allocator_ = allocator;\n   }\n \ndiff --git a/tests/cpp/extra/test_c_env_api.cc b/tests/cpp/extra/test_c_env_api.cc\nindex 8a38d75..78e746e 100644\n--- a/tests/cpp/extra/test_c_env_api.cc\n+++ b/tests/cpp/extra/test_c_env_api.cc\n@@ -59,6 +59,14 @@ int TestDLPackManagedTensorAllocatorError(DLTensor* prototype, DLManagedTensorVe\n   return -1;\n }\n \n+TEST(CEnvAPI, TVMFFIEnvSetDLPackManagedTensorAllocator) {\n+  auto old_allocator = TVMFFIEnvGetDLPackManagedTensorAllocator();\n+  DLPackManagedTensorAllocator pre_allocator;\n+  TVMFFIEnvSetDLPackManagedTensorAllocator(TestDLPackManagedTensorAllocator, 0, &pre_allocator);\n+  EXPECT_EQ(old_allocator, pre_allocator);\n+  TVMFFIEnvSetDLPackManagedTensorAllocator(old_allocator, 0, nullptr);\n+}\n+\n TEST(CEnvAPI, TVMFFIEnvTensorAlloc) {\n   auto old_allocator = TVMFFIEnvGetDLPackManagedTensorAllocator();\n   TVMFFIEnvSetDLPackManagedTensorAllocator(TestDLPackManagedTensorAllocator, 0, nullptr);",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".cc"
+    ],
+    "scopes_guess": [
+      "src",
+      "tests"
+    ]
+  }
+}

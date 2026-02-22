@@ -1,0 +1,119 @@
+{
+  "sha": "8caa0cbe70e369a525192be0e0f159702dacb71c",
+  "sha7": "8caa0cb",
+  "author_name": "Junru Shao",
+  "author_email": "junrushao@apache.org",
+  "date_iso": "2026-01-04T14:50:44-08:00",
+  "subject": "feat: Introduce `<tvm/ffi/tvm_ffi.h>` (#369)",
+  "body":
+      "Analogous to:\n- `nanobind/nanobind.h`:\nhttps://nanobind.readthedocs.io/en/latest/basics.html#creating-your-first-extension\n- `pybind11/pybind11.h`:\nhttps://pybind11.readthedocs.io/en/stable/basics.html#header-and-namespace-conventions",
+  "is_merge": false,
+  "parents": [
+    "ec56178e587a5ca585fecac60823b8e55fa267d7"
+  ],
+  "name_status": [
+    [
+      "M",
+      "docs/get_started/quickstart.rst"
+    ],
+    [
+      "M",
+      "docs/packaging/python_packaging.rst"
+    ],
+    [
+      "M",
+      "examples/python_packaging/pyproject.toml"
+    ],
+    [
+      "M",
+      "examples/python_packaging/src/extension.cc"
+    ],
+    [
+      "M",
+      "examples/quickstart/compile/add_one_cpu.cc"
+    ],
+    [
+      "M",
+      "examples/quickstart/compile/add_one_cuda.cu"
+    ],
+    [
+      "M",
+      "examples/quickstart/load/load_cpp.cc"
+    ],
+    [
+      "M",
+      "examples/quickstart/load/load_cuda.cc"
+    ],
+    [
+      "A",
+      "include/tvm/ffi/tvm_ffi.h"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "docs/get_started/quickstart.rst",
+      "additions": 30,
+      "deletions": 23
+    },
+    {
+      "path": "docs/packaging/python_packaging.rst",
+      "additions": 6,
+      "deletions": 0
+    },
+    {
+      "path": "examples/python_packaging/pyproject.toml",
+      "additions": 9,
+      "deletions": 12
+    },
+    {
+      "path": "examples/python_packaging/src/extension.cc",
+      "additions": 1,
+      "deletions": 3
+    },
+    {
+      "path": "examples/quickstart/compile/add_one_cpu.cc",
+      "additions": 1,
+      "deletions": 2
+    },
+    {
+      "path": "examples/quickstart/compile/add_one_cuda.cu",
+      "additions": 1,
+      "deletions": 2
+    },
+    {
+      "path": "examples/quickstart/load/load_cpp.cc",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "examples/quickstart/load/load_cuda.cc",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "include/tvm/ffi/tvm_ffi.h",
+      "additions": 58,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/docs/get_started/quickstart.rst b/docs/get_started/quickstart.rst\nindex 958b0a4..8dd0fe5 100644\n--- a/docs/get_started/quickstart.rst\n+++ b/docs/get_started/quickstart.rst\n@@ -54,6 +54,14 @@ Source Code\n \n Suppose we implement a C++ function ``AddOne`` that performs elementwise ``y = x + 1`` for a 1-D ``float32`` vector. The source code (C++, CUDA) is:\n \n+.. hint::\n+\n+  Include the umbrella header to access all the core C++ APIs.\n+\n+  .. code-block:: cpp\n+\n+    #include <tvm/ffi/tvm_ffi.h>\n+\n .. tabs::\n \n   .. group-tab:: C++\n@@ -62,7 +70,7 @@ Suppose we implement a C++ function ``AddOne`` that performs elementwise ``y = x\n \n     .. literalinclude:: ../../examples/quickstart/compile/add_one_cpu.cc\n       :language: cpp\n-      :emphasize-lines: 8, 17\n+      :emphasize-lines: 7, 16\n       :start-after: [example.begin]\n       :end-before: [example.end]\n \n@@ -70,7 +78,7 @@ Suppose we implement a C++ function ``AddOne`` that performs elementwise ``y = x\n \n     .. literalinclude:: ../../examples/quickstart/compile/add_one_cuda.cu\n       :language: cpp\n-      :emphasize-lines: 15, 22, 26\n+      :emphasize-lines: 14, 21, 25\n       :start-after: [example.begin]\n       :end-before: [example.end]\n \n@@ -166,9 +174,9 @@ the ``add_one_cpu.so`` or ``add_one_cuda.so`` into :py:class:`tvm_ffi.Module`.\n \n .. code-block:: python\n \n-   import tvm_ffi\n-   mod  : tvm_ffi.Module   = tvm_ffi.load_module(\"add_one_cpu.so\")\n-   func : tvm_ffi.Function = mod.add_one_cpu\n+  import tvm_ffi\n+  mod  : tvm_ffi.Module   = tvm_ffi.load_module(\"add_one_cpu.so\")\n+  func : tvm_ffi.Function = mod.add_one_cpu\n \n ``mod.add_one_cpu`` retrieves a callable :py:class:`tvm_ffi.Function` that accepts tensors from host frameworks\n directly. This process is done zero-copy, without any boilerplate code, under extremely low latency.\n@@ -292,20 +300,19 @@ Compile and run it with:\n \n   .. code-block:: cpp\n \n-      // Linked with `add_one_cpu.o` or `add_one_cuda.o`\n-      #include <tvm/ffi/function.h>\n-      #include <tvm/ffi/container/tensor.h>\n+    // Linked with `add_one_cpu.o` or `add_one_cuda.o`\n+    #include <tvm/ffi/tvm_ffi.h>\n \n-      // declare reference to the exported symbol\n-      extern \"C\" int __tvm_ffi_add_one_cpu(void*, const TVMFFIAny*, int32_t, TVMFFIAny*);\n+    // declare reference to the exported symbol\n+    extern \"C\" int __tvm_ffi_add_one_cpu(void*, const TVMFFIAny*, int32_t, TVMFFIAny*);\n \n-      namespace ffi = tvm::ffi;\n+    namespace ffi = tvm::ffi;\n \n-      int bundle_add_one(ffi::TensorView x, ffi::TensorView y) {\n-        void* closure_handle = nullptr;\n-        ffi::Function::InvokeExternC(closure_handle, __tvm_ffi_add_one_cpu, x, y);\n-        return 0;\n-      }\n+    int bundle_add_one(ffi::TensorView x, ffi::TensorView y) {\n+      void* closure_handle = nullptr;\n+      ffi::Function::InvokeExternC(closure_handle, __tvm_ffi_add_one_cpu, x, y);\n+      return 0;\n+    }\n \n .. _ship-to-rust:\n \n@@ -318,13 +325,13 @@ This procedure is identical to those in C++ and Python:\n \n .. code-block:: rust\n \n-    fn run_add_one(x: &Tensor, y: &Tensor) -> Result<()> {\n-        let module = tvm_ffi::Module::load_from_file(\"add_one_cpu.so\")?;\n-        let func = module.get_function(\"add_one_cpu\")?;\n-        let typed_fn = into_typed_fn!(func, Fn(&Tensor, &Tensor) -> Result<()>);\n-        typed_fn(x, y)?;\n-        Ok(())\n-    }\n+  fn run_add_one(x: &Tensor, y: &Tensor) -> Result<()> {\n+    let module = tvm_ffi::Module::load_from_file(\"add_one_cpu.so\")?;\n+    let func = module.get_function(\"add_one_cpu\")?;\n+    let typed_fn = into_typed_fn!(func, Fn(&Tensor, &Tensor) -> Result<()>);\n+    typed_fn(x, y)?;\n+    Ok(())\n+  }\n \n \n .. hint::\ndiff --git a/docs/packaging/python_packaging.rst b/docs/packaging/python_packaging.rst\nindex c4856cf..3dd6a41 100644\n--- a/docs/packaging/python_packaging.rst\n+++ b/docs/packaging/python_packaging.rst\n@@ -47,6 +47,12 @@ internals. We will cover three checkpoints:\n Export C++ to Python\n --------------------\n \n+Include the umbrella header to access the core TVM-FFI C++ API.\n+\n+.. code-block:: cpp\n+\n+   #include <tvm/ffi/tvm_ffi.h>\n+\n TVM-FFI offers three ways to expose code:\n \n - C symbols in TVM FFI ABI: Export code as plain C symbols. This is the recommended way for\ndiff --git a/examples/python_packaging/pyproject.toml b/examples/python_packaging/pyproject.toml\nindex 7652bb4..20daed7 100644\n--- a/examples/python_packaging/pyproject.toml\n+++ b/examples/python_packaging/pyproject.toml\n@@ -45,16 +45,13 @@ wheel.py-api = \"py3\"\n wheel.packages = [\"python/my_ffi_extension\"]\n # The install dir matches the import name\n wheel.install-dir = \"my_ffi_extension\"\n-# [pyproject.build.end]\n-\n-# Build configuration\n-build-dir = \"build\"\n-build.verbose = true\n-\n-# CMake configuration\n+# Build the extension in-place under \"./build-wheel\"\n+build-dir = \"build-wheel\"\n+# Specify minimum CMake version\n cmake.version = \"CMakeLists.txt\"\n-cmake.build-type = \"RelWithDebInfo\"\n-\n-# Logging\n-logging.level = \"INFO\"\n-minimum-version = \"build-system.requires\"\n+# Specify CMake build type\n+cmake.build-type = \"Release\"\n+# Pass custom CMake definitions\n+[tool.scikit-build.cmake.define]\n+CMAKE_EXPORT_COMPILE_COMMANDS = \"ON\"\n+# [pyproject.build.end]\ndiff --git a/examples/python_packaging/src/extension.cc b/examples/python_packaging/src/extension.cc\nindex 81fb003..bf6cfea 100644\n--- a/examples/python_packaging/src/extension.cc\n+++ b/examples/python_packaging/src/extension.cc\n@@ -20,9 +20,7 @@\n  * \\file extension.cc\n  * \\brief Example of a tvm-ffi based library that registers various functions.\n  */\n-#include <tvm/ffi/function.h>\n-#include <tvm/ffi/object.h>\n-#include <tvm/ffi/reflection/registry.h>\n+#include <tvm/ffi/tvm_ffi.h>\n \n #include <cstdint>\n \ndiff --git a/examples/quickstart/compile/add_one_cpu.cc b/examples/quickstart/compile/add_one_cpu.cc\nindex 3ddf6cf..57f951e 100644\n--- a/examples/quickstart/compile/add_one_cpu.cc\n+++ b/examples/quickstart/compile/add_one_cpu.cc\n@@ -19,8 +19,7 @@\n \n // [example.begin]\n // File: compile/add_one_cpu.cc\n-#include <tvm/ffi/container/tensor.h>\n-#include <tvm/ffi/function.h>\n+#include <tvm/ffi/tvm_ffi.h>\n \n namespace tvm_ffi_example_cpu {\n \ndiff --git a/examples/quickstart/compile/add_one_cuda.cu b/examples/quickstart/compile/add_one_cuda.cu\nindex 2b743e8..de6c389 100644\n--- a/examples/quickstart/compile/add_one_cuda.cu\n+++ b/examples/quickstart/compile/add_one_cuda.cu\n@@ -19,9 +19,8 @@\n \n // [example.begin]\n // File: compile/add_one_cuda.cu\n-#include <tvm/ffi/container/tensor.h>\n #include <tvm/ffi/extra/c_env_api.h>\n-#include <tvm/ffi/function.h>\n+#include <tvm/ffi/tvm_ffi.h>\n \n namespace tvm_ffi_example_cuda {\n \ndiff --git a/examples/quickstart/load/load_cpp.cc b/examples/quickstart/load/load_cpp.cc\nindex b00db42..cee261e 100644\n--- a/examples/quickstart/load/load_cpp.cc\n+++ b/examples/quickstart/load/load_cpp.cc\n@@ -18,8 +18,8 @@\n  */\n // [main.begin]\n // File: load/load_cpp.cc\n-#include <tvm/ffi/container/tensor.h>\n #include <tvm/ffi/extra/module.h>\n+#include <tvm/ffi/tvm_ffi.h>\n \n namespace {\n namespace ffi = tvm::ffi;\ndiff --git a/examples/quickstart/load/load_cuda.cc b/examples/quickstart/load/load_cuda.cc\nindex 8e2e55f..07e43ff 100644\n--- a/examples/quickstart/load/load_cuda.cc\n+++ b/examples/quickstart/load/load_cuda.cc\n@@ -18,8 +18,8 @@\n  */\n // [main.begin]\n // File: load/load_cuda.cc\n-#include <tvm/ffi/container/tensor.h>\n #include <tvm/ffi/extra/module.h>\n+#include <tvm/ffi/tvm_ffi.h>\n \n namespace {\n namespace ffi = tvm::ffi;\ndiff --git a/include/tvm/ffi/tvm_ffi.h b/include/tvm/ffi/tvm_ffi.h\nnew file mode 100644\nindex 0000000..be26aed\n--- /dev/null\n+++ b/include/tvm/ffi/tvm_ffi.h\n@@ -0,0 +1,58 @@\n+/*\n+ * Licensed to the Apache Software Foundation (ASF) under one\n+ * or more contributor license agreements.  See the NOTICE file\n+ * distributed with this work for additional information\n+ * regarding copyright ownership.  The ASF licenses this file\n+ * to you under the Apache License, Version 2.0 (the\n+ * \"License\"); you may not use this file except in compliance\n+ * with the License.  You may obtain a copy of the License at\n+ *\n+ *   http://www.apache.org/licenses/LICENSE-2.0\n+ *\n+ * Unless required by applicable law or agreed to in writing,\n+ * software distributed under the License is distributed on an\n+ * \"AS IS\" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY\n+ * KIND, either express or implied.  See the License for the\n+ * specific language governing permissions and limitations\n+ * under the License.\n+ */\n+/*!\n+ * \\file tvm/ffi/tvm_ffi.h\n+ * \\brief Umbrella header for the core TVM-FFI C++ APIs (excluding tvm/ffi/extra).\n+ *\n+ * \\code{.cpp}\n+ * #include <tvm/ffi/tvm_ffi.h>\n+ * \\endcode\n+ */\n+#ifndef TVM_FFI_TVM_FFI_H_\n+#define TVM_FFI_TVM_FFI_H_\n+\n+#include <tvm/ffi/any.h>\n+#include <tvm/ffi/base_details.h>\n+#include <tvm/ffi/c_api.h>\n+#include <tvm/ffi/cast.h>\n+#include <tvm/ffi/container/array.h>\n+#include <tvm/ffi/container/container_details.h>\n+#include <tvm/ffi/container/map.h>\n+#include <tvm/ffi/container/shape.h>\n+#include <tvm/ffi/container/tensor.h>\n+#include <tvm/ffi/container/tuple.h>\n+#include <tvm/ffi/container/variant.h>\n+#include <tvm/ffi/dtype.h>\n+#include <tvm/ffi/endian.h>\n+#include <tvm/ffi/error.h>\n+#include <tvm/ffi/function.h>\n+#include <tvm/ffi/function_details.h>\n+#include <tvm/ffi/memory.h>\n+#include <tvm/ffi/object.h>\n+#include <tvm/ffi/optional.h>\n+#include <tvm/ffi/reflection/access_path.h>\n+#include <tvm/ffi/reflection/accessor.h>\n+#include <tvm/ffi/reflection/creator.h>\n+#include <tvm/ffi/reflection/overload.h>\n+#include <tvm/ffi/reflection/registry.h>\n+#include <tvm/ffi/rvalue_ref.h>\n+#include <tvm/ffi/string.h>\n+#include <tvm/ffi/type_traits.h>\n+\n+#endif  // TVM_FFI_TVM_FFI_H_",
+  "heuristics": {
+    "tags": [
+      "build"
+    ],
+    "extensions": [
+      ".cc",
+      ".cu",
+      ".h",
+      ".rst",
+      ".toml"
+    ],
+    "scopes_guess": [
+      "docs",
+      "examples",
+      "include"
+    ]
+  }
+}

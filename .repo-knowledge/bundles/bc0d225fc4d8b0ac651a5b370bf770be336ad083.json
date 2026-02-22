@@ -1,0 +1,40 @@
+{
+  "sha": "bc0d225fc4d8b0ac651a5b370bf770be336ad083",
+  "sha7": "bc0d225",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-10-31T19:22:58-04:00",
+  "subject": "[DOCS] Add README to torch-c-dlpack-ext (#214)",
+  "body": "This PR adds a short readme about torch-c-dlpack-ext",
+  "is_merge": false,
+  "parents": [
+    "f703a0cf9358fa30d8faee719f905c58d8ca6ee3"
+  ],
+  "name_status": [
+    [
+      "A",
+      "addons/torch_c_dlpack_ext/README.md"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "addons/torch_c_dlpack_ext/README.md",
+      "additions": 26,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/addons/torch_c_dlpack_ext/README.md b/addons/torch_c_dlpack_ext/README.md\nnew file mode 100644\nindex 0000000..5e3b8d8\n--- /dev/null\n+++ b/addons/torch_c_dlpack_ext/README.md\n@@ -0,0 +1,26 @@\n+<!--- Licensed to the Apache Software Foundation (ASF) under one -->\n+<!--- or more contributor license agreements.  See the NOTICE file -->\n+<!--- distributed with this work for additional information -->\n+<!--- regarding copyright ownership.  The ASF licenses this file -->\n+<!--- to you under the Apache License, Version 2.0 (the -->\n+<!--- \"License\"); you may not use this file except in compliance -->\n+<!--- with the License.  You may obtain a copy of the License at -->\n+\n+<!---   http://www.apache.org/licenses/LICENSE-2.0 -->\n+\n+<!--- Unless required by applicable law or agreed to in writing, -->\n+<!--- software distributed under the License is distributed on an -->\n+<!--- \"AS IS\" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY -->\n+<!--- KIND, either express or implied.  See the License for the -->\n+<!--- specific language governing permissions and limitations -->\n+<!--- under the License. -->\n+# Torch C DLPack Extension\n+\n+This folder contains the source for the `torch-c-dlpack-ext` package, which provides an Ahead-Of-Time (AOT) compiled module to support faster DLPack conversion.\n+This module will likely become unnecessary once PyTorch releases include DLPack v1.2 support.\n+By default, `tvm-ffi` will JIT-compile a version of this functionality during loading.\n+Installing this wheel allows users to avoid this JIT compilation overhead.\n+\n+```bash\n+pip install torch-c-dlpack-ext\n+```",
+  "heuristics": {
+    "tags": [
+      "docs"
+    ],
+    "extensions": [
+      ".md"
+    ],
+    "scopes_guess": [
+      "addons"
+    ]
+  }
+}

@@ -1,0 +1,89 @@
+{
+  "sha": "8dcaec1fb47bf7873b105385b7d2808d51f6b342",
+  "sha7": "8dcaec1",
+  "author_name": "Junru Shao",
+  "author_email": "junrushao@apache.org",
+  "date_iso": "2025-12-11T21:24:41-08:00",
+  "subject": "feat: Add `keep_module_alive` to `load_module` (#334)",
+  "body":
+      "Should fix #264, #322. Supersedes #331.\n\nThis PR introduces a flag `keep_module_alive: bool = True` to the\nfollowing APIs:\n- **`load_module`**\n- **`cpp.load_inline`**\n- **`cpp.load`**\n\nBy default, the flag is set to `True`, meaning it is bound to\n`ModuleGlobals` inside `libtvm_ffi.so`. It retains a reference count to\nthose modules, and Python side will not unload the module.\n\nTwo private APIs are added:\n- `tvm_ffi._ffi_api.ModuleGlobalsAdd`: adds a module to global registry\n`ModuleGlobals`\n- `tvm_ffi._ffi_api.ModuleGlobalsRemove`: removes the module from global\nregistry `ModuleGlobals`",
+  "is_merge": false,
+  "parents": [
+    "38fc6474d1bb203dea055864cec6ef53c43a6ca5"
+  ],
+  "name_status": [
+    [
+      "M",
+      "python/tvm_ffi/_ffi_api.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/cpp/extension.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/module.py"
+    ],
+    [
+      "M",
+      "src/ffi/extra/module.cc"
+    ],
+    [
+      "M",
+      "tests/python/test_build.py"
+    ],
+    [
+      "M",
+      "tests/python/test_stl.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "python/tvm_ffi/_ffi_api.py",
+      "additions": 4,
+      "deletions": 0
+    },
+    {
+      "path": "python/tvm_ffi/cpp/extension.py",
+      "additions": 39,
+      "deletions": 21
+    },
+    {
+      "path": "python/tvm_ffi/module.py",
+      "additions": 9,
+      "deletions": 2
+    },
+    {
+      "path": "src/ffi/extra/module.cc",
+      "additions": 32,
+      "deletions": 1
+    },
+    {
+      "path": "tests/python/test_build.py",
+      "additions": 0,
+      "deletions": 9
+    },
+    {
+      "path": "tests/python/test_stl.py",
+      "additions": 15,
+      "deletions": 28
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/python/tvm_ffi/_ffi_api.py b/python/tvm_ffi/_ffi_api.py\nindex ab6704a..4b49716 100644\n--- a/python/tvm_ffi/_ffi_api.py\n+++ b/python/tvm_ffi/_ffi_api.py\n@@ -58,6 +58,8 @@ if TYPE_CHECKING:\n     def ModuleGetKind(_0: Module, /) -> str: ...\n     def ModuleGetPropertyMask(_0: Module, /) -> int: ...\n     def ModuleGetWriteFormats(_0: Module, /) -> Sequence[str]: ...\n+    def ModuleGlobalsAdd(_0: Module, /) -> None: ...\n+    def ModuleGlobalsRemove(_0: Module, /) -> None: ...\n     def ModuleImplementsFunction(_0: Module, _1: str, _2: bool, /) -> bool: ...\n     def ModuleImportModule(_0: Module, _1: Module, /) -> None: ...\n     def ModuleInspectSource(_0: Module, _1: str, /) -> str: ...\n@@ -101,6 +103,8 @@ __all__ = [\n     \"ModuleGetKind\",\n     \"ModuleGetPropertyMask\",\n     \"ModuleGetWriteFormats\",\n+    \"ModuleGlobalsAdd\",\n+    \"ModuleGlobalsRemove\",\n     \"ModuleImplementsFunction\",\n     \"ModuleImportModule\",\n     \"ModuleInspectSource\",\ndiff --git a/python/tvm_ffi/cpp/extension.py b/python/tvm_ffi/cpp/extension.py\nindex b03ce67..761f0dd 100644\n--- a/python/tvm_ffi/cpp/extension.py\n+++ b/python/tvm_ffi/cpp/extension.py\n@@ -751,7 +751,7 @@ def build_inline(\n         )\n \n \n-def load_inline(\n+def load_inline(  # noqa: PLR0913\n     name: str,\n     *,\n     cpp_sources: Sequence[str] | str | None = None,\n@@ -763,6 +763,7 @@ def load_inline(\n     extra_include_paths: Sequence[str] | None = None,\n     build_directory: str | None = None,\n     embed_cubin: Mapping[str, bytes] | None = None,\n+    keep_module_alive: bool = True,\n ) -> Module:\n     \"\"\"Compile, build and load a C++/CUDA module from inline source code.\n \n@@ -791,13 +792,13 @@ def load_inline(\n \n     Parameters\n     ----------\n-    name: str\n+    name\n         The name of the tvm ffi module.\n-    cpp_sources: Sequence[str] | str, optional\n+    cpp_sources\n         The C++ source code. It can be a list of sources or a single source.\n-    cuda_sources: Sequence[str] | str, optional\n+    cuda_sources\n         The CUDA source code. It can be a list of sources or a single source.\n-    functions: Mapping[str, str] | Sequence[str] | str, optional\n+    functions\n         The functions in cpp_sources or cuda_source that will be exported to the tvm ffi module. When a mapping is\n         given, the keys are the names of the exported functions, and the values are docstrings for the functions\n         (use an empty string to skip documentation for specific functions). When a sequence or a single string is given, they are\n@@ -805,41 +806,48 @@ def load_inline(\n         also be given as a string. When cpp_sources is given, the functions must be declared (not necessarily defined)\n         in the cpp_sources. When cpp_sources is not given, the functions must be defined in the cuda_sources. If not\n         specified, no function will be exported.\n-    extra_cflags: Sequence[str], optional\n+    extra_cflags\n         The extra compiler flags for C++ compilation.\n         The default flags are:\n \n         - On Linux/macOS: ['-std=c++17', '-fPIC', '-O2']\n         - On Windows: ['/std:c++17', '/O2']\n \n-    extra_cuda_cflags: Sequence[str], optional\n+    extra_cuda_cflags\n         The extra compiler flags for CUDA compilation.\n \n-    extra_ldflags: Sequence[str], optional\n+    extra_ldflags\n         The extra linker flags.\n         The default flags are:\n \n         - On Linux/macOS: ['-shared']\n         - On Windows: ['/DLL']\n \n-    extra_include_paths: Sequence[str], optional\n+    extra_include_paths\n         The extra include paths.\n \n-    build_directory: str, optional\n+    build_directory\n         The build directory. If not specified, a default tvm ffi cache directory will be used. By default, the\n         cache directory is ``~/.cache/tvm-ffi``. You can also set the ``TVM_FFI_CACHE_DIR`` environment variable to\n         specify the cache directory.\n \n-    embed_cubin: Mapping[str, bytes], optional\n+    embed_cubin\n         A mapping from CUBIN module names to CUBIN binary data. When provided, the CUBIN data will be embedded\n         into the compiled shared library using objcopy, making it accessible via the TVM_FFI_EMBED_CUBIN macro.\n         The keys should match the names used in TVM_FFI_EMBED_CUBIN calls in the C++ source code.\n \n+    keep_module_alive\n+        Whether to keep the module alive. If True, the module will be kept alive\n+        for the duration of the program until libtvm_ffi.so is unloaded.\n+\n     Returns\n     -------\n     mod: Module\n         The loaded tvm ffi module.\n \n+    See Also\n+    --------\n+    :py:func:`tvm_ffi.load_module`\n \n     Example\n     -------\n@@ -892,7 +900,8 @@ def load_inline(\n             extra_include_paths=extra_include_paths,\n             build_directory=build_directory,\n             embed_cubin=embed_cubin,\n-        )\n+        ),\n+        keep_module_alive=keep_module_alive,\n     )\n \n \n@@ -1045,6 +1054,7 @@ def load(\n     extra_ldflags: Sequence[str] | None = None,\n     extra_include_paths: Sequence[str] | None = None,\n     build_directory: str | None = None,\n+    keep_module_alive: bool = True,\n ) -> Module:\n     \"\"\"Compile, build and load a C++/CUDA module from source files.\n \n@@ -1071,48 +1081,55 @@ def load(\n \n     Parameters\n     ----------\n-    name: str\n+    name\n         The name of the tvm ffi module.\n-    cpp_files: Sequence[str] | str, optional\n+    cpp_files\n         The C++ source files to compile. It can be a list of file paths or a single file path. Both absolute and\n         relative paths are supported.\n-    cuda_files: Sequence[str] | str, optional\n+    cuda_files\n         The CUDA source files to compile. It can be a list of file paths or a single file path. Both absolute and\n         relative paths are supported.\n-    extra_cflags: Sequence[str], optional\n+    extra_cflags\n         The extra compiler flags for C++ compilation.\n         The default flags are:\n \n         - On Linux/macOS: ['-std=c++17', '-fPIC', '-O2']\n         - On Windows: ['/std:c++17', '/MD', '/O2']\n \n-    extra_cuda_cflags: Sequence[str], optional\n+    extra_cuda_cflags\n         The extra compiler flags for CUDA compilation.\n         The default flags are:\n \n         - ['-Xcompiler', '-fPIC', '-std=c++17', '-O2'] (Linux/macOS)\n         - ['-Xcompiler', '/std:c++17', '/O2'] (Windows)\n \n-    extra_ldflags: Sequence[str], optional\n+    extra_ldflags\n         The extra linker flags.\n         The default flags are:\n \n         - On Linux/macOS: ['-shared', '-L<tvm_ffi_lib_path>', '-ltvm_ffi']\n         - On Windows: ['/DLL', '/LIBPATH:<tvm_ffi_lib_path>', '<tvm_ffi_lib_name>.lib']\n \n-    extra_include_paths: Sequence[str], optional\n+    extra_include_paths\n         The extra include paths for header files. Both absolute and relative paths are supported.\n \n-    build_directory: str, optional\n+    build_directory\n         The build directory. If not specified, a default tvm ffi cache directory will be used. By default, the\n         cache directory is ``~/.cache/tvm-ffi``. You can also set the ``TVM_FFI_CACHE_DIR`` environment variable to\n         specify the cache directory.\n \n+    keep_module_alive\n+        Whether to keep the module alive. If True, the module will be kept alive\n+        for the duration of the program until libtvm_ffi.so is unloaded.\n+\n     Returns\n     -------\n     mod: Module\n         The loaded tvm ffi module.\n \n+    See Also\n+    --------\n+    :py:func:`tvm_ffi.load_module`\n \n     Example\n     -------\n@@ -1169,5 +1186,6 @@ def load(\n             extra_ldflags=extra_ldflags,\n             extra_include_paths=extra_include_paths,\n             build_directory=build_directory,\n-        )\n+        ),\n+        keep_module_alive=keep_module_alive,\n     )\ndiff --git a/python/tvm_ffi/module.py b/python/tvm_ffi/module.py\nindex 7b548d6..0c04d21 100644\n--- a/python/tvm_ffi/module.py\n+++ b/python/tvm_ffi/module.py\n@@ -427,7 +427,7 @@ def system_lib(symbol_prefix: str = \"\") -> Module:\n     return _ffi_api.SystemLib(symbol_prefix)\n \n \n-def load_module(path: str | PathLike) -> Module:\n+def load_module(path: str | PathLike, keep_module_alive: bool = True) -> Module:\n     \"\"\"Load module from file.\n \n     Parameters\n@@ -435,6 +435,10 @@ def load_module(path: str | PathLike) -> Module:\n     path\n         The path to the module file.\n \n+    keep_module_alive\n+        Whether to keep the module alive. If True, the module will be kept alive\n+        for the duration of the program until libtvm_ffi.so is unloaded.\n+\n     Returns\n     -------\n     The loaded module\n@@ -459,4 +463,7 @@ def load_module(path: str | PathLike) -> Module:\n \n     \"\"\"\n     path = fspath(path)\n-    return _ffi_api.ModuleLoadFromFile(path)\n+    mod = _ffi_api.ModuleLoadFromFile(path)\n+    if keep_module_alive:\n+        _ffi_api.ModuleGlobalsAdd(mod)\n+    return mod\ndiff --git a/src/ffi/extra/module.cc b/src/ffi/extra/module.cc\nindex 0d3fd43..31bb95b 100644\n--- a/src/ffi/extra/module.cc\n+++ b/src/ffi/extra/module.cc\n@@ -22,6 +22,7 @@\n #include <tvm/ffi/function.h>\n #include <tvm/ffi/reflection/registry.h>\n \n+#include <mutex>\n #include <unordered_set>\n #include <vector>\n \n@@ -30,6 +31,33 @@\n namespace tvm {\n namespace ffi {\n \n+/*!\n+ * \\brief Global modules, i.e. modules that are owned by the runtime and should not be unloaded.\n+ * On the frontend, a module is added to the registry if `keep_alive=True` when `load_module` is\n+ * called.\n+ */\n+class ModuleGlobals {\n+ public:\n+  void Add(const Module& m) {\n+    std::scoped_lock<std::mutex> lock(mutex_);\n+    modules_.Set(m, 1);\n+  }\n+\n+  void Remove(const Module& m) {\n+    std::scoped_lock<std::mutex> lock(mutex_);\n+    modules_.erase(m);\n+  }\n+\n+  static ModuleGlobals* Get() {\n+    static ModuleGlobals instance;\n+    return &instance;\n+  }\n+\n+ private:\n+  Map<Module, int> modules_;\n+  std::mutex mutex_;\n+};\n+\n Optional<Function> ModuleObj::GetFunction(const String& name, bool query_imports) {\n   if (auto opt_func = this->GetFunction(name)) {\n     return opt_func;\n@@ -161,7 +189,10 @@ TVM_FFI_STATIC_INIT_BLOCK() {\n       .def_method(\"ffi.ModuleGetWriteFormats\", &ModuleObj::GetWriteFormats)\n       .def_method(\"ffi.ModuleWriteToFile\", &ModuleObj::WriteToFile)\n       .def_method(\"ffi.ModuleImportModule\", &ModuleObj::ImportModule)\n-      .def_method(\"ffi.ModuleClearImports\", &ModuleObj::ClearImports);\n+      .def_method(\"ffi.ModuleClearImports\", &ModuleObj::ClearImports)\n+      .def_method(\"ffi.ModuleGlobalsAdd\", [](const Module& mod) { ModuleGlobals::Get()->Add(mod); })\n+      .def_method(\"ffi.ModuleGlobalsRemove\",\n+                  [](const Module& mod) { ModuleGlobals::Get()->Remove(mod); });\n }\n }  // namespace ffi\n }  // namespace tvm\ndiff --git a/tests/python/test_build.py b/tests/python/test_build.py\nindex 7f22669..8844616 100644\n--- a/tests/python/test_build.py\n+++ b/tests/python/test_build.py\n@@ -14,7 +14,6 @@\n # KIND, either express or implied.  See the License for the\n # specific language governing permissions and limitations\n # under the License.\n-import gc\n import pathlib\n \n import numpy\n@@ -196,10 +195,6 @@ def test_build_inline_with_metadata() -> None:  # noqa: PLR0915\n     schema = TypeSchema.from_json_str(metadata[\"type_schema\"])\n     assert str(schema) == \"Callable[[Tensor, Tensor], None]\"\n \n-    # Explicitly cleanup all objects before module unload to avoid use-after-free\n-    del metadata, schema, result, x, y, mod\n-    gc.collect()\n-\n \n def test_build_inline_with_docstrings() -> None:\n     \"\"\"Test building functions with documentation using the functions dict.\"\"\"\n@@ -279,10 +274,6 @@ def test_build_inline_with_docstrings() -> None:\n     assert doc is not None, \"divide should have documentation\"\n     assert doc == divide_docstring\n \n-    # Explicitly cleanup all objects before module unload to avoid use-after-free\n-    del metadata, schema, doc, result, mod\n-    gc.collect()\n-\n \n def test_build_without_metadata() -> None:\n     \"\"\"Test building without metadata export.\"\"\"\ndiff --git a/tests/python/test_stl.py b/tests/python/test_stl.py\nindex 43037a6..3ba70b8 100644\n--- a/tests/python/test_stl.py\n+++ b/tests/python/test_stl.py\n@@ -14,7 +14,6 @@\n # KIND, either express or implied.  See the License for the\n # specific language governing permissions and limitations\n # under the License.\n-import gc\n import pathlib\n \n import pytest\n@@ -31,33 +30,21 @@ def test_stl() -> None:\n \n     mod: Module = tvm_ffi.load_module(output_lib_path)\n \n-    def run_check(mod: Module) -> None:\n-        # This sub function is needed to make sure all temp variables deallocated\n-        # before module unload since some of these objects contains deleters in the library\n-        # code. If the module is unloaded before the object is deleted, the deleter\n-        # may call an invalid address.\n-        assert list(mod.test_tuple([1, 2.5])) == [2.5, 1]\n-        assert mod.test_vector(None) is None\n-        assert list(mod.test_vector([[1, 2], [3, 4]])) == [3, 7]\n-        assert mod.test_variant(1) == \"int\"\n-        assert mod.test_variant(1.0) == \"float\"\n-        assert list(mod.test_variant([1, 1.0])) == [\"int\", \"float\"]\n-        assert dict(mod.test_map({\"a\": 1, \"b\": 2})) == {1: \"a\", 2: \"b\"}\n-        assert dict(mod.test_map_2({\"a\": 1, \"b\": 2})) == {1: \"a\", 2: \"b\"}\n-        assert mod.test_function(lambda: 0)() == 1\n-        assert mod.test_function(lambda: 10)() == 11\n-\n-        with pytest.raises(TypeError):\n-            mod.test_tuple([1.5, 2.5])\n-        with pytest.raises(TypeError):\n-            mod.test_function(lambda: 0)(100)\n-\n-    run_check(mod)\n-    # Force garbage collection to ensure that all objects created from the\n-    # module are destroyed before the module itself is unloaded. This\n-    # prevents segfaults from calling destructors in an unloaded library.\n-    gc.collect()\n-    del mod\n+    assert list(mod.test_tuple([1, 2.5])) == [2.5, 1]\n+    assert mod.test_vector(None) is None\n+    assert list(mod.test_vector([[1, 2], [3, 4]])) == [3, 7]\n+    assert mod.test_variant(1) == \"int\"\n+    assert mod.test_variant(1.0) == \"float\"\n+    assert list(mod.test_variant([1, 1.0])) == [\"int\", \"float\"]\n+    assert dict(mod.test_map({\"a\": 1, \"b\": 2})) == {1: \"a\", 2: \"b\"}\n+    assert dict(mod.test_map_2({\"a\": 1, \"b\": 2})) == {1: \"a\", 2: \"b\"}\n+    assert mod.test_function(lambda: 0)() == 1\n+    assert mod.test_function(lambda: 10)() == 11\n+\n+    with pytest.raises(TypeError):\n+        mod.test_tuple([1.5, 2.5])\n+    with pytest.raises(TypeError):\n+        mod.test_function(lambda: 0)(100)\n \n \n if __name__ == \"__main__\":",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".cc",
+      ".py"
+    ],
+    "scopes_guess": [
+      "python",
+      "src",
+      "tests"
+    ]
+  }
+}

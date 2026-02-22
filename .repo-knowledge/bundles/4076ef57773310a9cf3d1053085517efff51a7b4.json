@@ -1,0 +1,52 @@
+{
+  "sha": "4076ef57773310a9cf3d1053085517efff51a7b4",
+  "sha7": "4076ef5",
+  "author_name": "Junru Shao",
+  "author_email": "junrushao@apache.org",
+  "date_iso": "2025-11-30T19:13:40-08:00",
+  "subject": "Workaround Segfaults and clang-tidy warnings (#297)",
+  "body":
+      "After merging PR #228, segfaults appear to show up on mainline,\nnightlies and new PRs, including incoming PRs after PR #293. While it's\ntoo early to establish a casual link between PR #228 and the segfaults,\nparticularly after reviewing a quite a few times, I'd love to dedicate\nsome effort trying to narrow down the scope of the potential issue.\n\nSegfaults on `main`:\n-\nhttps://github.com/apache/tvm-ffi/actions/runs/19805267663/job/56738455126?pr=295#step:11:288\n-\nhttps://github.com/apache/tvm-ffi/actions/runs/19532442048/job/55918436762\n-\nhttps://github.com/apache/tvm-ffi/actions/runs/19796601863/job/56717832596#step:8:3516\n-\nhttps://github.com/apache/tvm-ffi/actions/runs/19803545351/job/56734651884#step:11:288\n\nSegfault after commenting out `test_func`\n[[link](https://github.com/junrushao/tvm-ffi/actions/runs/19804626968)]:\n-\nhttps://github.com/junrushao/tvm-ffi/actions/runs/19804626968/job/56739192940\n\nNo segfaults after adding GC [link]: 11 runs, no segfault",
+  "is_merge": false,
+  "parents": [
+    "bb653e9a74638b1dca40fd852f8bcdf3b2497f1c"
+  ],
+  "name_status": [
+    [
+      "M",
+      "include/tvm/ffi/function_details.h"
+    ],
+    [
+      "M",
+      "tests/python/test_stl.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "include/tvm/ffi/function_details.h",
+      "additions": 1,
+      "deletions": 0
+    },
+    {
+      "path": "tests/python/test_stl.py",
+      "additions": 3,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/include/tvm/ffi/function_details.h b/include/tvm/ffi/function_details.h\nindex 4cd67aa..8f16340 100644\n--- a/include/tvm/ffi/function_details.h\n+++ b/include/tvm/ffi/function_details.h\n@@ -223,6 +223,7 @@ TVM_FFI_INLINE void unpack_call(std::index_sequence<Is...>, const std::string* o\n     *rv = R(f(ArgValueWithContext<std::tuple_element_t<Is, PackedArgs>>{args, Is, optional_name,\n                                                                         f_sig}...));\n   }\n+  // NOLINTNEXTLINE(clang-analyzer-cplusplus.NewDeleteLeaks\n }\n \n /*!\ndiff --git a/tests/python/test_stl.py b/tests/python/test_stl.py\nindex 4d87ff2..cedc47e 100644\n--- a/tests/python/test_stl.py\n+++ b/tests/python/test_stl.py\n@@ -14,6 +14,7 @@\n # KIND, either express or implied.  See the License for the\n # specific language governing permissions and limitations\n # under the License.\n+import gc\n import pathlib\n \n import pytest\n@@ -45,6 +46,8 @@ def test_stl() -> None:\n         mod.test_tuple([1.5, 2.5])\n     with pytest.raises(TypeError):\n         mod.test_function(lambda: 0)(100)\n+    gc.collect()\n+    del mod\n \n \n if __name__ == \"__main__\":",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".h",
+      ".py"
+    ],
+    "scopes_guess": [
+      "include",
+      "tests"
+    ]
+  }
+}

@@ -1,0 +1,70 @@
+{
+  "sha": "4bc892542b937074e1d813ae7e7f8ea204be4aac",
+  "sha7": "4bc8925",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-10-13T14:04:10-04:00",
+  "subject": "[CYTHON] Introduce __tvm_ffi_tensor__ protocol (#108)",
+  "body":
+      "Sometimes it can be helpful for another Tensor class to take ffi.Tensor\nas a member. This PR introduces `__tvm_ffi_tensor__()` protocol to allow\nfast fetch of the related tensors for fast calling.",
+  "is_merge": false,
+  "parents": [
+    "17ff30bc77a9201e0a190431be8cf9376075e7a5"
+  ],
+  "name_status": [
+    [
+      "M",
+      "python/tvm_ffi/cython/base.pxi"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/cython/function.pxi"
+    ],
+    [
+      "M",
+      "tests/python/test_tensor.py"
+    ],
+    [
+      "M",
+      "tests/scripts/benchmark_dlpack.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "python/tvm_ffi/cython/base.pxi",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "python/tvm_ffi/cython/function.pxi",
+      "additions": 27,
+      "deletions": 1
+    },
+    {
+      "path": "tests/python/test_tensor.py",
+      "additions": 20,
+      "deletions": 0
+    },
+    {
+      "path": "tests/scripts/benchmark_dlpack.py",
+      "additions": 29,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/python/tvm_ffi/cython/base.pxi b/python/tvm_ffi/cython/base.pxi\nindex a86ea00..4272a20 100644\n--- a/python/tvm_ffi/cython/base.pxi\n+++ b/python/tvm_ffi/cython/base.pxi\n@@ -19,7 +19,7 @@ from libc.stdint cimport int32_t, int64_t, uint64_t, uint32_t, uint8_t, int16_t\n from libc.string cimport memcpy\n from libcpp.vector cimport vector\n from cpython.bytes cimport PyBytes_AsStringAndSize, PyBytes_FromStringAndSize, PyBytes_AsString\n-from cpython cimport Py_INCREF, Py_DECREF\n+from cpython cimport Py_INCREF, Py_DECREF, Py_REFCNT\n from cpython cimport PyErr_CheckSignals, PyGILState_Ensure, PyGILState_Release, PyObject\n from cpython cimport pycapsule, PyCapsule_Destructor\n from cpython cimport PyErr_SetNone\ndiff --git a/python/tvm_ffi/cython/function.pxi b/python/tvm_ffi/cython/function.pxi\nindex 7dcab4b..0305fec 100644\n--- a/python/tvm_ffi/cython/function.pxi\n+++ b/python/tvm_ffi/cython/function.pxi\n@@ -267,6 +267,26 @@ cdef int TVMFFIPyArgSetterDLPack_(\n     return 0\n \n \n+cdef int TVMFFIPyArgSetterFFITensorCompatible_(\n+    TVMFFIPyArgSetter* handle, TVMFFIPyCallContext* ctx,\n+    PyObject* py_arg, TVMFFIAny* out\n+) except -1:\n+    \"\"\"Setter for objects that implement the `__tvm_ffi_tensor__` protocol.\"\"\"\n+    cdef object arg = <object>py_arg\n+    cdef TVMFFIObjectHandle temp_chandle\n+    cdef Tensor tensor = arg.__tvm_ffi_tensor__()\n+    cdef long ref_count = Py_REFCNT(tensor)\n+    temp_chandle = tensor.chandle\n+    out.type_index = kTVMFFITensor\n+    out.v_ptr = temp_chandle\n+    if ref_count == 1:\n+        # keep alive the tensor, since the tensor is temporary\n+        # and will be freed after we exit here\n+        TVMFFIObjectIncRef(temp_chandle)\n+        TVMFFIPyPushTempFFIObject(ctx, temp_chandle)\n+    return 0\n+\n+\n cdef int TVMFFIPyArgSetterDType_(\n     TVMFFIPyArgSetter* handle, TVMFFIPyCallContext* ctx,\n     PyObject* py_arg, TVMFFIAny* out\n@@ -570,10 +590,16 @@ cdef int TVMFFIPyArgSetterFactory_(PyObject* value, TVMFFIPyArgSetter* out) exce\n     if isinstance(arg, ObjectRValueRef):\n         out.func = TVMFFIPyArgSetterObjectRValueRef_\n         return 0\n+    arg_class = type(arg)\n+    if hasattr(arg_class, \"__tvm_ffi_tensor__\"):\n+        # can directly map to tvm ffi tensor\n+        # usually used for solutions that takes ffi.Tensor\n+        # as a member variable\n+        out.func = TVMFFIPyArgSetterFFITensorCompatible_\n+        return 0\n     if os.environ.get(\"TVM_FFI_SKIP_c_dlpack_from_pyobject\", \"0\") != \"1\":\n         # Check for DLPackExchangeAPI struct (new approach)\n         # This is checked on the CLASS, not the instance\n-        arg_class = type(arg)\n         if hasattr(arg_class, \"__c_dlpack_exchange_api__\"):\n             out.func = TVMFFIPyArgSetterDLPackExchangeAPI_\n             temp_ptr = arg_class.__c_dlpack_exchange_api__\ndiff --git a/tests/python/test_tensor.py b/tests/python/test_tensor.py\nindex 9b73ce9..48d933f 100644\n--- a/tests/python/test_tensor.py\n+++ b/tests/python/test_tensor.py\n@@ -92,3 +92,23 @@ def test_tensor_class_override() -> None:\n     y = fecho(x)\n     assert isinstance(y, MyTensor)\n     tvm_ffi.core._set_class_tensor(old_tensor)\n+\n+\n+def test_tvm_ffi_tensor_compatible() -> None:\n+    class MyTensor:\n+        def __init__(self, tensor: tvm_ffi.Tensor) -> None:\n+            \"\"\"Initialize the MyTensor.\"\"\"\n+            self._tensor = tensor\n+\n+        def __tvm_ffi_tensor__(self) -> tvm_ffi.Tensor:\n+            \"\"\"Implement __tvm_ffi_tensor__ protocol.\"\"\"\n+            return self._tensor\n+\n+    data = np.zeros((10, 8, 4, 2), dtype=\"int32\")\n+    if not hasattr(data, \"__dlpack__\"):\n+        return\n+    x = tvm_ffi.from_dlpack(data)\n+    y = MyTensor(x)\n+    fecho = tvm_ffi.get_global_func(\"testing.echo\")\n+    z = fecho(y)\n+    assert z.__chandle__() == x.__chandle__()\ndiff --git a/tests/scripts/benchmark_dlpack.py b/tests/scripts/benchmark_dlpack.py\nindex 4366b58..6c36246 100644\n--- a/tests/scripts/benchmark_dlpack.py\n+++ b/tests/scripts/benchmark_dlpack.py\n@@ -38,6 +38,18 @@ import torch\n import tvm_ffi\n \n \n+class TestFFITensor:\n+    \"\"\"Test FFI Tensor that exposes __tvm_ffi_tensor__ protocol.\"\"\"\n+\n+    def __init__(self, tensor: tvm_ffi.Tensor) -> None:\n+        \"\"\"Initialize the TestFFITensor.\"\"\"\n+        self._tensor = tensor\n+\n+    def __tvm_ffi_tensor__(self) -> tvm_ffi.Tensor:\n+        \"\"\"Implement __tvm_ffi_tensor__ protocol.\"\"\"\n+        return self._tensor\n+\n+\n def print_speed(name: str, speed: float) -> None:\n     print(f\"{name:<60} {speed} sec/call\")\n \n@@ -262,6 +274,21 @@ def tvm_ffi_nop_autodlpack_from_dltensor_test_wrapper(repeat: int, device: str)\n     )\n \n \n+def tvm_ffi_nop_autodlpack_from_test_ffi_tensor(repeat: int, device: str) -> None:\n+    \"\"\"Measures overhead of running dlpack via auto convert by directly\n+    take test wrapper as inputs. This effectively measure DLPack exchange in tvm ffi.\n+    \"\"\"\n+    x = tvm_ffi.from_dlpack(torch.arange(1, device=device))\n+    y = tvm_ffi.from_dlpack(torch.arange(1, device=device))\n+    z = tvm_ffi.from_dlpack(torch.arange(1, device=device))\n+    x = TestFFITensor(x)\n+    y = TestFFITensor(y)\n+    z = TestFFITensor(z)\n+    bench_tvm_ffi_nop_autodlpack(\n+        f\"tvm_ffi.nop.autodlpack(TestFFITensor[{device}])\", x, y, z, repeat\n+    )\n+\n+\n def bench_to_dlpack(x: Any, name: str, repeat: int) -> None:\n     x.__dlpack__()\n     start = time.time()\n@@ -372,6 +399,8 @@ def main() -> None:  # noqa: PLR0915\n     tvm_ffi_nop_autodlpack_from_numpy(repeat)\n     tvm_ffi_nop_autodlpack_from_dltensor_test_wrapper(repeat, \"cpu\")\n     tvm_ffi_nop_autodlpack_from_dltensor_test_wrapper(repeat, \"cuda\")\n+    tvm_ffi_nop_autodlpack_from_test_ffi_tensor(repeat, \"cpu\")\n+    tvm_ffi_nop_autodlpack_from_test_ffi_tensor(repeat, \"cuda\")\n     tvm_ffi_nop(repeat)\n     print(\"-------------------------------\")\n     print(\"Benchmark x.__dlpack__ overhead\")",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".pxi",
+      ".py"
+    ],
+    "scopes_guess": [
+      "python",
+      "tests"
+    ]
+  }
+}

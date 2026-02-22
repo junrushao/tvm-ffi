@@ -1,0 +1,89 @@
+{
+  "sha": "7f3bb77155645f90f7d221889b3795704ffd7d6f",
+  "sha7": "7f3bb77",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-11-26T17:44:26-05:00",
+  "subject": "[DLPACK] Upgrade DLPack Exchange API to pass by capsule (#288)",
+  "body":
+      "This PR upgrade to support the case where dlpack exchange api is passed\nby capsule, we still keep backward compact for cases where it is passed\nby int.",
+  "is_merge": false,
+  "parents": [
+    "cdfd04109f74a2115c909302f4adf90536bce865"
+  ],
+  "name_status": [
+    [
+      "M",
+      "addons/torch_c_dlpack_ext/torch_c_dlpack_ext/core.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/_optional_torch_c_dlpack.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/cython/function.pxi"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/cython/tensor.pxi"
+    ],
+    [
+      "M",
+      "tests/python/test_cubin_launcher.py"
+    ],
+    [
+      "M",
+      "tests/python/test_dlpack_exchange_api.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "addons/torch_c_dlpack_ext/torch_c_dlpack_ext/core.py",
+      "additions": 6,
+      "deletions": 1
+    },
+    {
+      "path": "python/tvm_ffi/_optional_torch_c_dlpack.py",
+      "additions": 34,
+      "deletions": 2
+    },
+    {
+      "path": "python/tvm_ffi/cython/function.pxi",
+      "additions": 2,
+      "deletions": 2
+    },
+    {
+      "path": "python/tvm_ffi/cython/tensor.pxi",
+      "additions": 18,
+      "deletions": 0
+    },
+    {
+      "path": "tests/python/test_cubin_launcher.py",
+      "additions": 20,
+      "deletions": 0
+    },
+    {
+      "path": "tests/python/test_dlpack_exchange_api.py",
+      "additions": 17,
+      "deletions": 3
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/addons/torch_c_dlpack_ext/torch_c_dlpack_ext/core.py b/addons/torch_c_dlpack_ext/torch_c_dlpack_ext/core.py\nindex a2030ea..d0313a7 100644\n--- a/addons/torch_c_dlpack_ext/torch_c_dlpack_ext/core.py\n+++ b/addons/torch_c_dlpack_ext/torch_c_dlpack_ext/core.py\n@@ -46,7 +46,12 @@ def load_torch_c_dlpack_extension() -> None:\n     func = lib.TorchDLPackExchangeAPIPtr\n     func.restype = ctypes.c_uint64\n     func.argtypes = []\n-    setattr(torch.Tensor, \"__c_dlpack_exchange_api__\", func())\n+    # note: we need to keep this behavior for a while\n+    # to ensure backward compatibility with older versions dependencies\n+    # that relies on the value being int.\n+    # We will do eager upgrade to PyCapsule in the tvm-ffi side instead.\n+    dlpack_exchange_api_ptr_as_int = func()\n+    setattr(torch.Tensor, \"__c_dlpack_exchange_api__\", dlpack_exchange_api_ptr_as_int)\n     return lib\n \n \ndiff --git a/python/tvm_ffi/_optional_torch_c_dlpack.py b/python/tvm_ffi/_optional_torch_c_dlpack.py\nindex 949d79f..7756926 100644\n--- a/python/tvm_ffi/_optional_torch_c_dlpack.py\n+++ b/python/tvm_ffi/_optional_torch_c_dlpack.py\n@@ -44,6 +44,32 @@ from typing import Any\n logger = logging.getLogger(__name__)  # type: ignore\n \n \n+def _create_dlpack_exchange_api_capsule(ptr_as_int: int) -> Any:\n+    \"\"\"Create a PyCapsule wrapping the DLPack exchange API pointer.\n+\n+    Parameters\n+    ----------\n+    ptr_as_int : int\n+        The pointer to the DLPack exchange API as an integer.\n+\n+    Returns\n+    -------\n+    capsule : PyCapsule\n+        A PyCapsule object wrapping the pointer with name \"dlpack_exchange_api\".\n+\n+    \"\"\"\n+    capsule_name = b\"dlpack_exchange_api\"\n+    pythonapi = ctypes.pythonapi\n+    pythonapi.PyCapsule_New.restype = ctypes.py_object\n+    pythonapi.PyCapsule_New.argtypes = [\n+        ctypes.c_void_p,\n+        ctypes.c_char_p,\n+        ctypes.c_void_p,\n+    ]\n+    capsule = pythonapi.PyCapsule_New(ctypes.c_void_p(ptr_as_int), capsule_name, None)\n+    return capsule\n+\n+\n def load_torch_c_dlpack_extension() -> Any:  # noqa: PLR0912, PLR0915\n     try:\n         import torch  # noqa: PLC0415\n@@ -61,6 +87,11 @@ def load_torch_c_dlpack_extension() -> Any:  # noqa: PLR0912, PLR0915\n         import torch_c_dlpack_ext  # type: ignore  # noqa: PLC0415, F401\n \n         if hasattr(torch.Tensor, \"__c_dlpack_exchange_api__\"):\n+            if isinstance(torch.Tensor.__c_dlpack_exchange_api__, int):\n+                # Brings up to speed with the new PyCapsule behavior\n+                torch.Tensor.__c_dlpack_exchange_api__ = _create_dlpack_exchange_api_capsule(\n+                    torch.Tensor.__c_dlpack_exchange_api__\n+                )\n             return None\n     except ImportError:\n         pass\n@@ -118,9 +149,10 @@ def load_torch_c_dlpack_extension() -> Any:  # noqa: PLR0912, PLR0915\n         func = lib.TorchDLPackExchangeAPIPtr\n         func.restype = ctypes.c_uint64\n         func.argtypes = []\n-\n+        # Create a PyCapsule from the pointer\n+        capsule = _create_dlpack_exchange_api_capsule(func())\n         # Set the DLPackExchangeAPI pointer on the class\n-        setattr(torch.Tensor, \"__c_dlpack_exchange_api__\", func())\n+        setattr(torch.Tensor, \"__c_dlpack_exchange_api__\", capsule)\n \n         return lib\n     except ImportError:\ndiff --git a/python/tvm_ffi/cython/function.pxi b/python/tvm_ffi/cython/function.pxi\nindex 800427b..189a6fc 100644\n--- a/python/tvm_ffi/cython/function.pxi\n+++ b/python/tvm_ffi/cython/function.pxi\n@@ -677,6 +677,7 @@ cdef int TVMFFIPyArgSetterFloatProtocol_(\n cdef _DISPATCH_TYPE_KEEP_ALIVE = set()\n cdef _DISPATCH_TYPE_KEEP_ALIVE_LOCK = threading.Lock()\n \n+\n cdef int TVMFFIPyArgSetterFactory_(PyObject* value, TVMFFIPyArgSetter* out) except -1:\n     \"\"\"\n     Factory function that creates an argument setter for a given Python argument type.\n@@ -728,8 +729,7 @@ cdef int TVMFFIPyArgSetterFactory_(PyObject* value, TVMFFIPyArgSetter* out) exce\n         # This is checked on the CLASS, not the instance\n         if hasattr(arg_class, \"__c_dlpack_exchange_api__\"):\n             out.func = TVMFFIPyArgSetterDLPackExchangeAPI_\n-            temp_ptr = arg_class.__c_dlpack_exchange_api__\n-            out.c_dlpack_exchange_api = <const DLPackExchangeAPI*>(<long long>temp_ptr)\n+            _get_dlpack_exchange_api(arg_class.__c_dlpack_exchange_api__, &(out.c_dlpack_exchange_api))\n             return 0\n     if hasattr(arg_class, \"__cuda_stream__\"):\n         # cuda stream protocol\ndiff --git a/python/tvm_ffi/cython/tensor.pxi b/python/tvm_ffi/cython/tensor.pxi\nindex 614e487..0521dcb 100644\n--- a/python/tvm_ffi/cython/tensor.pxi\n+++ b/python/tvm_ffi/cython/tensor.pxi\n@@ -30,6 +30,24 @@ cdef const char* _c_str_dltensor = \"dltensor\"\n cdef const char* _c_str_used_dltensor = \"used_dltensor\"\n cdef const char* _c_str_dltensor_versioned = \"dltensor_versioned\"\n cdef const char* _c_str_used_dltensor_versioned = \"used_dltensor_versioned\"\n+cdef const char* _c_str_dlpack_exchange_api = \"dlpack_exchange_api\"\n+\n+\n+cdef int _get_dlpack_exchange_api(\n+    object dlpack_exchange_api_obj,\n+    const DLPackExchangeAPI** out_ptr\n+) except -1:\n+    if isinstance(dlpack_exchange_api_obj, int):\n+        out_ptr[0] = <const DLPackExchangeAPI*>(<long long>dlpack_exchange_api_obj)\n+        return 0\n+\n+    if pycapsule.PyCapsule_IsValid(dlpack_exchange_api_obj, _c_str_dlpack_exchange_api):\n+        out_ptr[0] = <const DLPackExchangeAPI*>pycapsule.PyCapsule_GetPointer(\n+            dlpack_exchange_api_obj, _c_str_dlpack_exchange_api\n+        )\n+        return 0\n+    raise ValueError(\"Expect a dlpack_exchange_api field\")\n+\n \n cdef void _c_dlpack_deleter(object pycaps):\n     cdef DLManagedTensor* dltensor\ndiff --git a/tests/python/test_cubin_launcher.py b/tests/python/test_cubin_launcher.py\nindex 3c0a683..d2e4ff0 100644\n--- a/tests/python/test_cubin_launcher.py\n+++ b/tests/python/test_cubin_launcher.py\n@@ -43,6 +43,20 @@ def _is_cuda_available() -> bool:\n     return torch.cuda.is_available()\n \n \n+def _is_cuda_version_greater_than_13() -> bool:\n+    \"\"\"Check if CUDA version is greater than 13.0.\"\"\"\n+    if torch is None or not torch.cuda.is_available():\n+        return False\n+    if torch.version.cuda is None:\n+        return False\n+    try:\n+        # Parse version string into tuple of integers (e.g., \"12.1\" -> (12, 1))\n+        version_parts = tuple(int(x) for x in torch.version.cuda.split(\".\"))\n+        return version_parts > (13, 0)\n+    except (ValueError, TypeError, AttributeError):\n+        return False\n+\n+\n def _compile_kernel_to_cubin() -> bytes:\n     \"\"\"Compile simple CUDA kernels to CUBIN.\n \n@@ -88,6 +102,9 @@ def _compile_kernel_to_cubin() -> bytes:\n @pytest.mark.skipif(sys.platform != \"linux\", reason=\"CUBIN launcher only supported on Linux\")\n @pytest.mark.skipif(torch is None, reason=\"PyTorch not installed\")\n @pytest.mark.skipif(not _is_cuda_available(), reason=\"CUDA not available\")\n+@pytest.mark.skipif(\n+    not _is_cuda_version_greater_than_13(), reason=\"CUDA version must be greater than 13.0\"\n+)\n def test_cubin_launcher_add_one() -> None:\n     \"\"\"Test loading and launching add_one kernel from CUBIN.\"\"\"\n     assert torch is not None, \"PyTorch is required for this test\"\n@@ -212,6 +229,9 @@ TVM_FFI_DLL_EXPORT_TYPED_FUNC(launch_mul_two, cubin_test::LaunchMulTwo);\n @pytest.mark.skipif(sys.platform != \"linux\", reason=\"CUBIN launcher only supported on Linux\")\n @pytest.mark.skipif(torch is None, reason=\"PyTorch not installed\")\n @pytest.mark.skipif(not _is_cuda_available(), reason=\"CUDA not available\")\n+@pytest.mark.skipif(\n+    not _is_cuda_version_greater_than_13(), reason=\"CUDA version must be greater than 13.0\"\n+)\n def test_cubin_launcher_chained() -> None:\n     \"\"\"Test chaining multiple kernel launches.\"\"\"\n     assert torch is not None, \"PyTorch is required for this test\"\ndiff --git a/tests/python/test_dlpack_exchange_api.py b/tests/python/test_dlpack_exchange_api.py\nindex 11f93ae..048ade5 100644\n--- a/tests/python/test_dlpack_exchange_api.py\n+++ b/tests/python/test_dlpack_exchange_api.py\n@@ -18,6 +18,7 @@\n \n from __future__ import annotations\n \n+import ctypes\n import sys\n \n import pytest\n@@ -46,9 +47,22 @@ def test_dlpack_exchange_api() -> None:\n     assert torch is not None\n \n     assert hasattr(torch.Tensor, \"__c_dlpack_exchange_api__\")\n-    api_ptr = torch.Tensor.__c_dlpack_exchange_api__\n-    assert isinstance(api_ptr, int), \"API pointer should be an integer\"\n-    assert api_ptr != 0, \"API pointer should not be NULL\"\n+    api_attr = torch.Tensor.__c_dlpack_exchange_api__\n+\n+    # Handle both PyCapsule and integer types\n+    if isinstance(api_attr, int):\n+        # Direct integer pointer\n+        api_ptr = api_attr\n+        assert api_ptr != 0, \"API pointer should not be NULL\"\n+    else:\n+        # PyCapsule - extract the pointer as integer\n+        pythonapi = ctypes.pythonapi\n+        # Set restype to c_size_t to get integer directly (avoids c_void_p quirks)\n+        pythonapi.PyCapsule_GetPointer.restype = ctypes.c_size_t\n+        pythonapi.PyCapsule_GetPointer.argtypes = [ctypes.py_object, ctypes.c_char_p]\n+        capsule_name = b\"dlpack_exchange_api\"\n+        api_ptr = pythonapi.PyCapsule_GetPointer(api_attr, capsule_name)\n+        assert api_ptr != 0, \"API pointer from PyCapsule should not be NULL\"\n \n     tensor = torch.arange(24, dtype=torch.float32).reshape(2, 3, 4)\n ",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".pxi",
+      ".py"
+    ],
+    "scopes_guess": [
+      "addons",
+      "python",
+      "tests"
+    ]
+  }
+}

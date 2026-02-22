@@ -1,0 +1,39 @@
+{
+  "sha": "9574e9d0afb50eca58f56cf0cdce9f64f8cd319f",
+  "sha7": "9574e9d",
+  "author_name": "Yichen Yan",
+  "author_email": "wenji.yyc@alibaba-inc.com",
+  "date_iso": "2025-10-28T22:02:32+08:00",
+  "subject": "feat: support `ml_dtypes<0.5` (#198)",
+  "body":
+      "As title, currently it failed with `ml_dtypes==0.4.x`:\nhttps://github.com/tile-ai/tilelang/pull/1108#issuecomment-3455197314",
+  "is_merge": false,
+  "parents": [
+    "789e9e5ccf3fe590132d352671461922d30ba526"
+  ],
+  "name_status": [
+    [
+      "M",
+      "python/tvm_ffi/cython/dtype.pxi"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "python/tvm_ffi/cython/dtype.pxi",
+      "additions": 12,
+      "deletions": 8
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/python/tvm_ffi/cython/dtype.pxi b/python/tvm_ffi/cython/dtype.pxi\nindex 3d90346..15f9418 100644\n--- a/python/tvm_ffi/cython/dtype.pxi\n+++ b/python/tvm_ffi/cython/dtype.pxi\n@@ -205,24 +205,28 @@ else:\n \n if ml_dtypes is not None:\n     MLDTYPES_DTYPE_TO_DTYPE = {\n-        numpy.dtype(ml_dtypes.int2): DLDataType(0, 2, 1),\n         numpy.dtype(ml_dtypes.int4): DLDataType(0, 4, 1),\n-        numpy.dtype(ml_dtypes.uint2): DLDataType(1, 2, 1),\n         numpy.dtype(ml_dtypes.uint4): DLDataType(1, 4, 1),\n         numpy.dtype(ml_dtypes.bfloat16): DLDataType(4, 16, 1),\n-        numpy.dtype(ml_dtypes.float8_e3m4): DLDataType(7, 8, 1),\n-        numpy.dtype(ml_dtypes.float8_e4m3): DLDataType(8, 8, 1),\n         numpy.dtype(ml_dtypes.float8_e4m3b11fnuz): DLDataType(9, 8, 1),\n         numpy.dtype(ml_dtypes.float8_e4m3fn): DLDataType(10, 8, 1),\n         numpy.dtype(ml_dtypes.float8_e4m3fnuz): DLDataType(11, 8, 1),\n         numpy.dtype(ml_dtypes.float8_e5m2): DLDataType(12, 8, 1),\n         numpy.dtype(ml_dtypes.float8_e5m2fnuz): DLDataType(13, 8, 1),\n-        numpy.dtype(ml_dtypes.float8_e8m0fnu): DLDataType(14, 8, 1),\n-        numpy.dtype(ml_dtypes.float6_e2m3fn): DLDataType(15, 6, 1),\n-        numpy.dtype(ml_dtypes.float6_e3m2fn): DLDataType(16, 6, 1),\n-        numpy.dtype(ml_dtypes.float4_e2m1fn): DLDataType(17, 4, 1),\n     }\n \n+    if hasattr(ml_dtypes, \"int2\"):  # ml_dtypes >= 0.5.0\n+        MLDTYPES_DTYPE_TO_DTYPE[numpy.dtype(ml_dtypes.int2)] = DLDataType(0, 2, 1)\n+        MLDTYPES_DTYPE_TO_DTYPE[numpy.dtype(ml_dtypes.uint2)] = DLDataType(1, 2, 1)\n+\n+        MLDTYPES_DTYPE_TO_DTYPE[numpy.dtype(ml_dtypes.float8_e3m4)] = DLDataType(7, 8, 1)\n+        MLDTYPES_DTYPE_TO_DTYPE[numpy.dtype(ml_dtypes.float8_e4m3)] = DLDataType(8, 8, 1)\n+        MLDTYPES_DTYPE_TO_DTYPE[numpy.dtype(ml_dtypes.float8_e8m0fnu)] = DLDataType(14, 8, 1)\n+        MLDTYPES_DTYPE_TO_DTYPE[numpy.dtype(ml_dtypes.float6_e2m3fn)] = DLDataType(15, 6, 1)\n+        MLDTYPES_DTYPE_TO_DTYPE[numpy.dtype(ml_dtypes.float6_e3m2fn)] = DLDataType(16, 6, 1)\n+        MLDTYPES_DTYPE_TO_DTYPE[numpy.dtype(ml_dtypes.float4_e2m1fn)] = DLDataType(17, 4, 1)\n+\n+\n if numpy is not None:\n     NUMPY_DTYPE_TO_DTYPE = {\n         numpy.dtype(numpy.int8): DLDataType(0, 8, 1),",
+  "heuristics": {
+    "tags": [],
+    "extensions": [
+      ".pxi"
+    ],
+    "scopes_guess": [
+      "python"
+    ]
+  }
+}

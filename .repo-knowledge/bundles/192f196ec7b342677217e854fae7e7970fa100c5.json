@@ -1,0 +1,57 @@
+    {
+      "sha": "192f196ec7b342677217e854fae7e7970fa100c5",
+      "sha7": "192f196",
+      "author_name": "Tianqi Chen",
+      "author_email": "tqchen@users.noreply.github.com",
+      "date_iso": "2025-05-29T15:57:47-04:00",
+      "subject": "[REFACTOR][FFI] Cleanup PackedFunc redirections (#18022)",
+      "body":
+          "This PR cleans up the packed_func.h redirections\n- Move module related macro to module\n- remove most includes\n- TVM_DLL_EXPORT_TYPED_FUNC => TVM_FFI_DLL_EXPORT_TYPED_FUNC\n- Once downstream binding get updated, we can remove\nTVM_DLL_EXPORT_TYPED_FUNC",
+      "is_merge": false,
+      "parents": [
+        "8a009885a44a132baba886bead112924aef0d45f"
+      ],
+      "name_status": [
+        [
+          "M",
+          "include/tvm/ffi/any.h"
+        ],
+        [
+          "M",
+          "include/tvm/ffi/c_api.h"
+        ],
+        [
+          "M",
+          "include/tvm/ffi/function.h"
+        ]
+      ],
+      "numstat": [
+        {
+          "path": "include/tvm/ffi/any.h",
+          "additions": 6,
+          "deletions": 0
+        },
+        {
+          "path": "include/tvm/ffi/c_api.h",
+          "additions": 7,
+          "deletions": 0
+        },
+        {
+          "path": "include/tvm/ffi/function.h",
+          "additions": 48,
+          "deletions": 0
+        }
+      ],
+      "diff_truncated": false,
+      "diff":
+          "diff --git a/include/tvm/ffi/any.h b/include/tvm/ffi/any.h\nindex 7897d62..5b56b00 100644\n--- a/include/tvm/ffi/any.h\n+++ b/include/tvm/ffi/any.h\n@@ -583,5 +583,11 @@ struct AnyEqual {\n };\n \n }  // namespace ffi\n+\n+// Expose to the tvm namespace for usability\n+// Rationale: no ambiguity even in root\n+using tvm::ffi::Any;\n+using tvm::ffi::AnyView;\n+\n }  // namespace tvm\n #endif  // TVM_FFI_ANY_H_\ndiff --git a/include/tvm/ffi/c_api.h b/include/tvm/ffi/c_api.h\nindex df8265d..996eaa3 100644\n--- a/include/tvm/ffi/c_api.h\n+++ b/include/tvm/ffi/c_api.h\n@@ -34,9 +34,14 @@\n #define TVM_FFI_WEAK __attribute__((weak))\n #endif\n \n+// Defines two macros\n+// TVM_FFI_DLL: marks the function as a DLL export/import\n+//              depending on whether TVM_FFI_EXPORTS is defined\n+// TVM_FFI_DLL_EXPORT: always marks the function as a DLL export\n #if !defined(TVM_FFI_DLL) && defined(__EMSCRIPTEN__)\n #include <emscripten/emscripten.h>\n #define TVM_FFI_DLL EMSCRIPTEN_KEEPALIVE\n+#define TVM_FFI_DLL_EXPORT EMSCRIPTEN_KEEPALIVE\n #endif\n #if !defined(TVM_FFI_DLL) && defined(_MSC_VER)\n #ifdef TVM_FFI_EXPORTS\n@@ -44,9 +49,11 @@\n #else\n #define TVM_FFI_DLL __declspec(dllimport)\n #endif\n+#define TVM_FFI_DLL_EXPORT __declspec(dllexport)\n #endif\n #ifndef TVM_FFI_DLL\n #define TVM_FFI_DLL __attribute__((visibility(\"default\")))\n+#define TVM_FFI_DLL_EXPORT __attribute__((visibility(\"default\")))\n #endif\n \n #ifdef __cplusplus\ndiff --git a/include/tvm/ffi/function.h b/include/tvm/ffi/function.h\nindex 753d4f5..128c678 100644\n--- a/include/tvm/ffi/function.h\n+++ b/include/tvm/ffi/function.h\n@@ -910,6 +910,54 @@ inline int32_t TypeKeyToIndex(std::string_view type_key) {\n #define TVM_FFI_REGISTER_GLOBAL(OpName) \\\n   TVM_FFI_STR_CONCAT(TVM_FFI_FUNC_REG_VAR_DEF, __COUNTER__) = ::tvm::ffi::Function::Registry(OpName)\n \n+/*!\n+ * \\brief Export typed function as a SafeCallType symbol.\n+ *\n+ * \\param ExportName The symbol name to be exported.\n+ * \\param Function The typed function.\n+ * \\note ExportName and Function must be different,\n+ *       see code examples below.\n+ *\n+ * \\sa ffi::TypedFunction\n+ *\n+ * \\code\n+ *\n+ * int AddOne_(int x) {\n+ *   return x + 1;\n+ * }\n+ *\n+ * // Expose the function as \"AddOne\"\n+ * TVM_FFI_DLL_EXPORT_TYPED_FUNC(AddOne, AddOne_);\n+ *\n+ * // Expose the function as \"SubOne\"\n+ * TVM_FFI_DLL_EXPORT_TYPED_FUNC(SubOne, [](int x) {\n+ *   return x - 1;\n+ * });\n+ *\n+ * // The following code will cause compilation error.\n+ * // Because the same Function and ExportName\n+ * // TVM_FFI_DLL_EXPORT_TYPED_FUNC(AddOne_, AddOne_);\n+ *\n+ * // The following code is OK, assuming the macro\n+ * // is in a different namespace from xyz\n+ * // TVM_FFI_DLL_EXPORT_TYPED_FUNC(AddOne_, xyz::AddOne_);\n+ *\n+ * \\endcode\n+ */\n+#define TVM_FFI_DLL_EXPORT_TYPED_FUNC(ExportName, Function)                        \\\n+  extern \"C\" {                                                                     \\\n+  TVM_FFI_DLL_EXPORT int ExportName(void* self, TVMFFIAny* args, int32_t num_args, \\\n+                                    TVMFFIAny* result) {                           \\\n+    TVM_FFI_SAFE_CALL_BEGIN();                                                     \\\n+    using FuncInfo = ::tvm::ffi::details::FunctionInfo<decltype(Function)>;        \\\n+    static std::string name = #ExportName;                                         \\\n+    ::tvm::ffi::details::unpack_call<typename FuncInfo::RetType>(                  \\\n+        std::make_index_sequence<FuncInfo::num_args>{}, &name, Function,           \\\n+        reinterpret_cast<const ::tvm::ffi::AnyView*>(args), num_args,              \\\n+        reinterpret_cast<::tvm::ffi::Any*>(result));                               \\\n+    TVM_FFI_SAFE_CALL_END();                                                       \\\n+  }                                                                                \\\n+  }\n }  // namespace ffi\n }  // namespace tvm\n #endif  // TVM_FFI_FUNCTION_H_",
+      "heuristics": {
+        "tags": [],
+        "extensions": [
+          ".h"
+        ],
+        "scopes_guess": [
+          "include"
+        ]
+      }
+    }

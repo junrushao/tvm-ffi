@@ -1,0 +1,96 @@
+{
+  "sha": "296e2f7e6cce7c477e7bd3a124e1a6bb0983bd71",
+  "sha7": "296e2f7",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-05-10T13:03:54-04:00",
+  "subject": "[FFI] Variant specialize for all ObjectRef (#17943)",
+  "body": "",
+  "is_merge": false,
+  "parents": [
+    "16e9f0a978681969a6c6c535f927776e4067842a"
+  ],
+  "name_status": [
+    [
+      "M",
+      "include/tvm/ffi/any.h"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/base_details.h"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/container/container_details.h"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/container/variant.h"
+    ],
+    [
+      "M",
+      "tests/cpp/test_any.cc"
+    ],
+    [
+      "M",
+      "tests/cpp/test_map.cc"
+    ],
+    [
+      "M",
+      "tests/cpp/test_variant.cc"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "include/tvm/ffi/any.h",
+      "additions": 9,
+      "deletions": 0
+    },
+    {
+      "path": "include/tvm/ffi/base_details.h",
+      "additions": 3,
+      "deletions": 3
+    },
+    {
+      "path": "include/tvm/ffi/container/container_details.h",
+      "additions": 8,
+      "deletions": 0
+    },
+    {
+      "path": "include/tvm/ffi/container/variant.h",
+      "additions": 78,
+      "deletions": 20
+    },
+    {
+      "path": "tests/cpp/test_any.cc",
+      "additions": 1,
+      "deletions": 0
+    },
+    {
+      "path": "tests/cpp/test_map.cc",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "tests/cpp/test_variant.cc",
+      "additions": 27,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/include/tvm/ffi/any.h b/include/tvm/ffi/any.h\nindex 8274904..4ec72d6 100644\n--- a/include/tvm/ffi/any.h\n+++ b/include/tvm/ffi/any.h\n@@ -425,6 +425,15 @@ struct AnyUnsafe : public ObjectUnsafe {\n     }\n   }\n \n+  template <typename T>\n+  static TVM_FFI_INLINE T MoveFromAnyStorageAfterCheck(Any&& ref) {\n+    if constexpr (!std::is_same_v<T, Any>) {\n+      return TypeTraits<T>::MoveFromAnyStorageAfterCheck(&(ref.data_));\n+    } else {\n+      return std::move(ref);\n+    }\n+  }\n+\n   static TVM_FFI_INLINE Object* ObjectPtrFromAnyAfterCheck(const Any& ref) {\n     return reinterpret_cast<Object*>(ref.data_.v_obj);\n   }\ndiff --git a/include/tvm/ffi/base_details.h b/include/tvm/ffi/base_details.h\nindex 18cc3ec..eeb892e 100644\n--- a/include/tvm/ffi/base_details.h\n+++ b/include/tvm/ffi/base_details.h\n@@ -123,9 +123,9 @@\n  * This macro is used to clear the padding parts for hash and equality check\n  * in 32bit platform.\n  */\n-#define TVM_FFI_CLEAR_PTR_PADDING_IN_FFI_ANY(result)                \\\n-  if constexpr (sizeof(result->v_obj) != sizeof(result->v_int64)) { \\\n-    result->v_int64 = 0;                                            \\\n+#define TVM_FFI_CLEAR_PTR_PADDING_IN_FFI_ANY(result)                    \\\n+  if constexpr (sizeof((result)->v_obj) != sizeof((result)->v_int64)) { \\\n+    (result)->v_int64 = 0;                                              \\\n   }\n \n namespace tvm {\ndiff --git a/include/tvm/ffi/container/container_details.h b/include/tvm/ffi/container/container_details.h\nindex 51e130f..cfc5590 100644\n--- a/include/tvm/ffi/container/container_details.h\n+++ b/include/tvm/ffi/container/container_details.h\n@@ -284,6 +284,14 @@ inline constexpr bool storage_enabled_v = std::is_same_v<T, Any> || TypeTraits<T\n template <typename... T>\n inline constexpr bool all_storage_enabled_v = (storage_enabled_v<T> && ...);\n \n+/*!\n+ * \\brief Check if all T are compatible with Any.\n+ *\n+ * \\tparam T The type to check.\n+ * \\return True if T is compatible with Any, false otherwise.\n+ */\n+template <typename... T>\n+inline constexpr bool all_object_ref_v = (std::is_base_of_v<ObjectRef, T> && ...);\n /**\n  * \\brief Check if Any storage of Derived can always be directly used as Base.\n  *\ndiff --git a/include/tvm/ffi/container/variant.h b/include/tvm/ffi/container/variant.h\nindex f134be8..c2b0688 100644\n--- a/include/tvm/ffi/container/variant.h\n+++ b/include/tvm/ffi/container/variant.h\n@@ -34,15 +34,73 @@\n \n namespace tvm {\n namespace ffi {\n+namespace details {\n+/*!\n+ * \\brief Base class for Variant.\n+ *\n+ * \\tparam all_storage_object Whether all types are derived from ObjectRef.\n+ */\n+template <bool all_storage_object = false>\n+class VariantBase {\n+ public:\n+  TVM_FFI_INLINE bool same_as(const VariantBase<all_storage_object>& other) const {\n+    return data_.same_as(other.data_);\n+  }\n+\n+ protected:\n+  template <typename T>\n+  explicit VariantBase(T other) : data_(std::move(other)) {}\n+\n+  TVM_FFI_INLINE void SetData(Any other_data) { data_ = std::move(other_data); }\n+\n+  TVM_FFI_INLINE Any MoveToAny() && { return std::move(data_); }\n+\n+  TVM_FFI_INLINE AnyView ToAnyView() const { return data_.operator AnyView(); }\n+\n+  Any data_;\n+};\n+\n+// Specialization for all object ref case, backed by ObjectRef.\n+template <>\n+class VariantBase<true> : public ObjectRef {\n+ protected:\n+  template <typename T>\n+  explicit VariantBase(const T& other) : ObjectRef(other) {}\n+  template <typename T>\n+  explicit VariantBase(T&& other) : ObjectRef(std::move(other)) {}\n+  explicit VariantBase(ObjectPtr<Object> ptr) : ObjectRef(ptr) {}\n+  explicit VariantBase(Any other)\n+      : ObjectRef(details::AnyUnsafe::MoveFromAnyStorageAfterCheck<ObjectRef>(std::move(other))) {}\n+\n+  TVM_FFI_INLINE void SetData(ObjectPtr<Object> other) { data_ = std::move(other); }\n+\n+  TVM_FFI_INLINE Any MoveToAny() && { return Any(ObjectRef(std::move(data_))); }\n+\n+  TVM_FFI_INLINE AnyView ToAnyView() const {\n+    TVMFFIAny any_data;\n+    if (data_ == nullptr) {\n+      any_data.type_index = TypeIndex::kTVMFFINone;\n+      any_data.v_int64 = 0;\n+    } else {\n+      TVM_FFI_CLEAR_PTR_PADDING_IN_FFI_ANY(&any_data);\n+      any_data.type_index = data_->type_index();\n+      any_data.v_obj = details::ObjectUnsafe::TVMFFIObjectPtrFromObjectPtr<Object>(data_);\n+    }\n+    return AnyView::CopyFromTVMFFIAny(any_data);\n+  }\n+};\n+}  // namespace details\n \n /*!\n  * \\brief A typed variant container.\n  *\n- * A Variant is backed by Any container, with strong checks during construction.\n+ * When all values are ObjectRef, Variant is backed by ObjectRef,\n+ * otherwise it is backed by Any.\n  */\n template <typename... V>\n-class Variant {\n+class Variant : public details::VariantBase<details::all_object_ref_v<V...>> {\n  public:\n+  using TParent = details::VariantBase<details::all_object_ref_v<V...>>;\n   static_assert(details::all_storage_enabled_v<V...>,\n                 \"All types used in Variant<...> must be compatible with Any\");\n   /*\n@@ -54,31 +112,30 @@ class Variant {\n   template <typename T>\n   using enable_if_variant_contains_t = std::enable_if_t<variant_contains_v<T>>;\n \n-  Variant(const Variant<V...>& other) : data_(other.data_) {}\n-  Variant(Variant<V...>&& other) : data_(std::move(other.data_)) {}\n+  Variant(const Variant<V...>& other) : TParent(other.data_) {}\n+  Variant(Variant<V...>&& other) : TParent(std::move(other.data_)) {}\n \n   TVM_FFI_INLINE Variant& operator=(const Variant<V...>& other) {\n-    data_ = other.data_;\n+    this->SetData(other.data_);\n     return *this;\n   }\n \n   TVM_FFI_INLINE Variant& operator=(Variant<V...>&& other) {\n-    data_ = std::move(other.data_);\n+    this->SetData(std::move(other.data_));\n     return *this;\n   }\n \n   template <typename T, typename = enable_if_variant_contains_t<T>>\n-  Variant(T other) : data_(std::move(other)) {}  // NOLINT(*)\n+  Variant(T other) : TParent(std::move(other)) {}  // NOLINT(*)\n \n   template <typename T, typename = enable_if_variant_contains_t<T>>\n   TVM_FFI_INLINE Variant& operator=(T other) {\n-    data_ = std::move(other);\n-    return *this;\n+    return operator=(Variant(std::move(other)));\n   }\n \n   template <typename T, typename = enable_if_variant_contains_t<T>>\n   TVM_FFI_INLINE std::optional<T> as() const {\n-    return data_.as<T>();\n+    return this->TParent::ToAnyView().template as<T>();\n   }\n \n   /*\n@@ -89,29 +146,27 @@ class Variant {\n    */\n   template <typename T, typename = std::enable_if_t<std::is_base_of_v<Object, T>>>\n   TVM_FFI_INLINE const T* as() const {\n-    return data_.as<const T*>().value_or(nullptr);\n+    return this->TParent::ToAnyView().template as<const T*>().value_or(nullptr);\n   }\n \n   template <typename T, typename = enable_if_variant_contains_t<T>>\n   TVM_FFI_INLINE T get() const& {\n-    return data_.template cast<T>();\n+    return this->TParent::ToAnyView().template cast<T>();\n   }\n \n   template <typename T, typename = enable_if_variant_contains_t<T>>\n   TVM_FFI_INLINE T get() && {\n-    return std::move(data_).template cast<T>();\n+    return std::move(*this).TParent::MoveToAny().template cast<T>();\n   }\n \n-  TVM_FFI_INLINE std::string GetTypeKey() const { return data_.GetTypeKey(); }\n+  TVM_FFI_INLINE std::string GetTypeKey() const { return this->TParent::ToAnyView().GetTypeKey(); }\n \n  private:\n   friend struct TypeTraits<Variant<V...>>;\n   friend struct ObjectPtrHash;\n   friend struct ObjectPtrEqual;\n   // constructor from any\n-  explicit Variant(Any data) : data_(std::move(data)) {}\n-  // internal data is backed by Any\n-  Any data_;\n+  explicit Variant(Any data) : TParent(std::move(data)) {}\n   /*!\n    * \\brief Get the object pointer from the variant\n    * \\note This function is only available if all types used in Variant<...> are derived from\n@@ -122,8 +177,11 @@ class Variant {\n     static_assert(all_object_v,\n                   \"All types used in Variant<...> must be derived from ObjectRef \"\n                   \"to enable ObjectPtrHash/ObjectPtrEqual\");\n-    return details::AnyUnsafe::ObjectPtrFromAnyAfterCheck(data_);\n+    return this->data_.get();\n   }\n+  // rexpose to friend class\n+  using TParent::MoveToAny;\n+  using TParent::ToAnyView;\n };\n \n template <typename... V>\n@@ -132,11 +190,11 @@ inline constexpr bool use_default_type_traits_v<Variant<V...>> = false;\n template <typename... V>\n struct TypeTraits<Variant<V...>> : public TypeTraitsBase {\n   static TVM_FFI_INLINE void CopyToAnyView(const Variant<V...>& src, TVMFFIAny* result) {\n-    *result = AnyView(src.data_).CopyToTVMFFIAny();\n+    *result = src.ToAnyView().CopyToTVMFFIAny();\n   }\n \n   static TVM_FFI_INLINE void MoveToAny(Variant<V...> src, TVMFFIAny* result) {\n-    *result = details::AnyUnsafe::MoveAnyToTVMFFIAny(std::move(src.data_));\n+    *result = details::AnyUnsafe::MoveAnyToTVMFFIAny(std::move(src).MoveToAny());\n   }\n \n   static TVM_FFI_INLINE std::string GetMismatchTypeInfo(const TVMFFIAny* src) {\ndiff --git a/tests/cpp/test_any.cc b/tests/cpp/test_any.cc\nindex 816ae28..d84cc64 100644\n--- a/tests/cpp/test_any.cc\n+++ b/tests/cpp/test_any.cc\n@@ -337,6 +337,7 @@ TEST(Any, ObjectMove) {\n   auto v0 = std::move(any1).cast<TPrimExpr>();\n   EXPECT_EQ(v0->value, 3.14);\n   EXPECT_EQ(v0.use_count(), 1);\n+  EXPECT_TRUE(any1 == nullptr);\n }\n \n }  // namespace\ndiff --git a/tests/cpp/test_map.cc b/tests/cpp/test_map.cc\nindex bd0b58b..b7c977f 100644\n--- a/tests/cpp/test_map.cc\n+++ b/tests/cpp/test_map.cc\n@@ -243,7 +243,7 @@ TEST(Map, AnyConvertCheck) {\n       ::tvm::ffi::Error);\n }\n \n-TEST(Map, ffi::FunctionGetItem) {\n+TEST(Map, FunctionGetItem) {\n   Function f = Function::FromTyped([](const MapObj* n, const Any& k) -> Any { return n->at(k); },\n                                    \"map_get_item\");\n   Map<String, int64_t> map{{\"x\", 1}, {\"y\", 2}};\ndiff --git a/tests/cpp/test_variant.cc b/tests/cpp/test_variant.cc\nindex ee49ac7..17a1129 100644\n--- a/tests/cpp/test_variant.cc\n+++ b/tests/cpp/test_variant.cc\n@@ -134,4 +134,31 @@ TEST(Variant, Upcast) {\n   EXPECT_EQ(a1[0].get<int>(), 1);\n }\n \n+TEST(Variant, AllObjectRef) {\n+  Variant<TInt, Array<TInt>> v0 = TInt(1);\n+  EXPECT_EQ(v0.get<TInt>()->value, 1);\n+  static_assert(std::is_base_of_v<ObjectRef, decltype(v0)>);\n+  Any any0 = v0;\n+  EXPECT_EQ(any0.cast<TInt>()->value, 1);\n+  auto v2 = any0.cast<Variant<TInt, Array<TInt>>>();\n+  EXPECT_TRUE(v0.same_as(v2));\n+  // assignment operator\n+  v0 = Array<TInt>({TInt(2), TInt(3)});\n+  EXPECT_EQ(v0.get<Array<TInt>>().size(), 2);\n+  EXPECT_EQ(v0.get<Array<TInt>>()[0]->value, 2);\n+  EXPECT_EQ(v0.get<Array<TInt>>()[1]->value, 3);\n+  EXPECT_EQ(sizeof(v0), sizeof(ObjectRef));\n+}\n+\n+TEST(Variant, PODSameAs) {\n+  Variant<String, int> v0 = 1;\n+  Variant<String, int> v1 = 1;\n+  EXPECT_TRUE(v0.same_as(v1));\n+  String s = String(\"hello\");\n+  v0 = s;\n+  v1 = s;\n+  EXPECT_TRUE(v0.same_as(v1));\n+  v1 = String(\"hello\");\n+  EXPECT_TRUE(!v0.same_as(v1));\n+}\n }  // namespace",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".cc",
+      ".h"
+    ],
+    "scopes_guess": [
+      "include",
+      "tests"
+    ]
+  }
+}

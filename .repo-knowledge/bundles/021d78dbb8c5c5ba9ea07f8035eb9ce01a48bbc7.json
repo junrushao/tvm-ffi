@@ -1,0 +1,60 @@
+{
+  "sha": "021d78dbb8c5c5ba9ea07f8035eb9ce01a48bbc7",
+  "sha7": "021d78d",
+  "author_name": "Yaoyao Ding",
+  "author_email": "dingyaoyao.cs@gmail.com",
+  "date_iso": "2025-11-04T11:42:34-05:00",
+  "subject": "[Test] Add test for filelock utility (#216)",
+  "body":
+      "This PR adds tests for the filelock utility, to make sure it works well\non multiple platforms.",
+  "is_merge": false,
+  "parents": [
+    "14f3c82e00019a87ec1e58fd92ac172a5c9bc69f"
+  ],
+  "name_status": [
+    [
+      "M",
+      "python/tvm_ffi/utils/lockfile.py"
+    ],
+    [
+      "A",
+      "tests/python/utils/filelock_worker.py"
+    ],
+    [
+      "A",
+      "tests/python/utils/test_filelock.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "python/tvm_ffi/utils/lockfile.py",
+      "additions": 35,
+      "deletions": 6
+    },
+    {
+      "path": "tests/python/utils/filelock_worker.py",
+      "additions": 49,
+      "deletions": 0
+    },
+    {
+      "path": "tests/python/utils/test_filelock.py",
+      "additions": 126,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/python/tvm_ffi/utils/lockfile.py b/python/tvm_ffi/utils/lockfile.py\nindex da98491..5fa69d3 100644\n--- a/python/tvm_ffi/utils/lockfile.py\n+++ b/python/tvm_ffi/utils/lockfile.py\n@@ -34,7 +34,9 @@ class FileLock:\n     \"\"\"Provide a cross-platform file locking mechanism using Python's stdlib.\n \n     This class implements an advisory lock, which must be respected by all\n-    cooperating processes.\n+    cooperating processes. Please note that this lock does not prevent the same process\n+    from acquiring the lock multiple times; it is the caller's responsibility to\n+    manage this.\n \n     Examples\n     --------\n@@ -71,9 +73,20 @@ class FileLock:\n     def acquire(self) -> bool:\n         \"\"\"Acquire an exclusive, non-blocking lock on the file.\n \n-        Returns True if the lock was acquired, False otherwise.\n+        Returns\n+        -------\n+        ret: bool\n+            True if the lock was acquired, False otherwise.\n+\n+        Raises\n+        ------\n+        RuntimeError\n+            If an unexpected error occurs during lock acquisition.\n+\n         \"\"\"\n         try:\n+            if self._file_descriptor is not None:\n+                return False  # Lock is already held by this instance\n             if sys.platform == \"win32\":\n                 self._file_descriptor = os.open(\n                     self.lock_file_path, os.O_RDWR | os.O_CREAT | os.O_BINARY\n@@ -97,12 +110,28 @@ class FileLock:\n     def blocking_acquire(self, timeout: float | None = None, poll_interval: float = 0.1) -> bool:\n         \"\"\"Wait until an exclusive lock can be acquired, with an optional timeout.\n \n-        Args:\n-            timeout (float): The maximum time to wait for the lock in seconds.\n-                             A value of None means wait indefinitely.\n-            poll_interval (float): The time to wait between lock attempts in seconds.\n+        Parameters\n+        ----------\n+        timeout: float, optional\n+            The maximum time to wait for the lock in seconds.  A value of None means wait indefinitely.\n+        poll_interval: float\n+            The time to wait between lock attempts in seconds.\n+\n+        Returns\n+        -------\n+        ret: bool\n+            True if the lock was acquired.\n+\n+        Raises\n+        ------\n+        TimeoutError\n+            If the lock is not acquired within the timeout period.\n+        RuntimeError\n+            If the lock is already held by this instance.\n \n         \"\"\"\n+        if self._file_descriptor is not None:\n+            raise RuntimeError(\"Lock is already held by this instance.\")\n         start_time = time.time()\n         while True:\n             if self.acquire():\ndiff --git a/tests/python/utils/filelock_worker.py b/tests/python/utils/filelock_worker.py\nnew file mode 100644\nindex 0000000..46ff29b\n--- /dev/null\n+++ b/tests/python/utils/filelock_worker.py\n@@ -0,0 +1,49 @@\n+# Licensed to the Apache Software Foundation (ASF) under one\n+# or more contributor license agreements.  See the NOTICE file\n+# distributed with this work for additional information\n+# regarding copyright ownership.  The ASF licenses this file\n+# to you under the Apache License, Version 2.0 (the\n+# \"License\"); you may not use this file except in compliance\n+# with the License.  You may obtain a copy of the License at\n+#\n+#   http://www.apache.org/licenses/LICENSE-2.0\n+#\n+# Unless required by applicable law or agreed to in writing,\n+# software distributed under the License is distributed on an\n+# \"AS IS\" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY\n+# KIND, either express or implied.  See the License for the\n+# specific language governing permissions and limitations\n+# under the License.\n+\n+import random\n+import sys\n+import time\n+\n+from tvm_ffi.utils.lockfile import FileLock\n+\n+\n+def worker(worker_id: int, lock_path: str, counter_file: str) -> int:\n+    \"\"\"Worker function that tries to acquire lock and increment counter.\"\"\"\n+    try:\n+        with FileLock(lock_path):\n+            # Critical section - read, increment, write counter\n+            with open(counter_file) as f:  # noqa: PTH123\n+                current_value = int(f.read().strip())\n+\n+            time.sleep(random.uniform(0.01, 0.1))  # Simulate some work\n+\n+            with open(counter_file, \"w\") as f:  # noqa: PTH123\n+                f.write(str(current_value + 1))\n+\n+            print(f\"Worker {worker_id}: success\")\n+            return 0\n+    except Exception as e:\n+        print(f\"Worker {worker_id}: error: {e}\")\n+        return 1\n+\n+\n+if __name__ == \"__main__\":\n+    worker_id = int(sys.argv[1])\n+    lock_path = sys.argv[2]\n+    counter_file = sys.argv[3]\n+    sys.exit(worker(worker_id, lock_path, counter_file))\ndiff --git a/tests/python/utils/test_filelock.py b/tests/python/utils/test_filelock.py\nnew file mode 100644\nindex 0000000..fa68edf\n--- /dev/null\n+++ b/tests/python/utils/test_filelock.py\n@@ -0,0 +1,126 @@\n+# Licensed to the Apache Software Foundation (ASF) under one\n+# or more contributor license agreements.  See the NOTICE file\n+# distributed with this work for additional information\n+# regarding copyright ownership.  The ASF licenses this file\n+# to you under the Apache License, Version 2.0 (the\n+# \"License\"); you may not use this file except in compliance\n+# with the License.  You may obtain a copy of the License at\n+#\n+#   http://www.apache.org/licenses/LICENSE-2.0\n+#\n+# Unless required by applicable law or agreed to in writing,\n+# software distributed under the License is distributed on an\n+# \"AS IS\" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY\n+# KIND, either express or implied.  See the License for the\n+# specific language governing permissions and limitations\n+# under the License.\n+\"\"\"Tests for the FileLock utility.\"\"\"\n+\n+import subprocess\n+import sys\n+import tempfile\n+from pathlib import Path\n+\n+import pytest\n+from tvm_ffi.utils.lockfile import FileLock\n+\n+\n+def test_basic_lock_acquire_and_release() -> None:\n+    \"\"\"Test basic lock acquisition and release.\"\"\"\n+    with tempfile.TemporaryDirectory() as temp_dir:\n+        lock_path = Path(temp_dir) / \"test.lock\"\n+        lock = FileLock(str(lock_path))\n+\n+        # Test acquire\n+        assert lock.acquire() is True\n+        assert lock._file_descriptor is not None\n+\n+        # Test release\n+        lock.release()\n+        assert lock._file_descriptor is None\n+\n+\n+def test_context_manager() -> None:\n+    \"\"\"Test FileLock as a context manager.\"\"\"\n+    with tempfile.TemporaryDirectory() as temp_dir:\n+        lock_path = Path(temp_dir) / \"test.lock\"\n+\n+        with FileLock(str(lock_path)) as lock:\n+            assert lock._file_descriptor is not None\n+            # Lock should be acquired\n+            assert lock_path.exists()\n+\n+        # Lock should be released after exiting context\n+        # Note: file may still exist but should be unlocked\n+\n+\n+def test_multiple_acquire_attempts() -> None:\n+    \"\"\"Test multiple acquire attempts on the same lock instance.\"\"\"\n+    with tempfile.TemporaryDirectory() as temp_dir:\n+        lock_path = Path(temp_dir) / \"test.lock\"\n+        lock = FileLock(str(lock_path))\n+\n+        # First acquire should succeed\n+        assert lock.acquire() is True\n+\n+        # Second acquire on same instance should fail\n+        # (can't acquire same lock twice)\n+        assert lock.acquire() is False\n+\n+        lock.release()\n+\n+\n+def test_exception_in_context_manager() -> None:\n+    \"\"\"Test that lock is properly released even when exception occurs.\"\"\"\n+    with tempfile.TemporaryDirectory() as temp_dir:\n+        lock_path = Path(temp_dir) / \"test.lock\"\n+\n+        # Test that exception is propagated and lock is released\n+        with pytest.raises(ValueError, match=\"test exception\"):\n+            with FileLock(str(lock_path)) as lock:\n+                assert lock._file_descriptor is not None\n+                raise ValueError(\"test exception\")\n+\n+        # Lock should be released, so we can acquire it again\n+        lock2 = FileLock(str(lock_path))\n+        assert lock2.acquire() is True\n+        lock2.release()\n+\n+\n+def test_concurrent_access() -> None:\n+    \"\"\"Test concurrent access from multiple processes.\"\"\"\n+    with tempfile.TemporaryDirectory() as temp_dir:\n+        lock_path = Path(temp_dir) / \"test.lock\"\n+        counter_file = Path(temp_dir) / \"counter.txt\"\n+\n+        # Initialize counter file\n+        counter_file.write_text(\"0\")\n+\n+        # Create worker script content\n+\n+        # Write worker script to a temporary file\n+        worker_script_path = Path(__file__).parent / \"filelock_worker.py\"\n+\n+        # Run multiple worker processes concurrently\n+        num_workers = 16\n+        processes = []\n+        for i in range(num_workers):\n+            p = subprocess.Popen(\n+                [sys.executable, str(worker_script_path), str(i), str(lock_path), str(counter_file)]\n+            )\n+            processes.append(p)\n+\n+        # Wait for all processes to complete\n+        for p in processes:\n+            p.wait(timeout=60.0)\n+            assert p.returncode == 0, f\"Worker process failed with return code {p.returncode}\"\n+\n+        # Check final counter value\n+        final_count = int(counter_file.read_text().strip())\n+\n+        # Counter should equal number of workers (no race conditions)\n+        assert final_count == num_workers\n+\n+\n+if __name__ == \"__main__\":\n+    pytest.main([__file__])",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".py"
+    ],
+    "scopes_guess": [
+      "python",
+      "tests"
+    ]
+  }
+}

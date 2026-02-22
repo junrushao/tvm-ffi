@@ -1,0 +1,182 @@
+{
+  "sha": "98cb8af49ff599c217fce96c3d4f57c0f52b8ec4",
+  "sha7": "98cb8af",
+  "author_name": "Junru Shao",
+  "author_email": "junrushao@apache.org",
+  "date_iso": "2025-09-25T12:11:04-07:00",
+  "subject": "feat: Auto-create Python classes when missing (#49)",
+  "body": "",
+  "is_merge": false,
+  "parents": [
+    "8e471b01c8617e21404d8f6aaf80b57dd190f10f"
+  ],
+  "name_status": [
+    [
+      "M",
+      "include/tvm/ffi/c_api.h"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/object.h"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/reflection/accessor.h"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/core.pyi"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/cython/base.pxi"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/cython/object.pxi"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/cython/string.pxi"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/cython/type_info.pxi"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/dataclasses/_utils.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/dataclasses/c_class.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/registry.py"
+    ],
+    [
+      "M",
+      "src/ffi/extra/reflection_extra.cc"
+    ],
+    [
+      "M",
+      "src/ffi/extra/testing.cc"
+    ],
+    [
+      "M",
+      "src/ffi/object.cc"
+    ],
+    [
+      "M",
+      "tests/cpp/test_object.cc"
+    ],
+    [
+      "M",
+      "tests/python/test_object.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "include/tvm/ffi/c_api.h",
+      "additions": 2,
+      "deletions": 2
+    },
+    {
+      "path": "include/tvm/ffi/object.h",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "include/tvm/ffi/reflection/accessor.h",
+      "additions": 2,
+      "deletions": 2
+    },
+    {
+      "path": "python/tvm_ffi/core.pyi",
+      "additions": 7,
+      "deletions": 3
+    },
+    {
+      "path": "python/tvm_ffi/cython/base.pxi",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "python/tvm_ffi/cython/object.pxi",
+      "additions": 87,
+      "deletions": 34
+    },
+    {
+      "path": "python/tvm_ffi/cython/string.pxi",
+      "additions": 1,
+      "deletions": 0
+    },
+    {
+      "path": "python/tvm_ffi/cython/type_info.pxi",
+      "additions": 44,
+      "deletions": 10
+    },
+    {
+      "path": "python/tvm_ffi/dataclasses/_utils.py",
+      "additions": 0,
+      "deletions": 12
+    },
+    {
+      "path": "python/tvm_ffi/dataclasses/c_class.py",
+      "additions": 7,
+      "deletions": 8
+    },
+    {
+      "path": "python/tvm_ffi/registry.py",
+      "additions": 4,
+      "deletions": 32
+    },
+    {
+      "path": "src/ffi/extra/reflection_extra.cc",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "src/ffi/extra/testing.cc",
+      "additions": 32,
+      "deletions": 6
+    },
+    {
+      "path": "src/ffi/object.cc",
+      "additions": 8,
+      "deletions": 8
+    },
+    {
+      "path": "tests/cpp/test_object.cc",
+      "additions": 2,
+      "deletions": 2
+    },
+    {
+      "path": "tests/python/test_object.py",
+      "additions": 19,
+      "deletions": 8
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/include/tvm/ffi/c_api.h b/include/tvm/ffi/c_api.h\nindex e988e24..62d9001 100644\n--- a/include/tvm/ffi/c_api.h\n+++ b/include/tvm/ffi/c_api.h\n@@ -917,11 +917,11 @@ typedef struct TVMFFITypeInfo {\n   /*! \\brief the unique type key to identify the type. */\n   TVMFFIByteArray type_key;\n   /*!\n-   * \\brief type_acenstors[depth] stores the type_index of the acenstors at depth level\n+   * \\brief type_ancestors[depth] stores the type_index of the acenstors at depth level\n    * \\note To keep things simple, we do not allow multiple inheritance so the\n    *       hieracy stays as a tree\n    */\n-  const struct TVMFFITypeInfo** type_acenstors;\n+  const struct TVMFFITypeInfo** type_ancestors;\n   // The following fields are used for reflection\n   /*! \\brief Cached hash value of the type key, used for consistent structural hashing. */\n   uint64_t type_key_hash;\ndiff --git a/include/tvm/ffi/object.h b/include/tvm/ffi/object.h\nindex 1ebd3d7..93ef6d8 100644\n--- a/include/tvm/ffi/object.h\n+++ b/include/tvm/ffi/object.h\n@@ -1012,7 +1012,7 @@ TVM_FFI_INLINE bool IsObjectInstance(int32_t object_type_index) {\n       // the function checks that the info exists\n       const TypeInfo* type_info = TVMFFIGetTypeInfo(object_type_index);\n       return (type_info->type_depth > TargetType::_type_depth &&\n-              type_info->type_acenstors[TargetType::_type_depth]->type_index == target_type_index);\n+              type_info->type_ancestors[TargetType::_type_depth]->type_index == target_type_index);\n     } else {\n       return false;\n     }\ndiff --git a/include/tvm/ffi/reflection/accessor.h b/include/tvm/ffi/reflection/accessor.h\nindex 5fadd09..b49da51 100644\n--- a/include/tvm/ffi/reflection/accessor.h\n+++ b/include/tvm/ffi/reflection/accessor.h\n@@ -216,7 +216,7 @@ inline void ForEachFieldInfo(const TypeInfo* type_info, Callback callback) {\n   // iterate through acenstors in parent to child order\n   // skip the first one since it is always the root object\n   for (int i = 1; i < type_info->type_depth; ++i) {\n-    const TVMFFITypeInfo* parent_info = type_info->type_acenstors[i];\n+    const TVMFFITypeInfo* parent_info = type_info->type_ancestors[i];\n     for (int j = 0; j < parent_info->num_fields; ++j) {\n       callback(parent_info->fields + j);\n     }\n@@ -243,7 +243,7 @@ inline bool ForEachFieldInfoWithEarlyStop(const TypeInfo* type_info,\n   // iterate through acenstors in parent to child order\n   // skip the first one since it is always the root object\n   for (int i = 1; i < type_info->type_depth; ++i) {\n-    const TVMFFITypeInfo* parent_info = type_info->type_acenstors[i];\n+    const TVMFFITypeInfo* parent_info = type_info->type_ancestors[i];\n     for (int j = 0; j < parent_info->num_fields; ++j) {\n       if (callback_with_early_stop(parent_info->fields + j)) return true;\n     }\ndiff --git a/python/tvm_ffi/core.pyi b/python/tvm_ffi/core.pyi\nindex 53c54dd..ac04114 100644\n--- a/python/tvm_ffi/core.pyi\n+++ b/python/tvm_ffi/core.pyi\n@@ -46,7 +46,7 @@ class Object:\n     def __hash__(self) -> int: ...\n     def __init_handle_by_constructor__(self, fconstructor: Any, *args: Any) -> None: ...\n     def __ffi_init__(self, *args: Any) -> None:\n-        \"\"\"Initialize the instance using the ` __init__` method registered on C++ side.\n+        \"\"\"Initialize the instance using the ` __ffi_init__` method registered on C++ side.\n \n         Parameters\n         ----------\n@@ -83,8 +83,8 @@ class PyNativeObject:\n def _set_class_object(cls: type) -> None: ...\n def _register_object_by_index(type_index: int, type_cls: type) -> TypeInfo: ...\n def _object_type_key_to_index(type_key: str) -> int | None: ...\n-def _set_type_cls(type_index: int, type_cls: type) -> None: ...\n-def _lookup_type_info_from_type_key(type_key: str) -> TypeInfo: ...\n+def _set_type_cls(type_info: TypeInfo, type_cls: type) -> None: ...\n+def _lookup_or_register_type_info_from_type_key(type_key: str) -> TypeInfo: ...\n \n class Error(Object):\n     \"\"\"Base class for FFI errors.\"\"\"\n@@ -267,6 +267,8 @@ class TypeMethod:\n     func: Any\n     is_static: bool\n \n+    def as_callable(self, cls: type) -> Callable[..., Any]: ...\n+\n class TypeInfo:\n     \"\"\"Aggregated type information required to build a proxy class.\"\"\"\n \n@@ -276,3 +278,5 @@ class TypeInfo:\n     fields: list[TypeField]\n     methods: list[TypeMethod]\n     parent_type_info: TypeInfo | None\n+\n+    def prototype_py(self) -> str: ...\ndiff --git a/python/tvm_ffi/cython/base.pxi b/python/tvm_ffi/cython/base.pxi\nindex 3ff3ecc..5c1ba1e 100644\n--- a/python/tvm_ffi/cython/base.pxi\n+++ b/python/tvm_ffi/cython/base.pxi\n@@ -191,7 +191,7 @@ cdef extern from \"tvm/ffi/c_api.h\":\n         int32_t type_index\n         int32_t type_depth\n         TVMFFIByteArray type_key\n-        const int32_t* type_acenstors\n+        const TVMFFITypeInfo** type_ancestors\n         uint64_t type_key_hash\n         int32_t num_fields\n         int32_t num_methods\ndiff --git a/python/tvm_ffi/cython/object.pxi b/python/tvm_ffi/cython/object.pxi\nindex e8f3593..0bb1e03 100644\n--- a/python/tvm_ffi/cython/object.pxi\n+++ b/python/tvm_ffi/cython/object.pxi\n@@ -15,6 +15,8 @@\n # specific language governing permissions and limitations\n # under the License.\n import warnings\n+from typing import Any\n+\n \n _CLASS_OBJECT = None\n \n@@ -261,29 +263,66 @@ cdef inline object make_ret_opaque_object(TVMFFIAny result):\n     (<Object>obj).chandle = result.v_obj\n     return obj.pyobject()\n \n+cdef inline object make_fallback_cls_for_type_index(int32_t type_index):\n+    cdef str type_key = _type_index_to_key(type_index)\n+    cdef object type_info = _lookup_or_register_type_info_from_type_key(type_key)\n+    cdef object parent_type_info = type_info.parent_type_info\n+    assert type_info.type_cls is None\n+\n+    # Ensure parent classes are created first\n+    assert parent_type_info is not None\n+    if parent_type_info.type_cls is None:   # recursively create parent class first\n+        make_fallback_cls_for_type_index(parent_type_info.type_index)\n+    assert parent_type_info.type_cls is not None\n+\n+    # Create `type_info.type_cls` now\n+    class cls(parent_type_info.type_cls):\n+        pass\n+    attrs = dict(cls.__dict__)\n+    attrs.pop(\"__dict__\", None)\n+    attrs.pop(\"__weakref__\", None)\n+    attrs.update({\n+        \"__slots__\": (),\n+        \"__tvm_ffi_type_info__\": type_info,\n+        \"__name__\": type_key.split(\".\")[-1],\n+        \"__qualname__\": type_key,\n+        \"__module__\": \".\".join(type_key.split(\".\")[:-1]),\n+        \"__doc__\": f\"Auto-generated fallback class for {type_key}.\\n\"\n+                   \"This class is generated because the class is not registered.\\n\"\n+                   \"Please do not use this class directly, instead register the class\\n\"\n+                   \"using `register_object` decorator.\",\n+    })\n+    for field in type_info.fields:\n+        attrs[field.name] = field.as_property(cls)\n+    for method in type_info.methods:\n+        name = method.name\n+        if name == \"__ffi_init__\":\n+            name = \"__c_ffi_init__\"\n+        attrs[name] = method.as_callable(cls)\n+    for name, val in attrs.items():\n+        setattr(cls, name, val)\n+    # Update the registry\n+    type_info.type_cls = cls\n+    _update_registry(type_index, type_key, type_info, cls)\n+    return cls\n+\n \n cdef inline object make_ret_object(TVMFFIAny result):\n-    global TYPE_INDEX_TO_INFO\n-    cdef int32_t tindex\n-    cdef object cls\n-    tindex = result.type_index\n-\n-    if tindex < len(TYPE_INDEX_TO_CLS):\n-        cls = TYPE_INDEX_TO_CLS[tindex]\n-        if cls is not None:\n-            if issubclass(cls, PyNativeObject):\n-                obj = Object.__new__(Object)\n-                (<Object>obj).chandle = result.v_obj\n-                return cls.__from_tvm_ffi_object__(cls, obj)\n-            obj = cls.__new__(cls)\n-            (<Object>obj).chandle = result.v_obj\n-            return obj\n+    cdef int32_t type_index\n+    cdef object cls, obj\n+    type_index = result.type_index\n \n-    # object is not found in registered entry\n-    # in this case we need to report an warning\n-    type_key = _type_index_to_key(tindex)\n-    warnings.warn(f\"Returning type `{type_key}` which is not registered via register_object, fallback to Object\")\n-    obj = _CLASS_OBJECT.__new__(_CLASS_OBJECT)\n+    if type_index < len(TYPE_INDEX_TO_CLS) and (cls := TYPE_INDEX_TO_CLS[type_index]) is not None:\n+        if issubclass(cls, PyNativeObject):\n+            obj = Object.__new__(Object)\n+            (<Object>obj).chandle = result.v_obj\n+            return cls.__from_tvm_ffi_object__(cls, obj)\n+    else:\n+        # Slow path: object is not found in registered entry\n+        # In this case create a dummy stub class for future usage.\n+        # For every unregistered class, this slow path will be triggered only once.\n+        cls = make_fallback_cls_for_type_index(type_index)\n+    obj = cls.__new__(cls)\n     (<Object>obj).chandle = result.v_obj\n     return obj\n \n@@ -294,17 +333,21 @@ cdef _get_method_from_method_info(const TVMFFIMethodInfo* method):\n     return make_ret(result)\n \n \n-def _type_info_create_from_type_key(object type_cls, str type_key):\n+cdef _type_info_create_from_type_key(object type_cls, str type_key):\n     cdef const TVMFFIFieldInfo* field\n     cdef const TVMFFIMethodInfo* method\n     cdef const TVMFFITypeInfo* info\n     cdef int32_t type_index\n+    cdef list ancestors = []\n+    cdef int ancestor\n     cdef object fields = []\n     cdef object methods = []\n     cdef FieldGetter getter\n     cdef FieldSetter setter\n     cdef ByteArrayArg type_key_arg = ByteArrayArg(c_str(type_key))\n \n+    # NOTE: `type_key_arg` must be kept alive until after the call to `TVMFFITypeKeyToIndex`,\n+    # because Cython doesn't defer the destruction of `type_key_arg` until after the call.\n     if TVMFFITypeKeyToIndex(type_key_arg.cptr(), &type_index) != 0:\n         raise ValueError(f\"Cannot find type key: {type_key}\")\n     info = TVMFFIGetTypeInfo(type_index)\n@@ -339,44 +382,54 @@ def _type_info_create_from_type_key(object type_cls, str type_key):\n             )\n         )\n \n+    for i in range(info.type_depth):\n+        ancestor = info.type_ancestors[i].type_index\n+        ancestors.append(ancestor)\n+\n     return TypeInfo(\n         type_cls=type_cls,\n         type_index=type_index,\n         type_key=bytearray_to_str(&info.type_key),\n+        type_ancestors=ancestors,\n         fields=fields,\n         methods=methods,\n         parent_type_info=None,\n     )\n \n \n-def _register_object_by_index(int type_index, object type_cls):\n-    global TYPE_INDEX_TO_INFO, TYPE_KEY_TO_INFO, TYPE_INDEX_TO_CLS\n-    cdef str type_key = _type_index_to_key(type_index)\n-    cdef object info = _type_info_create_from_type_key(type_cls, type_key)\n+cdef _update_registry(int type_index, object type_key, object type_info, object type_cls):\n+    cdef int extra = type_index + 1 - len(TYPE_INDEX_TO_INFO)\n     assert len(TYPE_INDEX_TO_INFO) == len(TYPE_INDEX_TO_CLS)\n-    if (extra := type_index + 1 - len(TYPE_INDEX_TO_INFO)) > 0:\n+    if extra > 0:\n         TYPE_INDEX_TO_INFO.extend([None] * extra)\n         TYPE_INDEX_TO_CLS.extend([None] * extra)\n     TYPE_INDEX_TO_CLS[type_index] = type_cls\n-    TYPE_INDEX_TO_INFO[type_index] = info\n-    TYPE_KEY_TO_INFO[type_key] = info\n+    TYPE_INDEX_TO_INFO[type_index] = type_info\n+    TYPE_KEY_TO_INFO[type_key] = type_info\n+\n+\n+def _register_object_by_index(int type_index, object type_cls):\n+    global TYPE_INDEX_TO_INFO, TYPE_KEY_TO_INFO, TYPE_INDEX_TO_CLS\n+    cdef str type_key = _type_index_to_key(type_index)\n+    cdef object info = _type_info_create_from_type_key(type_cls, type_key)\n+    _update_registry(type_index, type_key, info, type_cls)\n     return info\n \n \n-def _set_type_cls(int type_index, object type_cls):\n+def _set_type_cls(object type_info, object type_cls):\n     global TYPE_INDEX_TO_INFO, TYPE_INDEX_TO_CLS\n-    assert len(TYPE_INDEX_TO_INFO) == len(TYPE_INDEX_TO_CLS)\n-    type_info = TYPE_INDEX_TO_INFO[type_index]\n     assert type_info.type_cls is None, f\"Type already registered for {type_info.type_key}\"\n+    assert TYPE_INDEX_TO_INFO[type_info.type_index] is type_info\n+    assert TYPE_KEY_TO_INFO[type_info.type_key] is type_info\n     type_info.type_cls = type_cls\n-    TYPE_INDEX_TO_CLS[type_index] = type_cls\n+    TYPE_INDEX_TO_CLS[type_info.type_index] = type_cls\n \n \n-def _lookup_type_info_from_type_key(type_key: str) -> TypeInfo:\n+def _lookup_or_register_type_info_from_type_key(type_key: str) -> TypeInfo:\n     if info := TYPE_KEY_TO_INFO.get(type_key, None):\n         return info\n     info = _type_info_create_from_type_key(None, type_key)\n-    TYPE_KEY_TO_INFO[type_key] = info\n+    _update_registry(info.type_index, type_key, info, None)\n     return info\n \n \ndiff --git a/python/tvm_ffi/cython/string.pxi b/python/tvm_ffi/cython/string.pxi\nindex 0f9d11b..bb8f6e5 100644\n--- a/python/tvm_ffi/cython/string.pxi\n+++ b/python/tvm_ffi/cython/string.pxi\n@@ -77,3 +77,4 @@ class Bytes(bytes, PyNativeObject):\n \n \n _register_object_by_index(kTVMFFIBytes, Bytes)\n+_register_object_by_index(kTVMFFIObject, Object)\ndiff --git a/python/tvm_ffi/cython/type_info.pxi b/python/tvm_ffi/cython/type_info.pxi\nindex fcd443b..ca893b4 100644\n--- a/python/tvm_ffi/cython/type_info.pxi\n+++ b/python/tvm_ffi/cython/type_info.pxi\n@@ -16,6 +16,7 @@\n # under the License.\n import dataclasses\n from typing import Optional, Any\n+from io import StringIO\n \n \n cdef class FieldGetter:\n@@ -75,20 +76,20 @@ class TypeField:\n         assert self.setter is not None\n         assert self.getter is not None\n \n-    def as_property(self, cls: type):\n+    def as_property(self, object cls):\n         \"\"\"Create a Python ``property`` object for this field on ``cls``.\"\"\"\n-        name = self.name\n-        fget = self.getter\n-        fset = self.setter\n+        cdef str name = self.name\n+        cdef str doc = self.doc or f\"{cls.__module__}.{cls.__qualname__}.{name}\"\n+        cdef FieldGetter fget = self.getter\n+        cdef FieldSetter fset = self.setter\n         fget.__name__ = fset.__name__ = name\n         fget.__module__ = fset.__module__ = cls.__module__\n-        fget.__qualname__ = fset.__qualname__ = f\"{cls.__qualname__}.{name}\"  # type: ignore[attr-defined]\n-        fget.__doc__ = fset.__doc__ = f\"Property `{name}` of class `{cls.__qualname__}`\"  # type: ignore[attr-defined]\n-\n+        fget.__qualname__ = fset.__qualname__ = f\"{cls.__qualname__}.{name}\"\n+        fget.__doc__ = fset.__doc__ = f\"Property `{name}` of class `{cls.__qualname__}`\"\n         return property(\n-            fget=fget if self.getter is not None else None,\n-            fset=fset if (not self.frozen) and self.setter is not None else None,\n-            doc=f\"{cls.__module__}.{cls.__qualname__}.{name}\",\n+            fget=fget,\n+            fset=fset if (not self.frozen) else None,\n+            doc=doc,\n         )\n \n \n@@ -101,6 +102,21 @@ class TypeMethod:\n     func: object\n     is_static: bool\n \n+    def as_callable(self, object cls):\n+        \"\"\"Create a Python method attribute for this method on ``cls``.\"\"\"\n+        cdef str name = self.name\n+        cdef str doc = self.doc or f\"Method `{name}` of class `{cls.__qualname__}`\"\n+        cdef object func = self.func\n+        if not self.is_static:\n+            func = _member_method_wrapper(func)\n+        func.__module__ = cls.__module__\n+        func.__name__ = name\n+        func.__qualname__ = f\"{cls.__qualname__}.{name}\"\n+        func.__doc__ = doc\n+        if self.is_static:\n+            func = staticmethod(func)\n+        return func\n+\n \n @dataclasses.dataclass(eq=False)\n class TypeInfo:\n@@ -109,6 +125,24 @@ class TypeInfo:\n     type_cls: Optional[type]\n     type_index: int\n     type_key: str\n+    type_ancestors: list[int]\n     fields: list[TypeField]\n     methods: list[TypeMethod]\n     parent_type_info: Optional[TypeInfo]\n+\n+    def __post_init__(self):\n+        cdef int parent_type_index\n+        cdef str parent_type_key\n+        if not self.type_ancestors:\n+            return\n+        parent_type_index = self.type_ancestors[-1]\n+        parent_type_key = _type_index_to_key(parent_type_index)\n+        # ensure parent is registered\n+        self.parent_type_info = _lookup_or_register_type_info_from_type_key(parent_type_key)\n+\n+\n+def _member_method_wrapper(method_func: Callable[..., Any]) -> Callable[..., Any]:\n+    def wrapper(self: Any, *args: Any) -> Any:\n+        return method_func(self, *args)\n+\n+    return wrapper\ndiff --git a/python/tvm_ffi/dataclasses/_utils.py b/python/tvm_ffi/dataclasses/_utils.py\nindex b6bcdac..60f31fb 100644\n--- a/python/tvm_ffi/dataclasses/_utils.py\n+++ b/python/tvm_ffi/dataclasses/_utils.py\n@@ -26,23 +26,11 @@ from ..core import (\n     Object,\n     TypeField,\n     TypeInfo,\n-    _lookup_type_info_from_type_key,\n )\n \n _InputClsType = TypeVar(\"_InputClsType\")\n \n \n-def get_parent_type_info(type_cls: type) -> TypeInfo:\n-    \"\"\"Find the nearest ancestor with registered ``__tvm_ffi_type_info__``.\n-\n-    If none are found, return the base ``ffi.Object`` type info.\n-    \"\"\"\n-    for base in type_cls.__bases__:\n-        if (info := getattr(base, \"__tvm_ffi_type_info__\", None)) is not None:\n-            return info\n-    return _lookup_type_info_from_type_key(\"ffi.Object\")\n-\n-\n def type_info_to_cls(\n     type_info: TypeInfo,\n     cls: type[_InputClsType],\ndiff --git a/python/tvm_ffi/dataclasses/c_class.py b/python/tvm_ffi/dataclasses/c_class.py\nindex dc6aeed..42dc4fd 100644\n--- a/python/tvm_ffi/dataclasses/c_class.py\n+++ b/python/tvm_ffi/dataclasses/c_class.py\n@@ -27,16 +27,16 @@ from collections.abc import Callable\n from dataclasses import InitVar\n from typing import ClassVar, TypeVar, get_origin, get_type_hints\n \n-from typing_extensions import dataclass_transform  # type: ignore[attr-defined]\n+from typing_extensions import dataclass_transform\n \n-from ..core import TypeField, TypeInfo\n+from ..core import TypeField, TypeInfo, _lookup_or_register_type_info_from_type_key, _set_type_cls\n from . import _utils\n-from .field import Field, field\n+from .field import field\n \n _InputClsType = TypeVar(\"_InputClsType\")\n \n \n-@dataclass_transform(field_specifiers=(field, Field))\n+@dataclass_transform(field_specifiers=(field,))\n def c_class(\n     type_key: str, init: bool = True\n ) -> Callable[[type[_InputClsType]], type[_InputClsType]]:\n@@ -116,9 +116,8 @@ def c_class(\n         nonlocal init\n         init = init and \"__init__\" not in super_type_cls.__dict__\n         # Step 1. Retrieve `type_info` from registry\n-        type_info: TypeInfo = _utils._lookup_type_info_from_type_key(type_key)\n-        assert type_info.parent_type_info is None, f\"Already registered type: {type_key}\"\n-        type_info.parent_type_info = _utils.get_parent_type_info(super_type_cls)\n+        type_info: TypeInfo = _lookup_or_register_type_info_from_type_key(type_key)\n+        assert type_info.parent_type_info is not None\n         # Step 2. Reflect all the fields of the type\n         type_info.fields = _inspect_c_class_fields(super_type_cls, type_info)\n         for type_field in type_info.fields:\n@@ -130,7 +129,7 @@ def c_class(\n             cls=super_type_cls,\n             methods={\"__init__\": fn_init},\n         )\n-        type_info.type_cls = type_cls\n+        _set_type_cls(type_info, type_cls)\n         return type_cls\n \n     return decorator\ndiff --git a/python/tvm_ffi/registry.py b/python/tvm_ffi/registry.py\nindex 3ef4039..45c1da0 100644\n--- a/python/tvm_ffi/registry.py\n+++ b/python/tvm_ffi/registry.py\n@@ -249,45 +249,17 @@ def init_ffi_api(namespace: str, target_module_name: str | None = None) -> None:\n         setattr(target_module, fname, f)\n \n \n-def _member_method_wrapper(method_func: Callable[..., Any]) -> Callable[..., Any]:\n-    def wrapper(self: Any, *args: Any) -> Any:\n-        return method_func(self, *args)\n-\n-    return wrapper\n-\n-\n def _add_class_attrs(type_cls: type, type_info: TypeInfo) -> type:\n     for field in type_info.fields:\n-        getter = field.getter\n-        setter = field.setter if not field.frozen else None\n-        doc = field.doc if field.doc else None\n         name = field.name\n-        if hasattr(type_cls, name):\n-            # skip already defined attributes\n-            continue\n-        setattr(type_cls, name, property(getter, setter, doc=doc))\n+        if not hasattr(type_cls, name):  # skip already defined attributes\n+            setattr(type_cls, name, field.as_property(type_cls))\n     for method in type_info.methods:\n         name = method.name\n         if name == \"__ffi_init__\":\n             name = \"__c_ffi_init__\"\n-        doc = method.doc if method.doc else None\n-        method_func = method.func\n-        if method.is_static:\n-            if doc is not None:\n-                method_func.__doc__ = doc\n-            method_func.__name__ = name\n-            method_pyfunc: Any = staticmethod(method_func)\n-        else:\n-            wrapped_func = _member_method_wrapper(method_func)\n-            if doc is not None:\n-                wrapped_func.__doc__ = doc\n-            wrapped_func.__name__ = name\n-            method_pyfunc = wrapped_func\n-\n-        if hasattr(type_cls, name):\n-            # skip already defined attributes\n-            continue\n-        setattr(type_cls, name, method_pyfunc)\n+        if not hasattr(type_cls, name):\n+            setattr(type_cls, name, method.as_callable(type_cls))\n     return type_cls\n \n \ndiff --git a/src/ffi/extra/reflection_extra.cc b/src/ffi/extra/reflection_extra.cc\nindex f923643..d36e1ac 100644\n--- a/src/ffi/extra/reflection_extra.cc\n+++ b/src/ffi/extra/reflection_extra.cc\n@@ -90,7 +90,7 @@ void MakeObjectFromPackedArgs(ffi::PackedArgs args, Any* ret) {\n   // iterate through acenstors in parent to child order\n   // skip the first one since it is always the root object\n   for (int i = 1; i < type_info->type_depth; ++i) {\n-    update_fields(type_info->type_acenstors[i]);\n+    update_fields(type_info->type_ancestors[i]);\n   }\n   update_fields(type_info);\n \ndiff --git a/src/ffi/extra/testing.cc b/src/ffi/extra/testing.cc\nindex cf55161..f67752f 100644\n--- a/src/ffi/extra/testing.cc\n+++ b/src/ffi/extra/testing.cc\n@@ -134,13 +134,23 @@ class TestCxxInitSubsetObj : public Object {\n   TVM_FFI_DECLARE_OBJECT_INFO(\"testing.TestCxxInitSubset\", TestCxxInitSubsetObj, Object);\n };\n \n-class TestUnregisteredObject : public Object {\n+class TestUnregisteredBaseObject : public Object {\n  public:\n-  int64_t value;\n-\n-  explicit TestUnregisteredObject(int64_t value) : value(value) {}\n+  int64_t v1;\n+  explicit TestUnregisteredBaseObject(int64_t v1) : v1(v1) {}\n+  int64_t GetV1PlusOne() const { return v1 + 1; }\n+  TVM_FFI_DECLARE_OBJECT_INFO(\"testing.TestUnregisteredBaseObject\", TestUnregisteredBaseObject,\n+                              Object);\n+};\n \n-  TVM_FFI_DECLARE_OBJECT_INFO(\"testing.TestUnregisteredObject\", TestUnregisteredObject, Object);\n+class TestUnregisteredObject : public TestUnregisteredBaseObject {\n+ public:\n+  int64_t v2;\n+  explicit TestUnregisteredObject(int64_t v1, int64_t v2)\n+      : TestUnregisteredBaseObject(v1), v2(v2) {}\n+  int64_t GetV2PlusTwo() const { return v2 + 2; }\n+  TVM_FFI_DECLARE_OBJECT_INFO(\"testing.TestUnregisteredObject\", TestUnregisteredObject,\n+                              TestUnregisteredBaseObject);\n };\n \n TVM_FFI_NO_INLINE void TestRaiseError(String kind, String msg) {\n@@ -176,6 +186,7 @@ TVM_FFI_STATIC_INIT_BLOCK() {\n       .def_static(\"__ffi_init__\", refl::init<TestCxxClassDerived, int64_t, int32_t, double, float>)\n       .def_rw(\"v_f64\", &TestCxxClassDerived::v_f64)\n       .def_rw(\"v_f32\", &TestCxxClassDerived::v_f32);\n+\n   refl::ObjectDef<TestCxxClassDerivedDerived>()\n       .def_static(\n           \"__ffi_init__\",\n@@ -189,6 +200,21 @@ TVM_FFI_STATIC_INIT_BLOCK() {\n       .def_rw(\"optional_field\", &TestCxxInitSubsetObj::optional_field)\n       .def_rw(\"note\", &TestCxxInitSubsetObj::note);\n \n+  refl::ObjectDef<TestUnregisteredBaseObject>()\n+      .def_ro(\"v1\", &TestUnregisteredBaseObject::v1)\n+      .def_static(\"__ffi_init__\", refl::init<TestUnregisteredBaseObject, int64_t>,\n+                  \"Constructor of TestUnregisteredBaseObject\")\n+      .def(\"get_v1_plus_one\", &TestUnregisteredBaseObject::GetV1PlusOne,\n+           \"Get (v1 + 1) from TestUnregisteredBaseObject\");\n+\n+  refl::ObjectDef<TestUnregisteredObject>()\n+      .def_ro(\"v1\", &TestUnregisteredObject::v1)\n+      .def_ro(\"v2\", &TestUnregisteredObject::v2)\n+      .def_static(\"__ffi_init__\", refl::init<TestUnregisteredObject, int64_t, int64_t>,\n+                  \"Constructor of TestUnregisteredObject\")\n+      .def(\"get_v2_plus_two\", &TestUnregisteredObject::GetV2PlusTwo,\n+           \"Get (v2 + 2) from TestUnregisteredObject\");\n+\n   refl::GlobalDef()\n       .def(\"testing.test_raise_error\", TestRaiseError)\n       .def_packed(\"testing.nop\", [](PackedArgs args, Any* ret) {})\n@@ -206,7 +232,7 @@ TVM_FFI_STATIC_INIT_BLOCK() {\n            })\n       .def(\"testing.object_use_count\", [](const Object* obj) { return obj->use_count(); })\n       .def(\"testing.make_unregistered_object\",\n-           []() { return ObjectRef(make_object<TestUnregisteredObject>(42)); });\n+           []() { return ObjectRef(make_object<TestUnregisteredObject>(41, 42)); });\n }\n \n }  // namespace ffi\ndiff --git a/src/ffi/object.cc b/src/ffi/object.cc\nindex 292c8e9..d9c6698 100644\n--- a/src/ffi/object.cc\n+++ b/src/ffi/object.cc\n@@ -54,7 +54,7 @@ class TypeTable {\n     /*! \\brief stored type key */\n     String type_key_data;\n     /*! \\brief acenstor information */\n-    std::vector<const TVMFFITypeInfo*> type_acenstors_data;\n+    std::vector<const TVMFFITypeInfo*> type_ancestors_data;\n     /*! \\brief type fields informaton */\n     std::vector<TVMFFIFieldInfo> type_fields_data;\n     /*! \\brief type methods informaton */\n@@ -81,21 +81,21 @@ class TypeTable {\n       if (type_depth != 0) {\n         TVM_FFI_ICHECK_NOTNULL(parent);\n         TVM_FFI_ICHECK_EQ(type_depth, parent->type_depth + 1);\n-        type_acenstors_data.resize(type_depth);\n+        type_ancestors_data.resize(type_depth);\n         // copy over parent's type information\n         for (int32_t i = 0; i < parent->type_depth; ++i) {\n-          type_acenstors_data[i] = parent->type_acenstors[i];\n+          type_ancestors_data[i] = parent->type_ancestors[i];\n         }\n         // set last type information to be parent\n-        type_acenstors_data[parent->type_depth] = parent;\n+        type_ancestors_data[parent->type_depth] = parent;\n       }\n-      // initialize type info: no change to type_key and type_acenstors fields\n+      // initialize type info: no change to type_key and type_ancestors fields\n       // after this line\n       this->type_index = type_index;\n       this->type_depth = type_depth;\n       this->type_key = TVMFFIByteArray{this->type_key_data.data(), this->type_key_data.length()};\n       this->type_key_hash = std::hash<String>()(this->type_key_data);\n-      this->type_acenstors = type_acenstors_data.data();\n+      this->type_ancestors = type_ancestors_data.data();\n       // initialize the reflection information\n       this->num_fields = 0;\n       this->num_methods = 0;\n@@ -280,7 +280,7 @@ class TypeTable {\n     for (auto it = type_table_.rbegin(); it != type_table_.rend(); ++it) {\n       const Entry* ptr = it->get();\n       if (ptr != nullptr && ptr->type_depth != 0) {\n-        int parent_index = ptr->type_acenstors[ptr->type_depth - 1]->type_index;\n+        int parent_index = ptr->type_ancestors[ptr->type_depth - 1]->type_index;\n         num_children[parent_index] += num_children[ptr->type_index] + 1;\n         if (expected_child_slots[ptr->type_index] + 1 < ptr->num_slots) {\n           expected_child_slots[ptr->type_index] = ptr->num_slots - 1;\n@@ -293,7 +293,7 @@ class TypeTable {\n       if (ptr != nullptr && num_children[ptr->type_index] >= min_children_count) {\n         std::cerr << '[' << ptr->type_index << \"]\\t\" << ToStringView(ptr->type_key);\n         if (ptr->type_depth != 0) {\n-          int32_t parent_index = ptr->type_acenstors[ptr->type_depth - 1]->type_index;\n+          int32_t parent_index = ptr->type_ancestors[ptr->type_depth - 1]->type_index;\n           std::cerr << \"\\tparent=\" << ToStringView(type_table_[parent_index]->type_key);\n         } else {\n           std::cerr << \"\\tparent=root\";\ndiff --git a/tests/cpp/test_object.cc b/tests/cpp/test_object.cc\nindex ec5c54c..6c8c822 100644\n--- a/tests/cpp/test_object.cc\n+++ b/tests/cpp/test_object.cc\n@@ -55,8 +55,8 @@ TEST(Object, TypeInfo) {\n   EXPECT_TRUE(info != nullptr);\n   EXPECT_EQ(info->type_index, TIntObj::RuntimeTypeIndex());\n   EXPECT_EQ(info->type_depth, 2);\n-  EXPECT_EQ(info->type_acenstors[0]->type_index, Object::_type_index);\n-  EXPECT_EQ(info->type_acenstors[1]->type_index, TNumberObj::_type_index);\n+  EXPECT_EQ(info->type_ancestors[0]->type_index, Object::_type_index);\n+  EXPECT_EQ(info->type_ancestors[1]->type_index, TNumberObj::_type_index);\n   EXPECT_GE(info->type_index, TypeIndex::kTVMFFIDynObjectBegin);\n }\n \ndiff --git a/tests/python/test_object.py b/tests/python/test_object.py\nindex 3b36f5b..0c64e46 100644\n--- a/tests/python/test_object.py\n+++ b/tests/python/test_object.py\n@@ -19,6 +19,7 @@ from typing import Any\n \n import pytest\n import tvm_ffi\n+from tvm_ffi.core import TypeInfo\n \n \n def test_make_object() -> None:\n@@ -103,12 +104,22 @@ def test_opaque_object() -> None:\n \n \n def test_unregistered_object_fallback() -> None:\n-    with pytest.warns(\n-        UserWarning,\n-        match=(\n-            r\"Returning type `testing\\.TestUnregisteredObject` \"\n-            r\"which is not registered via register_object, fallback to Object\"\n-        ),\n-    ):\n+    def _check_type(x: Any) -> None:\n+        type_info: TypeInfo = type(x).__tvm_ffi_type_info__  # type: ignore[attr-defined]\n+        assert type_info.type_key == \"testing.TestUnregisteredObject\"\n+        assert x.v1 == 41\n+        assert x.v2 == 42\n+        assert x.get_v1_plus_one() == 42  # type: ignore[attr-defined]\n+        assert x.get_v2_plus_two() == 44  # type: ignore[attr-defined]\n+        assert type(x).__name__ == \"TestUnregisteredObject\"\n+        assert type(x).__module__ == \"testing\"\n+        assert type(x).__qualname__ == \"testing.TestUnregisteredObject\"\n+        assert \"Auto-generated fallback class\" in type(x).__doc__  # type: ignore[operator]\n+        assert \"Get (v1 + 1) from TestUnregisteredBaseObject\" in type(x).get_v1_plus_one.__doc__  # type: ignore[attr-defined]\n+        assert \"Get (v2 + 2) from TestUnregisteredObject\" in type(x).get_v2_plus_two.__doc__  # type: ignore[attr-defined]\n+\n+    obj = tvm_ffi.testing.make_unregistered_object()\n+    _check_type(obj)\n+    for _ in range(5):\n         obj = tvm_ffi.testing.make_unregistered_object()\n-    assert type(obj) is tvm_ffi.Object\n+        _check_type(obj)",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".cc",
+      ".h",
+      ".pxi",
+      ".py",
+      ".pyi"
+    ],
+    "scopes_guess": [
+      "include",
+      "python",
+      "src",
+      "tests"
+    ]
+  }
+}

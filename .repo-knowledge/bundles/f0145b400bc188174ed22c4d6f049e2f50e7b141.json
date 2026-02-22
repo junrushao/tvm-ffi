@@ -1,0 +1,38 @@
+{
+  "sha": "f0145b400bc188174ed22c4d6f049e2f50e7b141",
+  "sha7": "f0145b4",
+  "author_name": "Yixin Dong",
+  "author_email": "ubospica@gmail.com",
+  "date_iso": "2025-10-15T14:06:14-07:00",
+  "subject": "Fix comments about initialization method (#137)",
+  "body": "This PR fixes the comments in #127 about the initialization method.",
+  "is_merge": false,
+  "parents": [
+    "2002e28bcf94fee5e9b85014e59528284e470cfd"
+  ],
+  "name_status": [
+    [
+      "M",
+      "include/tvm/ffi/reflection/registry.h"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "include/tvm/ffi/reflection/registry.h",
+      "additions": 4,
+      "deletions": 4
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/include/tvm/ffi/reflection/registry.h b/include/tvm/ffi/reflection/registry.h\nindex 124fc47..be63c30 100644\n--- a/include/tvm/ffi/reflection/registry.h\n+++ b/include/tvm/ffi/reflection/registry.h\n@@ -441,7 +441,7 @@ struct init {\n   /*!\n    * \\brief Constructor\n    */\n-  init() {}\n+  constexpr init() noexcept = default;\n \n  private:\n   /*!\n@@ -576,8 +576,8 @@ class ObjectDef : public ReflectionDefBase {\n    * \\endcode\n    */\n   template <typename... Args, typename... Extra>\n-  TVM_FFI_INLINE ObjectDef& def(init<Args...> init_func, Extra&&... extra) {\n-    RegisterMethod(INIT_METHOD_NAME, true, &init<Args...>::template execute<Class>,\n+  TVM_FFI_INLINE ObjectDef& def([[maybe_unused]] init<Args...> init_func, Extra&&... extra) {\n+    RegisterMethod(kInitMethodName, true, &init<Args...>::template execute<Class>,\n                    std::forward<Extra>(extra)...);\n     return *this;\n   }\n@@ -654,7 +654,7 @@ class ObjectDef : public ReflectionDefBase {\n \n   int32_t type_index_;\n   const char* type_key_;\n-  static constexpr const char* INIT_METHOD_NAME = \"__ffi_init__\";\n+  static constexpr const char* kInitMethodName = \"__ffi_init__\";\n };\n \n /*!",
+  "heuristics": {
+    "tags": [],
+    "extensions": [
+      ".h"
+    ],
+    "scopes_guess": [
+      "include"
+    ]
+  }
+}

@@ -1,0 +1,39 @@
+{
+  "sha": "22f22e8d15f6b2eb88db19767706a82f4f3c457f",
+  "sha7": "22f22e8",
+  "author_name": "Junru Shao",
+  "author_email": "junrushao@apache.org",
+  "date_iso": "2025-12-24T04:46:19-08:00",
+  "subject": "fix(lint): Suppress latest clang-tidy warnings (#361)",
+  "body":
+      "Introduced by #286, where `CaptureTuple`, i.e.\n`CaptureTupleAux<PackedArgs>::type`, is defined as:\n\n```\nstd::tuple<std::optional<std::decay_t<Args>>...>\n```\n\nand star access to its `std::optional` is indeed unchecked but intended.",
+  "is_merge": false,
+  "parents": [
+    "84c5bdbcd11ae0e5bc921db4f35d3fd1d3ae762c"
+  ],
+  "name_status": [
+    [
+      "M",
+      "include/tvm/ffi/reflection/overload.h"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "include/tvm/ffi/reflection/overload.h",
+      "additions": 2,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/include/tvm/ffi/reflection/overload.h b/include/tvm/ffi/reflection/overload.h\nindex 6556338..f9684bc 100644\n--- a/include/tvm/ffi/reflection/overload.h\n+++ b/include/tvm/ffi/reflection/overload.h\n@@ -164,6 +164,7 @@ struct TypedOverload : OverloadBase {\n   template <std::size_t... I>\n   Ret CallAux(std::index_sequence<I...>, CaptureTuple& tuple) {\n     /// NOTE: this works for T, const T, const T&, T&& argument types\n+    // NOLINTNEXTLINE(bugprone-unchecked-optional-access)\n     return f_(static_cast<std::tuple_element_t<I, PackedArgs>>(std::move(*std::get<I>(tuple)))...);\n   }\n \n@@ -273,6 +274,7 @@ namespace reflection {\n template <typename Class>\n class OverloadObjectDef : private ObjectDef<Class> {\n  public:\n+  /*! \\brief The super class */\n   using Super = ObjectDef<Class>;\n   /*!\n    * \\brief Constructor",
+  "heuristics": {
+    "tags": [],
+    "extensions": [
+      ".h"
+    ],
+    "scopes_guess": [
+      "include"
+    ]
+  }
+}

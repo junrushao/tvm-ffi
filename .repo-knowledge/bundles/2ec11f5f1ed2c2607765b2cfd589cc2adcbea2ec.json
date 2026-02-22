@@ -1,0 +1,119 @@
+{
+  "sha": "2ec11f5f1ed2c2607765b2cfd589cc2adcbea2ec",
+  "sha7": "2ec11f5",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-07-26T12:20:37-04:00",
+  "subject": "[FFI][REFACTOR] Enable custom s_hash/equal (#18165)",
+  "body":
+      "This PR enables custom shash equal via TypeAttr,\nalso enhances the Var comparison by checking content\nso we can precheck type signatures.",
+  "is_merge": false,
+  "parents": [
+    "162d6009252dd44950a9aa9b890cbbce6b8e5155"
+  ],
+  "name_status": [
+    [
+      "M",
+      "CMakeLists.txt"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/c_api.h"
+    ],
+    [
+      "M",
+      "src/ffi/object.cc"
+    ],
+    [
+      "M",
+      "src/ffi/reflection/structural_equal.cc"
+    ],
+    [
+      "M",
+      "src/ffi/reflection/structural_hash.cc"
+    ],
+    [
+      "M",
+      "tests/cpp/CMakeLists.txt"
+    ],
+    [
+      "R085",
+      "tests/cpp/extra/test_reflection_structural_equal_hash.cc"
+    ],
+    [
+      "M",
+      "tests/cpp/test_reflection_accessor.cc"
+    ],
+    [
+      "M",
+      "tests/cpp/testing_object.h"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "CMakeLists.txt",
+      "additions": 14,
+      "deletions": 4
+    },
+    {
+      "path": "include/tvm/ffi/c_api.h",
+      "additions": 24,
+      "deletions": 1
+    },
+    {
+      "path": "src/ffi/object.cc",
+      "additions": 2,
+      "deletions": 0
+    },
+    {
+      "path": "src/ffi/reflection/structural_equal.cc",
+      "additions": 53,
+      "deletions": 9
+    },
+    {
+      "path": "src/ffi/reflection/structural_hash.cc",
+      "additions": 39,
+      "deletions": 13
+    },
+    {
+      "path": "tests/cpp/CMakeLists.txt",
+      "additions": 6,
+      "deletions": 0
+    },
+    {
+      "path": "tests/cpp/{ => extra}/test_reflection_structural_equal_hash.cc",
+      "additions": 27,
+      "deletions": 1
+    },
+    {
+      "path": "tests/cpp/test_reflection_accessor.cc",
+      "additions": 1,
+      "deletions": 0
+    },
+    {
+      "path": "tests/cpp/testing_object.h",
+      "additions": 56,
+      "deletions": 1
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/CMakeLists.txt b/CMakeLists.txt\nindex ba0237f..d6c56c8 100644\n--- a/CMakeLists.txt\n+++ b/CMakeLists.txt\n@@ -26,6 +26,7 @@ project(\n \n option(TVM_FFI_BUILD_TESTS \"Adding test targets.\" OFF)\n option(TVM_FFI_USE_LIBBACKTRACE \"Enable libbacktrace\" ON)\n+option(TVM_FFI_USE_EXTRA_CXX_API \"Enable extra CXX API in shared lib\" ON)\n option(TVM_FFI_BACKTRACE_ON_SEGFAULT \"Set signal handler to print traceback on segfault\" ON)\n \n include(cmake/Utils/CxxWarning.cmake)\n@@ -47,7 +48,8 @@ target_include_directories(tvm_ffi_header INTERFACE \"${CMAKE_CURRENT_SOURCE_DIR}\n target_link_libraries(tvm_ffi_header INTERFACE dlpack_header)\n \n ########## Target: `tvm_ffi` ##########\n-add_library(tvm_ffi_objs OBJECT\n+\n+set(tvm_ffi_objs_sources\n   \"${CMAKE_CURRENT_SOURCE_DIR}/src/ffi/traceback.cc\"\n   \"${CMAKE_CURRENT_SOURCE_DIR}/src/ffi/traceback_win.cc\"\n   \"${CMAKE_CURRENT_SOURCE_DIR}/src/ffi/object.cc\"\n@@ -57,10 +59,18 @@ add_library(tvm_ffi_objs OBJECT\n   \"${CMAKE_CURRENT_SOURCE_DIR}/src/ffi/dtype.cc\"\n   \"${CMAKE_CURRENT_SOURCE_DIR}/src/ffi/testing.cc\"\n   \"${CMAKE_CURRENT_SOURCE_DIR}/src/ffi/container.cc\"\n-  \"${CMAKE_CURRENT_SOURCE_DIR}/src/ffi/reflection/access_path.cc\"\n-  \"${CMAKE_CURRENT_SOURCE_DIR}/src/ffi/reflection/structural_equal.cc\"\n-  \"${CMAKE_CURRENT_SOURCE_DIR}/src/ffi/reflection/structural_hash.cc\"\n )\n+\n+if (TVM_FFI_USE_EXTRA_CXX_API)\n+  list(APPEND tvm_ffi_objs_sources\n+    \"${CMAKE_CURRENT_SOURCE_DIR}/src/ffi/reflection/access_path.cc\"\n+    \"${CMAKE_CURRENT_SOURCE_DIR}/src/ffi/reflection/structural_equal.cc\"\n+    \"${CMAKE_CURRENT_SOURCE_DIR}/src/ffi/reflection/structural_hash.cc\"\n+  )\n+endif()\n+\n+add_library(tvm_ffi_objs OBJECT ${tvm_ffi_objs_sources})\n+\n set_target_properties(\n   tvm_ffi_objs PROPERTIES\n   POSITION_INDEPENDENT_CODE ON\ndiff --git a/include/tvm/ffi/c_api.h b/include/tvm/ffi/c_api.h\nindex 59b6877..e2de610 100644\n--- a/include/tvm/ffi/c_api.h\n+++ b/include/tvm/ffi/c_api.h\n@@ -424,6 +424,27 @@ typedef enum {\n    * is only an unique copy of each value.\n    */\n   kTVMFFISEqHashKindUniqueInstance = 5,\n+  /*!\n+   * \\brief provide custom __s_equal__ and __s_hash__ functions through TypeAttrColumn.\n+   *\n+   * The function signatures are(defined via ffi::Function)\n+   *\n+   * \\code\n+   * bool __s_equal__(\n+   *   ObjectRefType self, ObjectRefType other,\n+   *   ffi::TypedFunction<bool(AnyView, AnyView, bool def_region, string field_name)> cmp,\n+   * );\n+   *\n+   * uint64_t __s_hash__(\n+   *   ObjectRefType self, uint64_t type_key_hash,\n+   *   ffi::TypedFunction<uint64_t(AnyView, bool def_region)> hash\n+   * );\n+   * \\endcode\n+   *\n+   * Where the extra string field in cmp is the name of the field that is being compared.\n+   * The function should be registered through TVMFFITypeRegisterAttr via reflection::TypeAttrDef.\n+   */\n+  kTVMFFISEqHashKindCustomTreeNode = 6,\n #ifdef __cplusplus\n };\n #else\n@@ -539,7 +560,9 @@ typedef struct {\n /*\n  * \\brief Column array that stores extra attributes about types\n  *\n- * The attributes stored in column arrays that can be looked up by type index.\n+ * The attributes stored in a column array that can be looked up by type index.\n+ * Note that the TypeAttr behaves like type_traits so column[T] so not contain\n+ * attributes from base classes.\n  *\n  * \\note\n  * \\sa TVMFFIRegisterTypeAttr\ndiff --git a/src/ffi/object.cc b/src/ffi/object.cc\nindex 863b43b..4abe933 100644\n--- a/src/ffi/object.cc\n+++ b/src/ffi/object.cc\n@@ -247,6 +247,8 @@ class TypeTable {\n       column_index = type_attr_columns_.size();\n       type_attr_columns_.emplace_back(std::make_unique<TypeAttrColumnData>());\n       type_attr_name_to_column_index_.Set(name_str, column_index);\n+    } else {\n+      column_index = (*it).second;\n     }\n     TypeAttrColumnData* column = type_attr_columns_[column_index].get();\n     if (column->data_.size() < static_cast<size_t>(type_index + 1)) {\ndiff --git a/src/ffi/reflection/structural_equal.cc b/src/ffi/reflection/structural_equal.cc\nindex 6716644..03cbdd9 100644\n--- a/src/ffi/reflection/structural_equal.cc\n+++ b/src/ffi/reflection/structural_equal.cc\n@@ -119,13 +119,7 @@ class StructEqualHandler {\n     }\n \n     bool success = true;\n-    if (structural_eq_hash_kind == kTVMFFISEqHashKindFreeVar) {\n-      // we are in a free var case that is not yet mapped.\n-      // in this case, either map_free_vars_ should be set to true, or map_free_vars_ should be set\n-      if (!lhs.same_as(rhs) && !map_free_vars_) {\n-        success = false;\n-      }\n-    } else {\n+    if (structural_eq_hash_kind != kTVMFFISEqHashKindCustomTreeNode) {\n       // We recursively compare the fields the object\n       ForEachFieldInfoWithEarlyStop(type_info, [&](const TVMFFIFieldInfo* field_info) {\n         // skip fields that are marked as structural eq hash ignore\n@@ -158,11 +152,57 @@ class StructEqualHandler {\n           return false;\n         }\n       });\n+    } else {\n+      static reflection::TypeAttrColumn custom_s_equal = reflection::TypeAttrColumn(\"__s_equal__\");\n+      // run custom equal function defined via __s_equal__ type attribute\n+      if (s_equal_callback_ == nullptr) {\n+        s_equal_callback_ = ffi::Function::FromTyped(\n+            [this](AnyView lhs, AnyView rhs, bool def_region, AnyView field_name) {\n+              // NOTE: we explicitly make field_name as AnyView to avoid copy overhead initially\n+              // and only cast to string if mismatch happens\n+              bool success = true;\n+              if (def_region) {\n+                bool allow_free_var = true;\n+                std::swap(allow_free_var, map_free_vars_);\n+                success = CompareAny(lhs, rhs);\n+                std::swap(allow_free_var, map_free_vars_);\n+              } else {\n+                success = CompareAny(lhs, rhs);\n+              }\n+              if (!success) {\n+                if (mismatch_lhs_reverse_path_ != nullptr) {\n+                  String field_name_str = field_name.cast<String>();\n+                  mismatch_lhs_reverse_path_->emplace_back(AccessStep::ObjectField(field_name_str));\n+                  mismatch_rhs_reverse_path_->emplace_back(AccessStep::ObjectField(field_name_str));\n+                }\n+              }\n+              return success;\n+            });\n+      }\n+      TVM_FFI_ICHECK(custom_s_equal[type_info->type_index] != nullptr)\n+          << \"TypeAttr `__s_equal__` is not registered for type `\" << String(type_info->type_key)\n+          << \"`\";\n+      success = custom_s_equal[type_info->type_index]\n+                    .cast<ffi::Function>()(lhs, rhs, s_equal_callback_)\n+                    .cast<bool>();\n     }\n+\n     if (success) {\n+      if (structural_eq_hash_kind == kTVMFFISEqHashKindFreeVar) {\n+        // we are in a free var case that is not yet mapped.\n+        // in this case, either map_free_vars_ should be set to true, or map_free_vars_ should be\n+        // set\n+        if (lhs.same_as(rhs) || map_free_vars_) {\n+          // record the equality\n+          equal_map_lhs_[lhs] = rhs;\n+          equal_map_rhs_[rhs] = lhs;\n+          return true;\n+        } else {\n+          return false;\n+        }\n+      }\n       // if we have a success mapping and in graph/var mode, record the equality mapping\n-      if (structural_eq_hash_kind == kTVMFFISEqHashKindDAGNode ||\n-          structural_eq_hash_kind == kTVMFFISEqHashKindFreeVar) {\n+      if (structural_eq_hash_kind == kTVMFFISEqHashKindDAGNode) {\n         // record the equality\n         equal_map_lhs_[lhs] = rhs;\n         equal_map_rhs_[rhs] = lhs;\n@@ -306,6 +346,8 @@ class StructEqualHandler {\n   // the root lhs for result printing\n   std::vector<AccessStep>* mismatch_lhs_reverse_path_ = nullptr;\n   std::vector<AccessStep>* mismatch_rhs_reverse_path_ = nullptr;\n+  // lazily initialize custom equal function\n+  ffi::Function s_equal_callback_ = nullptr;\n   // map from lhs to rhs\n   std::unordered_map<ObjectRef, ObjectRef, ObjectPtrHash, ObjectPtrEqual> equal_map_lhs_;\n   // map from rhs to lhs\n@@ -342,6 +384,8 @@ TVM_FFI_STATIC_INIT_BLOCK({\n   namespace refl = tvm::ffi::reflection;\n   refl::GlobalDef().def(\"ffi.reflection.GetFirstStructuralMismatch\",\n                         StructuralEqual::GetFirstMismatch);\n+  // ensure the type attribute column is presented in the system even if it is empty.\n+  refl::EnsureTypeAttrColumn(\"__s_equal__\");\n });\n \n }  // namespace reflection\ndiff --git a/src/ffi/reflection/structural_hash.cc b/src/ffi/reflection/structural_hash.cc\nindex fc44790..ba47de5 100644\n--- a/src/ffi/reflection/structural_hash.cc\n+++ b/src/ffi/reflection/structural_hash.cc\n@@ -99,15 +99,7 @@ class StructuralHashHandler {\n \n     // compute the hash value\n     uint64_t hash_value = obj->GetTypeKeyHash();\n-    if (structural_eq_hash_kind == kTVMFFISEqHashKindFreeVar) {\n-      if (map_free_vars_) {\n-        // use lexical order of free var and its type\n-        hash_value = details::StableHashCombine(hash_value, free_var_counter_++);\n-      } else {\n-        // Fallback to pointer hash, we are not mapping free var.\n-        return std::hash<const Object*>()(obj.get());\n-      }\n-    } else {\n+    if (structural_eq_hash_kind != kTVMFFISEqHashKindCustomTreeNode) {\n       // go over the content and hash the fields\n       ForEachFieldInfo(type_info, [&](const TVMFFIFieldInfo* field_info) {\n         // skip fields that are marked as structural eq hash ignore\n@@ -126,12 +118,43 @@ class StructuralHashHandler {\n           }\n         }\n       });\n-      // if it is a DAG node, also record the lexical order of graph counter\n-      // this helps to distinguish DAG from trees.\n-      if (structural_eq_hash_kind == kTVMFFISEqHashKindDAGNode) {\n-        hash_value = details::StableHashCombine(hash_value, graph_node_counter_++);\n+    } else {\n+      static reflection::TypeAttrColumn custom_s_hash = reflection::TypeAttrColumn(\"__s_hash__\");\n+      TVM_FFI_ICHECK(custom_s_hash[type_info->type_index] != nullptr)\n+          << \"TypeAttr `__s_hash__` is not registered for type `\" << String(type_info->type_key)\n+          << \"`\";\n+      if (s_hash_callback_ == nullptr) {\n+        s_hash_callback_ = ffi::Function::FromTyped([this](AnyView val, bool def_region) {\n+          if (def_region) {\n+            bool allow_free_var = true;\n+            std::swap(allow_free_var, map_free_vars_);\n+            uint64_t hash_value = HashAny(val);\n+            std::swap(allow_free_var, map_free_vars_);\n+            return hash_value;\n+          } else {\n+            return HashAny(val);\n+          }\n+        });\n+      }\n+      hash_value = custom_s_hash[type_info->type_index]\n+                       .cast<ffi::Function>()(obj, hash_value, s_hash_callback_)\n+                       .cast<uint64_t>();\n+    }\n+\n+    if (structural_eq_hash_kind == kTVMFFISEqHashKindFreeVar) {\n+      if (map_free_vars_) {\n+        // use lexical order of free var and its type\n+        hash_value = details::StableHashCombine(hash_value, free_var_counter_++);\n+      } else {\n+        // Fallback to pointer hash, we are not mapping free var.\n+        hash_value = std::hash<const Object*>()(obj.get());\n       }\n     }\n+    // if it is a DAG node, also record the lexical order of graph counter\n+    // this helps to distinguish DAG from trees.\n+    if (structural_eq_hash_kind == kTVMFFISEqHashKindDAGNode) {\n+      hash_value = details::StableHashCombine(hash_value, graph_node_counter_++);\n+    }\n     // record the hash value for this object\n     hash_memo_[obj] = hash_value;\n     return hash_value;\n@@ -244,6 +267,8 @@ class StructuralHashHandler {\n   uint32_t free_var_counter_{0};\n   // graph node counter.\n   uint32_t graph_node_counter_{0};\n+  // lazily initialize custom hash function\n+  ffi::Function s_hash_callback_ = nullptr;\n   // map from lhs to rhs\n   std::unordered_map<ObjectRef, uint64_t, ObjectPtrHash, ObjectPtrEqual> hash_memo_;\n };\n@@ -258,6 +283,7 @@ uint64_t StructuralHash::Hash(const Any& value, bool map_free_vars, bool skip_nd\n TVM_FFI_STATIC_INIT_BLOCK({\n   namespace refl = tvm::ffi::reflection;\n   refl::GlobalDef().def(\"ffi.reflection.StructuralHash\", StructuralHash::Hash);\n+  refl::EnsureTypeAttrColumn(\"__s_hash__\");\n });\n \n }  // namespace reflection\ndiff --git a/tests/cpp/CMakeLists.txt b/tests/cpp/CMakeLists.txt\nindex 4296836..0c820fc 100644\n--- a/tests/cpp/CMakeLists.txt\n+++ b/tests/cpp/CMakeLists.txt\n@@ -1,4 +1,10 @@\n file(GLOB _test_sources \"${CMAKE_CURRENT_SOURCE_DIR}/test*.cc\")\n+file(GLOB _test_extra_sources \"${CMAKE_CURRENT_SOURCE_DIR}/extra/test*.cc\")\n+\n+if (TVM_FFI_USE_EXTRA_CXX_API)\n+  list(APPEND _test_sources ${_test_extra_sources})\n+endif()\n+\n add_executable(\n   tvm_ffi_tests\n   EXCLUDE_FROM_ALL\ndiff --git a/tests/cpp/test_reflection_structural_equal_hash.cc b/tests/cpp/extra/test_reflection_structural_equal_hash.cc\nsimilarity index 85%\nrename from tests/cpp/test_reflection_structural_equal_hash.cc\nrename to tests/cpp/extra/test_reflection_structural_equal_hash.cc\nindex 8646c43..d3353b7 100644\n--- a/tests/cpp/test_reflection_structural_equal_hash.cc\n+++ b/tests/cpp/extra/test_reflection_structural_equal_hash.cc\n@@ -26,7 +26,7 @@\n #include <tvm/ffi/reflection/structural_hash.h>\n #include <tvm/ffi/string.h>\n \n-#include \"./testing_object.h\"\n+#include \"../testing_object.h\"\n \n namespace {\n \n@@ -169,4 +169,30 @@ TEST(StructuralEqualHash, FuncDefAndIgnoreField) {\n   EXPECT_TRUE(refl::StructuralEqual()(diff_fa_fc, expected_diff_fa_fc));\n }\n \n+TEST(StructuralEqualHash, CustomTreeNode) {\n+  TVar x = TVar(\"x\");\n+  TVar y = TVar(\"y\");\n+  // comment fields are ignored\n+  TCustomFunc fa = TCustomFunc({x}, {TInt(1), x}, \"comment a\");\n+  TCustomFunc fb = TCustomFunc({y}, {TInt(1), y}, \"comment b\");\n+\n+  TCustomFunc fc = TCustomFunc({x}, {TInt(1), TInt(2)}, \"comment c\");\n+\n+  EXPECT_TRUE(refl::StructuralEqual()(fa, fb));\n+  EXPECT_EQ(refl::StructuralHash()(fa), refl::StructuralHash()(fb));\n+\n+  EXPECT_FALSE(refl::StructuralEqual()(fa, fc));\n+  auto diff_fa_fc = refl::StructuralEqual::GetFirstMismatch(fa, fc);\n+  auto expected_diff_fa_fc = refl::AccessPathPair(refl::AccessPath({\n+                                                      refl::AccessStep::ObjectField(\"body\"),\n+                                                      refl::AccessStep::ArrayIndex(1),\n+                                                  }),\n+                                                  refl::AccessPath({\n+                                                      refl::AccessStep::ObjectField(\"body\"),\n+                                                      refl::AccessStep::ArrayIndex(1),\n+                                                  }));\n+  EXPECT_TRUE(diff_fa_fc.has_value());\n+  EXPECT_TRUE(refl::StructuralEqual()(diff_fa_fc, expected_diff_fa_fc));\n+}\n+\n }  // namespace\ndiff --git a/tests/cpp/test_reflection_accessor.cc b/tests/cpp/test_reflection_accessor.cc\nindex 6450bd6..aa3dfc5 100644\n--- a/tests/cpp/test_reflection_accessor.cc\n+++ b/tests/cpp/test_reflection_accessor.cc\n@@ -55,6 +55,7 @@ TVM_FFI_STATIC_INIT_BLOCK({\n   TPrimExprObj::RegisterReflection();\n   TVarObj::RegisterReflection();\n   TFuncObj::RegisterReflection();\n+  TCustomFuncObj::RegisterReflection();\n \n   refl::ObjectDef<TestObjA>().def_ro(\"x\", &TestObjA::x).def_rw(\"y\", &TestObjA::y);\n   refl::ObjectDef<TestObjADerived>().def_ro(\"z\", &TestObjADerived::z);\ndiff --git a/tests/cpp/testing_object.h b/tests/cpp/testing_object.h\nindex 37fb741..63c2b42 100644\n--- a/tests/cpp/testing_object.h\n+++ b/tests/cpp/testing_object.h\n@@ -158,7 +158,8 @@ class TVarObj : public Object {\n \n   static void RegisterReflection() {\n     namespace refl = tvm::ffi::reflection;\n-    refl::ObjectDef<TVarObj>().def_ro(\"name\", &TVarObj::name);\n+    refl::ObjectDef<TVarObj>().def_ro(\"name\", &TVarObj::name,\n+                                      refl::AttachFieldFlag::SEqHashIgnore());\n   }\n \n   static constexpr const char* _type_key = \"test.Var\";\n@@ -204,6 +205,60 @@ class TFunc : public ObjectRef {\n   TVM_FFI_DEFINE_OBJECT_REF_METHODS(TFunc, ObjectRef, TFuncObj);\n };\n \n+class TCustomFuncObj : public Object {\n+ public:\n+  Array<TVar> params;\n+  Array<ObjectRef> body;\n+  String comment;\n+\n+  TCustomFuncObj(Array<TVar> params, Array<ObjectRef> body, String comment)\n+      : params(params), body(body), comment(comment) {}\n+\n+  bool SEqual(const TCustomFuncObj* other,\n+              ffi::TypedFunction<bool(AnyView, AnyView, bool, AnyView)> cmp) const {\n+    if (!cmp(params, other->params, true, \"params\")) {\n+      std::cout << \"custom s_equal failed params\" << std::endl;\n+      return false;\n+    }\n+    if (!cmp(body, other->body, false, \"body\")) {\n+      std::cout << \"custom s_equal failed body\" << std::endl;\n+      return false;\n+    }\n+    return true;\n+  }\n+\n+  uint64_t SHash(uint64_t type_key_hash, ffi::TypedFunction<uint64_t(AnyView, bool)> hash) const {\n+    uint64_t hash_value = type_key_hash;\n+    hash_value = tvm::ffi::details::StableHashCombine(hash_value, hash(params, true));\n+    hash_value = tvm::ffi::details::StableHashCombine(hash_value, hash(body, false));\n+    return hash_value;\n+  }\n+\n+  static void RegisterReflection() {\n+    namespace refl = tvm::ffi::reflection;\n+    refl::ObjectDef<TCustomFuncObj>()\n+        .def_ro(\"params\", &TCustomFuncObj::params)\n+        .def_ro(\"body\", &TCustomFuncObj::body)\n+        .def_ro(\"comment\", &TCustomFuncObj::comment);\n+    refl::TypeAttrDef<TCustomFuncObj>()\n+        .def(\"__s_equal__\", &TCustomFuncObj::SEqual)\n+        .def(\"__s_hash__\", &TCustomFuncObj::SHash);\n+  }\n+\n+  static constexpr const char* _type_key = \"test.CustomFunc\";\n+  static constexpr TVMFFISEqHashKind _type_s_eq_hash_kind = kTVMFFISEqHashKindCustomTreeNode;\n+  TVM_FFI_DECLARE_FINAL_OBJECT_INFO(TCustomFuncObj, Object);\n+};\n+\n+class TCustomFunc : public ObjectRef {\n+ public:\n+  explicit TCustomFunc(Array<TVar> params, Array<ObjectRef> body, String comment) {\n+    data_ = make_object<TCustomFuncObj>(params, body, comment);\n+  }\n+\n+  TVM_FFI_DEFINE_OBJECT_REF_METHODS(TCustomFunc, ObjectRef, TCustomFuncObj);\n+};\n+\n }  // namespace testing\n \n template <>",
+  "heuristics": {
+    "tags": [
+      "build",
+      "test"
+    ],
+    "extensions": [
+      ".cc",
+      ".h",
+      ".txt"
+    ],
+    "scopes_guess": [
+      "CMakeLists.txt",
+      "include",
+      "src",
+      "tests"
+    ]
+  }
+}

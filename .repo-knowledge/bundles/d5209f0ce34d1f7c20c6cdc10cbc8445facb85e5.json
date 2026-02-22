@@ -1,0 +1,47 @@
+{
+  "sha": "d5209f0ce34d1f7c20c6cdc10cbc8445facb85e5",
+  "sha7": "d5209f0",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-06-18T16:38:33-04:00",
+  "subject": "[FFI] Optimize atomic decref in Object (#18077)",
+  "body": "",
+  "is_merge": false,
+  "parents": [
+    "e9094866e1e58535f2456b92c1072449f6a2716a"
+  ],
+  "name_status": [
+    [
+      "M",
+      "include/tvm/ffi/base_details.h"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/object.h"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "include/tvm/ffi/base_details.h",
+      "additions": 0,
+      "deletions": 28
+    },
+    {
+      "path": "include/tvm/ffi/object.h",
+      "additions": 30,
+      "deletions": 3
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/include/tvm/ffi/base_details.h b/include/tvm/ffi/base_details.h\nindex afc1b30..ed147b1 100644\n--- a/include/tvm/ffi/base_details.h\n+++ b/include/tvm/ffi/base_details.h\n@@ -139,34 +139,6 @@ namespace tvm {\n namespace ffi {\n namespace details {\n \n-/********** Atomic Operations *********/\n-\n-TVM_FFI_INLINE int32_t AtomicIncrementRelaxed(int32_t* ptr) {\n-#ifdef _MSC_VER\n-  return _InterlockedIncrement(reinterpret_cast<volatile long*>(ptr)) - 1;  // NOLINT(*)\n-#else\n-  return __atomic_fetch_add(ptr, 1, __ATOMIC_RELAXED);\n-#endif\n-}\n-\n-TVM_FFI_INLINE int32_t AtomicDecrementRelAcq(int32_t* ptr) {\n-#ifdef _MSC_VER\n-  return _InterlockedDecrement(reinterpret_cast<volatile long*>(ptr)) + 1;  // NOLINT(*)\n-#else\n-  return __atomic_fetch_sub(ptr, 1, __ATOMIC_ACQ_REL);\n-#endif\n-}\n-\n-TVM_FFI_INLINE int32_t AtomicLoadRelaxed(const int32_t* ptr) {\n-  int32_t* raw_ptr = const_cast<int32_t*>(ptr);\n-#ifdef _MSC_VER\n-  // simply load the variable ptr out\n-  return (reinterpret_cast<const volatile long*>(raw_ptr))[0];  // NOLINT(*)\n-#else\n-  return __atomic_load_n(raw_ptr, __ATOMIC_RELAXED);\n-#endif\n-}\n-\n // for each iterator\n template <bool stop, std::size_t I, typename F>\n struct for_each_dispatcher {\ndiff --git a/include/tvm/ffi/object.h b/include/tvm/ffi/object.h\nindex 72e6f0a..21dd8f3 100644\n--- a/include/tvm/ffi/object.h\n+++ b/include/tvm/ffi/object.h\n@@ -187,7 +187,14 @@ class Object {\n    * \\return The usage count of the cell.\n    * \\note We use stl style naming to be consistent with known API in shared_ptr.\n    */\n-  int32_t use_count() const { return details::AtomicLoadRelaxed(&(header_.ref_counter)); }\n+  int32_t use_count() const {\n+    // only need relaxed load of counters\n+#ifdef _MSC_VER\n+    return (reinterpret_cast<const volatile long*>(&header_.ref_counter))[0];  // NOLINT(*)\n+#else\n+    return __atomic_load_n(&(header_.ref_counter), __ATOMIC_RELAXED);\n+#endif\n+  }\n \n   // Information about the object\n   static constexpr const char* _type_key = \"object.Object\";\n@@ -220,15 +227,35 @@ class Object {\n \n  private:\n   /*! \\brief increase reference count */\n-  void IncRef() { details::AtomicIncrementRelaxed(&(header_.ref_counter)); }\n+  void IncRef() {\n+#ifdef _MSC_VER\n+    _InterlockedIncrement(reinterpret_cast<volatile long*>(&header_.ref_counter));  // NOLINT(*)\n+#else\n+    __atomic_fetch_add(&(header_.ref_counter), 1, __ATOMIC_RELAXED);\n+#endif\n+  }\n \n   /*! \\brief decrease reference count and delete the object */\n   void DecRef() {\n-    if (details::AtomicDecrementRelAcq(&(header_.ref_counter)) == 1) {\n+#ifdef _MSC_VER\n+    if (_InterlockedDecrement(                                               //\n+            reinterpret_cast<volatile long*>(&header_.ref_counter)) == 0) {  // NOLINT(*)\n+      // full barrrier is implicit in InterlockedDecrement\n+      if (header_.deleter != nullptr) {\n+        header_.deleter(&(this->header_));\n+      }\n+    }\n+#else\n+    // first do a release, note we only need to acquire for deleter\n+    if (__atomic_fetch_sub(&(header_.ref_counter), 1, __ATOMIC_RELEASE) == 1) {\n+      // only acquire when we need to call deleter\n+      // in this case we need to ensure all previous writes are visible\n+      __atomic_thread_fence(__ATOMIC_ACQUIRE);\n       if (header_.deleter != nullptr) {\n         header_.deleter(&(this->header_));\n       }\n     }\n+#endif\n   }\n \n   // friend classes",
+  "heuristics": {
+    "tags": [],
+    "extensions": [
+      ".h"
+    ],
+    "scopes_guess": [
+      "include"
+    ]
+  }
+}

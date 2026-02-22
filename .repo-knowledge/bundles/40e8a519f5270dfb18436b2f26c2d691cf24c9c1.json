@@ -1,0 +1,97 @@
+{
+  "sha": "40e8a519f5270dfb18436b2f26c2d691cf24c9c1",
+  "sha7": "40e8a51",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-09-06T07:40:02-04:00",
+  "subject": "[FFI][ABI] Append symbol prefix for ffi exported functions (#18273)",
+  "body":
+      "Previously we simply take the raw symbol for DSO libraries.\nThis can cause symbol conflict of functions that take the ffi calling convention\nand those that are not.\n\nThis PR updates the convention to ask for LLVM and libary module to always\nappend a prefix __tvm_ffi_ to function symbols, this way we will no longer\nhave conflict in TVM_FFI_EXPORT_DLL_TYPED macro",
+  "is_merge": false,
+  "parents": [
+    "ca95b412d75c80466390fbd5e6b5ba77673d93cc"
+  ],
+  "name_status": [
+    [
+      "M",
+      "include/tvm/ffi/extra/module.h"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/function.h"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/module.py"
+    ],
+    [
+      "M",
+      "src/ffi/extra/library_module.cc"
+    ],
+    [
+      "M",
+      "src/ffi/extra/library_module_dynamic_lib.cc"
+    ],
+    [
+      "M",
+      "src/ffi/extra/library_module_system_lib.cc"
+    ],
+    [
+      "M",
+      "src/ffi/extra/module_internal.h"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "include/tvm/ffi/extra/module.h",
+      "additions": 10,
+      "deletions": 5
+    },
+    {
+      "path": "include/tvm/ffi/function.h",
+      "additions": 13,
+      "deletions": 13
+    },
+    {
+      "path": "python/tvm_ffi/module.py",
+      "additions": 2,
+      "deletions": 2
+    },
+    {
+      "path": "src/ffi/extra/library_module.cc",
+      "additions": 2,
+      "deletions": 2
+    },
+    {
+      "path": "src/ffi/extra/library_module_dynamic_lib.cc",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "src/ffi/extra/library_module_system_lib.cc",
+      "additions": 9,
+      "deletions": 8
+    },
+    {
+      "path": "src/ffi/extra/module_internal.h",
+      "additions": 11,
+      "deletions": 1
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/include/tvm/ffi/extra/module.h b/include/tvm/ffi/extra/module.h\nindex bc7dff1..1af2c2b 100644\n--- a/include/tvm/ffi/extra/module.h\n+++ b/include/tvm/ffi/extra/module.h\n@@ -223,14 +223,19 @@ class Module : public ObjectRef {\n  * \\brief Symbols for library module.\n  */\n namespace symbol {\n+/*!\\ brief symbol prefix for tvm ffi related function symbols */\n+constexpr const char* tvm_ffi_symbol_prefix = \"__tvm_ffi_\";\n+// Special symbols have one extra _ prefix to avoid conflict with user symbols\n+/*!\n+ * \\brief Default entry function of a library module is tvm_ffi_symbol_prefix + \"main\"\n+ */\n+constexpr const char* tvm_ffi_main = \"__tvm_ffi_main\";\n /*! \\brief Global variable to store context pointer for a library module. */\n-constexpr const char* tvm_ffi_library_ctx = \"__tvm_ffi_library_ctx\";\n+constexpr const char* tvm_ffi_library_ctx = \"__tvm_ffi__library_ctx\";\n /*! \\brief Global variable to store binary data alongside a library module. */\n-constexpr const char* tvm_ffi_library_bin = \"__tvm_ffi_library_bin\";\n+constexpr const char* tvm_ffi_library_bin = \"__tvm_ffi__library_bin\";\n /*! \\brief Optional metadata prefix of a symbol. */\n-constexpr const char* tvm_ffi_metadata_prefix = \"__tvm_ffi_metadata_\";\n-/*! \\brief Default entry function of a library module. */\n-constexpr const char* tvm_ffi_main = \"__tvm_ffi_main__\";\n+constexpr const char* tvm_ffi_metadata_prefix = \"__tvm_ffi__metadata_\";\n }  // namespace symbol\n }  // namespace ffi\n }  // namespace tvm\ndiff --git a/include/tvm/ffi/function.h b/include/tvm/ffi/function.h\nindex 5a30f25..f849788 100644\n--- a/include/tvm/ffi/function.h\n+++ b/include/tvm/ffi/function.h\n@@ -800,19 +800,19 @@ inline int32_t TypeKeyToIndex(std::string_view type_key) {\n  *\n  * \\endcode\n  */\n-#define TVM_FFI_DLL_EXPORT_TYPED_FUNC(ExportName, Function)                        \\\n-  extern \"C\" {                                                                     \\\n-  TVM_FFI_DLL_EXPORT int ExportName(void* self, TVMFFIAny* args, int32_t num_args, \\\n-                                    TVMFFIAny* result) {                           \\\n-    TVM_FFI_SAFE_CALL_BEGIN();                                                     \\\n-    using FuncInfo = ::tvm::ffi::details::FunctionInfo<decltype(Function)>;        \\\n-    static std::string name = #ExportName;                                         \\\n-    ::tvm::ffi::details::unpack_call<typename FuncInfo::RetType>(                  \\\n-        std::make_index_sequence<FuncInfo::num_args>{}, &name, Function,           \\\n-        reinterpret_cast<const ::tvm::ffi::AnyView*>(args), num_args,              \\\n-        reinterpret_cast<::tvm::ffi::Any*>(result));                               \\\n-    TVM_FFI_SAFE_CALL_END();                                                       \\\n-  }                                                                                \\\n+#define TVM_FFI_DLL_EXPORT_TYPED_FUNC(ExportName, Function)                                    \\\n+  extern \"C\" {                                                                                 \\\n+  TVM_FFI_DLL_EXPORT int __tvm_ffi_##ExportName(void* self, TVMFFIAny* args, int32_t num_args, \\\n+                                                TVMFFIAny* result) {                           \\\n+    TVM_FFI_SAFE_CALL_BEGIN();                                                                 \\\n+    using FuncInfo = ::tvm::ffi::details::FunctionInfo<decltype(Function)>;                    \\\n+    static std::string name = #ExportName;                                                     \\\n+    ::tvm::ffi::details::unpack_call<typename FuncInfo::RetType>(                              \\\n+        std::make_index_sequence<FuncInfo::num_args>{}, &name, Function,                       \\\n+        reinterpret_cast<const ::tvm::ffi::AnyView*>(args), num_args,                          \\\n+        reinterpret_cast<::tvm::ffi::Any*>(result));                                           \\\n+    TVM_FFI_SAFE_CALL_END();                                                                   \\\n+  }                                                                                            \\\n   }\n }  // namespace ffi\n }  // namespace tvm\ndiff --git a/python/tvm_ffi/module.py b/python/tvm_ffi/module.py\nindex 56aa153..c3c1d08 100644\n--- a/python/tvm_ffi/module.py\n+++ b/python/tvm_ffi/module.py\n@@ -40,7 +40,7 @@ class Module(core.Object):\n \n     def __new__(cls):\n         instance = super(Module, cls).__new__(cls)  # pylint: disable=no-value-for-parameter\n-        instance.entry_name = \"__tvm_ffi_main__\"\n+        instance.entry_name = \"main\"\n         instance._entry = None\n         return instance\n \n@@ -55,7 +55,7 @@ class Module(core.Object):\n         \"\"\"\n         if self._entry:\n             return self._entry\n-        self._entry = self.get_function(\"__tvm_ffi_main__\")\n+        self._entry = self.get_function(\"main\")\n         return self._entry\n \n     @property\ndiff --git a/src/ffi/extra/library_module.cc b/src/ffi/extra/library_module.cc\nindex 71c6da6..2864cdb 100644\n--- a/src/ffi/extra/library_module.cc\n+++ b/src/ffi/extra/library_module.cc\n@@ -42,7 +42,7 @@ class LibraryModuleObj final : public ModuleObj {\n \n   Optional<ffi::Function> GetFunction(const String& name) final {\n     TVMFFISafeCallType faddr;\n-    faddr = reinterpret_cast<TVMFFISafeCallType>(lib_->GetSymbol(name.c_str()));\n+    faddr = reinterpret_cast<TVMFFISafeCallType>(lib_->GetSymbolWithSymbolPrefix(name));\n     // ensure the function keeps the Library Module alive\n     Module self_strong_ref = GetRef<Module>(this);\n     if (faddr != nullptr) {\n@@ -140,7 +140,7 @@ class ContextSymbolRegistry {\n  public:\n   void InitContextSymbols(ObjectPtr<Library> lib) {\n     for (const auto& [name, symbol] : context_symbols_) {\n-      if (void** symbol_addr = reinterpret_cast<void**>(lib->GetSymbol(name.c_str()))) {\n+      if (void** symbol_addr = reinterpret_cast<void**>(lib->GetSymbol(name))) {\n         *symbol_addr = symbol;\n       }\n     }\ndiff --git a/src/ffi/extra/library_module_dynamic_lib.cc b/src/ffi/extra/library_module_dynamic_lib.cc\nindex 25463a7..e85b051 100644\n--- a/src/ffi/extra/library_module_dynamic_lib.cc\n+++ b/src/ffi/extra/library_module_dynamic_lib.cc\n@@ -49,7 +49,7 @@ class DSOLibrary final : public Library {\n     if (lib_handle_) Unload();\n   }\n \n-  void* GetSymbol(const char* name) final { return GetSymbol_(name); }\n+  void* GetSymbol(const String& name) final { return GetSymbol_(name.c_str()); }\n \n  private:\n   // private system dependent implementation\ndiff --git a/src/ffi/extra/library_module_system_lib.cc b/src/ffi/extra/library_module_system_lib.cc\nindex cdc932c..e93c660 100644\n--- a/src/ffi/extra/library_module_system_lib.cc\n+++ b/src/ffi/extra/library_module_system_lib.cc\n@@ -45,7 +45,7 @@ class SystemLibSymbolRegistry {\n     symbol_table_.Set(name, ptr);\n   }\n \n-  void* GetSymbol(const char* name) {\n+  void* GetSymbol(const String& name) {\n     auto it = symbol_table_.find(name);\n     if (it != symbol_table_.end()) {\n       return (*it).second;\n@@ -68,13 +68,14 @@ class SystemLibrary final : public Library {\n  public:\n   explicit SystemLibrary(const String& symbol_prefix) : symbol_prefix_(symbol_prefix) {}\n \n-  void* GetSymbol(const char* name) {\n-    if (symbol_prefix_.length() != 0) {\n-      String name_with_prefix = symbol_prefix_ + name;\n-      void* symbol = reg_->GetSymbol(name_with_prefix.c_str());\n-      if (symbol != nullptr) return symbol;\n-    }\n-    return reg_->GetSymbol(name);\n+  void* GetSymbol(const String& name) final {\n+    String name_with_prefix = symbol_prefix_ + name;\n+    return reg_->GetSymbol(name_with_prefix);\n+  }\n+\n+  void* GetSymbolWithSymbolPrefix(const String& name) final {\n+    String name_with_prefix = symbol::tvm_ffi_symbol_prefix + symbol_prefix_ + name;\n+    return reg_->GetSymbol(name_with_prefix);\n   }\n \n  private:\ndiff --git a/src/ffi/extra/module_internal.h b/src/ffi/extra/module_internal.h\nindex 472d531..86cb6b6 100644\n--- a/src/ffi/extra/module_internal.h\n+++ b/src/ffi/extra/module_internal.h\n@@ -48,7 +48,17 @@ class Library : public Object {\n    * \\param name The name of the symbol.\n    * \\return The symbol.\n    */\n-  virtual void* GetSymbol(const char* name) = 0;\n+  virtual void* GetSymbol(const String& name) = 0;\n+  /*!\n+   * \\brief Get the symbol address for a given name with the tvm ffi symbol prefix.\n+   * \\param name The name of the symbol.\n+   * \\return The symbol.\n+   * \\note This function will be overloaded by systemlib implementation.\n+   */\n+  virtual void* GetSymbolWithSymbolPrefix(const String& name) {\n+    String name_with_prefix = symbol::tvm_ffi_symbol_prefix + name;\n+    return GetSymbol(name_with_prefix);\n+  }\n   // NOTE: we do not explicitly create an type index and type_key here for libary.\n   // This is because we do not need dynamic type downcasting and only need to use the refcounting\n };",
+  "heuristics": {
+    "tags": [],
+    "extensions": [
+      ".cc",
+      ".h",
+      ".py"
+    ],
+    "scopes_guess": [
+      "include",
+      "python",
+      "src"
+    ]
+  }
+}

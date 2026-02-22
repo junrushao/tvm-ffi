@@ -1,0 +1,52 @@
+{
+  "sha": "5569e449b654923009980b67a2af9aed323a6dad",
+  "sha7": "5569e44",
+  "author_name": "DarkSharpness",
+  "author_email": "76582120+DarkSharpness@users.noreply.github.com",
+  "date_iso": "2025-11-05T05:46:33+08:00",
+  "subject": "[Minor] Improve tuple functionality (#219)",
+  "body":
+      "Enhance tvm::ffi::Tuple so that it will support structural binding,\nwhich can greatly improve C++ readability (hopefully).",
+  "is_merge": false,
+  "parents": [
+    "227bdd0c5c70f186fac3b3c99427a032424ed58e"
+  ],
+  "name_status": [
+    [
+      "M",
+      "include/tvm/ffi/container/tuple.h"
+    ],
+    [
+      "M",
+      "tests/cpp/test_tuple.cc"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "include/tvm/ffi/container/tuple.h",
+      "additions": 71,
+      "deletions": 1
+    },
+    {
+      "path": "tests/cpp/test_tuple.cc",
+      "additions": 67,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/include/tvm/ffi/container/tuple.h b/include/tvm/ffi/container/tuple.h\nindex dbcf7d0..e5eb3ca 100644\n--- a/include/tvm/ffi/container/tuple.h\n+++ b/include/tvm/ffi/container/tuple.h\n@@ -26,8 +26,10 @@\n \n #include <tvm/ffi/container/array.h>\n \n+#include <cstddef>\n #include <string>\n #include <tuple>\n+#include <type_traits>\n #include <utility>\n \n namespace tvm {\n@@ -141,13 +143,32 @@ class Tuple : public ObjectRef {\n    * \\note We use stl style since get usually is like a getter.\n    */\n   template <size_t I>\n-  auto get() const {\n+  auto get() const& {\n     static_assert(I < sizeof...(Types), \"Tuple index out of bounds\");\n     using ReturnType = std::tuple_element_t<I, std::tuple<Types...>>;\n     const Any* ptr = GetArrayObj()->begin() + I;\n     return details::AnyUnsafe::CopyFromAnyViewAfterCheck<ReturnType>(*ptr);\n   }\n \n+  /*!\n+   * \\brief Move out I-th element of the tuple\n+   *\n+   * \\tparam I The index of the element to get\n+   * \\return The I-th element of the tuple\n+   * \\note We use stl style since get usually is like a getter.\n+   */\n+  template <size_t I>\n+  auto get() && {\n+    if (!this->unique()) {\n+      // fallback to const& version if not unique\n+      return std::as_const(*this).template get<I>();\n+    }\n+    static_assert(I < sizeof...(Types), \"Tuple index out of bounds\");\n+    using ReturnType = std::tuple_element_t<I, std::tuple<Types...>>;\n+    Any* ptr = GetArrayObj()->MutableBegin() + I;\n+    return details::AnyUnsafe::MoveFromAnyAfterCheck<ReturnType>(std::move(*ptr));\n+  }\n+\n   /*!\n    * \\brief Set I-th element of the tuple\n    *\n@@ -320,6 +341,55 @@ template <typename... T, typename... U>\n inline constexpr bool type_contains_v<Tuple<T...>, Tuple<U...>> = (type_contains_v<T, U> && ...);\n }  // namespace details\n \n+/// \\cond Doxygen_Suppress\n+\n+/// NOTE: ADL friendly get functions\n+/// Example usage: { using std::get; get<0>(t); }\n+/// ADL will find the right get function\n+\n+/**\n+ * \\brief get I-th element of the tuple\n+ * \\tparam I The index of the element to get\n+ * \\param t The tuple\n+ * \\return The I-th element of the tuple\n+ */\n+template <std::size_t I, typename... Types>\n+inline constexpr auto get(const Tuple<Types...>& t)\n+    -> std::tuple_element_t<I, std::tuple<Types...>> {\n+  return t.template get<I>();\n+}\n+\n+/**\n+ * \\brief get I-th element of the tuple\n+ * \\tparam I The index of the element to get\n+ * \\param t The tuple (rvalue)\n+ * \\return The I-th element of the tuple\n+ */\n+template <std::size_t I, typename... Types>\n+inline constexpr auto get(Tuple<Types...>&& t) -> std::tuple_element_t<I, std::tuple<Types...>> {\n+  return std::move(t).template get<I>();\n+}\n+\n+/// NOTE: C++17 deduction guide\n+template <typename... UTypes>\n+Tuple(UTypes&&...) -> Tuple<std::remove_cv_t<std::remove_reference_t<UTypes>>...>;\n+\n+/// \\endcond\n+\n }  // namespace ffi\n }  // namespace tvm\n+\n+namespace std {\n+\n+template <typename... Types>\n+struct tuple_size<::tvm::ffi::Tuple<Types...>>\n+    : public std::integral_constant<size_t, sizeof...(Types)> {};\n+\n+template <size_t I, typename... Types>\n+struct tuple_element<I, ::tvm::ffi::Tuple<Types...>> {\n+  using type = std::tuple_element_t<I, std::tuple<Types...>>;\n+};\n+\n+}  // namespace std\n+\n #endif  // TVM_FFI_CONTAINER_TUPLE_H_\ndiff --git a/tests/cpp/test_tuple.cc b/tests/cpp/test_tuple.cc\nindex 0347a70..89f79c2 100644\n--- a/tests/cpp/test_tuple.cc\n+++ b/tests/cpp/test_tuple.cc\n@@ -20,6 +20,8 @@\n #include <tvm/ffi/container/tuple.h>\n #include <tvm/ffi/function.h>\n \n+#include <utility>\n+\n #include \"./testing_object.h\"\n \n namespace {\n@@ -168,4 +170,69 @@ TEST(Tuple, ArrayIterForwardSingleElem) {\n   EXPECT_EQ(vec0[2].get<0>()->value, 2);\n }\n \n+TEST(Tuple, CPPFeatures) {\n+  {\n+    // deduction guide\n+    auto t = Tuple{1, 2.0f, String{\"hello\"}};\n+    // structural binding (lvalue)\n+    auto [a, b, c] = t;\n+    EXPECT_EQ(a, 1);\n+    EXPECT_EQ(b, 2.0f);\n+    EXPECT_EQ(c, \"hello\");\n+  }\n+\n+  {\n+    // ADL-friendly get will find the right get function\n+    auto p = Tuple{Array<int>{0}};\n+    EXPECT_EQ(p.use_count(), 1);\n+    // p<0> and q each hold a reference\n+    const auto q = get<0>(p);\n+    EXPECT_EQ(q.use_count(), 2);\n+  }\n+\n+  {\n+    auto p = Tuple{Array<int>{0}};\n+    EXPECT_EQ(p.use_count(), 1);\n+    // structured binding (rvalue)\n+    // move out the only ownership\n+    auto [q] = std::move(p);\n+    EXPECT_EQ(q.use_count(), 1);\n+  }\n+\n+  {\n+    // ADL-friendly get with move semantics\n+    auto p = Tuple{Array<int>{0}};\n+\n+    // normal copy get, won't move out anything\n+    {\n+      auto& q = p;\n+      EXPECT_EQ(q.use_count(), 1);\n+      const auto _ = get<0>(q);\n+    }\n+    EXPECT_TRUE(get<0>(p).defined());\n+\n+    // ref-count of q > 1, so the array obj is not moved out\n+    {\n+      auto q = p;\n+      EXPECT_EQ(q.use_count(), 2);\n+      const auto _ = get<0>(std::move(q));\n+    }\n+    EXPECT_TRUE(get<0>(p).defined());\n+\n+    // ref-count of q = 1, so the array obj is moved out\n+    {\n+      auto& q = p;\n+      EXPECT_EQ(q.use_count(), 1);\n+      // NOTE: we do not use structured binding here,\n+      // as it creates a temporary value that will move out the q (i.e. p),\n+      // making p in an not defined state (p.data_ == 0).\n+      // Our get resolution accepts rvalue reference,\n+      // which keeps p in a defined state for testing purposes.\n+      // DO NOT rely on this behavior in real code.\n+      const auto _ = get<0>(std::move(q));\n+    }\n+    EXPECT_FALSE(get<0>(p).defined());\n+  }\n+}\n+\n }  // namespace",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".cc",
+      ".h"
+    ],
+    "scopes_guess": [
+      "include",
+      "tests"
+    ]
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "sha": "d6845f7d94c522d19fb13025a6ae86acc7860c7c",
+  "sha7": "d6845f7",
+  "author_name": "Yaxing Cai",
+  "author_email": "caiyaxing666@gmail.com",
+  "date_iso": "2025-09-15T03:26:27-07:00",
+  "subject": "[DOCS] Fix py:func format hyperlink (#16)",
+  "body": "",
+  "is_merge": false,
+  "parents": [
+    "c100338de52825097ddc44bbac3d03a92f45b33a"
+  ],
+  "name_status": [
+    [
+      "M",
+      "python/tvm_ffi/container.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "python/tvm_ffi/container.py",
+      "additions": 4,
+      "deletions": 4
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/python/tvm_ffi/container.py b/python/tvm_ffi/container.py\nindex e28b995..f64028f 100644\n--- a/python/tvm_ffi/container.py\n+++ b/python/tvm_ffi/container.py\n@@ -67,7 +67,7 @@ def getitem_helper(obj, elem_getter, length, idx):\n class Array(core.Object, collections.abc.Sequence):\n     \"\"\"Array container that represents a sequence of values in ffi.\n \n-    {py:func}`tvm_ffi.convert` will map python list/tuple to this class.\n+    :py:func:`tvm_ffi.convert` will map python list/tuple to this class.\n \n     Parameters\n     ----------\n@@ -76,7 +76,7 @@ class Array(core.Object, collections.abc.Sequence):\n \n     See Also\n     --------\n-    {py:func}`tvm_ffi.convert`\n+    :py:func:`tvm_ffi.convert`\n \n     Examples\n     --------\n@@ -173,7 +173,7 @@ class ItemsView(collections.abc.ItemsView):\n class Map(core.Object, collections.abc.Mapping):\n     \"\"\"Map container.\n \n-    {py:func}`tvm_ffi.convert` will map python dict to this class.\n+    :py:func:`tvm_ffi.convert` will map python dict to this class.\n \n     Parameters\n     ----------\n@@ -182,7 +182,7 @@ class Map(core.Object, collections.abc.Mapping):\n \n     See Also\n     --------\n-    {py:func}`tvm_ffi.convert`\n+    :py:func:`tvm_ffi.convert`\n \n     Examples\n     --------",
+  "heuristics": {
+    "tags": [],
+    "extensions": [
+      ".py"
+    ],
+    "scopes_guess": [
+      "python"
+    ]
+  }
+}

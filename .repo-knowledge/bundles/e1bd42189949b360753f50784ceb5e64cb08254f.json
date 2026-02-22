@@ -1,0 +1,73 @@
+{
+  "sha": "e1bd42189949b360753f50784ceb5e64cb08254f",
+  "sha7": "e1bd421",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2026-01-13T12:37:38-05:00",
+  "subject": "[FIX] Fix the error propagation in the case of tensor arguments (#409)",
+  "body":
+      "This PR fixes error propagation in the case of tensor arguments. The bug\nwas previously hidden and revealed after a fix landed in 0.1.8, so it\ndoes not impact previous versions. Added a regression test to cover this\ncase.",
+  "is_merge": false,
+  "parents": [
+    "10cb0048cef8f3a37282f403cded9eb96aa59464"
+  ],
+  "name_status": [
+    [
+      "M",
+      "include/tvm/ffi/c_api.h"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/cython/tvm_ffi_python_helpers.h"
+    ],
+    [
+      "M",
+      "src/ffi/extra/env_context.cc"
+    ],
+    [
+      "M",
+      "tests/python/test_tensor.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "include/tvm/ffi/c_api.h",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "python/tvm_ffi/cython/tvm_ffi_python_helpers.h",
+      "additions": 8,
+      "deletions": 2
+    },
+    {
+      "path": "src/ffi/extra/env_context.cc",
+      "additions": 2,
+      "deletions": 1
+    },
+    {
+      "path": "tests/python/test_tensor.py",
+      "additions": 15,
+      "deletions": 1
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/include/tvm/ffi/c_api.h b/include/tvm/ffi/c_api.h\nindex a5a581a..4da0d4d 100644\n--- a/include/tvm/ffi/c_api.h\n+++ b/include/tvm/ffi/c_api.h\n@@ -62,7 +62,7 @@\n /*! \\brief TVM FFI minor version. */\n #define TVM_FFI_VERSION_MINOR 1\n /*! \\brief TVM FFI patch version. */\n-#define TVM_FFI_VERSION_PATCH 9\n+#define TVM_FFI_VERSION_PATCH 8\n // NOLINTEND(modernize-macro-to-enum)\n \n #ifdef __cplusplus\ndiff --git a/python/tvm_ffi/cython/tvm_ffi_python_helpers.h b/python/tvm_ffi/cython/tvm_ffi_python_helpers.h\nindex 93d6540..666bb6e 100644\n--- a/python/tvm_ffi/cython/tvm_ffi_python_helpers.h\n+++ b/python/tvm_ffi/cython/tvm_ffi_python_helpers.h\n@@ -321,10 +321,16 @@ class TVMFFIPyCallManager {\n           return -1;\n         }\n       }\n+\n       if (ctx.dlpack_c_exchange_api != nullptr &&\n           prev_tensor_allocator != ctx.dlpack_c_exchange_api->managed_tensor_allocator) {\n-        c_api_ret_code[0] =\n-            TVMFFIEnvSetDLPackManagedTensorAllocator(prev_tensor_allocator, 0, nullptr);\n+        // note: we cannot set the error value to c_api_ret_code[0] here because it\n+        // will be overwritten by the error value from the function call\n+        if (TVMFFIEnvSetDLPackManagedTensorAllocator(prev_tensor_allocator, 0, nullptr) != 0) {\n+          PyErr_SetString(PyExc_RuntimeError, \"Failed to recover DLPack managed tensor allocator\");\n+          return -1;\n+        }\n+        // return error after\n         if (c_api_ret_code[0] != 0) return 0;\n       }\n       if (optional_out_ctx_dlpack_api != nullptr && ctx.dlpack_c_exchange_api != nullptr) {\ndiff --git a/src/ffi/extra/env_context.cc b/src/ffi/extra/env_context.cc\nindex 9b2fb25..95045d4 100644\n--- a/src/ffi/extra/env_context.cc\n+++ b/src/ffi/extra/env_context.cc\n@@ -66,7 +66,8 @@ class EnvContext {\n                                        int write_to_global_context,\n                                        DLPackManagedTensorAllocator* opt_out_original_allocator) {\n     if (opt_out_original_allocator != nullptr) {\n-      *opt_out_original_allocator = GetDLPackManagedTensorAllocator();\n+      // only returns the cached local allocator and ignore global allocator\n+      *opt_out_original_allocator = dlpack_allocator_;\n     }\n     if (write_to_global_context != 0) {\n       GlobalTensorAllocator() = allocator;\ndiff --git a/tests/python/test_tensor.py b/tests/python/test_tensor.py\nindex d091d85..0c45654 100644\n--- a/tests/python/test_tensor.py\n+++ b/tests/python/test_tensor.py\n@@ -18,7 +18,7 @@\n from __future__ import annotations\n \n from types import ModuleType\n-from typing import Any, NamedTuple\n+from typing import Any, NamedTuple, NoReturn\n \n import numpy.typing as npt\n import pytest\n@@ -78,6 +78,20 @@ def test_tensor_auto_dlpack() -> None:\n     np.testing.assert_equal(y.numpy(), x.numpy())\n \n \n+@pytest.mark.skipif(torch is None, reason=\"Fast torch dlpack importer is not enabled\")\n+def test_tensor_auto_dlpack_with_error() -> None:\n+    assert torch is not None\n+    x = torch.arange(128)\n+\n+    def raise_torch_error(x: Any) -> NoReturn:\n+        raise ValueError(\"error XYZ\")\n+\n+    f = tvm_ffi.convert(raise_torch_error)\n+    with pytest.raises(ValueError):\n+        # pass in torch argment to trigger the error in set allocator path\n+        f(x)\n+\n+\n def test_tensor_class_override() -> None:\n     class MyTensor(tvm_ffi.Tensor):\n         pass",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".cc",
+      ".h",
+      ".py"
+    ],
+    "scopes_guess": [
+      "include",
+      "python",
+      "src",
+      "tests"
+    ]
+  }
+}

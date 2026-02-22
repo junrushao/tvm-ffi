@@ -1,0 +1,51 @@
+{
+  "sha": "82bc7b639530558e9f666043c7145696d6fa35ba",
+  "sha7": "82bc7b6",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-11-07T20:17:41-05:00",
+  "subject": "[FIX] Fix missing static registration for DLTensor* (#239)",
+  "body":
+      "This PR fixes the missing static registration for DLTensor*\n\nCo-authored-by: Chris Bate <cbate@nvidia.com>",
+  "is_merge": false,
+  "parents": [
+    "4bccb3eda0d543be67ec56204e045ca3e3b88641"
+  ],
+  "name_status": [
+    [
+      "M",
+      "src/ffi/object.cc"
+    ],
+    [
+      "M",
+      "tests/cpp/test_function.cc"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "src/ffi/object.cc",
+      "additions": 1,
+      "deletions": 0
+    },
+    {
+      "path": "tests/cpp/test_function.cc",
+      "additions": 16,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/src/ffi/object.cc b/src/ffi/object.cc\nindex 4c04bf4..810d3b1 100644\n--- a/src/ffi/object.cc\n+++ b/src/ffi/object.cc\n@@ -336,6 +336,7 @@ class TypeTable {\n     ReserveBuiltinTypeIndex(StaticTypeKey::kTVMFFIBool, TypeIndex::kTVMFFIBool);\n     ReserveBuiltinTypeIndex(StaticTypeKey::kTVMFFIRawStr, TypeIndex::kTVMFFIRawStr);\n     ReserveBuiltinTypeIndex(StaticTypeKey::kTVMFFIOpaquePtr, TypeIndex::kTVMFFIOpaquePtr);\n+    ReserveBuiltinTypeIndex(StaticTypeKey::kTVMFFIDLTensorPtr, TypeIndex::kTVMFFIDLTensorPtr);\n     ReserveBuiltinTypeIndex(StaticTypeKey::kTVMFFIDataType, TypeIndex::kTVMFFIDataType);\n     ReserveBuiltinTypeIndex(StaticTypeKey::kTVMFFIDevice, TypeIndex::kTVMFFIDevice);\n     ReserveBuiltinTypeIndex(StaticTypeKey::kTVMFFIByteArrayPtr, TypeIndex::kTVMFFIByteArrayPtr);\ndiff --git a/tests/cpp/test_function.cc b/tests/cpp/test_function.cc\nindex b32b701..c274e51 100644\n--- a/tests/cpp/test_function.cc\n+++ b/tests/cpp/test_function.cc\n@@ -108,6 +108,22 @@ TEST(Func, FromTyped) {\n       },\n       ::tvm::ffi::Error);\n \n+  // convert with DLTensor* triggers error\n+  EXPECT_THROW(\n+      {\n+        try {\n+          DLTensor dltensor;\n+          fadd1(&dltensor);\n+        } catch (const Error& error) {\n+          EXPECT_EQ(error.kind(), \"TypeError\");\n+          EXPECT_EQ(error.message(),\n+                    \"Mismatched type on argument #0 when calling: `(0: int) -> int`. \"\n+                    \"Expected `int` but got `DLTensor*`\");\n+          throw;\n+        }\n+      },\n+      ::tvm::ffi::Error);\n+\n   // try decution\n   Function fpass_and_return = Function::FromTyped(\n       // NOLINTNEXTLINE(performance-unnecessary-value-param)",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".cc"
+    ],
+    "scopes_guess": [
+      "src",
+      "tests"
+    ]
+  }
+}

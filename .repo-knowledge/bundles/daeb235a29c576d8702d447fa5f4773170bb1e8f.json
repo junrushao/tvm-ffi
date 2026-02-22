@@ -1,0 +1,109 @@
+{
+  "sha": "daeb235a29c576d8702d447fa5f4773170bb1e8f",
+  "sha7": "daeb235",
+  "author_name": "Junru Shao",
+  "author_email": "junrushao@apache.org",
+  "date_iso": "2025-09-24T12:56:41-07:00",
+  "subject": "feat: Support `field(init=...)` in `@c_class` fields (#52)",
+  "body":
+      "This PR enhances the `@c_class` decorator by integrating `field(...,\ninit: bool=True)`.\n\nThis feature gives finer control over the generated Python `__init__`\nmethod, making it possible to exclude specific fields from the\nconstructor's signature, and thereby increase the flexibility and\nalignment of tvm-ffi's dataclass system with Python's native dataclass\ncapabilities.\n\n## Example\n\n```cpp\n// C++ side\nclass TestCxxInitSubsetObj : public Object {\n public:\n  int64_t required_field;\n  int64_t optional_field;\n  String note;\n\n  explicit TestCxxInitSubsetObj(int64_t value, String note)\n      : required_field(value), optional_field(-1), note(note) {}\n                              ^^^^^^^^^^^^^^^^^^^^\n                              this field is not present in constructor\n\n  TVM_FFI_DECLARE_OBJECT_INFO(\"testing.TestCxxInitSubset\", TestCxxInitSubsetObj, Object);\n};\n```\n\n```python\n# Python side\n@c_class(\"testing.TestCxxInitSubset\")\nclass _TestCxxInitSubset:\n    required_field: int\n    optional_field: int = field(init=False) \n                                ^^^^^^^^^^\n                            doesn't appear in `__init__`;\n                            won't be forwarded to C++\n    note: str = field(default_factory=lambda: \"py-default\", init=False)\n                                                            ^^^^^^^^^^\n                                          doesn't appear in `__init__`\n                                          the default value will be forwarded to C++\n\nobj = _TestCxxInitSubset(required_field=42)\nassert obj.optional_field == -1\nassert obj.note == \"py-default\"\n```",
+  "is_merge": false,
+  "parents": [
+    "b03cc7845ae92060881e14c4f50a4b6da4d9f982"
+  ],
+  "name_status": [
+    [
+      "D",
+      "docs/reference/python/cpp/index.rst"
+    ],
+    [
+      "M",
+      "docs/reference/python/index.rst"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/__init__.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/dataclasses/_utils.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/dataclasses/field.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/testing.py"
+    ],
+    [
+      "M",
+      "src/ffi/extra/testing.cc"
+    ],
+    [
+      "M",
+      "tests/python/test_dataclasses_c_class.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "docs/reference/python/cpp/index.rst",
+      "additions": 0,
+      "deletions": 27
+    },
+    {
+      "path": "docs/reference/python/index.rst",
+      "additions": 15,
+      "deletions": 3
+    },
+    {
+      "path": "python/tvm_ffi/__init__.py",
+      "additions": 2,
+      "deletions": 0
+    },
+    {
+      "path": "python/tvm_ffi/dataclasses/_utils.py",
+      "additions": 59,
+      "deletions": 77
+    },
+    {
+      "path": "python/tvm_ffi/dataclasses/field.py",
+      "additions": 33,
+      "deletions": 6
+    },
+    {
+      "path": "python/tvm_ffi/testing.py",
+      "additions": 7,
+      "deletions": 0
+    },
+    {
+      "path": "src/ffi/extra/testing.cc",
+      "additions": 19,
+      "deletions": 0
+    },
+    {
+      "path": "tests/python/test_dataclasses_c_class.py",
+      "additions": 31,
+      "deletions": 1
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/docs/reference/python/cpp/index.rst b/docs/reference/python/cpp/index.rst\ndeleted file mode 100644\nindex c104335..0000000\n--- a/docs/reference/python/cpp/index.rst\n+++ /dev/null\n@@ -1,27 +0,0 @@\n-..  Licensed to the Apache Software Foundation (ASF) under one\n-    or more contributor license agreements.  See the NOTICE file\n-    distributed with this work for additional information\n-    regarding copyright ownership.  The ASF licenses this file\n-    to you under the Apache License, Version 2.0 (the\n-    \"License\"); you may not use this file except in compliance\n-    with the License.  You may obtain a copy of the License at\n-\n-..    http://www.apache.org/licenses/LICENSE-2.0\n-\n-..  Unless required by applicable law or agreed to in writing,\n-    software distributed under the License is distributed on an\n-    \"AS IS\" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY\n-    KIND, either express or implied.  See the License for the\n-    specific language governing permissions and limitations\n-    under the License.\n-\n-tvm_ffi.cpp\n------------\n-\n-.. automodule:: tvm_ffi.cpp\n-  :no-members:\n-\n-.. autosummary::\n-  :toctree: generated/\n-\n-  load_inline\ndiff --git a/docs/reference/python/index.rst b/docs/reference/python/index.rst\nindex 756af4c..8b478e8 100644\n--- a/docs/reference/python/index.rst\n+++ b/docs/reference/python/index.rst\n@@ -81,7 +81,19 @@ Stream Context\n Utility\n -------\n \n-.. toctree::\n-  :maxdepth: 1\n+C++ integration helpers for building and loading inline modules.\n \n-  cpp/index.rst\n+.. autosummary::\n+  :toctree: cpp/generated/\n+\n+  cpp.load_inline\n+\n+\n+.. (Experimental) Dataclasses\n+.. --------------------------\n+\n+.. .. autosummary::\n+..   :toctree: generated/\n+\n+..   dataclasses.c_class\n+..   dataclasses.field\ndiff --git a/python/tvm_ffi/__init__.py b/python/tvm_ffi/__init__.py\nindex 2381363..c742ee2 100644\n--- a/python/tvm_ffi/__init__.py\n+++ b/python/tvm_ffi/__init__.py\n@@ -42,6 +42,7 @@ from .stream import StreamContext, use_raw_stream, use_torch_stream\n from . import serialization\n from . import access_path\n from . import testing\n+from . import dataclasses\n \n # optional module to speedup dlpack conversion\n from . import _optional_torch_c_dlpack\n@@ -61,6 +62,7 @@ __all__ = [\n     \"Tensor\",\n     \"access_path\",\n     \"convert\",\n+    \"dataclasses\",\n     \"device\",\n     \"dtype\",\n     \"from_dlpack\",\ndiff --git a/python/tvm_ffi/dataclasses/_utils.py b/python/tvm_ffi/dataclasses/_utils.py\nindex 7a28e01..b6bcdac 100644\n--- a/python/tvm_ffi/dataclasses/_utils.py\n+++ b/python/tvm_ffi/dataclasses/_utils.py\n@@ -19,9 +19,8 @@\n from __future__ import annotations\n \n import functools\n-import inspect\n from dataclasses import MISSING\n-from typing import Any, Callable, NamedTuple, TypeVar, cast\n+from typing import Any, Callable, TypeVar, cast\n \n from ..core import (\n     Object,\n@@ -111,96 +110,79 @@ def fill_dataclass_field(type_cls: type, type_field: TypeField) -> None:\n     type_field.dataclass_field = rhs\n \n \n-def method_init(type_cls: type, type_info: TypeInfo) -> Callable[..., None]:  # noqa: PLR0915\n+def method_init(type_cls: type, type_info: TypeInfo) -> Callable[..., None]:\n     \"\"\"Generate an ``__init__`` that forwards to the FFI constructor.\n \n     The generated initializer has a proper Python signature built from the\n     reflected field list, supporting default values and ``__post_init__``.\n     \"\"\"\n-\n-    class DefaultFactory(NamedTuple):\n-        \"\"\"Wrapper that marks a parameter as having a default factory.\"\"\"\n-\n-        fn: Callable[[], Any]\n-\n+    # Step 0. Collect all fields from the type hierarchy\n     fields: list[TypeField] = []\n     cur_type_info: TypeInfo | None = type_info\n     while cur_type_info is not None:\n         fields.extend(reversed(cur_type_info.fields))\n         cur_type_info = cur_type_info.parent_type_info\n     fields.reverse()\n-\n-    annotations: dict[str, Any] = {\"return\": None}\n-    # Step 1. Split the parameters into two groups to ensure that\n-    # those without defaults appear first in the signature.\n-    params_without_defaults: list[inspect.Parameter] = []\n-    params_with_defaults: list[inspect.Parameter] = []\n-    ordering = [0] * len(fields)\n-    for i, field in enumerate(fields):\n-        assert field.name is not None\n-        name: str = field.name\n-        annotations[name] = Any  # NOTE: We might be able to handle annotations better\n-        assert field.dataclass_field is not None\n-        default_factory = field.dataclass_field.default_factory\n-        if default_factory is MISSING:\n-            ordering[i] = len(params_without_defaults)\n-            params_without_defaults.append(\n-                inspect.Parameter(name=name, kind=inspect.Parameter.POSITIONAL_OR_KEYWORD)\n-            )\n-        else:\n-            ordering[i] = -len(params_with_defaults) - 1\n-            params_with_defaults.append(\n-                inspect.Parameter(\n-                    name=name,\n-                    kind=inspect.Parameter.POSITIONAL_OR_KEYWORD,\n-                    default=DefaultFactory(fn=default_factory),\n-                )\n-            )\n-    for i, order in enumerate(ordering):\n-        if order < 0:\n-            ordering[i] = len(params_without_defaults) - order - 1\n-    # Step 2. Create the signature object\n-    sig = inspect.Signature(parameters=[*params_without_defaults, *params_with_defaults])\n-    signature_str = (\n-        f\"{type_cls.__module__}.{type_cls.__qualname__}.__init__(\"\n-        + \", \".join(p.name for p in sig.parameters.values())\n-        + \")\"\n-    )\n-\n-    # Step 3. Create the `binding` method that reorders parameters\n-    def touch_arg(x: Any) -> Any:\n-        return x.fn() if isinstance(x, DefaultFactory) else x\n-\n-    def bind_args(*args: Any, **kwargs: Any) -> tuple[Any, ...]:\n-        bound = sig.bind(*args, **kwargs)\n-        bound.apply_defaults()\n-        args = bound.args\n-        args = tuple(touch_arg(args[i]) for i in ordering)\n-        return args\n-\n+    # sanity check\n     for type_method in type_info.methods:\n         if type_method.name == \"__ffi_init__\":\n             break\n     else:\n         raise ValueError(f\"Cannot find constructor method: `{type_info.type_key}.__ffi_init__`\")\n-\n-    def __init__(self: Any, *args: Any, **kwargs: Any) -> None:\n-        e = None\n-        try:\n-            args = bind_args(*args, **kwargs)\n-            del kwargs\n-            self.__ffi_init__(*args)\n-        except Exception as _e:\n-            e = TypeError(f\"Error in `{signature_str}`: {_e}\").with_traceback(_e.__traceback__)\n-        if e is not None:\n-            raise e\n-        try:\n-            fn_post_init = self.__post_init__  # type: ignore[attr-defined]\n-        except AttributeError:\n-            pass\n+    # Step 1. Split args into sections and register default factories\n+    args_no_defaults: list[str] = []\n+    args_with_defaults: list[str] = []\n+    fields_with_defaults: list[tuple[str, bool]] = []\n+    ffi_arg_order: list[str] = []\n+    exec_globals = {\"MISSING\": MISSING}\n+    for field in fields:\n+        assert field.name is not None\n+        assert field.dataclass_field is not None\n+        dataclass_field = field.dataclass_field\n+        has_default_factory = (default_factory := dataclass_field.default_factory) is not MISSING\n+        if dataclass_field.init:\n+            ffi_arg_order.append(field.name)\n+            if has_default_factory:\n+                args_with_defaults.append(field.name)\n+                fields_with_defaults.append((field.name, True))\n+                exec_globals[f\"_default_factory_{field.name}\"] = default_factory\n+            else:\n+                args_no_defaults.append(field.name)\n+        elif has_default_factory:\n+            ffi_arg_order.append(field.name)\n+            fields_with_defaults.append((field.name, False))\n+            exec_globals[f\"_default_factory_{field.name}\"] = default_factory\n+\n+    args: list[str] = [\"self\"]\n+    args.extend(args_no_defaults)\n+    args.extend(f\"{name}=MISSING\" for name in args_with_defaults)\n+    body_lines: list[str] = []\n+    for field_name, is_init in fields_with_defaults:\n+        if is_init:\n+            body_lines.append(\n+                f\"if {field_name} is MISSING: {field_name} = _default_factory_{field_name}()\"\n+            )\n         else:\n-            fn_post_init()\n-\n-    __init__.__signature__ = sig  # type: ignore[attr-defined]\n-    __init__.__annotations__ = annotations\n+            body_lines.append(f\"{field_name} = _default_factory_{field_name}()\")\n+    body_lines.append(f\"self.__ffi_init__({', '.join(ffi_arg_order)})\")\n+    body_lines.extend(\n+        [\n+            \"try:\",\n+            \"    fn_post_init = self.__post_init__\",\n+            \"except AttributeError:\",\n+            \"    pass\",\n+            \"else:\",\n+            \"    fn_post_init()\",\n+        ]\n+    )\n+    source_lines = [f\"def __init__({', '.join(args)}):\"]\n+    source_lines.extend(f\"    {line}\" for line in body_lines)\n+    source_lines.append(\"    ...\")\n+    source = \"\\n\".join(source_lines)\n+    # Note: Code generation in this case is guaranteed to be safe,\n+    # because the generated code does not contain any untrusted input.\n+    # This is also a common practice used by `dataclasses` and `pydantic`.\n+    namespace: dict[str, Any] = {}\n+    exec(source, exec_globals, namespace)\n+    __init__ = namespace[\"__init__\"]\n     return __init__\ndiff --git a/python/tvm_ffi/dataclasses/field.py b/python/tvm_ffi/dataclasses/field.py\nindex 2a62d66..92a28cb 100644\n--- a/python/tvm_ffi/dataclasses/field.py\n+++ b/python/tvm_ffi/dataclasses/field.py\n@@ -37,23 +37,26 @@ class Field:\n     way the decorator understands.\n     \"\"\"\n \n-    __slots__ = (\"default_factory\", \"name\")\n+    __slots__ = (\"default_factory\", \"init\", \"name\")\n \n     def __init__(\n         self,\n         *,\n         name: str | None = None,\n         default_factory: Callable[[], _FieldValue] | _MISSING_TYPE = MISSING,\n+        init: bool = True,\n     ) -> None:\n         \"\"\"Do not call directly; use :func:`field` instead.\"\"\"\n         self.name = name\n         self.default_factory = default_factory\n+        self.init = init\n \n \n def field(\n     *,\n     default: _FieldValue | _MISSING_TYPE = MISSING,  # type: ignore[assignment]\n     default_factory: Callable[[], _FieldValue] | _MISSING_TYPE = MISSING,  # type: ignore[assignment]\n+    init: bool = True,\n ) -> _FieldValue:\n     \"\"\"(Experimental) Declare a dataclass-style field on a :func:`c_class` proxy.\n \n@@ -65,13 +68,33 @@ def field(\n     Parameters\n     ----------\n     default : Any, optional\n-        A literal default value that should populate the field when no argument\n-        is given.  The value is copied into a closure because TVM FFI does not\n-        mutate the Python placeholder instance.\n+        A literal default value that populates the field when no argument\n+        is given. At most one of ``default`` or ``default_factory`` may be\n+        given.\n     default_factory : Callable[[], Any], optional\n         A zero-argument callable that produces the default.  This matches the\n         semantics of :func:`dataclasses.field` and is useful for mutable\n         defaults such as ``list`` or ``dict``.\n+    init : bool, default True\n+        If ``True`` the field is included in the generated ``__init__``.\n+        If ``False`` the field is omitted from input arguments of ``__init__``.\n+\n+    Note\n+    ----\n+    The decision to forward a field to the C++ ``__ffi_init__`` constructor\n+    depends on its configuration:\n+\n+    *   If ``init=True``, the field's value (from user input or defaults)\n+        is forwarded.\n+\n+    *   If ``init=False``:\n+\n+        -   With a ``default`` or ``default_factory``, its computed value is\n+            forwarded. The user cannot provide this value via Python ``__init__``.\n+\n+        -   Without a ``default`` or ``default_factory``, the field is *not*\n+            forwarded to C++ ``__ffi_init__`` and must be initialized by the\n+            C++ constructor.\n \n     Returns\n     -------\n@@ -82,7 +105,9 @@ def field(\n     Examples\n     --------\n     ``field`` integrates with :func:`c_class` to express defaults the same way a\n-    Python ``dataclass`` would::\n+    Python ``dataclass`` would:\n+\n+    .. code-block:: python\n \n         @c_class(\"testing.TestCxxClassBase\")\n         class PyBase:\n@@ -95,9 +120,11 @@ def field(\n     \"\"\"\n     if default is not MISSING and default_factory is not MISSING:\n         raise ValueError(\"Cannot specify both `default` and `default_factory`\")\n+    if not isinstance(init, bool):\n+        raise TypeError(\"`init` must be a bool\")\n     if default is not MISSING:\n         default_factory = _make_default_factory(default)\n-    ret = Field(default_factory=default_factory)\n+    ret = Field(default_factory=default_factory, init=init)\n     return cast(_FieldValue, ret)\n \n \ndiff --git a/python/tvm_ffi/testing.py b/python/tvm_ffi/testing.py\nindex 0053564..155030b 100644\n--- a/python/tvm_ffi/testing.py\n+++ b/python/tvm_ffi/testing.py\n@@ -110,3 +110,10 @@ class _TestCxxClassDerived(_TestCxxClassBase):\n class _TestCxxClassDerivedDerived(_TestCxxClassDerived):\n     v_str: str = field(default_factory=lambda: \"default\")\n     v_bool: bool  # type: ignore[misc]  # Suppress: Attributes without a default cannot follow attributes with one\n+\n+\n+@c_class(\"testing.TestCxxInitSubset\")\n+class _TestCxxInitSubset:\n+    required_field: int\n+    optional_field: int = field(init=False)\n+    note: str = field(default_factory=lambda: \"py-default\", init=False)\ndiff --git a/src/ffi/extra/testing.cc b/src/ffi/extra/testing.cc\nindex afd952b..cf55161 100644\n--- a/src/ffi/extra/testing.cc\n+++ b/src/ffi/extra/testing.cc\n@@ -121,6 +121,19 @@ class TestCxxClassDerivedDerived : public TestCxxClassDerived {\n                               TestCxxClassDerived);\n };\n \n+class TestCxxInitSubsetObj : public Object {\n+ public:\n+  int64_t required_field;\n+  int64_t optional_field;\n+  String note;\n+\n+  explicit TestCxxInitSubsetObj(int64_t value, String note)\n+      : required_field(value), optional_field(-1), note(note) {}\n+\n+  static constexpr bool _type_mutable = true;\n+  TVM_FFI_DECLARE_OBJECT_INFO(\"testing.TestCxxInitSubset\", TestCxxInitSubsetObj, Object);\n+};\n+\n class TestUnregisteredObject : public Object {\n  public:\n   int64_t value;\n@@ -170,6 +183,12 @@ TVM_FFI_STATIC_INIT_BLOCK() {\n       .def_rw(\"v_str\", &TestCxxClassDerivedDerived::v_str)\n       .def_rw(\"v_bool\", &TestCxxClassDerivedDerived::v_bool);\n \n+  refl::ObjectDef<TestCxxInitSubsetObj>()\n+      .def_static(\"__ffi_init__\", refl::init<TestCxxInitSubsetObj, int64_t, String>)\n+      .def_rw(\"required_field\", &TestCxxInitSubsetObj::required_field)\n+      .def_rw(\"optional_field\", &TestCxxInitSubsetObj::optional_field)\n+      .def_rw(\"note\", &TestCxxInitSubsetObj::note);\n+\n   refl::GlobalDef()\n       .def(\"testing.test_raise_error\", TestRaiseError)\n       .def_packed(\"testing.nop\", [](PackedArgs args, Any* ret) {})\ndiff --git a/tests/python/test_dataclasses_c_class.py b/tests/python/test_dataclasses_c_class.py\nindex 0050e6c..676bbf5 100644\n--- a/tests/python/test_dataclasses_c_class.py\n+++ b/tests/python/test_dataclasses_c_class.py\n@@ -14,7 +14,14 @@\n # KIND, either express or implied.  See the License for the\n # specific language governing permissions and limitations\n # under the License.\n-from tvm_ffi.testing import _TestCxxClassBase, _TestCxxClassDerived, _TestCxxClassDerivedDerived\n+import inspect\n+\n+from tvm_ffi.testing import (\n+    _TestCxxClassBase,\n+    _TestCxxClassDerived,\n+    _TestCxxClassDerivedDerived,\n+    _TestCxxInitSubset,\n+)\n \n \n def test_cxx_class_base() -> None:\n@@ -64,3 +71,26 @@ def test_cxx_class_derived_derived_default() -> None:\n     assert isinstance(obj.v_f32, float) and obj.v_f32 == 8\n     assert obj.v_str == \"default\"\n     assert isinstance(obj.v_bool, bool) and obj.v_bool is True\n+\n+\n+def test_cxx_class_init_subset_signature() -> None:\n+    sig = inspect.signature(_TestCxxInitSubset.__init__)\n+    params = tuple(sig.parameters)\n+    assert \"required_field\" in params\n+    assert \"optional_field\" not in params\n+    assert \"note\" not in params\n+\n+\n+def test_cxx_class_init_subset_defaults() -> None:\n+    obj = _TestCxxInitSubset(required_field=42)\n+    assert obj.required_field == 42\n+    assert obj.optional_field == -1\n+    assert obj.note == \"py-default\"\n+\n+\n+def test_cxx_class_init_subset_positional() -> None:\n+    obj = _TestCxxInitSubset(7)  # type: ignore[call-arg]\n+    assert obj.required_field == 7\n+    assert obj.optional_field == -1\n+    obj.optional_field = 11\n+    assert obj.optional_field == 11",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".cc",
+      ".py",
+      ".rst"
+    ],
+    "scopes_guess": [
+      "docs",
+      "python",
+      "src",
+      "tests"
+    ]
+  }
+}

@@ -1,0 +1,52 @@
+{
+  "sha": "86ba210e02e8b1376cc1786fd6e2762f6d22e256",
+  "sha7": "86ba210",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-09-02T06:57:13-04:00",
+  "subject": "[DOCS] Misc docs fix (#18264)",
+  "body":
+      "This PR provides misc docs fix, updates the requirements of ffi docs\nremove stale webpages from header, update embedding script to allow path.",
+  "is_merge": false,
+  "parents": [
+    "c695f5f16ab6e54c729fd6338361b555c7daf8b7"
+  ],
+  "name_status": [
+    [
+      "M",
+      "docs/conf.py"
+    ],
+    [
+      "M",
+      "docs/requirements.txt"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "docs/conf.py",
+      "additions": 3,
+      "deletions": 0
+    },
+    {
+      "path": "docs/requirements.txt",
+      "additions": 1,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/docs/conf.py b/docs/conf.py\nindex 6423948..317b58d 100644\n--- a/docs/conf.py\n+++ b/docs/conf.py\n@@ -116,6 +116,9 @@ html_title = project\n html_copy_source = True\n html_last_updated_fmt = \"\"\n \n+html_favicon = \"https://tvm.apache.org/images/logo/tvm-logo-square.png\"\n+\n+\n footer_dropdown = {\n     \"name\": \"ASF\",\n     \"items\": [\ndiff --git a/docs/requirements.txt b/docs/requirements.txt\nindex b7be6f6..0d09ef1 100644\n--- a/docs/requirements.txt\n+++ b/docs/requirements.txt\n@@ -1,4 +1,5 @@\n autodocsumm\n+linkify-it-py\n matplotlib\n myst-parser\n nbconvert",
+  "heuristics": {
+    "tags": [
+      "build",
+      "docs"
+    ],
+    "extensions": [
+      ".py",
+      ".txt"
+    ],
+    "scopes_guess": [
+      "docs"
+    ]
+  }
+}

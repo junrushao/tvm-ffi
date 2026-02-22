@@ -1,0 +1,102 @@
+{
+  "sha": "e9d29465ff70c5adcd5c551a69695922d8b03ea6",
+  "sha7": "e9d2946",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-09-08T08:58:30-04:00",
+  "subject": "[FFI][REFACTOR] Cleanup namespace (#18280)",
+  "body":
+      "* [FFI][REFACTOR] Cleanup namespace\n\nThis PR cleansup the namespace to ensure all ffi classes\nare accessed through ffi:: namespace.\nIt will helps to cleanup the ffi package before isolation.\n\n* fix hexagon",
+  "is_merge": false,
+  "parents": [
+    "2df07e52ef8c8008be4ffa3a29e3f541ca98c1c2"
+  ],
+  "name_status": [
+    [
+      "M",
+      "include/tvm/ffi/cast.h"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/container/array.h"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/container/map.h"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/container/variant.h"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/dtype.h"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/memory.h"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/optional.h"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/string.h"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "include/tvm/ffi/cast.h",
+      "additions": 0,
+      "deletions": 3
+    },
+    {
+      "path": "include/tvm/ffi/container/array.h",
+      "additions": 0,
+      "deletions": 2
+    },
+    {
+      "path": "include/tvm/ffi/container/map.h",
+      "additions": 0,
+      "deletions": 2
+    },
+    {
+      "path": "include/tvm/ffi/container/variant.h",
+      "additions": 0,
+      "deletions": 2
+    },
+    {
+      "path": "include/tvm/ffi/dtype.h",
+      "additions": 0,
+      "deletions": 2
+    },
+    {
+      "path": "include/tvm/ffi/memory.h",
+      "additions": 0,
+      "deletions": 2
+    },
+    {
+      "path": "include/tvm/ffi/optional.h",
+      "additions": 0,
+      "deletions": 2
+    },
+    {
+      "path": "include/tvm/ffi/string.h",
+      "additions": 0,
+      "deletions": 3
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/include/tvm/ffi/cast.h b/include/tvm/ffi/cast.h\nindex c75d4a0..f70df9f 100644\n--- a/include/tvm/ffi/cast.h\n+++ b/include/tvm/ffi/cast.h\n@@ -73,8 +73,5 @@ inline ObjectPtr<BaseType> GetObjectPtr(ObjectType* ptr) {\n   return details::ObjectUnsafe::ObjectPtrFromUnowned<BaseType>(ptr);\n }\n }  // namespace ffi\n-\n-using ffi::GetObjectPtr;\n-using ffi::GetRef;\n }  // namespace tvm\n #endif  // TVM_FFI_CAST_H_\ndiff --git a/include/tvm/ffi/container/array.h b/include/tvm/ffi/container/array.h\nindex 077a55d..7dbcc1f 100644\n--- a/include/tvm/ffi/container/array.h\n+++ b/include/tvm/ffi/container/array.h\n@@ -1140,7 +1140,5 @@ inline constexpr bool type_contains_v<Array<T>, Array<U>> = type_contains_v<T, U\n }  // namespace details\n \n }  // namespace ffi\n-\n-using ffi::Array;\n }  // namespace tvm\n #endif  // TVM_FFI_CONTAINER_ARRAY_H_\ndiff --git a/include/tvm/ffi/container/map.h b/include/tvm/ffi/container/map.h\nindex 8103c44..27928d2 100644\n--- a/include/tvm/ffi/container/map.h\n+++ b/include/tvm/ffi/container/map.h\n@@ -1755,7 +1755,5 @@ inline constexpr bool type_contains_v<Map<K, V>, Map<KU, VU>> =\n }  // namespace details\n \n }  // namespace ffi\n-\n-using ffi::Map;\n }  // namespace tvm\n #endif  // TVM_FFI_CONTAINER_MAP_H_\ndiff --git a/include/tvm/ffi/container/variant.h b/include/tvm/ffi/container/variant.h\nindex 5bea42c..5f66d73 100644\n--- a/include/tvm/ffi/container/variant.h\n+++ b/include/tvm/ffi/container/variant.h\n@@ -298,7 +298,5 @@ template <typename... V, typename T>\n inline constexpr bool type_contains_v<Variant<V...>, T> = (type_contains_v<V, T> || ...);\n }  // namespace details\n }  // namespace ffi\n-\n-using ffi::Variant;\n }  // namespace tvm\n #endif  // TVM_FFI_CONTAINER_VARIANT_H_\ndiff --git a/include/tvm/ffi/dtype.h b/include/tvm/ffi/dtype.h\nindex 8da30dc..a9e09d2 100644\n--- a/include/tvm/ffi/dtype.h\n+++ b/include/tvm/ffi/dtype.h\n@@ -38,8 +38,6 @@ namespace ffi {\n  * \\brief Extension code beyond the DLDataType.\n  *\n  * This class is always consistent with the DLPack.\n- *\n- * TODO(tvm-team): update to latest DLPack types.\n  */\n enum DLExtDataTypeCode { kDLExtCustomBegin = 129 };\n \ndiff --git a/include/tvm/ffi/memory.h b/include/tvm/ffi/memory.h\nindex 2e4f3cd..1fa9d65 100644\n--- a/include/tvm/ffi/memory.h\n+++ b/include/tvm/ffi/memory.h\n@@ -225,7 +225,5 @@ inline ObjectPtr<ArrayType> make_inplace_array_object(size_t num_elems, Args&&..\n }\n \n }  // namespace ffi\n-\n-using ffi::make_object;\n }  // namespace tvm\n #endif  // TVM_FFI_MEMORY_H_\ndiff --git a/include/tvm/ffi/optional.h b/include/tvm/ffi/optional.h\nindex 3f406d4..f93a0f0 100644\n--- a/include/tvm/ffi/optional.h\n+++ b/include/tvm/ffi/optional.h\n@@ -410,7 +410,5 @@ class Optional<T, std::enable_if_t<use_ptr_based_optional_v<T>>> : public Object\n   }\n };\n }  // namespace ffi\n-\n-using ffi::Optional;\n }  // namespace tvm\n #endif  // TVM_FFI_OPTIONAL_H_\ndiff --git a/include/tvm/ffi/string.h b/include/tvm/ffi/string.h\nindex 8da70e5..41720d0 100644\n--- a/include/tvm/ffi/string.h\n+++ b/include/tvm/ffi/string.h\n@@ -993,9 +993,6 @@ inline std::ostream& operator<<(std::ostream& out, const String& input) {\n }\n /// \\endcond\n }  // namespace ffi\n-\n-using ffi::Bytes;\n-using ffi::String;\n }  // namespace tvm\n \n /// \\cond Doxygen_Suppress",
+  "heuristics": {
+    "tags": [],
+    "extensions": [
+      ".h"
+    ],
+    "scopes_guess": [
+      "include"
+    ]
+  }
+}

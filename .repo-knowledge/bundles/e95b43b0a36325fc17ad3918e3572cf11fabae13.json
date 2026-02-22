@@ -1,0 +1,116 @@
+{
+  "sha": "e95b43b0a36325fc17ad3918e3572cf11fabae13",
+  "sha7": "e95b43b",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-07-14T20:03:21-04:00",
+  "subject": "[FFI][REFACTOR] Modularize refelection (#18147)",
+  "body":
+      "This PR modules reflection of ffi into registry.h and accessor.h\nthe dependent items are updated accordingly",
+  "is_merge": false,
+  "parents": [
+    "9a1d41a4b19bc645adc8b0cc935096ca15c111a0"
+  ],
+  "name_status": [
+    [
+      "A",
+      "include/tvm/ffi/reflection/accessor.h"
+    ],
+    [
+      "R070",
+      "include/tvm/ffi/reflection/registry.h"
+    ],
+    [
+      "M",
+      "src/ffi/container.cc"
+    ],
+    [
+      "M",
+      "src/ffi/function.cc"
+    ],
+    [
+      "M",
+      "src/ffi/ndarray.cc"
+    ],
+    [
+      "M",
+      "src/ffi/object.cc"
+    ],
+    [
+      "M",
+      "src/ffi/testing.cc"
+    ],
+    [
+      "M",
+      "tests/cpp/test_reflection.cc"
+    ],
+    [
+      "M",
+      "tests/cpp/testing_object.h"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "include/tvm/ffi/reflection/accessor.h",
+      "additions": 198,
+      "deletions": 0
+    },
+    {
+      "path": "include/tvm/ffi/reflection/{reflection.h => registry.h}",
+      "additions": 5,
+      "deletions": 162
+    },
+    {
+      "path": "src/ffi/container.cc",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "src/ffi/function.cc",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "src/ffi/ndarray.cc",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "src/ffi/object.cc",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "src/ffi/testing.cc",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "tests/cpp/test_reflection.cc",
+      "additions": 2,
+      "deletions": 1
+    },
+    {
+      "path": "tests/cpp/testing_object.h",
+      "additions": 1,
+      "deletions": 1
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/include/tvm/ffi/reflection/accessor.h b/include/tvm/ffi/reflection/accessor.h\nnew file mode 100644\nindex 0000000..17cd1db\n--- /dev/null\n+++ b/include/tvm/ffi/reflection/accessor.h\n@@ -0,0 +1,198 @@\n+/*\n+ * Licensed to the Apache Software Foundation (ASF) under one\n+ * or more contributor license agreements.  See the NOTICE file\n+ * distributed with this work for additional information\n+ * regarding copyright ownership.  The ASF licenses this file\n+ * to you under the Apache License, Version 2.0 (the\n+ * \"License\"); you may not use this file except in compliance\n+ * with the License.  You may obtain a copy of the License at\n+ *\n+ *   http://www.apache.org/licenses/LICENSE-2.0\n+ *\n+ * Unless required by applicable law or agreed to in writing,\n+ * software distributed under the License is distributed on an\n+ * \"AS IS\" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY\n+ * KIND, either express or implied.  See the License for the\n+ * specific language governing permissions and limitations\n+ * under the License.\n+ */\n+/*!\n+ * \\file tvm/ffi/reflection/accessor.h\n+ * \\brief Reflection-based accessor for object fields and methods.\n+ */\n+#ifndef TVM_FFI_REFLECTION_ACCESSOR_H_\n+#define TVM_FFI_REFLECTION_ACCESSOR_H_\n+\n+#include <tvm/ffi/any.h>\n+#include <tvm/ffi/c_api.h>\n+#include <tvm/ffi/function.h>\n+#include <tvm/ffi/type_traits.h>\n+\n+#include <string>\n+#include <utility>\n+\n+namespace tvm {\n+namespace ffi {\n+namespace reflection {\n+\n+/*!\n+ * \\brief helper function to get reflection field info by type key and field name\n+ */\n+inline const TVMFFIFieldInfo* GetFieldInfo(std::string_view type_key, const char* field_name) {\n+  int32_t type_index;\n+  TVMFFIByteArray type_key_array = {type_key.data(), type_key.size()};\n+  TVM_FFI_CHECK_SAFE_CALL(TVMFFITypeKeyToIndex(&type_key_array, &type_index));\n+  const TypeInfo* info = TVMFFIGetTypeInfo(type_index);\n+  for (int32_t i = 0; i < info->num_fields; ++i) {\n+    if (std::strncmp(info->fields[i].name.data, field_name, info->fields[i].name.size) == 0) {\n+      return &(info->fields[i]);\n+    }\n+  }\n+  TVM_FFI_THROW(RuntimeError) << \"Cannot find field \" << field_name << \" in \" << type_key;\n+  TVM_FFI_UNREACHABLE();\n+}\n+\n+/*!\n+ * \\brief helper wrapper class to obtain a getter.\n+ */\n+class FieldGetter {\n+ public:\n+  explicit FieldGetter(const TVMFFIFieldInfo* field_info) : field_info_(field_info) {}\n+\n+  explicit FieldGetter(std::string_view type_key, const char* field_name)\n+      : FieldGetter(GetFieldInfo(type_key, field_name)) {}\n+\n+  Any operator()(const Object* obj_ptr) const {\n+    Any result;\n+    const void* addr = reinterpret_cast<const char*>(obj_ptr) + field_info_->offset;\n+    TVM_FFI_CHECK_SAFE_CALL(\n+        field_info_->getter(const_cast<void*>(addr), reinterpret_cast<TVMFFIAny*>(&result)));\n+    return result;\n+  }\n+\n+  Any operator()(const ObjectPtr<Object>& obj_ptr) const { return operator()(obj_ptr.get()); }\n+\n+  Any operator()(const ObjectRef& obj) const { return operator()(obj.get()); }\n+\n+ private:\n+  const TVMFFIFieldInfo* field_info_;\n+};\n+\n+/*!\n+ * \\brief helper wrapper class to obtain a setter.\n+ */\n+class FieldSetter {\n+ public:\n+  explicit FieldSetter(const TVMFFIFieldInfo* field_info) : field_info_(field_info) {}\n+\n+  explicit FieldSetter(std::string_view type_key, const char* field_name)\n+      : FieldSetter(GetFieldInfo(type_key, field_name)) {}\n+\n+  void operator()(const Object* obj_ptr, AnyView value) const {\n+    const void* addr = reinterpret_cast<const char*>(obj_ptr) + field_info_->offset;\n+    TVM_FFI_CHECK_SAFE_CALL(\n+        field_info_->setter(const_cast<void*>(addr), reinterpret_cast<const TVMFFIAny*>(&value)));\n+  }\n+\n+  void operator()(const ObjectPtr<Object>& obj_ptr, AnyView value) const {\n+    operator()(obj_ptr.get(), value);\n+  }\n+\n+  void operator()(const ObjectRef& obj, AnyView value) const { operator()(obj.get(), value); }\n+\n+ private:\n+  const TVMFFIFieldInfo* field_info_;\n+};\n+\n+/*!\n+ * \\brief helper function to get reflection method info by type key and method name\n+ *\n+ * \\param type_key The type key.\n+ * \\param method_name The name of the method.\n+ * \\return The method info.\n+ */\n+inline const TVMFFIMethodInfo* GetMethodInfo(std::string_view type_key, const char* method_name) {\n+  int32_t type_index;\n+  TVMFFIByteArray type_key_array = {type_key.data(), type_key.size()};\n+  TVM_FFI_CHECK_SAFE_CALL(TVMFFITypeKeyToIndex(&type_key_array, &type_index));\n+  const TypeInfo* info = TVMFFIGetTypeInfo(type_index);\n+  for (int32_t i = 0; i < info->num_methods; ++i) {\n+    if (std::strncmp(info->methods[i].name.data, method_name, info->methods[i].name.size) == 0) {\n+      return &(info->methods[i]);\n+    }\n+  }\n+  TVM_FFI_THROW(RuntimeError) << \"Cannot find method \" << method_name << \" in \" << type_key;\n+  TVM_FFI_UNREACHABLE();\n+}\n+\n+/*!\n+ * \\brief helper function to get reflection method function by method info\n+ *\n+ * \\param type_key The type key.\n+ * \\param method_name The name of the method.\n+ * \\return The method function.\n+ */\n+inline Function GetMethod(std::string_view type_key, const char* method_name) {\n+  const TVMFFIMethodInfo* info = GetMethodInfo(type_key, method_name);\n+  return AnyView::CopyFromTVMFFIAny(info->method).cast<Function>();\n+}\n+\n+/*!\n+ * \\brief Visit each field info of the type info and run callback.\n+ *\n+ * \\tparam Callback The callback function type.\n+ *\n+ * \\param type_info The type info.\n+ * \\param callback The callback function.\n+ *\n+ * \\note This function calls both the child and parent type info.\n+ */\n+template <typename Callback>\n+inline void ForEachFieldInfo(const TypeInfo* type_info, Callback callback) {\n+  using ResultType = decltype(callback(type_info->fields));\n+  static_assert(std::is_same_v<ResultType, void>, \"Callback must return void\");\n+  // iterate through acenstors in parent to child order\n+  // skip the first one since it is always the root object\n+  for (int i = 1; i < type_info->type_depth; ++i) {\n+    const TVMFFITypeInfo* parent_info = type_info->type_acenstors[i];\n+    for (int j = 0; j < parent_info->num_fields; ++j) {\n+      callback(parent_info->fields + j);\n+    }\n+  }\n+  for (int i = 0; i < type_info->num_fields; ++i) {\n+    callback(type_info->fields + i);\n+  }\n+}\n+\n+/*!\n+ * \\brief Visit each field info of the type info and run callback which returns bool for early stop.\n+ *\n+ * \\tparam Callback The callback function type, which returns bool for early stop.\n+ *\n+ * \\param type_info The type info.\n+ * \\param callback_with_early_stop The callback function.\n+ * \\return true if any of early stop is triggered.\n+ *\n+ * \\note This function calls both the child and parent type info and can be used for searching.\n+ */\n+template <typename Callback>\n+inline bool ForEachFieldInfoWithEarlyStop(const TypeInfo* type_info,\n+                                          Callback callback_with_early_stop) {\n+  // iterate through acenstors in parent to child order\n+  // skip the first one since it is always the root object\n+  for (int i = 1; i < type_info->type_depth; ++i) {\n+    const TVMFFITypeInfo* parent_info = type_info->type_acenstors[i];\n+    for (int j = 0; j < parent_info->num_fields; ++j) {\n+      if (callback_with_early_stop(parent_info->fields + j)) return true;\n+    }\n+  }\n+  for (int i = 0; i < type_info->num_fields; ++i) {\n+    if (callback_with_early_stop(type_info->fields + i)) return true;\n+  }\n+  return false;\n+}\n+\n+}  // namespace reflection\n+}  // namespace ffi\n+}  // namespace tvm\n+#endif  // TVM_FFI_REFLECTION_ACCESSOR_H_\ndiff --git a/include/tvm/ffi/reflection/reflection.h b/include/tvm/ffi/reflection/registry.h\nsimilarity index 70%\nrename from include/tvm/ffi/reflection/reflection.h\nrename to include/tvm/ffi/reflection/registry.h\nindex 1dbb93a..27e0b08 100644\n--- a/include/tvm/ffi/reflection/reflection.h\n+++ b/include/tvm/ffi/reflection/registry.h\n@@ -17,11 +17,11 @@\n  * under the License.\n  */\n /*!\n- * \\file tvm/ffi/reflection/reflection.h\n- * \\brief Base reflection support to access object fields.\n+ * \\file tvm/ffi/reflection/registry.h\n+ * \\brief Registry of reflection metadata.\n  */\n-#ifndef TVM_FFI_REFLECTION_REFLECTION_H_\n-#define TVM_FFI_REFLECTION_REFLECTION_H_\n+#ifndef TVM_FFI_REFLECTION_REGISTRY_H_\n+#define TVM_FFI_REFLECTION_REGISTRY_H_\n \n #include <tvm/ffi/any.h>\n #include <tvm/ffi/c_api.h>\n@@ -408,164 +408,7 @@ class ObjectDef : public ReflectionDefBase {\n   const char* type_key_;\n };\n \n-/*!\n- * \\brief helper function to get reflection field info by type key and field name\n- */\n-inline const TVMFFIFieldInfo* GetFieldInfo(std::string_view type_key, const char* field_name) {\n-  int32_t type_index;\n-  TVMFFIByteArray type_key_array = {type_key.data(), type_key.size()};\n-  TVM_FFI_CHECK_SAFE_CALL(TVMFFITypeKeyToIndex(&type_key_array, &type_index));\n-  const TypeInfo* info = TVMFFIGetTypeInfo(type_index);\n-  for (int32_t i = 0; i < info->num_fields; ++i) {\n-    if (std::strncmp(info->fields[i].name.data, field_name, info->fields[i].name.size) == 0) {\n-      return &(info->fields[i]);\n-    }\n-  }\n-  TVM_FFI_THROW(RuntimeError) << \"Cannot find field \" << field_name << \" in \" << type_key;\n-  TVM_FFI_UNREACHABLE();\n-}\n-\n-/*!\n- * \\brief helper wrapper class to obtain a getter.\n- */\n-class FieldGetter {\n- public:\n-  explicit FieldGetter(const TVMFFIFieldInfo* field_info) : field_info_(field_info) {}\n-\n-  explicit FieldGetter(std::string_view type_key, const char* field_name)\n-      : FieldGetter(GetFieldInfo(type_key, field_name)) {}\n-\n-  Any operator()(const Object* obj_ptr) const {\n-    Any result;\n-    const void* addr = reinterpret_cast<const char*>(obj_ptr) + field_info_->offset;\n-    TVM_FFI_CHECK_SAFE_CALL(\n-        field_info_->getter(const_cast<void*>(addr), reinterpret_cast<TVMFFIAny*>(&result)));\n-    return result;\n-  }\n-\n-  Any operator()(const ObjectPtr<Object>& obj_ptr) const { return operator()(obj_ptr.get()); }\n-\n-  Any operator()(const ObjectRef& obj) const { return operator()(obj.get()); }\n-\n- private:\n-  const TVMFFIFieldInfo* field_info_;\n-};\n-\n-/*!\n- * \\brief helper wrapper class to obtain a setter.\n- */\n-class FieldSetter {\n- public:\n-  explicit FieldSetter(const TVMFFIFieldInfo* field_info) : field_info_(field_info) {}\n-\n-  explicit FieldSetter(std::string_view type_key, const char* field_name)\n-      : FieldSetter(GetFieldInfo(type_key, field_name)) {}\n-\n-  void operator()(const Object* obj_ptr, AnyView value) const {\n-    const void* addr = reinterpret_cast<const char*>(obj_ptr) + field_info_->offset;\n-    TVM_FFI_CHECK_SAFE_CALL(\n-        field_info_->setter(const_cast<void*>(addr), reinterpret_cast<const TVMFFIAny*>(&value)));\n-  }\n-\n-  void operator()(const ObjectPtr<Object>& obj_ptr, AnyView value) const {\n-    operator()(obj_ptr.get(), value);\n-  }\n-\n-  void operator()(const ObjectRef& obj, AnyView value) const { operator()(obj.get(), value); }\n-\n- private:\n-  const TVMFFIFieldInfo* field_info_;\n-};\n-\n-/*!\n- * \\brief helper function to get reflection method info by type key and method name\n- *\n- * \\param type_key The type key.\n- * \\param method_name The name of the method.\n- * \\return The method info.\n- */\n-inline const TVMFFIMethodInfo* GetMethodInfo(std::string_view type_key, const char* method_name) {\n-  int32_t type_index;\n-  TVMFFIByteArray type_key_array = {type_key.data(), type_key.size()};\n-  TVM_FFI_CHECK_SAFE_CALL(TVMFFITypeKeyToIndex(&type_key_array, &type_index));\n-  const TypeInfo* info = TVMFFIGetTypeInfo(type_index);\n-  for (int32_t i = 0; i < info->num_methods; ++i) {\n-    if (std::strncmp(info->methods[i].name.data, method_name, info->methods[i].name.size) == 0) {\n-      return &(info->methods[i]);\n-    }\n-  }\n-  TVM_FFI_THROW(RuntimeError) << \"Cannot find method \" << method_name << \" in \" << type_key;\n-  TVM_FFI_UNREACHABLE();\n-}\n-\n-/*!\n- * \\brief helper function to get reflection method function by method info\n- *\n- * \\param type_key The type key.\n- * \\param method_name The name of the method.\n- * \\return The method function.\n- */\n-inline Function GetMethod(std::string_view type_key, const char* method_name) {\n-  const TVMFFIMethodInfo* info = GetMethodInfo(type_key, method_name);\n-  return AnyView::CopyFromTVMFFIAny(info->method).cast<Function>();\n-}\n-\n-/*!\n- * \\brief Visit each field info of the type info and run callback.\n- *\n- * \\tparam Callback The callback function type.\n- *\n- * \\param type_info The type info.\n- * \\param callback The callback function.\n- *\n- * \\note This function calls both the child and parent type info.\n- */\n-template <typename Callback>\n-inline void ForEachFieldInfo(const TypeInfo* type_info, Callback callback) {\n-  using ResultType = decltype(callback(type_info->fields));\n-  static_assert(std::is_same_v<ResultType, void>, \"Callback must return void\");\n-  // iterate through acenstors in parent to child order\n-  // skip the first one since it is always the root object\n-  for (int i = 1; i < type_info->type_depth; ++i) {\n-    const TVMFFITypeInfo* parent_info = type_info->type_acenstors[i];\n-    for (int j = 0; j < parent_info->num_fields; ++j) {\n-      callback(parent_info->fields + j);\n-    }\n-  }\n-  for (int i = 0; i < type_info->num_fields; ++i) {\n-    callback(type_info->fields + i);\n-  }\n-}\n-\n-/*!\n- * \\brief Visit each field info of the type info and run callback which returns bool for early stop.\n- *\n- * \\tparam Callback The callback function type, which returns bool for early stop.\n- *\n- * \\param type_info The type info.\n- * \\param callback_with_early_stop The callback function.\n- * \\return true if any of early stop is triggered.\n- *\n- * \\note This function calls both the child and parent type info and can be used for searching.\n- */\n-template <typename Callback>\n-inline bool ForEachFieldInfoWithEarlyStop(const TypeInfo* type_info,\n-                                          Callback callback_with_early_stop) {\n-  // iterate through acenstors in parent to child order\n-  // skip the first one since it is always the root object\n-  for (int i = 1; i < type_info->type_depth; ++i) {\n-    const TVMFFITypeInfo* parent_info = type_info->type_acenstors[i];\n-    for (int j = 0; j < parent_info->num_fields; ++j) {\n-      if (callback_with_early_stop(parent_info->fields + j)) return true;\n-    }\n-  }\n-  for (int i = 0; i < type_info->num_fields; ++i) {\n-    if (callback_with_early_stop(type_info->fields + i)) return true;\n-  }\n-  return false;\n-}\n-\n }  // namespace reflection\n }  // namespace ffi\n }  // namespace tvm\n-#endif  // TVM_FFI_REFLECTION_REFLECTION_H_\n+#endif  // TVM_FFI_REFLECTION_REGISTRY_H_\ndiff --git a/src/ffi/container.cc b/src/ffi/container.cc\nindex a0dc660..76b9cd6 100644\n--- a/src/ffi/container.cc\n+++ b/src/ffi/container.cc\n@@ -25,7 +25,7 @@\n #include <tvm/ffi/container/map.h>\n #include <tvm/ffi/container/shape.h>\n #include <tvm/ffi/function.h>\n-#include <tvm/ffi/reflection/reflection.h>\n+#include <tvm/ffi/reflection/registry.h>\n \n namespace tvm {\n namespace ffi {\ndiff --git a/src/ffi/function.cc b/src/ffi/function.cc\nindex 4df86a2..3db651f 100644\n--- a/src/ffi/function.cc\n+++ b/src/ffi/function.cc\n@@ -28,7 +28,7 @@\n #include <tvm/ffi/error.h>\n #include <tvm/ffi/function.h>\n #include <tvm/ffi/memory.h>\n-#include <tvm/ffi/reflection/reflection.h>\n+#include <tvm/ffi/reflection/registry.h>\n #include <tvm/ffi/string.h>\n \n namespace tvm {\ndiff --git a/src/ffi/ndarray.cc b/src/ffi/ndarray.cc\nindex dc3a5fb..41d4273 100644\n--- a/src/ffi/ndarray.cc\n+++ b/src/ffi/ndarray.cc\n@@ -23,7 +23,7 @@\n #include <tvm/ffi/c_api.h>\n #include <tvm/ffi/container/ndarray.h>\n #include <tvm/ffi/function.h>\n-#include <tvm/ffi/reflection/reflection.h>\n+#include <tvm/ffi/reflection/registry.h>\n \n namespace tvm {\n namespace ffi {\ndiff --git a/src/ffi/object.cc b/src/ffi/object.cc\nindex 84a83e4..a0d7a2f 100644\n--- a/src/ffi/object.cc\n+++ b/src/ffi/object.cc\n@@ -24,7 +24,7 @@\n #include <tvm/ffi/container/map.h>\n #include <tvm/ffi/error.h>\n #include <tvm/ffi/function.h>\n-#include <tvm/ffi/reflection/reflection.h>\n+#include <tvm/ffi/reflection/registry.h>\n #include <tvm/ffi/string.h>\n \n #include <memory>\ndiff --git a/src/ffi/testing.cc b/src/ffi/testing.cc\nindex a1747a2..8fddf54 100644\n--- a/src/ffi/testing.cc\n+++ b/src/ffi/testing.cc\n@@ -20,7 +20,7 @@\n #include <tvm/ffi/container/array.h>\n #include <tvm/ffi/container/map.h>\n #include <tvm/ffi/function.h>\n-#include <tvm/ffi/reflection/reflection.h>\n+#include <tvm/ffi/reflection/registry.h>\n \n #include <chrono>\n #include <iostream>\ndiff --git a/tests/cpp/test_reflection.cc b/tests/cpp/test_reflection.cc\nindex ce15fc1..3f6b5de 100644\n--- a/tests/cpp/test_reflection.cc\n+++ b/tests/cpp/test_reflection.cc\n@@ -20,7 +20,8 @@\n #include <gtest/gtest.h>\n #include <tvm/ffi/container/map.h>\n #include <tvm/ffi/object.h>\n-#include <tvm/ffi/reflection/reflection.h>\n+#include <tvm/ffi/reflection/accessor.h>\n+#include <tvm/ffi/reflection/registry.h>\n #include <tvm/ffi/string.h>\n \n #include \"./testing_object.h\"\ndiff --git a/tests/cpp/testing_object.h b/tests/cpp/testing_object.h\nindex f1f7193..c72c61d 100644\n--- a/tests/cpp/testing_object.h\n+++ b/tests/cpp/testing_object.h\n@@ -22,7 +22,7 @@\n \n #include <tvm/ffi/memory.h>\n #include <tvm/ffi/object.h>\n-#include <tvm/ffi/reflection/reflection.h>\n+#include <tvm/ffi/reflection/registry.h>\n #include <tvm/ffi/string.h>\n \n namespace tvm {",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".cc",
+      ".h"
+    ],
+    "scopes_guess": [
+      "include",
+      "src",
+      "tests"
+    ]
+  }
+}

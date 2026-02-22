@@ -1,0 +1,39 @@
+{
+  "sha": "8bea08ed17e5c46d642597e147ed1daa37ccb6da",
+  "sha7": "8bea08e",
+  "author_name": "Junru Shao",
+  "author_email": "junrushao@apache.org",
+  "date_iso": "2025-10-29T16:08:17-07:00",
+  "subject": "doc: Remove stale notes (#204)",
+  "body":
+      "There was a note in `TVM_FFI_DLL_EXPORT_TYPED_FUNC` saying:\n\n```\n\\note ExportName and Function must be different\n```\n\nwhich has been stale for a while. The system doesn't have the constraint\nas of today. This PR removes this line.",
+  "is_merge": false,
+  "parents": [
+    "bc2f4088896bc7ca5e356d9cea061e9efca60b54"
+  ],
+  "name_status": [
+    [
+      "M",
+      "include/tvm/ffi/function.h"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "include/tvm/ffi/function.h",
+      "additions": 0,
+      "deletions": 2
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/include/tvm/ffi/function.h b/include/tvm/ffi/function.h\nindex 24155e3..8ef3f23 100644\n--- a/include/tvm/ffi/function.h\n+++ b/include/tvm/ffi/function.h\n@@ -845,8 +845,6 @@ inline int32_t TypeKeyToIndex(std::string_view type_key) {\n  *\n  * \\param ExportName The symbol name to be exported.\n  * \\param Function The typed function.\n- * \\note ExportName and Function must be different,\n- *       see code examples below.\n  *\n  * \\sa ffi::TypedFunction\n  *",
+  "heuristics": {
+    "tags": [],
+    "extensions": [
+      ".h"
+    ],
+    "scopes_guess": [
+      "include"
+    ]
+  }
+}

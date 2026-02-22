@@ -1,0 +1,49 @@
+{
+  "sha": "035975a7e6804d1d23b07942d7704c30b3fadda0",
+  "sha7": "035975a",
+  "author_name": "Junru Shao",
+  "author_email": "junrushao@apache.org",
+  "date_iso": "2025-09-23T06:54:56-07:00",
+  "subject": "feat: Improve Critical Path Perf in Cython `make_ret_object` (#47)",
+  "body":
+      "This PR improves critical path perf on TVM FFI when returning an object\nfrom FFI function calls.\n\nIt achieves this by establishing a direct mapping from `type_index` to\nPython `type_cls`, thereby eliminating an unnecessary indirection during\nthe object instantiation process. The change aims to enhance the overall\nefficiency of object handling at the FFI layer.",
+  "is_merge": false,
+  "parents": [
+    "d68c8d8d4520318d3598c39c71c444169b1244bc"
+  ],
+  "name_status": [
+    [
+      "M",
+      "python/tvm_ffi/core.pyi"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/cython/object.pxi"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "python/tvm_ffi/core.pyi",
+      "additions": 1,
+      "deletions": 0
+    },
+    {
+      "path": "python/tvm_ffi/cython/object.pxi",
+      "additions": 23,
+      "deletions": 12
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/python/tvm_ffi/core.pyi b/python/tvm_ffi/core.pyi\nindex 7c623af..53c54dd 100644\n--- a/python/tvm_ffi/core.pyi\n+++ b/python/tvm_ffi/core.pyi\n@@ -83,6 +83,7 @@ class PyNativeObject:\n def _set_class_object(cls: type) -> None: ...\n def _register_object_by_index(type_index: int, type_cls: type) -> TypeInfo: ...\n def _object_type_key_to_index(type_key: str) -> int | None: ...\n+def _set_type_cls(type_index: int, type_cls: type) -> None: ...\n def _lookup_type_info_from_type_key(type_key: str) -> TypeInfo: ...\n \n class Error(Object):\ndiff --git a/python/tvm_ffi/cython/object.pxi b/python/tvm_ffi/cython/object.pxi\nindex 4cc737a..2777d82 100644\n--- a/python/tvm_ffi/cython/object.pxi\n+++ b/python/tvm_ffi/cython/object.pxi\n@@ -268,18 +268,16 @@ cdef inline object make_ret_object(TVMFFIAny result):\n     cdef object cls\n     tindex = result.type_index\n \n-    if tindex < len(TYPE_INDEX_TO_INFO):\n-        type_info = TYPE_INDEX_TO_INFO[tindex]\n-        if type_info is not None:\n-            cls = type_info.type_cls\n-            if cls is not None:\n-                if issubclass(cls, PyNativeObject):\n-                    obj = Object.__new__(Object)\n-                    (<Object>obj).chandle = result.v_obj\n-                    return cls.__from_tvm_ffi_object__(cls, obj)\n-                obj = cls.__new__(cls)\n+    if tindex < len(TYPE_INDEX_TO_CLS):\n+        cls = TYPE_INDEX_TO_CLS[tindex]\n+        if cls is not None:\n+            if issubclass(cls, PyNativeObject):\n+                obj = Object.__new__(Object)\n                 (<Object>obj).chandle = result.v_obj\n-                return obj\n+                return cls.__from_tvm_ffi_object__(cls, obj)\n+            obj = cls.__new__(cls)\n+            (<Object>obj).chandle = result.v_obj\n+            return obj\n \n     # object is not found in registered entry\n     # in this case we need to report an warning\n@@ -351,16 +349,28 @@ def _type_info_create_from_type_key(object type_cls, str type_key):\n \n \n def _register_object_by_index(int type_index, object type_cls):\n-    global TYPE_INDEX_TO_INFO, TYPE_KEY_TO_INFO\n+    global TYPE_INDEX_TO_INFO, TYPE_KEY_TO_INFO, TYPE_INDEX_TO_CLS\n     cdef str type_key = _type_index_to_key(type_index)\n     cdef object info = _type_info_create_from_type_key(type_cls, type_key)\n+    assert len(TYPE_INDEX_TO_INFO) == len(TYPE_INDEX_TO_CLS)\n     if (extra := type_index + 1 - len(TYPE_INDEX_TO_INFO)) > 0:\n         TYPE_INDEX_TO_INFO.extend([None] * extra)\n+        TYPE_INDEX_TO_CLS.extend([None] * extra)\n+    TYPE_INDEX_TO_CLS[type_index] = type_cls\n     TYPE_INDEX_TO_INFO[type_index] = info\n     TYPE_KEY_TO_INFO[type_key] = info\n     return info\n \n \n+def _set_type_cls(int type_index, object type_cls):\n+    global TYPE_INDEX_TO_INFO, TYPE_INDEX_TO_CLS\n+    assert len(TYPE_INDEX_TO_INFO) == len(TYPE_INDEX_TO_CLS)\n+    type_info = TYPE_INDEX_TO_INFO[type_index]\n+    assert type_info.type_cls is None, f\"Type already registered for {type_info.type_key}\"\n+    type_info.type_cls = type_cls\n+    TYPE_INDEX_TO_CLS[type_index] = type_cls\n+\n+\n def _lookup_type_info_from_type_key(type_key: str) -> TypeInfo:\n     if info := TYPE_KEY_TO_INFO.get(type_key, None):\n         return info\n@@ -369,6 +379,7 @@ def _lookup_type_info_from_type_key(type_key: str) -> TypeInfo:\n     return info\n \n \n+cdef list TYPE_INDEX_TO_CLS = []\n cdef list TYPE_INDEX_TO_INFO = []\n cdef dict TYPE_KEY_TO_INFO = {}\n ",
+  "heuristics": {
+    "tags": [],
+    "extensions": [
+      ".pxi",
+      ".pyi"
+    ],
+    "scopes_guess": [
+      "python"
+    ]
+  }
+}

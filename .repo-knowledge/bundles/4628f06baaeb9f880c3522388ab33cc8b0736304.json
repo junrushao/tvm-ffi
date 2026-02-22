@@ -1,0 +1,128 @@
+{
+  "sha": "4628f06baaeb9f880c3522388ab33cc8b0736304",
+  "sha7": "4628f06",
+  "author_name": "Junru Shao",
+  "author_email": "junrushao@apache.org",
+  "date_iso": "2025-11-09T08:52:27-08:00",
+  "subject": "chore(cython): Specify `--module-name` when building Cython (#248)",
+  "body":
+      "PR #177 introduces some unnecessary logics in\n`python/tvm_ffi/__init__.py` that updates `__module__` of Cython\ngenerated class, which unfortunately is not a good practice and doesn't\ntake effect in lower Python/Cython versions. This PR removes this logic\nand replaces it with `--module-name` at build time.",
+  "is_merge": false,
+  "parents": [
+    "6897a5f5a8dc662270dd10be40cf261bd1da93f8"
+  ],
+  "name_status": [
+    [
+      "M",
+      "CMakeLists.txt"
+    ],
+    [
+      "M",
+      "docs/conf.py"
+    ],
+    [
+      "M",
+      "pyproject.toml"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/__init__.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/_dtype.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/access_path.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/container.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/cpp/extension.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/cython/object.pxi"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/cython/tensor.pxi"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "CMakeLists.txt",
+      "additions": 2,
+      "deletions": 1
+    },
+    {
+      "path": "docs/conf.py",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "pyproject.toml",
+      "additions": 2,
+      "deletions": 2
+    },
+    {
+      "path": "python/tvm_ffi/__init__.py",
+      "additions": 0,
+      "deletions": 14
+    },
+    {
+      "path": "python/tvm_ffi/_dtype.py",
+      "additions": 3,
+      "deletions": 3
+    },
+    {
+      "path": "python/tvm_ffi/access_path.py",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "python/tvm_ffi/container.py",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "python/tvm_ffi/cpp/extension.py",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "python/tvm_ffi/cython/object.pxi",
+      "additions": 3,
+      "deletions": 3
+    },
+    {
+      "path": "python/tvm_ffi/cython/tensor.pxi",
+      "additions": 8,
+      "deletions": 7
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/CMakeLists.txt b/CMakeLists.txt\nindex e0b584a..60ff04a 100644\n--- a/CMakeLists.txt\n+++ b/CMakeLists.txt\n@@ -239,7 +239,8 @@ if (TVM_FFI_BUILD_PYTHON_MODULE)\n \n   add_custom_command(\n     OUTPUT ${_core_cpp}\n-    COMMAND ${Python_EXECUTABLE} -m cython --cplus ${_core_pyx} -o ${_core_cpp}\n+    COMMAND ${Python_EXECUTABLE} -m cython --cplus ${_core_pyx} -o ${_core_cpp} --module-name\n+            \"tvm_ffi.core\"\n     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}\n     COMMENT \"Transpiling ${_core_pyx} to ${_core_cpp}\"\n     DEPENDS ${_cython_sources}\ndiff --git a/docs/conf.py b/docs/conf.py\nindex ef0f399..3aa1969 100644\n--- a/docs/conf.py\n+++ b/docs/conf.py\n@@ -278,7 +278,7 @@ def _link_inherited_members(app, what, name, obj, options, lines) -> None:  # no\n     # If it comes from builtins we already hide it; no link needed\n     if base in _py_native_classes or getattr(base, \"__module__\", \"\") == \"builtins\":\n         return\n-    owner_fq = f\"{base.__module__}.{base.__qualname__}\"\n+    owner_fq = f\"{base.__module__}.{base.__qualname__}\".replace(\"tvm_ffi.core.\", \"tvm_ffi.\")\n     role = \"attr\" if what in {\"attribute\", \"property\"} else \"meth\"\n     lines.clear()\n     lines.append(\ndiff --git a/pyproject.toml b/pyproject.toml\nindex 43b09ba..3630002 100644\n--- a/pyproject.toml\n+++ b/pyproject.toml\n@@ -64,7 +64,7 @@ dev = [\n   \"pytest\",\n   \"numpy\",\n   \"ml_dtypes\",\n-  \"cython\",\n+  \"cython>=3.0\",\n   \"cmake\",\n   \"scikit-build-core\",\n   \"tomli\",\n@@ -103,7 +103,7 @@ tvm-ffi-config = \"tvm_ffi.config:__main__\"\n tvm-ffi-stubgen = \"tvm_ffi.stub.stubgen:__main__\"\n \n [build-system]\n-requires = [\"scikit-build-core>=0.10.0\", \"cython\", \"setuptools-scm\"]\n+requires = [\"scikit-build-core>=0.10.0\", \"cython>=3.0\", \"setuptools-scm\"]\n build-backend = \"scikit_build_core.build\"\n \n [tool.scikit-build]\ndiff --git a/python/tvm_ffi/__init__.py b/python/tvm_ffi/__init__.py\nindex 79f81a1..22bdd52 100644\n--- a/python/tvm_ffi/__init__.py\n+++ b/python/tvm_ffi/__init__.py\n@@ -102,17 +102,3 @@ __all__ = [\n     \"use_raw_stream\",\n     \"use_torch_stream\",\n ]\n-\n-\n-def _update_module() -> None:\n-    for name in __all__:\n-        obj = globals()[name]\n-        if not getattr(obj, \"__module__\", \"tvm_ffi\").startswith(\"tvm_ffi\"):\n-            try:\n-                obj.__module__ = \"tvm_ffi\"\n-            except (AttributeError, TypeError):\n-                # some types don't allow setting __module__\n-                pass\n-\n-\n-_update_module()\ndiff --git a/python/tvm_ffi/_dtype.py b/python/tvm_ffi/_dtype.py\nindex 7fa78d5..8e36bb4 100644\n--- a/python/tvm_ffi/_dtype.py\n+++ b/python/tvm_ffi/_dtype.py\n@@ -14,7 +14,7 @@\n # KIND, either express or implied.  See the License for the\n # specific language governing permissions and limitations\n # under the License.\n-\"\"\"Lightweight ``dtype`` wrapper for TVM FFI.\"\"\"\n+\"\"\"Lightweight dtype wrapper for TVM FFI.\"\"\"\n \n # pylint: disable=invalid-name\n from __future__ import annotations\n@@ -47,9 +47,9 @@ class DataTypeCode(IntEnum):\n \n \n class dtype(str):\n-    \"\"\"Lightweight ``dtype`` in TVM FFI.\n+    \"\"\"Lightweight data type in TVM FFI.\n \n-    ``dtype`` behaves like a Python ``str`` but also carries an internal FFI\n+    It behaves like a Python :class:`str` but also carries an internal FFI\n     representation. You can construct it from strings, NumPy/ML dtypes, or\n     via :py:meth:`from_dlpack_data_type`.\n \ndiff --git a/python/tvm_ffi/access_path.py b/python/tvm_ffi/access_path.py\nindex 6b9db9c..b69e05d 100644\n--- a/python/tvm_ffi/access_path.py\n+++ b/python/tvm_ffi/access_path.py\n@@ -55,7 +55,7 @@ class AccessStep(Object):\n class AccessPath(Object):\n     \"\"\"Access path container.\n \n-    An ``AccessPath`` describes how to reach a nested attribute or item\n+    It describes how to reach a nested attribute or item\n     inside a complex FFI object by recording a sequence of steps\n     (attribute, array index, or map key). It is primarily used by\n     diagnostics to pinpoint structural mismatches.\ndiff --git a/python/tvm_ffi/container.py b/python/tvm_ffi/container.py\nindex 90a84a2..06fb92e 100644\n--- a/python/tvm_ffi/container.py\n+++ b/python/tvm_ffi/container.py\n@@ -103,7 +103,7 @@ def getitem_helper(\n     Returns\n     -------\n     result\n-        The element for integer indices or a ``list`` for slices.\n+        The element for integer indices or a :class:`list` for slices.\n \n     \"\"\"\n     if isinstance(idx, slice):\ndiff --git a/python/tvm_ffi/cpp/extension.py b/python/tvm_ffi/cpp/extension.py\nindex 7d84476..ff4daff 100644\n--- a/python/tvm_ffi/cpp/extension.py\n+++ b/python/tvm_ffi/cpp/extension.py\n@@ -941,7 +941,7 @@ def load(\n     library. It's possible to only provide cpp_files or cuda_files.\n \n     Note that this function does not automatically export functions to the tvm ffi module. You need to\n-    manually use the TVM FFI export macros (e.g., ``TVM_FFI_DLL_EXPORT_TYPED_FUNC``) in your source files to export\n+    manually use the TVM FFI export macros (e.g., :c:macro:`TVM_FFI_DLL_EXPORT_TYPED_FUNC`) in your source files to export\n     functions. This gives you more control over which functions are exported and how they are exported.\n \n     Extra compiler and linker flags can be provided via the ``extra_cflags``, ``extra_cuda_cflags``, and ``extra_ldflags``\ndiff --git a/python/tvm_ffi/cython/object.pxi b/python/tvm_ffi/cython/object.pxi\nindex c8e1508..c7a9a47 100644\n--- a/python/tvm_ffi/cython/object.pxi\n+++ b/python/tvm_ffi/cython/object.pxi\n@@ -83,16 +83,16 @@ cdef class Object:\n     This is the root Python type for objects backed by the TVM FFI\n     runtime. Each instance references a handle to a C++ runtime\n     object. Python subclasses typically correspond to C++ runtime\n-    types and are registered via ``tvm_ffi.register_object``.\n+    types and are registered via :py:meth:`tvm_ffi.register_object`.\n \n     Notes\n     -----\n-    - Equality of two ``Object`` instances uses underlying handle\n+    - Equality of two :py:class:`Object` instances uses underlying handle\n       identity unless an overridden implementation is provided on the\n       concrete type. Use :py:meth:`same_as` to check whether two\n       references point to the same underlying object.\n     - Most users interact with subclasses (e.g. :class:`Tensor`,\n-      :class:`Function`) rather than ``Object`` directly.\n+      :class:`Function`) rather than :py:class:`Object` directly.\n \n     Examples\n     --------\ndiff --git a/python/tvm_ffi/cython/tensor.pxi b/python/tvm_ffi/cython/tensor.pxi\nindex e6fba34..6a9cf9e 100644\n--- a/python/tvm_ffi/cython/tensor.pxi\n+++ b/python/tvm_ffi/cython/tensor.pxi\n@@ -158,13 +158,14 @@ def from_dlpack(\n     Parameters\n     ----------\n     ext_tensor : object\n-        An object supporting ``__dlpack__`` and ``__dlpack_device__``.\n+        An object supporting `__dlpack__ <https://data-apis.org/array-api/latest/API_specification/generated/array_api.array.__dlpack__.html#array_api.array.__dlpack__>`_\n+        and `__dlpack_device__ <https://data-apis.org/array-api/latest/API_specification/generated/array_api.array.__dlpack_device__.html#array_api.array.__dlpack_device__>`_.\n     require_alignment : int, optional\n         If greater than zero, require the underlying data pointer to be\n         aligned to this many bytes. Misaligned inputs raise\n         :class:`ValueError`.\n     require_contiguous : bool, optional\n-        When ``True``, require the layout to be contiguous. Non-contiguous\n+        When True, require the layout to be contiguous. Non-contiguous\n         inputs raise :class:`ValueError`.\n \n     Returns\n@@ -184,7 +185,7 @@ def from_dlpack(\n         y_np = np.from_dlpack(x)\n         assert np.shares_memory(x_np, y_np)\n \n-    \"\"\"\n+    \"\"\"  # noqa: E501\n     cdef TVMFFIObjectHandle chandle\n     _from_dlpack_universal(ext_tensor, require_alignment, require_contiguous, &chandle)\n     return make_tensor_from_chandle(chandle)\n@@ -211,7 +212,7 @@ def _make_strides_from_shape(tuple shape: tuple[int, ...]) -> tuple[int, ...]:\n cdef class Tensor(Object):\n     \"\"\"Managed n-dimensional array compatible with DLPack.\n \n-    ``Tensor`` provides zero-copy interoperability with array libraries\n+    It provides zero-copy interoperability with array libraries\n     through the DLPack protocol. Instances are typically created with\n     :func:`from_dlpack` or returned from FFI functions.\n \n@@ -275,7 +276,7 @@ cdef class Tensor(Object):\n             dltensor, _c_str_dltensor_versioned, <PyCapsule_Destructor>_c_dlpack_versioned_deleter)\n \n     def __dlpack_device__(self) -> tuple[int, int]:\n-        \"\"\"Implement the standard ``__dlpack_device__`` protocol.\"\"\"\n+        \"\"\"Implement the standard `__dlpack_device__ <https://data-apis.org/array-api/latest/API_specification/generated/array_api.array.__dlpack_device__.html#array_api.array.__dlpack_device__>`_ protocol.\"\"\"  # noqa: E501\n         cdef int device_type = self.cdltensor.device.device_type\n         cdef int device_id = self.cdltensor.device.device_id\n         return (device_type, device_id)\n@@ -288,7 +289,7 @@ cdef class Tensor(Object):\n         dl_device: tuple[int, int] | None = None,\n         copy: bool | None = None,\n     ) -> object:\n-        \"\"\"Implement the standard ``__dlpack__`` protocol.\n+        \"\"\"Implement the standard `__dlpack__ <https://data-apis.org/array-api/latest/API_specification/generated/array_api.array.__dlpack__.html#array_api.array.__dlpack__>`_ protocol.\n \n         Parameters\n         ----------\n@@ -306,7 +307,7 @@ cdef class Tensor(Object):\n         ------\n         BufferError\n             If the requested behavior cannot be satisfied.\n-        \"\"\"\n+        \"\"\"  # noqa: E501\n         if max_version is None:\n             # Keep and use the DLPack 0.X implementation\n             # Note: from March 2025 onwards (but ideally as late as",
+  "heuristics": {
+    "tags": [
+      "build"
+    ],
+    "extensions": [
+      ".pxi",
+      ".py",
+      ".toml",
+      ".txt"
+    ],
+    "scopes_guess": [
+      "CMakeLists.txt",
+      "docs",
+      "pyproject.toml",
+      "python"
+    ]
+  }
+}

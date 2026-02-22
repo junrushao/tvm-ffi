@@ -1,0 +1,129 @@
+{
+  "sha": "5a8774943a668f4344b0afbffa28ec5f826c8b15",
+  "sha7": "5a87749",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-11-07T22:22:15-05:00",
+  "subject": "[CYTHON] Improve fallback and dtype convert behavior (#241)",
+  "body":
+      "This PR improves the torch fallback behavior and fix the dtype\nconversion to ensure tvm_ffi.convert always return right tvm_ffi.dtype\nwhen passing in dtype",
+  "is_merge": false,
+  "parents": [
+    "82bc7b639530558e9f666043c7145696d6fa35ba"
+  ],
+  "name_status": [
+    [
+      "M",
+      "addons/torch_c_dlpack_ext/README.md"
+    ],
+    [
+      "M",
+      "docs/index.rst"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/_convert.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/_dtype.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/_optional_torch_c_dlpack.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/core.pyi"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/cython/dtype.pxi"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/cython/function.pxi"
+    ],
+    [
+      "M",
+      "tests/python/test_dtype.py"
+    ],
+    [
+      "M",
+      "tests/python/test_function.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "addons/torch_c_dlpack_ext/README.md",
+      "additions": 7,
+      "deletions": 4
+    },
+    {
+      "path": "docs/index.rst",
+      "additions": 7,
+      "deletions": 0
+    },
+    {
+      "path": "python/tvm_ffi/_convert.py",
+      "additions": 17,
+      "deletions": 2
+    },
+    {
+      "path": "python/tvm_ffi/_dtype.py",
+      "additions": 2,
+      "deletions": 2
+    },
+    {
+      "path": "python/tvm_ffi/_optional_torch_c_dlpack.py",
+      "additions": 3,
+      "deletions": 2
+    },
+    {
+      "path": "python/tvm_ffi/core.pyi",
+      "additions": 3,
+      "deletions": 1
+    },
+    {
+      "path": "python/tvm_ffi/cython/dtype.pxi",
+      "additions": 33,
+      "deletions": 30
+    },
+    {
+      "path": "python/tvm_ffi/cython/function.pxi",
+      "additions": 11,
+      "deletions": 8
+    },
+    {
+      "path": "tests/python/test_dtype.py",
+      "additions": 2,
+      "deletions": 0
+    },
+    {
+      "path": "tests/python/test_function.py",
+      "additions": 2,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/addons/torch_c_dlpack_ext/README.md b/addons/torch_c_dlpack_ext/README.md\nindex 5e3b8d8..a3ac58c 100644\n--- a/addons/torch_c_dlpack_ext/README.md\n+++ b/addons/torch_c_dlpack_ext/README.md\n@@ -16,10 +16,13 @@\n <!--- under the License. -->\n # Torch C DLPack Extension\n \n-This folder contains the source for the `torch-c-dlpack-ext` package, which provides an Ahead-Of-Time (AOT) compiled module to support faster DLPack conversion.\n-This module will likely become unnecessary once PyTorch releases include DLPack v1.2 support.\n-By default, `tvm-ffi` will JIT-compile a version of this functionality during loading.\n-Installing this wheel allows users to avoid this JIT compilation overhead.\n+This folder contains the source for the `torch-c-dlpack-ext` package, which provides an\n+Ahead-Of-Time (AOT) compiled module to support faster DLPack conversion in DLPack v1.2.\n+By default, `tvm-ffi` will JIT-compile a version of this functionality during loading,\n+and use a safe-fallback if JIT-compilation fails.\n+Installing this wheel allows users to avoid this JIT compilation overhead and\n+also avoid the cases where the user environment does not necessarily have a compiler toolchain\n+to run JIT-compilation.\n \n ```bash\n pip install torch-c-dlpack-ext\ndiff --git a/docs/index.rst b/docs/index.rst\nindex fd859a7..5b137d5 100644\n--- a/docs/index.rst\n+++ b/docs/index.rst\n@@ -31,6 +31,13 @@ To install via pip, run:\n \n    pip install apache-tvm-ffi\n \n+We also recommend installing the optional package below for improved\n+torch tensor conversion performance.\n+\n+.. code-block:: bash\n+\n+   pip install torch-c-dlpack-ext\n+\n \n Table of Contents\n -----------------\ndiff --git a/python/tvm_ffi/_convert.py b/python/tvm_ffi/_convert.py\nindex 43a564c..d0a44e3 100644\n--- a/python/tvm_ffi/_convert.py\n+++ b/python/tvm_ffi/_convert.py\n@@ -18,11 +18,12 @@\n \n from __future__ import annotations\n \n+import ctypes\n from numbers import Number\n from types import ModuleType\n from typing import Any\n \n-from . import container, core\n+from . import _dtype, container, core\n \n torch: ModuleType | None = None\n try:\n@@ -90,7 +91,7 @@ def convert(value: Any) -> Any:  # noqa: PLR0911,PLR0912\n     only used in internal or testing scenarios.\n \n     \"\"\"\n-    if isinstance(value, (core.Object, core.PyNativeObject, bool, Number)):\n+    if isinstance(value, (core.Object, core.PyNativeObject, bool, Number, ctypes.c_void_p)):\n         return value\n     elif isinstance(value, (tuple, list)):\n         return container.Array(value)\n@@ -112,8 +113,22 @@ def convert(value: Any) -> Any:  # noqa: PLR0911,PLR0912\n         return core._convert_torch_dtype_to_ffi_dtype(value)\n     elif numpy is not None and isinstance(value, numpy.dtype):\n         return core._convert_numpy_dtype_to_ffi_dtype(value)\n+    elif hasattr(value, \"__dlpack_data_type__\"):\n+        cdtype = core._create_cdtype_from_tuple(core.DataType, *value.__dlpack_data_type__())\n+        dtype = str.__new__(_dtype.dtype, str(cdtype))\n+        dtype._tvm_ffi_dtype = cdtype\n+        return dtype\n     elif isinstance(value, Exception):\n         return core._convert_to_ffi_error(value)\n+    elif hasattr(value, \"__tvm_ffi_object__\"):\n+        return value.__tvm_ffi_object__()\n+    # keep rest protocol values as it is as they can be handled by ffi function\n+    elif hasattr(value, \"__cuda_stream__\"):\n+        return value\n+    elif hasattr(value, \"__tvm_ffi_opaque_ptr__\"):\n+        return value\n+    elif hasattr(value, \"__dlpack_device__\"):\n+        return value\n     else:\n         # in this case, it is an opaque python object\n         return core._convert_to_opaque_object(value)\ndiff --git a/python/tvm_ffi/_dtype.py b/python/tvm_ffi/_dtype.py\nindex ebc2585..7fa78d5 100644\n--- a/python/tvm_ffi/_dtype.py\n+++ b/python/tvm_ffi/_dtype.py\n@@ -129,7 +129,7 @@ class dtype(str):\n             Create vector dtypes from a scalar base.\n \n         \"\"\"\n-        cdtype = core._create_dtype_from_tuple(\n+        cdtype = core._create_cdtype_from_tuple(\n             core.DataType,\n             dltype_data_type[0],\n             dltype_data_type[1],\n@@ -172,7 +172,7 @@ class dtype(str):\n             Construct from a DLPack ``(code, bits, lanes)`` triple.\n \n         \"\"\"\n-        cdtype = core._create_dtype_from_tuple(\n+        cdtype = core._create_cdtype_from_tuple(\n             core.DataType,\n             self._tvm_ffi_dtype.type_code,\n             self._tvm_ffi_dtype.bits,\ndiff --git a/python/tvm_ffi/_optional_torch_c_dlpack.py b/python/tvm_ffi/_optional_torch_c_dlpack.py\nindex 7673c03..29c1db3 100644\n--- a/python/tvm_ffi/_optional_torch_c_dlpack.py\n+++ b/python/tvm_ffi/_optional_torch_c_dlpack.py\n@@ -102,9 +102,10 @@ def load_torch_c_dlpack_extension() -> Any:\n         return lib\n     except ImportError:\n         pass\n-    except Exception as e:\n+    except Exception:\n         warnings.warn(\n-            f\"Failed to load torch c dlpack extension, EnvTensorAllocator will not be enabled:\\n  {e}\"\n+            \"Failed to JIT torch c dlpack extension, EnvTensorAllocator will not be enabled.\\n\"\n+            \"You may try AOT-module via `pip install torch-c-dlpack-ext`\"\n         )\n     return None\n \ndiff --git a/python/tvm_ffi/core.pyi b/python/tvm_ffi/core.pyi\nindex 853af72..d5d43b7 100644\n--- a/python/tvm_ffi/core.pyi\n+++ b/python/tvm_ffi/core.pyi\n@@ -103,7 +103,9 @@ class DataType:\n def _set_class_dtype(cls: type) -> None: ...\n def _convert_torch_dtype_to_ffi_dtype(torch_dtype: Any) -> DataType: ...\n def _convert_numpy_dtype_to_ffi_dtype(numpy_dtype: Any) -> DataType: ...\n-def _create_dtype_from_tuple(cls: type[DataType], code: int, bits: int, lanes: int) -> DataType: ...\n+def _create_cdtype_from_tuple(\n+    cls: type[DataType], code: int, bits: int, lanes: int\n+) -> DataType: ...\n \n class DLDeviceType(IntEnum):\n     kDLCPU = 1\ndiff --git a/python/tvm_ffi/cython/dtype.pxi b/python/tvm_ffi/cython/dtype.pxi\nindex 15f9418..3f3e460 100644\n--- a/python/tvm_ffi/cython/dtype.pxi\n+++ b/python/tvm_ffi/cython/dtype.pxi\n@@ -51,12 +51,12 @@ def _set_class_dtype(cls):\n     _CLASS_DTYPE = cls\n \n \n-def _create_dtype_from_tuple(cls, code, bits, lanes):\n+def _create_cdtype_from_tuple(cls, code, bits, lanes):\n     cdef DLDataType cdtype\n     cdtype.code = code\n     cdtype.bits = bits\n     cdtype.lanes = lanes\n-    ret = cls.__new__(cls, str(cdtype))\n+    ret = cls.__new__(cls)\n     (<DataType>ret).cdtype = cdtype\n     return ret\n \n@@ -87,7 +87,7 @@ cdef class DataType:\n \n     def __reduce__(self) -> Any:\n         cls = type(self)\n-        return (_create_dtype_from_tuple,\n+        return (_create_cdtype_from_tuple,\n                 (cls, self.cdtype.code, self.cdtype.bits, self.cdtype.lanes))\n \n     def __eq__(self, other: object) -> bool:\n@@ -102,6 +102,9 @@ cdef class DataType:\n     def __ne__(self, other: object) -> bool:\n         return not self.__eq__(other)\n \n+    def __hash__(self) -> int:\n+        return hash((self.cdtype.code, self.cdtype.bits, self.cdtype.lanes))\n+\n     @property\n     def type_code(self) -> int:\n         \"\"\"Integer DLDataTypeCode of the scalar base type.\"\"\"\n@@ -151,20 +154,24 @@ cdef class DataType:\n         return res\n \n \n-cdef inline object make_ret_dtype(TVMFFIAny result):\n+cdef inline object make_dtype_from_dl_data_type(DLDataType dl_data_type):\n     cdtype = DataType.__new__(DataType)\n-    (<DataType>cdtype).cdtype = result.v_dtype\n+    (<DataType>cdtype).cdtype = dl_data_type\n     val = str.__new__(_CLASS_DTYPE, cdtype.__str__())\n     val._tvm_ffi_dtype = cdtype\n     return val\n \n \n-cdef TORCH_DTYPE_TO_DTYPE = {}\n-cdef NUMPY_DTYPE_TO_DTYPE = {}\n-cdef MLDTYPES_DTYPE_TO_DTYPE = {}\n+cdef inline object make_ret_dtype(TVMFFIAny result):\n+    return make_dtype_from_dl_data_type(result.v_dtype)\n+\n+\n+cdef TORCH_DTYPE_TO_DL_DATA_TYPE = {}\n+cdef NUMPY_DTYPE_TO_DL_DATA_TYPE = {}\n+cdef MLDTYPES_DTYPE_TO_DL_DATA_TYPE = {}\n \n if torch is not None:\n-    TORCH_DTYPE_TO_DTYPE = {\n+    TORCH_DTYPE_TO_DL_DATA_TYPE = {\n         torch.int8: DLDataType(0, 8, 1),\n         torch.short: DLDataType(0, 16, 1),\n         torch.int16: DLDataType(0, 16, 1),\n@@ -190,21 +197,19 @@ if torch is not None:\n         torch.float8_e5m2fnuz: DLDataType(13, 8, 1),\n     }\n     if hasattr(torch, \"float8_e8m0fnu\"):\n-        TORCH_DTYPE_TO_DTYPE[torch.float8_e8m0fnu] = DLDataType(14, 8, 1)\n+        TORCH_DTYPE_TO_DL_DATA_TYPE[torch.float8_e8m0fnu] = DLDataType(14, 8, 1)\n     if hasattr(torch, \"float4_e2m1fn_x2\"):\n-        TORCH_DTYPE_TO_DTYPE[torch.float4_e2m1fn_x2] = DLDataType(17, 4, 2)\n+        TORCH_DTYPE_TO_DL_DATA_TYPE[torch.float4_e2m1fn_x2] = DLDataType(17, 4, 2)\n \n     def _convert_torch_dtype_to_ffi_dtype(torch_dtype):\n-        cdef DLDataType cdtype = TORCH_DTYPE_TO_DTYPE[torch_dtype]\n-        ret = DataType.__new__(DataType, str(cdtype))\n-        (<DataType>ret).cdtype = cdtype\n-        return ret\n+        cdef DLDataType dl_data_type = TORCH_DTYPE_TO_DL_DATA_TYPE[torch_dtype]\n+        return make_dtype_from_dl_data_type(dl_data_type)\n else:\n     def _convert_torch_dtype_to_ffi_dtype(torch_dtype):\n         raise ValueError(\"torch not found\")\n \n if ml_dtypes is not None:\n-    MLDTYPES_DTYPE_TO_DTYPE = {\n+    MLDTYPES_DTYPE_TO_DL_DATA_TYPE = {\n         numpy.dtype(ml_dtypes.int4): DLDataType(0, 4, 1),\n         numpy.dtype(ml_dtypes.uint4): DLDataType(1, 4, 1),\n         numpy.dtype(ml_dtypes.bfloat16): DLDataType(4, 16, 1),\n@@ -216,19 +221,19 @@ if ml_dtypes is not None:\n     }\n \n     if hasattr(ml_dtypes, \"int2\"):  # ml_dtypes >= 0.5.0\n-        MLDTYPES_DTYPE_TO_DTYPE[numpy.dtype(ml_dtypes.int2)] = DLDataType(0, 2, 1)\n-        MLDTYPES_DTYPE_TO_DTYPE[numpy.dtype(ml_dtypes.uint2)] = DLDataType(1, 2, 1)\n+        MLDTYPES_DTYPE_TO_DL_DATA_TYPE[numpy.dtype(ml_dtypes.int2)] = DLDataType(0, 2, 1)\n+        MLDTYPES_DTYPE_TO_DL_DATA_TYPE[numpy.dtype(ml_dtypes.uint2)] = DLDataType(1, 2, 1)\n \n-        MLDTYPES_DTYPE_TO_DTYPE[numpy.dtype(ml_dtypes.float8_e3m4)] = DLDataType(7, 8, 1)\n-        MLDTYPES_DTYPE_TO_DTYPE[numpy.dtype(ml_dtypes.float8_e4m3)] = DLDataType(8, 8, 1)\n-        MLDTYPES_DTYPE_TO_DTYPE[numpy.dtype(ml_dtypes.float8_e8m0fnu)] = DLDataType(14, 8, 1)\n-        MLDTYPES_DTYPE_TO_DTYPE[numpy.dtype(ml_dtypes.float6_e2m3fn)] = DLDataType(15, 6, 1)\n-        MLDTYPES_DTYPE_TO_DTYPE[numpy.dtype(ml_dtypes.float6_e3m2fn)] = DLDataType(16, 6, 1)\n-        MLDTYPES_DTYPE_TO_DTYPE[numpy.dtype(ml_dtypes.float4_e2m1fn)] = DLDataType(17, 4, 1)\n+        MLDTYPES_DTYPE_TO_DL_DATA_TYPE[numpy.dtype(ml_dtypes.float8_e3m4)] = DLDataType(7, 8, 1)\n+        MLDTYPES_DTYPE_TO_DL_DATA_TYPE[numpy.dtype(ml_dtypes.float8_e4m3)] = DLDataType(8, 8, 1)\n+        MLDTYPES_DTYPE_TO_DL_DATA_TYPE[numpy.dtype(ml_dtypes.float8_e8m0fnu)] = DLDataType(14, 8, 1)\n+        MLDTYPES_DTYPE_TO_DL_DATA_TYPE[numpy.dtype(ml_dtypes.float6_e2m3fn)] = DLDataType(15, 6, 1)\n+        MLDTYPES_DTYPE_TO_DL_DATA_TYPE[numpy.dtype(ml_dtypes.float6_e3m2fn)] = DLDataType(16, 6, 1)\n+        MLDTYPES_DTYPE_TO_DL_DATA_TYPE[numpy.dtype(ml_dtypes.float4_e2m1fn)] = DLDataType(17, 4, 1)\n \n \n if numpy is not None:\n-    NUMPY_DTYPE_TO_DTYPE = {\n+    NUMPY_DTYPE_TO_DL_DATA_TYPE = {\n         numpy.dtype(numpy.int8): DLDataType(0, 8, 1),\n         numpy.dtype(numpy.int16): DLDataType(0, 16, 1),\n         numpy.dtype(numpy.int32): DLDataType(0, 32, 1),\n@@ -240,14 +245,12 @@ if numpy is not None:\n         numpy.dtype(numpy.float16): DLDataType(2, 16, 1),\n         numpy.dtype(numpy.float32): DLDataType(2, 32, 1),\n         numpy.dtype(numpy.float64): DLDataType(2, 64, 1),\n-        **MLDTYPES_DTYPE_TO_DTYPE,\n+        **MLDTYPES_DTYPE_TO_DL_DATA_TYPE,\n     }\n \n     def _convert_numpy_dtype_to_ffi_dtype(numpy_dtype):\n-        cdef DLDataType cdtype = NUMPY_DTYPE_TO_DTYPE[numpy_dtype]\n-        ret = DataType.__new__(DataType, str(cdtype))\n-        (<DataType>ret).cdtype = cdtype\n-        return ret\n+        cdef DLDataType cdtype = NUMPY_DTYPE_TO_DL_DATA_TYPE[numpy_dtype]\n+        return make_dtype_from_dl_data_type(cdtype)\n else:\n     def _convert_torch_dtype_to_ffi_dtype(torch_dtype):\n         raise ValueError(\"numpy not found\")\ndiff --git a/python/tvm_ffi/cython/function.pxi b/python/tvm_ffi/cython/function.pxi\nindex acfe3e2..3ebe862 100644\n--- a/python/tvm_ffi/cython/function.pxi\n+++ b/python/tvm_ffi/cython/function.pxi\n@@ -188,7 +188,7 @@ cdef int TVMFFIPyArgSetterDLPackExchangeAPI_(\n     return 0\n \n \n-cdef int TorchDLPackToPyObjectFallback_(\n+cdef int TorchManagedTensorToPyObjectNoSyncFallback_(\n     DLManagedTensorVersioned* dltensor, void** py_obj_out\n ) except -1:\n     # a bit convoluted but ok as a fallback\n@@ -211,7 +211,9 @@ cdef inline const DLPackExchangeAPI* GetTorchFallbackExchangeAPI() noexcept:\n     _torch_fallback_exchange_api.header.prev_api = NULL\n     _torch_fallback_exchange_api.managed_tensor_allocator = NULL\n     _torch_fallback_exchange_api.managed_tensor_from_py_object_no_sync = NULL\n-    _torch_fallback_exchange_api.managed_tensor_to_py_object_no_sync = TorchDLPackToPyObjectFallback_\n+    _torch_fallback_exchange_api.managed_tensor_to_py_object_no_sync = (\n+        TorchManagedTensorToPyObjectNoSyncFallback_\n+    )\n     _torch_fallback_exchange_api.dltensor_from_py_object_no_sync = NULL\n     _torch_fallback_exchange_api.current_work_stream = NULL\n \n@@ -228,6 +230,7 @@ cdef int TVMFFIPyArgSetterTorchFallback_(\n     \"\"\"Current setter for torch.Tensor, go through python and not as fast as c exporter\"\"\"\n     # TODO(tqchen): remove this once torch always support fast DLPack importer\n     cdef object arg = <object>py_arg\n+    cdef long long temp_ptr\n     is_cuda = arg.is_cuda\n     arg = from_dlpack(torch.utils.dlpack.to_dlpack(arg))\n     out.type_index = kTVMFFITensor\n@@ -235,7 +238,7 @@ cdef int TVMFFIPyArgSetterTorchFallback_(\n     temp_dltensor = TVMFFITensorGetDLTensorPtr((<Tensor>arg).chandle)\n     ctx.c_dlpack_exchange_api = GetTorchFallbackExchangeAPI()\n     # record the stream and device for torch context\n-    if is_cuda and ctx.device_type != -1:\n+    if is_cuda and ctx.device_type == -1:\n         ctx.device_type = temp_dltensor.device.device_type\n         ctx.device_id = temp_dltensor.device.device_id\n         # This is an API that dynamo and other uses to get the raw stream from torch\n@@ -587,10 +590,10 @@ cdef int TVMFFIPyArgSetterDTypeFromTorch_(\n ) except -1:\n     \"\"\"Setter for torch dtype\"\"\"\n     cdef py_obj = <object>py_arg\n-    if py_obj not in TORCH_DTYPE_TO_DTYPE:\n+    if py_obj not in TORCH_DTYPE_TO_DL_DATA_TYPE:\n         raise ValueError(\"Unsupported torch dtype: \", py_obj)\n     out.type_index = kTVMFFIDataType\n-    out.v_dtype = TORCH_DTYPE_TO_DTYPE[py_obj]\n+    out.v_dtype = TORCH_DTYPE_TO_DL_DATA_TYPE[py_obj]\n     return 0\n \n cdef int TVMFFIPyArgSetterDTypeFromNumpy_(\n@@ -599,10 +602,10 @@ cdef int TVMFFIPyArgSetterDTypeFromNumpy_(\n ) except -1:\n     \"\"\"Setter for torch dtype\"\"\"\n     cdef py_obj = <object>py_arg\n-    if py_obj not in NUMPY_DTYPE_TO_DTYPE:\n+    if py_obj not in NUMPY_DTYPE_TO_DL_DATA_TYPE:\n         raise ValueError(\"Unsupported numpy or ml_dtypes dtype: \", py_obj)\n     out.type_index = kTVMFFIDataType\n-    out.v_dtype = NUMPY_DTYPE_TO_DTYPE[py_obj]\n+    out.v_dtype = NUMPY_DTYPE_TO_DL_DATA_TYPE[py_obj]\n     return 0\n \n cdef int TVMFFIPyArgSetterDLPackDataTypeProtocol_(\n@@ -667,7 +670,7 @@ cdef int TVMFFIPyArgSetterFactory_(PyObject* value, TVMFFIPyArgSetter* out) exce\n         # as a member variable\n         out.func = TVMFFIPyArgSetterFFIObjectCompatible_\n         return 0\n-    if os.environ.get(\"TVM_FFI_SKIP_c_dlpack_from_pyobject\", \"0\") != \"1\":\n+    if os.environ.get(\"TVM_FFI_SKIP_C_DLPACK_EXCHANGE_API\", \"0\") != \"1\":\n         # Check for DLPackExchangeAPI struct (new approach)\n         # This is checked on the CLASS, not the instance\n         if hasattr(arg_class, \"__c_dlpack_exchange_api__\"):\ndiff --git a/tests/python/test_dtype.py b/tests/python/test_dtype.py\nindex 60d53ef..cae5f84 100644\n--- a/tests/python/test_dtype.py\n+++ b/tests/python/test_dtype.py\n@@ -88,10 +88,12 @@ _fecho = tvm_ffi.get_global_func(\"testing.echo\")\n \n def _check_dtype(dtype: Any, code: int, bits: int, lanes: int) -> None:\n     echo_dtype = _fecho(dtype)\n+    assert isinstance(echo_dtype, tvm_ffi.dtype)\n     assert echo_dtype.type_code == code\n     assert echo_dtype.bits == bits\n     assert echo_dtype.lanes == lanes\n     converted_dtype = tvm_ffi.convert(dtype)\n+    assert isinstance(converted_dtype, tvm_ffi.dtype)\n     assert converted_dtype.type_code == code\n     assert converted_dtype.bits == bits\n     assert converted_dtype.lanes == lanes\ndiff --git a/tests/python/test_function.py b/tests/python/test_function.py\nindex deef0f5..a1e68b0 100644\n--- a/tests/python/test_function.py\n+++ b/tests/python/test_function.py\n@@ -332,6 +332,8 @@ def test_function_with_dlpack_data_type_protocol() -> None:\n     x = DLPackDataTypeProtocol((dtype.type_code, dtype.bits, dtype.lanes))\n     y = fecho(x)\n     assert y == dtype\n+    converted_y = tvm_ffi.convert(x)\n+    assert converted_y == dtype\n \n \n def test_function_with_dlpack_device_protocol() -> None:",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".md",
+      ".pxi",
+      ".py",
+      ".pyi",
+      ".rst"
+    ],
+    "scopes_guess": [
+      "addons",
+      "docs",
+      "python",
+      "tests"
+    ]
+  }
+}

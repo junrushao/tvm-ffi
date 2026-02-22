@@ -1,0 +1,69 @@
+{
+  "sha": "639cc63dee4321d0a01e0f1009e952bc0355daa2",
+  "sha7": "639cc63",
+  "author_name": "Junru Shao",
+  "author_email": "junrushao@apache.org",
+  "date_iso": "2025-12-12T11:26:17-08:00",
+  "subject": "chore(ci): Run wheel testing per-mainline-commit (#337)",
+  "body":
+      "Currently mainline's wheel building test is run nightly, which could be\ncostly for days that don't have new commits, and inaccurate for days\nwhen there're multiple commits. This PR switches it to run on per-commit\nbasis on mainline",
+  "is_merge": false,
+  "parents": [
+    "8b4683385fd60b5b89f23cc8d4ab53d3a7c1aebb"
+  ],
+  "name_status": [
+    [
+      "A",
+      ".github/actions/build-wheel-for-publish/action.yml"
+    ],
+    [
+      "M",
+      ".github/workflows/ci_mainline_only.yml"
+    ],
+    [
+      "M",
+      ".github/workflows/publish_wheel.yml"
+    ],
+    [
+      "M",
+      ".gitignore"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": ".github/actions/build-wheel-for-publish/action.yml",
+      "additions": 114,
+      "deletions": 0
+    },
+    {
+      "path": ".github/workflows/ci_mainline_only.yml",
+      "additions": 30,
+      "deletions": 0
+    },
+    {
+      "path": ".github/workflows/publish_wheel.yml",
+      "additions": 24,
+      "deletions": 79
+    },
+    {
+      "path": ".gitignore",
+      "additions": 4,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/.github/actions/build-wheel-for-publish/action.yml b/.github/actions/build-wheel-for-publish/action.yml\nnew file mode 100644\nindex 0000000..60047f6\n--- /dev/null\n+++ b/.github/actions/build-wheel-for-publish/action.yml\n@@ -0,0 +1,114 @@\n+# Licensed to the Apache Software Foundation (ASF) under one\n+# or more contributor license agreements.  See the NOTICE file\n+# distributed with this work for additional information\n+# regarding copyright ownership.  The ASF licenses this file\n+# to you under the Apache License, Version 2.0 (the\n+# \"License\"); you may not use this file except in compliance\n+# with the License.  You may obtain a copy of the License at\n+#\n+#   http://www.apache.org/licenses/LICENSE-2.0\n+#\n+# Unless required by applicable law or agreed to in writing,\n+# software distributed under the License is distributed on an\n+# \"AS IS\" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY\n+# KIND, either express or implied.  See the License for the\n+# specific language governing permissions and limitations\n+# under the License.\n+\n+name: Build Wheel For Publish\n+description: >\n+  Build and test wheels (and optionally sdists) for a given OS/architecture/manylinux combination,\n+  suitable for both validation and publish workflows.\n+\n+inputs:\n+  os:\n+    description: \"Runner operating system (e.g., ubuntu-latest, macos-14, windows-latest)\"\n+    required: true\n+  arch:\n+    description: \"Target architecture for cibuildwheel (e.g., x86_64, aarch64, arm64, AMD64)\"\n+    required: true\n+  linux_image:\n+    description: \"Manylinux image tag to use on Linux runners (empty string for non-Linux runners)\"\n+    required: true\n+  checkout_ref:\n+    description: \"Branch, tag, or SHA to check out before building\"\n+    required: true\n+  build_wheels:\n+    description: \"Set to false to skip wheel builds (useful for sdist-only runs)\"\n+    default: \"true\"\n+    required: false\n+  build_sdist:\n+    description: \"Set to true to build a source distribution and run metadata checks\"\n+    default: \"false\"\n+    required: false\n+\n+runs:\n+  using: \"composite\"\n+  steps:\n+    # Special handling for macOS arm64 + python 3.8.\n+    # Install Python 3.8 from `actions/setup-python`, which is an arm64 build.\n+    - name: Install Python 3.8 for macOS arm64\n+      if: runner.os == 'macOS' && inputs.arch == 'arm64'\n+      uses: actions/setup-python@v5\n+      with:\n+        python-version: 3.8\n+\n+    - name: Set up uv\n+      uses: astral-sh/setup-uv@b75a909f75acd358c2196fb9a5f1299a9a8868a4  # v6.7.0\n+\n+    - name: Check out source\n+      uses: actions/checkout@v5\n+      with:\n+        ref: ${{ inputs.checkout_ref }}\n+        submodules: recursive\n+        fetch-depth: 0\n+        fetch-tags: true\n+\n+    - uses: ./.github/actions/detect-env-vars\n+      id: env_vars\n+\n+    - name: Print current commit\n+      shell: bash\n+      run: git log -1 --oneline\n+\n+    - name: Run cpp tests\n+      if: runner.os != 'Windows'\n+      env:\n+        CMAKE_BUILD_PARALLEL_LEVEL: ${{ steps.env_vars.outputs.cpu_count }}\n+      shell: bash\n+      run: |\n+        cmake . -B build_test -DTVM_FFI_BUILD_TESTS=ON -DCMAKE_BUILD_TYPE=Debug\n+        cmake --build build_test --clean-first --config Debug --target tvm_ffi_tests\n+        ctest -V -C Debug --test-dir build_test --output-on-failure\n+\n+    - name: Run cpp tests[windows]\n+      if: ${{ runner.os == 'Windows' }}\n+      shell: cmd\n+      env:\n+        CMAKE_BUILD_PARALLEL_LEVEL: ${{ steps.env_vars.outputs.cpu_count }}\n+      run: >\n+        cmake . -B build_test -DTVM_FFI_BUILD_TESTS=ON -DCMAKE_BUILD_TYPE=Debug &&\n+        cmake --build build_test --clean-first --config Debug --target tvm_ffi_tests &&\n+        ctest -V -C Debug --test-dir build_test --output-on-failure\n+\n+    - name: Build wheels\n+      if: ${{ inputs.build_wheels == 'true' }}\n+      uses: pypa/cibuildwheel@v3.1.4\n+      env:\n+        CIBW_ARCHS_MACOS: ${{ inputs.arch }}\n+        CIBW_ARCHS_LINUX: ${{ inputs.arch }}\n+        CIBW_ARCHS_WINDOWS: ${{ inputs.arch }}\n+        CIBW_MANYLINUX_X86_64_IMAGE: ${{ inputs.linux_image }}\n+        CIBW_MANYLINUX_AARCH64_IMAGE: ${{ inputs.linux_image }}\n+        CIBW_BUILD_VERBOSITY: 1\n+        CMAKE_BUILD_PARALLEL_LEVEL: ${{ steps.env_vars.outputs.cpu_count }}\n+      with:\n+        package-dir: .\n+        output-dir: wheelhouse\n+\n+    - name: Build sdist\n+      if: ${{ inputs.build_sdist == 'true' }}\n+      shell: bash\n+      run: |\n+        pipx run build --sdist --outdir dist .\n+        pipx run twine check dist/*\ndiff --git a/.github/workflows/ci_mainline_only.yml b/.github/workflows/ci_mainline_only.yml\nindex e5e24fa..c45a973 100644\n--- a/.github/workflows/ci_mainline_only.yml\n+++ b/.github/workflows/ci_mainline_only.yml\n@@ -60,3 +60,33 @@ jobs:\n               --build-dir=build-pre-commit                    \\\n               --jobs=${{ steps.env_vars.outputs.cpu_count }}  \\\n               ./src/ ./include ./tests\n+\n+  build-wheels:\n+    name: Build wheels\n+    needs: [prepare]\n+    runs-on: ${{ matrix.os }}\n+    strategy:\n+      fail-fast: false\n+      matrix:\n+        include:\n+          - {os: ubuntu-latest, arch: x86_64, linux_image: manylinux2014, build_sdist: \"true\"}\n+          - {os: ubuntu-latest, arch: x86_64, linux_image: manylinux_2_28, build_sdist: \"false\"}\n+          - {os: ubuntu-24.04-arm, arch: aarch64, linux_image: manylinux2014, build_sdist: \"false\"}\n+          - {os: ubuntu-24.04-arm, arch: aarch64, linux_image: manylinux_2_28, build_sdist: \"false\"}\n+          - {os: windows-latest, arch: AMD64, linux_image: \"\", build_sdist: \"false\"}\n+          - {os: macos-14, arch: arm64, linux_image: \"\", build_sdist: \"false\"}\n+\n+    steps:\n+      - name: Checkout repository (for local composite action)\n+        uses: actions/checkout@v5\n+        with:\n+          fetch-depth: 1\n+\n+      - name: Build wheel\n+        uses: ./.github/actions/build-wheel-for-publish\n+        with:\n+          os: ${{ matrix.os }}\n+          arch: ${{ matrix.arch }}\n+          linux_image: ${{ matrix.linux_image }}\n+          checkout_ref: ${{ github.sha }}\n+          build_sdist: ${{ matrix.build_sdist }}\ndiff --git a/.github/workflows/publish_wheel.yml b/.github/workflows/publish_wheel.yml\nindex f337834..4ee2b96 100644\n--- a/.github/workflows/publish_wheel.yml\n+++ b/.github/workflows/publish_wheel.yml\n@@ -18,12 +18,10 @@\n name: Publish wheel\n \n on:\n-  schedule:\n-    - cron: '0 9 * * *'  # every day at 9am UTC\n   workflow_dispatch:\n     inputs:\n-      branch:\n-        description: \"Branch or tag to publish (manual run)\"\n+      tag:\n+        description: \"Tag to publish (manual run)\"\n         required: true\n \n jobs:\n@@ -33,94 +31,41 @@ jobs:\n       fail-fast: false\n       matrix:\n         include:\n-          - {os: ubuntu-latest, arch: x86_64, linux_image: manylinux2014}\n-          - {os: ubuntu-latest, arch: x86_64, linux_image: manylinux_2_28}\n-          - {os: ubuntu-24.04-arm, arch: aarch64, linux_image: manylinux2014}\n-          - {os: ubuntu-24.04-arm, arch: aarch64, linux_image: manylinux_2_28}\n-          - {os: windows-latest, arch: AMD64, linux_image: \"\"}\n-          - {os: macos-14, arch: arm64, linux_image: \"\"}\n+          - {os: ubuntu-latest, arch: x86_64, linux_image: manylinux2014, build_sdist: \"true\"}\n+          - {os: ubuntu-latest, arch: x86_64, linux_image: manylinux_2_28, build_sdist: \"false\"}\n+          - {os: ubuntu-24.04-arm, arch: aarch64, linux_image: manylinux2014, build_sdist: \"false\"}\n+          - {os: ubuntu-24.04-arm, arch: aarch64, linux_image: manylinux_2_28, build_sdist: \"false\"}\n+          - {os: windows-latest, arch: AMD64, linux_image: \"\", build_sdist: \"false\"}\n+          - {os: macos-14, arch: arm64, linux_image: \"\", build_sdist: \"false\"}\n \n     steps:\n-      # Special handling for macOS arm64 + python 3.8.\n-      # Install Python 3.8 from `actions/setup-python`, which is an arm64 build;\n-      # N.B. Don't use `astral-sh/setup-uv` here as it provides an x86_64 build instead.\n-      # See also: https://cibuildwheel.pypa.io/en/stable/faq/#macos-building-cpython-38-wheels-on-arm64\n-      - uses: actions/setup-python@v5\n+      - name: Checkout repository (for local composite action)\n+        uses: actions/checkout@v5\n         with:\n-          python-version: 3.8\n-        if: runner.os == 'macOS' && runner.arch == 'ARM64'\n-      - uses: astral-sh/setup-uv@b75a909f75acd358c2196fb9a5f1299a9a8868a4\n-        if: matrix.os != 'macOS' || matrix.arch != 'arm64'\n+          fetch-depth: 1\n \n-      - uses: actions/checkout@v5\n+      - name: Build wheel\n+        uses: ./.github/actions/build-wheel-for-publish\n         with:\n-          # Use the input only for manual runs; otherwise use the triggering ref\n-          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.branch || github.ref }}\n-          submodules: recursive\n-          fetch-depth: 0\n-          fetch-tags: true\n-\n-      - uses: ./.github/actions/detect-env-vars\n-        id: env_vars\n-\n-      - name: Print current commit\n-        run: git log -1 --oneline\n-\n-      - name: Run cpp tests\n-        if: ${{ matrix.os != 'windows-latest' }}\n-        env:\n-          CMAKE_BUILD_PARALLEL_LEVEL: ${{ steps.env_vars.outputs.cpu_count }}\n-        run: |\n-          cmake . -B build_test -DTVM_FFI_BUILD_TESTS=ON -DCMAKE_BUILD_TYPE=Debug\n-          cmake --build build_test --clean-first --config Debug --target tvm_ffi_tests\n-          ctest -V -C Debug --test-dir build_test --output-on-failure\n-\n-      - name: Build wheels\n-        uses: pypa/cibuildwheel@v3.1.4\n-        env:\n-          CIBW_ARCHS_MACOS: ${{ matrix.arch }}\n-          CIBW_ARCHS_LINUX: ${{ matrix.arch }}\n-          CIBW_ARCHS_WINDOWS: ${{ matrix.arch }}\n-          CIBW_MANYLINUX_X86_64_IMAGE: ${{ matrix.linux_image }}\n-          CIBW_MANYLINUX_AARCH64_IMAGE: ${{ matrix.linux_image }}\n-          CIBW_BUILD_VERBOSITY: 1\n-          CMAKE_BUILD_PARALLEL_LEVEL: ${{ steps.env_vars.outputs.cpu_count }}\n-\n-        with:\n-          package-dir: .\n-          output-dir: wheelhouse\n-\n-      - uses: actions/upload-artifact@v4\n+          os: ${{ matrix.os }}\n+          arch: ${{ matrix.arch }}\n+          linux_image: ${{ matrix.linux_image }}\n+          checkout_ref: ${{ inputs.tag }}\n+          build_sdist: ${{ matrix.build_sdist }}\n+      - name: Upload wheels\n+        uses: actions/upload-artifact@v4\n         with:\n           name: cibw-wheels-${{ matrix.os }}-${{ matrix.arch }}-${{ strategy.job-index }}\n           path: ./wheelhouse/*.whl\n-\n-  build_sdist:\n-    name: Build source distribution\n-    runs-on: ubuntu-latest\n-    steps:\n-      - uses: actions/checkout@v5\n-        with:\n-          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.branch || github.ref }}\n-          submodules: recursive\n-          fetch-depth: 0\n-          fetch-tags: true\n-\n-      - uses: astral-sh/setup-uv@b75a909f75acd358c2196fb9a5f1299a9a8868a4  # v6.7.0\n-\n-      - name: Build sdist\n-        run: pipx run build --sdist --outdir dist .\n-\n-      - name: Check metadata\n-        run: pipx run twine check dist/*\n-\n-      - uses: actions/upload-artifact@v4\n+      - name: Upload sdist\n+        if: ${{ matrix.build_sdist == 'true' }}\n+        uses: actions/upload-artifact@v4\n         with:\n           name: cibw-sdist\n           path: dist/*.tar.gz\n \n   upload_pypi:\n-    needs: [build_wheels, build_sdist]\n+    needs: [build_wheels]\n     runs-on: ubuntu-latest\n     environment: pypi\n     permissions:\ndiff --git a/.gitignore b/.gitignore\nindex 8f3e896..23e35b9 100644\n--- a/.gitignore\n+++ b/.gitignore\n@@ -118,6 +118,10 @@ __pypackages__/\n \n # Celery stuff\n celerybeat-schedule\n+\n+# Allow composite actions under .github/actions despite build-* ignore pattern\n+!.github/actions/build-wheel-for-publish/\n+!.github/actions/build-wheel-for-publish/action.yml\n celerybeat.pid\n \n # SageMath parsed files",
+  "heuristics": {
+    "tags": [
+      "ci"
+    ],
+    "extensions": [
+      "",
+      ".yml"
+    ],
+    "scopes_guess": [
+      ".gitignore"
+    ]
+  }
+}

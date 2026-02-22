@@ -1,0 +1,51 @@
+{
+  "sha": "54f527f4d3d1ae1b950e0fe1a52ccb7bfc6df249",
+  "sha7": "54f527f",
+  "author_name": "Junru Shao",
+  "author_email": "junrushao@apache.org",
+  "date_iso": "2025-09-23T08:15:55-07:00",
+  "subject": "feat: Support Array Concat in Python (#45)",
+  "body":
+      "This pull request enhances the `tvm_ffi.Array` class by introducing\nsupport for array concatenation using the standard Python `+` operator.\nThis feature allows `Array` objects to be combined seamlessly with other\n`Array` instances or Python sequences, making the `Array` class more\nintuitive and consistent with Python's built-in sequence types.\n\nNote that many standard `list`/`dict` operations are not yet support in\n`tvm_ffi`. Leaving for future work...",
+  "is_merge": false,
+  "parents": [
+    "c88110e76e7bfb1c72e8a2bf371afaf7e018aa74"
+  ],
+  "name_status": [
+    [
+      "M",
+      "python/tvm_ffi/container.py"
+    ],
+    [
+      "M",
+      "tests/python/test_container.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "python/tvm_ffi/container.py",
+      "additions": 12,
+      "deletions": 3
+    },
+    {
+      "path": "tests/python/test_container.py",
+      "additions": 67,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/python/tvm_ffi/container.py b/python/tvm_ffi/container.py\nindex e3b2fb7..f179fc9 100644\n--- a/python/tvm_ffi/container.py\n+++ b/python/tvm_ffi/container.py\n@@ -18,9 +18,10 @@\n \n from __future__ import annotations\n \n+import itertools\n import operator\n from collections.abc import ItemsView as ItemsViewBase\n-from collections.abc import Iterator, Mapping, Sequence\n+from collections.abc import Iterable, Iterator, Mapping, Sequence\n from collections.abc import KeysView as KeysViewBase\n from collections.abc import ValuesView as ValuesViewBase\n from typing import Any, Callable, SupportsIndex, TypeVar, cast, overload\n@@ -89,7 +90,7 @@ class Array(core.Object, Sequence[T]):\n \n     Parameters\n     ----------\n-    input_list : Sequence[T]\n+    input_list : Iterable[T]\n         The list of values to be stored in the array.\n \n     See Also\n@@ -108,7 +109,7 @@ class Array(core.Object, Sequence[T]):\n \n     \"\"\"\n \n-    def __init__(self, input_list: Sequence[T]) -> None:\n+    def __init__(self, input_list: Iterable[T]) -> None:\n         \"\"\"Construct an Array from a Python sequence.\"\"\"\n         self.__init_handle_by_constructor__(_ffi_api.Array, *input_list)\n \n@@ -143,6 +144,14 @@ class Array(core.Object, Sequence[T]):\n             return type(self).__name__ + \"(chandle=None)\"\n         return \"[\" + \", \".join([x.__repr__() for x in self]) + \"]\"\n \n+    def __add__(self, other: Iterable[T]) -> Array[T]:\n+        \"\"\"Concatenate two arrays.\"\"\"\n+        return type(self)(itertools.chain(self, other))\n+\n+    def __radd__(self, other: Iterable[T]) -> Array[T]:\n+        \"\"\"Concatenate two arrays.\"\"\"\n+        return type(self)(itertools.chain(other, self))\n+\n \n class KeysView(KeysViewBase[K]):\n     \"\"\"Helper class to return keys view.\"\"\"\ndiff --git a/tests/python/test_container.py b/tests/python/test_container.py\nindex a025062..54b41b7 100644\n--- a/tests/python/test_container.py\n+++ b/tests/python/test_container.py\n@@ -15,6 +15,7 @@\n # specific language governing permissions and limitations\n # under the License.\n import pickle\n+from collections.abc import Sequence\n from typing import Any\n \n import pytest\n@@ -126,6 +127,72 @@ def test_serialization() -> None:\n     assert str(b) == \"[1, 2, 3]\"\n \n \n+@pytest.mark.parametrize(\n+    \"a, b, c_expected\",\n+    [\n+        (\n+            tvm_ffi.Array([1, 2, 3]),\n+            tvm_ffi.Array([4, 5, 6]),\n+            tvm_ffi.Array([1, 2, 3, 4, 5, 6]),\n+        ),\n+        (\n+            tvm_ffi.Array([1, 2, 3]),\n+            [4, 5, 6],\n+            tvm_ffi.Array([1, 2, 3, 4, 5, 6]),\n+        ),\n+        (\n+            [1, 2, 3],\n+            tvm_ffi.Array([4, 5, 6]),\n+            tvm_ffi.Array([1, 2, 3, 4, 5, 6]),\n+        ),\n+        (\n+            tvm_ffi.Array([]),\n+            tvm_ffi.Array([1, 2, 3]),\n+            tvm_ffi.Array([1, 2, 3]),\n+        ),\n+        (\n+            tvm_ffi.Array([1, 2, 3]),\n+            [],\n+            tvm_ffi.Array([1, 2, 3]),\n+        ),\n+        (\n+            [],\n+            tvm_ffi.Array([1, 2, 3]),\n+            tvm_ffi.Array([1, 2, 3]),\n+        ),\n+        (\n+            tvm_ffi.Array([]),\n+            [],\n+            tvm_ffi.Array([]),\n+        ),\n+        (\n+            tvm_ffi.Array([]),\n+            [],\n+            tvm_ffi.Array([]),\n+        ),\n+        (\n+            tvm_ffi.Array([1, 2, 3]),\n+            (4, 5, 6),\n+            tvm_ffi.Array([1, 2, 3, 4, 5, 6]),\n+        ),\n+        (\n+            (1, 2, 3),\n+            tvm_ffi.Array([4, 5, 6]),\n+            tvm_ffi.Array([1, 2, 3, 4, 5, 6]),\n+        ),\n+    ],\n+)\n+def test_array_concat(\n+    a: Sequence[int],\n+    b: Sequence[int],\n+    c_expected: Sequence[int],\n+) -> None:\n+    c_actual = a + b  # type: ignore[operator]\n+    assert type(c_actual) is type(c_expected)\n+    assert len(c_actual) == len(c_expected)\n+    assert tuple(c_actual) == tuple(c_expected)\n+\n+\n def test_large_map_get() -> None:\n     amap = tvm_ffi.convert({k: k**2 for k in range(100)})\n     assert amap.get(101) is None",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".py"
+    ],
+    "scopes_guess": [
+      "python",
+      "tests"
+    ]
+  }
+}

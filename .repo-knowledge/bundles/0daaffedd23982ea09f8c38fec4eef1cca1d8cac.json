@@ -1,0 +1,63 @@
+{
+  "sha": "0daaffedd23982ea09f8c38fec4eef1cca1d8cac",
+  "sha7": "0daaffe",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-08-19T18:58:19-04:00",
+  "subject": "[FFI][REFACTOR] Establish Stream Context in ffi (#18216)",
+  "body":
+      "This PR sets up the stream context in ffi and migrate\nthe existing per device API stream context management\nto ffi env API. The new API will help us to streamline\nstream related integration formost libraries.",
+  "is_merge": false,
+  "parents": [
+    "538bef49b4daa91970f0f9cea137acdcb696562a"
+  ],
+  "name_status": [
+    [
+      "M",
+      "CMakeLists.txt"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/extra/c_env_api.h"
+    ],
+    [
+      "A",
+      "src/ffi/extra/stream_context.cc"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "CMakeLists.txt",
+      "additions": 1,
+      "deletions": 0
+    },
+    {
+      "path": "include/tvm/ffi/extra/c_env_api.h",
+      "additions": 33,
+      "deletions": 0
+    },
+    {
+      "path": "src/ffi/extra/stream_context.cc",
+      "additions": 81,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/CMakeLists.txt b/CMakeLists.txt\nindex ce4f4d4..b5823b7 100644\n--- a/CMakeLists.txt\n+++ b/CMakeLists.txt\n@@ -73,6 +73,7 @@ if (TVM_FFI_USE_EXTRA_CXX_API)\n     \"${CMAKE_CURRENT_SOURCE_DIR}/src/ffi/extra/library_module.cc\"\n     \"${CMAKE_CURRENT_SOURCE_DIR}/src/ffi/extra/library_module_system_lib.cc\"\n     \"${CMAKE_CURRENT_SOURCE_DIR}/src/ffi/extra/library_module_dynamic_lib.cc\"\n+    \"${CMAKE_CURRENT_SOURCE_DIR}/src/ffi/extra/stream_context.cc\"\n   )\n endif()\n \ndiff --git a/include/tvm/ffi/extra/c_env_api.h b/include/tvm/ffi/extra/c_env_api.h\nindex 5d5d908..1211ab0 100644\n--- a/include/tvm/ffi/extra/c_env_api.h\n+++ b/include/tvm/ffi/extra/c_env_api.h\n@@ -29,6 +29,39 @@\n extern \"C\" {\n #endif\n \n+// ----------------------------------------------------------------------------\n+// Stream context\n+// Focusing on minimalistic thread-local context recording stream being used.\n+// We explicitly not handle allocation/de-allocation of stream here.\n+// ----------------------------------------------------------------------------\n+typedef void* TVMFFIStreamHandle;\n+\n+/*!\n+ * \\brief FFI function to set the current stream for a device\n+ *\n+ * \\param device_type The type of the device.\n+ * \\param device_id The id of the device.\n+ * \\param stream The stream to set.\n+ * \\param opt_out_original_stream Output original stream if the address is not nullptr.\n+ * \\note The stream is a weak reference that is cached/owned by the module.\n+ * \\return 0 when success, nonzero when failure happens\n+ */\n+TVM_FFI_DLL int TVMFFIEnvSetStream(int32_t device_type, int32_t device_id,\n+                                   TVMFFIStreamHandle stream,\n+                                   TVMFFIStreamHandle* opt_out_original_stream);\n+\n+/*!\n+ * \\brief FFI function to get the current stream for a device\n+ *\n+ * \\param device_type The type of the device.\n+ * \\param device_id The id of the device.\n+ * \\return The current stream of the device.\n+ */\n+TVM_FFI_DLL TVMFFIStreamHandle TVMFFIEnvGetCurrentStream(int32_t device_type, int32_t device_id);\n+\n+// ----------------------------------------------------------------------------\n+// Module symbol management\n+// ----------------------------------------------------------------------------\n /*!\n  * \\brief FFI function to lookup a function from a module's imports.\n  *\ndiff --git a/src/ffi/extra/stream_context.cc b/src/ffi/extra/stream_context.cc\nnew file mode 100644\nindex 0000000..d063efd\n--- /dev/null\n+++ b/src/ffi/extra/stream_context.cc\n@@ -0,0 +1,81 @@\n+/*\n+ * Licensed to the Apache Software Foundation (ASF) under one\n+ * or more contributor license agreements.  See the NOTICE file\n+ * distributed with this work for additional information\n+ * regarding copyright ownership.  The ASF licenses this file\n+ * to you under the Apache License, Version 2.0 (the\n+ * \"License\"); you may not use this file except in compliance\n+ * with the License.  You may obtain a copy of the License at\n+ *\n+ *   http://www.apache.org/licenses/LICENSE-2.0\n+ *\n+ * Unless required by applicable law or agreed to in writing,\n+ * software distributed under the License is distributed on an\n+ * \"AS IS\" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY\n+ * KIND, either express or implied.  See the License for the\n+ * specific language governing permissions and limitations\n+ * under the License.\n+ */\n+/*\n+ * \\file src/ffi/extra/stream_context.cc\n+ *\n+ * \\brief A minimalistic stream context based on ffi values.\n+ */\n+\n+#include <tvm/ffi/extra/c_env_api.h>\n+#include <tvm/ffi/function.h>\n+\n+#include <vector>\n+\n+namespace tvm {\n+namespace ffi {\n+\n+class StreamContext {\n+ public:\n+  void SetStream(int32_t device_type, int32_t device_id, TVMFFIStreamHandle stream,\n+                 TVMFFIStreamHandle* out_original_stream) {\n+    if (static_cast<size_t>(device_type) >= stream_table_.size()) {\n+      stream_table_.resize(device_type + 1);\n+    }\n+    if (static_cast<size_t>(device_id) >= stream_table_[device_type].size()) {\n+      stream_table_[device_type].resize(device_id + 1, nullptr);\n+    }\n+    if (out_original_stream != nullptr) {\n+      *out_original_stream = stream_table_[device_type][device_id];\n+    }\n+    stream_table_[device_type][device_id] = stream;\n+  }\n+\n+  TVMFFIStreamHandle GetStream(int32_t device_type, int32_t device_id) {\n+    if (static_cast<size_t>(device_type) < stream_table_.size() &&\n+        static_cast<size_t>(device_id) < stream_table_[device_type].size()) {\n+      return stream_table_[device_type][device_id];\n+    }\n+    return nullptr;\n+  }\n+\n+  static StreamContext* ThreadLocal() {\n+    static thread_local StreamContext inst;\n+    return &inst;\n+  }\n+\n+ private:\n+  std::vector<std::vector<TVMFFIStreamHandle>> stream_table_;\n+};\n+\n+}  // namespace ffi\n+}  // namespace tvm\n+\n+int TVMFFIEnvSetStream(int32_t device_type, int32_t device_id, TVMFFIStreamHandle stream,\n+                       TVMFFIStreamHandle* out_original_stream) {\n+  TVM_FFI_SAFE_CALL_BEGIN();\n+  tvm::ffi::StreamContext::ThreadLocal()->SetStream(device_type, device_id, stream,\n+                                                    out_original_stream);\n+  TVM_FFI_SAFE_CALL_END();\n+}\n+\n+TVMFFIStreamHandle TVMFFIEnvGetCurrentStream(int32_t device_type, int32_t device_id) {\n+  TVM_FFI_LOG_EXCEPTION_CALL_BEGIN();\n+  return tvm::ffi::StreamContext::ThreadLocal()->GetStream(device_type, device_id);\n+  TVM_FFI_LOG_EXCEPTION_CALL_END(TVMFFIEnvGetCurrentStream);\n+}",
+  "heuristics": {
+    "tags": [
+      "build"
+    ],
+    "extensions": [
+      ".cc",
+      ".h",
+      ".txt"
+    ],
+    "scopes_guess": [
+      "CMakeLists.txt",
+      "include",
+      "src"
+    ]
+  }
+}

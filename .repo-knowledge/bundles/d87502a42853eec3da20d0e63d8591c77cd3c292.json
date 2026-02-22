@@ -1,0 +1,39 @@
+{
+  "sha": "d87502a42853eec3da20d0e63d8591c77cd3c292",
+  "sha7": "d87502a",
+  "author_name": "Junru Shao",
+  "author_email": "junrushao@apache.org",
+  "date_iso": "2025-10-16T13:21:54-07:00",
+  "subject": "chore(build): Skip Python 3.8 on arm64 macOS (#150)",
+  "body":
+      "ARM64 macOS doesn't have native support for Python 3.8. Therefore, it is\npointless to release Python 3.8 wheels in this case.",
+  "is_merge": false,
+  "parents": [
+    "9d547555043e7cddc30be757bcf3572f45b2ea7c"
+  ],
+  "name_status": [
+    [
+      "M",
+      ".github/workflows/publish_wheel.yml"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": ".github/workflows/publish_wheel.yml",
+      "additions": 1,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/.github/workflows/publish_wheel.yml b/.github/workflows/publish_wheel.yml\nindex 5979feb..c62e5f1 100644\n--- a/.github/workflows/publish_wheel.yml\n+++ b/.github/workflows/publish_wheel.yml\n@@ -69,6 +69,7 @@ jobs:\n           CIBW_ARCHS_MACOS: ${{ matrix.arch }}\n           CIBW_ARCHS_LINUX: ${{ matrix.arch }}\n           CIBW_ARCHS_WINDOWS: ${{ matrix.arch }}\n+          CIBW_SKIP: \"cp38-macosx_*\"\n           CIBW_BUILD_VERBOSITY: 1\n           CMAKE_BUILD_PARALLEL_LEVEL: ${{ steps.env_vars.outputs.cpu_count }}\n ",
+  "heuristics": {
+    "tags": [
+      "ci"
+    ],
+    "extensions": [
+      ".yml"
+    ],
+    "scopes_guess": []
+  }
+}

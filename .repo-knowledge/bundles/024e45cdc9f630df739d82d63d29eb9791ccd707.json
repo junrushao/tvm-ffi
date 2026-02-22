@@ -1,0 +1,61 @@
+{
+  "sha": "024e45cdc9f630df739d82d63d29eb9791ccd707",
+  "sha7": "024e45c",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-05-29T18:58:25-04:00",
+  "subject": "[FFI] More strict tuple constructor checking (#18023)",
+  "body":
+      "0;276;0c# This is the 1st commit message:\n\n[FFI] More strict tuple constructor checking\n\nThis PR fixes a case where tuple constructor mismatches during vector forwarding.\nIn this case UType&& was mistakenly matched and used.\nA testcase is added.",
+  "is_merge": false,
+  "parents": [
+    "192f196ec7b342677217e854fae7e7970fa100c5"
+  ],
+  "name_status": [
+    [
+      "M",
+      "include/tvm/ffi/container/container_details.h"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/container/tuple.h"
+    ],
+    [
+      "M",
+      "tests/cpp/test_tuple.cc"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "include/tvm/ffi/container/container_details.h",
+      "additions": 10,
+      "deletions": 0
+    },
+    {
+      "path": "include/tvm/ffi/container/tuple.h",
+      "additions": 7,
+      "deletions": 4
+    },
+    {
+      "path": "tests/cpp/test_tuple.cc",
+      "additions": 28,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/include/tvm/ffi/container/container_details.h b/include/tvm/ffi/container/container_details.h\nindex cfc5590..bb29a14 100644\n--- a/include/tvm/ffi/container/container_details.h\n+++ b/include/tvm/ffi/container/container_details.h\n@@ -199,6 +199,16 @@ class IterAdapter {\n \n   IterAdapter operator-(difference_type offset) const { return IterAdapter(iter_ - offset); }\n \n+  IterAdapter& operator+=(difference_type offset) {\n+    iter_ += offset;\n+    return *this;\n+  }\n+\n+  IterAdapter& operator-=(difference_type offset) {\n+    iter_ -= offset;\n+    return *this;\n+  }\n+\n   template <typename T = IterAdapter>\n   typename std::enable_if<std::is_same<iterator_category, std::random_access_iterator_tag>::value,\n                           typename T::difference_type>::type inline\ndiff --git a/include/tvm/ffi/container/tuple.h b/include/tvm/ffi/container/tuple.h\nindex 9fba4b0..10303f0 100644\n--- a/include/tvm/ffi/container/tuple.h\n+++ b/include/tvm/ffi/container/tuple.h\n@@ -55,10 +55,13 @@ class Tuple : public ObjectRef {\n   template <typename... UTypes,\n             typename = std::enable_if_t<(details::type_contains_v<Types, UTypes> && ...), int>>\n   Tuple(Tuple<UTypes...>&& other) : ObjectRef(std::move(other)) {}\n-  template <typename... UTypes>\n-  explicit Tuple(UTypes&&... args) : ObjectRef(MakeTupleNode(std::forward<UTypes>(args)...)) {\n-    static_assert(sizeof...(Types) == sizeof...(UTypes), \"Tuple size mismatch\");\n-  }\n+\n+  template <typename... UTypes,\n+            typename = std::enable_if_t<sizeof...(Types) == sizeof...(UTypes) &&\n+                                        !(sizeof...(Types) == 1 &&\n+                                          (std::is_same_v<std::remove_cv_t<UTypes>, Tuple<Types>> &&\n+                                           ...))>>\n+  explicit Tuple(UTypes&&... args) : ObjectRef(MakeTupleNode(std::forward<UTypes>(args)...)) {}\n \n   TVM_FFI_INLINE Tuple& operator=(const Tuple<Types...>& other) {\n     data_ = other.data_;\ndiff --git a/tests/cpp/test_tuple.cc b/tests/cpp/test_tuple.cc\nindex 79eeb48..e0f69d8 100644\n--- a/tests/cpp/test_tuple.cc\n+++ b/tests/cpp/test_tuple.cc\n@@ -136,4 +136,32 @@ TEST(Tuple, Upcast) {\n   static_assert(details::type_contains_v<Tuple<Any, float>, Tuple<int, float>>);\n   static_assert(details::type_contains_v<Tuple<TNumber, float>, Tuple<TInt, float>>);\n }\n+\n+TEST(Tuple, ArrayIterForwarding) {\n+  Tuple<TInt, TInt> t0(1, 2);\n+  Tuple<TInt, TInt> t1(3, 4);\n+  Array<Tuple<TInt, TInt>> arr0 = {t0, t1};\n+  std::vector<Tuple<TInt, TInt>> vec0 = {t0};\n+  vec0.insert(vec0.end(), arr0.begin(), arr0.end());\n+  EXPECT_EQ(vec0.size(), 3);\n+  EXPECT_EQ(vec0[0].get<0>()->value, 1);\n+  EXPECT_EQ(vec0[0].get<1>()->value, 2);\n+  EXPECT_EQ(vec0[1].get<0>()->value, 1);\n+  EXPECT_EQ(vec0[1].get<1>()->value, 2);\n+  EXPECT_EQ(vec0[2].get<0>()->value, 3);\n+  EXPECT_EQ(vec0[2].get<1>()->value, 4);\n+}\n+\n+TEST(Tuple, ArrayIterForwardSingleElem) {\n+  Tuple<TInt> t0(1);\n+  Tuple<TInt> t1(2);\n+  Array<Tuple<TInt>> arr0 = {t0, t1};\n+  std::vector<Tuple<TInt>> vec0 = {t0};\n+  vec0.insert(vec0.end(), arr0.begin(), arr0.end());\n+  EXPECT_EQ(vec0.size(), 3);\n+  EXPECT_EQ(vec0[0].get<0>()->value, 1);\n+  EXPECT_EQ(vec0[1].get<0>()->value, 1);\n+  EXPECT_EQ(vec0[2].get<0>()->value, 2);\n+}\n+\n }  // namespace",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".cc",
+      ".h"
+    ],
+    "scopes_guess": [
+      "include",
+      "tests"
+    ]
+  }
+}

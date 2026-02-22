@@ -1,0 +1,41 @@
+{
+  "sha": "b9b64e02e9b9d880c0a8d07337c5a65a19257957",
+  "sha7": "b9b64e0",
+  "author_name": "Junru Shao",
+  "author_email": "junrushao@apache.org",
+  "date_iso": "2025-10-12T12:32:57-07:00",
+  "subject": "chore(build): Add CMake as build dependency (#104)",
+  "body":
+      "CMake is available in PyPI. As long as it's specified in build\ndependency, which is managed automatically, we don't have to mention it\nin any tutorials any more.",
+  "is_merge": false,
+  "parents": [
+    "ea02e646aea916ad18755cd6990b22ace8afd4b2"
+  ],
+  "name_status": [
+    [
+      "M",
+      "pyproject.toml"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "pyproject.toml",
+      "additions": 1,
+      "deletions": 1
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/pyproject.toml b/pyproject.toml\nindex d09eac5..fcf842a 100644\n--- a/pyproject.toml\n+++ b/pyproject.toml\n@@ -76,7 +76,7 @@ tvm-ffi-config = \"tvm_ffi.config:__main__\"\n tvm-ffi-stubgen = \"tvm_ffi.stub.stubgen:__main__\"\n \n [build-system]\n-requires = [\"scikit-build-core>=0.10.0\", \"cython\"]\n+requires = [\"scikit-build-core>=0.10.0\", \"cython\", \"cmake>=3.18\"]\n build-backend = \"scikit_build_core.build\"\n \n [tool.scikit-build]",
+  "heuristics": {
+    "tags": [
+      "build"
+    ],
+    "extensions": [
+      ".toml"
+    ],
+    "scopes_guess": [
+      "pyproject.toml"
+    ]
+  }
+}

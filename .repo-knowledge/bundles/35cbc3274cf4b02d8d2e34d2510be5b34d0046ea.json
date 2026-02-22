@@ -1,0 +1,52 @@
+{
+  "sha": "35cbc3274cf4b02d8d2e34d2510be5b34d0046ea",
+  "sha7": "35cbc32",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2026-02-19T18:10:22-05:00",
+  "subject": "[ERROR] Complete support of CHECK macros (#465)",
+  "body":
+      "This PR completes the support of CHECK macros\nfor DCHECK and CHECK_EQ with error types.",
+  "is_merge": false,
+  "parents": [
+    "c1af3b337645bed13f573560910dee2743d7d3b1"
+  ],
+  "name_status": [
+    [
+      "M",
+      "include/tvm/ffi/error.h"
+    ],
+    [
+      "M",
+      "tests/cpp/test_error.cc"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "include/tvm/ffi/error.h",
+      "additions": 49,
+      "deletions": 16
+    },
+    {
+      "path": "tests/cpp/test_error.cc",
+      "additions": 81,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/include/tvm/ffi/error.h b/include/tvm/ffi/error.h\nindex 3ecfbb7..1b6cb47 100644\n--- a/include/tvm/ffi/error.h\n+++ b/include/tvm/ffi/error.h\n@@ -450,27 +450,60 @@ TVM_FFI_CHECK_FUNC(_NE, !=)\n #endif\n }  // namespace details\n \n-#define TVM_FFI_ICHECK_BINARY_OP(name, op, x, y)                                              \\\n-  if (auto __tvm_ffi_log_err = /* NOLINT(bugprone-reserved-identifier) */                     \\\n-      ::tvm::ffi::details::LogCheck##name(x, y))                                              \\\n-  TVM_FFI_THROW(InternalError) << \"Check failed: \" << #x \" \" #op \" \" #y << *__tvm_ffi_log_err \\\n-                               << \": \"\n-\n-#define TVM_FFI_ICHECK(x) \\\n-  if (!(x)) TVM_FFI_THROW(InternalError) << \"Check failed: (\" #x << \") is false: \"\n+#define TVM_FFI_CHECK_BINARY_OP(name, op, x, y, ErrorKind)                \\\n+  if (auto __tvm_ffi_log_err = /* NOLINT(bugprone-reserved-identifier) */ \\\n+      ::tvm::ffi::details::LogCheck##name(x, y))                          \\\n+  TVM_FFI_THROW(ErrorKind) << \"Check failed: \" << #x \" \" #op \" \" #y << *__tvm_ffi_log_err << \": \"\n \n #define TVM_FFI_CHECK(cond, ErrorKind) \\\n   if (!(cond)) TVM_FFI_THROW(ErrorKind) << \"Check failed: (\" #cond << \") is false: \"\n \n-#define TVM_FFI_ICHECK_LT(x, y) TVM_FFI_ICHECK_BINARY_OP(_LT, <, x, y)\n-#define TVM_FFI_ICHECK_GT(x, y) TVM_FFI_ICHECK_BINARY_OP(_GT, >, x, y)\n-#define TVM_FFI_ICHECK_LE(x, y) TVM_FFI_ICHECK_BINARY_OP(_LE, <=, x, y)\n-#define TVM_FFI_ICHECK_GE(x, y) TVM_FFI_ICHECK_BINARY_OP(_GE, >=, x, y)\n-#define TVM_FFI_ICHECK_EQ(x, y) TVM_FFI_ICHECK_BINARY_OP(_EQ, ==, x, y)\n-#define TVM_FFI_ICHECK_NE(x, y) TVM_FFI_ICHECK_BINARY_OP(_NE, !=, x, y)\n-#define TVM_FFI_ICHECK_NOTNULL(x)                                                 \\\n-  ((x) == nullptr ? TVM_FFI_THROW(InternalError) << \"Check not null: \" #x << ' ', \\\n+#define TVM_FFI_CHECK_LT(x, y, ErrorKind) TVM_FFI_CHECK_BINARY_OP(_LT, <, x, y, ErrorKind)\n+#define TVM_FFI_CHECK_GT(x, y, ErrorKind) TVM_FFI_CHECK_BINARY_OP(_GT, >, x, y, ErrorKind)\n+#define TVM_FFI_CHECK_LE(x, y, ErrorKind) TVM_FFI_CHECK_BINARY_OP(_LE, <=, x, y, ErrorKind)\n+#define TVM_FFI_CHECK_GE(x, y, ErrorKind) TVM_FFI_CHECK_BINARY_OP(_GE, >=, x, y, ErrorKind)\n+#define TVM_FFI_CHECK_EQ(x, y, ErrorKind) TVM_FFI_CHECK_BINARY_OP(_EQ, ==, x, y, ErrorKind)\n+#define TVM_FFI_CHECK_NE(x, y, ErrorKind) TVM_FFI_CHECK_BINARY_OP(_NE, !=, x, y, ErrorKind)\n+#define TVM_FFI_CHECK_NOTNULL(x, ErrorKind)                                   \\\n+  ((x) == nullptr ? TVM_FFI_THROW(ErrorKind) << \"Check not null: \" #x << ' ', \\\n    (x)            : (x))  // NOLINT(*)\n+\n+#define TVM_FFI_ICHECK(x) TVM_FFI_CHECK(x, InternalError)\n+#define TVM_FFI_ICHECK_LT(x, y) TVM_FFI_CHECK_LT(x, y, InternalError)\n+#define TVM_FFI_ICHECK_GT(x, y) TVM_FFI_CHECK_GT(x, y, InternalError)\n+#define TVM_FFI_ICHECK_LE(x, y) TVM_FFI_CHECK_LE(x, y, InternalError)\n+#define TVM_FFI_ICHECK_GE(x, y) TVM_FFI_CHECK_GE(x, y, InternalError)\n+#define TVM_FFI_ICHECK_EQ(x, y) TVM_FFI_CHECK_EQ(x, y, InternalError)\n+#define TVM_FFI_ICHECK_NE(x, y) TVM_FFI_CHECK_NE(x, y, InternalError)\n+#define TVM_FFI_ICHECK_NOTNULL(x) TVM_FFI_CHECK_NOTNULL(x, InternalError)\n+\n+// Debug checks: same as ICHECK but stripped when NDEBUG is defined (release builds).\n+#ifndef NDEBUG\n+#define TVM_FFI_DCHECK(x) TVM_FFI_ICHECK(x)\n+#define TVM_FFI_DCHECK_LT(x, y) TVM_FFI_ICHECK_LT(x, y)\n+#define TVM_FFI_DCHECK_GT(x, y) TVM_FFI_ICHECK_GT(x, y)\n+#define TVM_FFI_DCHECK_LE(x, y) TVM_FFI_ICHECK_LE(x, y)\n+#define TVM_FFI_DCHECK_GE(x, y) TVM_FFI_ICHECK_GE(x, y)\n+#define TVM_FFI_DCHECK_EQ(x, y) TVM_FFI_ICHECK_EQ(x, y)\n+#define TVM_FFI_DCHECK_NE(x, y) TVM_FFI_ICHECK_NE(x, y)\n+#define TVM_FFI_DCHECK_NOTNULL(x) TVM_FFI_ICHECK_NOTNULL(x)\n+#else\n+#define TVM_FFI_DCHECK(x) \\\n+  while (false) TVM_FFI_ICHECK(x)\n+#define TVM_FFI_DCHECK_LT(x, y) \\\n+  while (false) TVM_FFI_ICHECK_LT(x, y)\n+#define TVM_FFI_DCHECK_GT(x, y) \\\n+  while (false) TVM_FFI_ICHECK_GT(x, y)\n+#define TVM_FFI_DCHECK_LE(x, y) \\\n+  while (false) TVM_FFI_ICHECK_LE(x, y)\n+#define TVM_FFI_DCHECK_GE(x, y) \\\n+  while (false) TVM_FFI_ICHECK_GE(x, y)\n+#define TVM_FFI_DCHECK_EQ(x, y) \\\n+  while (false) TVM_FFI_ICHECK_EQ(x, y)\n+#define TVM_FFI_DCHECK_NE(x, y) \\\n+  while (false) TVM_FFI_ICHECK_NE(x, y)\n+#define TVM_FFI_DCHECK_NOTNULL(x) (x)\n+#endif  // NDEBUG\n }  // namespace ffi\n }  // namespace tvm\n #endif  // TVM_FFI_ERROR_H_\ndiff --git a/tests/cpp/test_error.cc b/tests/cpp/test_error.cc\nindex 6a520ee..7a16a00 100644\n--- a/tests/cpp/test_error.cc\n+++ b/tests/cpp/test_error.cc\n@@ -107,6 +107,87 @@ TEST(CheckError, PassingCondition) {\n   EXPECT_NO_THROW(TVM_FFI_CHECK(5 < 10, IndexError));\n }\n \n+// Helper: expect that a throwing statement throws Error with the given kind and\n+// a message containing the expected substring.\n+#define EXPECT_CHECK_ERROR(stmt, expected_kind, expected_substr)      \\\n+  {                                                                   \\\n+    bool caught = false;                                              \\\n+    try {                                                             \\\n+      stmt;                                                           \\\n+    } catch (const ::tvm::ffi::Error& e) {                            \\\n+      caught = true;                                                  \\\n+      EXPECT_EQ(e.kind(), expected_kind);                             \\\n+      EXPECT_NE(e.message().find(expected_substr), std::string::npos) \\\n+          << \"message: \" << e.message();                              \\\n+    }                                                                 \\\n+    EXPECT_TRUE(caught) << \"Expected \" #stmt \" to throw\";             \\\n+  }\n+\n+TEST(CheckError, CheckBinaryOps) {\n+  // EQ: pass and fail\n+  TVM_FFI_CHECK_EQ(3, 3, ValueError);\n+  EXPECT_CHECK_ERROR(TVM_FFI_CHECK_EQ(3, 5, ValueError), \"ValueError\", \"3 vs. 5\");\n+  // NE: pass and fail\n+  TVM_FFI_CHECK_NE(3, 4, ValueError);\n+  EXPECT_CHECK_ERROR(TVM_FFI_CHECK_NE(3, 3, ValueError), \"ValueError\", \"3 vs. 3\");\n+  // LT: pass and fail\n+  TVM_FFI_CHECK_LT(3, 4, IndexError);\n+  EXPECT_CHECK_ERROR(TVM_FFI_CHECK_LT(5, 3, IndexError), \"IndexError\", \"5 vs. 3\");\n+  // GT: pass and fail\n+  TVM_FFI_CHECK_GT(4, 3, IndexError);\n+  EXPECT_CHECK_ERROR(TVM_FFI_CHECK_GT(3, 5, IndexError), \"IndexError\", \"3 vs. 5\");\n+  // LE: pass and fail\n+  TVM_FFI_CHECK_LE(3, 3, TypeError);\n+  TVM_FFI_CHECK_LE(2, 3, TypeError);\n+  EXPECT_CHECK_ERROR(TVM_FFI_CHECK_LE(5, 3, TypeError), \"TypeError\", \"5 vs. 3\");\n+  // GE: pass and fail\n+  TVM_FFI_CHECK_GE(4, 3, TypeError);\n+  TVM_FFI_CHECK_GE(3, 3, TypeError);\n+  EXPECT_CHECK_ERROR(TVM_FFI_CHECK_GE(2, 5, TypeError), \"TypeError\", \"2 vs. 5\");\n+  // NOTNULL: pass and fail\n+  int x = 42;\n+  int* p = &x;\n+  EXPECT_EQ(TVM_FFI_CHECK_NOTNULL(p, ValueError), p);\n+  int* q = nullptr;\n+  EXPECT_CHECK_ERROR((void)TVM_FFI_CHECK_NOTNULL(q, ValueError), \"ValueError\", \"Check not null\");\n+}\n+\n+TEST(CheckError, DCheck) {\n+#ifdef NDEBUG\n+  // Release: failing conditions are no-ops.\n+  TVM_FFI_DCHECK(false);\n+  TVM_FFI_DCHECK_EQ(1, 2);\n+  TVM_FFI_DCHECK_NE(1, 1);\n+  TVM_FFI_DCHECK_LT(5, 3);\n+  TVM_FFI_DCHECK_GT(3, 5);\n+  TVM_FFI_DCHECK_LE(5, 3);\n+  TVM_FFI_DCHECK_GE(3, 5);\n+  int* q = nullptr;\n+  int* r = TVM_FFI_DCHECK_NOTNULL(q);\n+  EXPECT_EQ(r, nullptr);\n+#else\n+  // Debug: passing conditions succeed.\n+  TVM_FFI_DCHECK(true);\n+  TVM_FFI_DCHECK_EQ(3, 3);\n+  TVM_FFI_DCHECK_NE(3, 4);\n+  TVM_FFI_DCHECK_LT(3, 4);\n+  TVM_FFI_DCHECK_GT(4, 3);\n+  TVM_FFI_DCHECK_LE(3, 3);\n+  TVM_FFI_DCHECK_GE(4, 3);\n+  int x = 42;\n+  int* p = &x;\n+  EXPECT_EQ(TVM_FFI_DCHECK_NOTNULL(p), p);\n+  // Debug: failing conditions throw InternalError.\n+  EXPECT_CHECK_ERROR(TVM_FFI_DCHECK(false), \"InternalError\", \"Check failed\");\n+  EXPECT_CHECK_ERROR(TVM_FFI_DCHECK_EQ(1, 2), \"InternalError\", \"1 vs. 2\");\n+  EXPECT_CHECK_ERROR(TVM_FFI_DCHECK_NE(1, 1), \"InternalError\", \"1 vs. 1\");\n+  EXPECT_CHECK_ERROR(TVM_FFI_DCHECK_LT(5, 3), \"InternalError\", \"5 vs. 3\");\n+  EXPECT_CHECK_ERROR(TVM_FFI_DCHECK_GT(3, 5), \"InternalError\", \"3 vs. 5\");\n+  EXPECT_CHECK_ERROR(TVM_FFI_DCHECK_LE(5, 3), \"InternalError\", \"5 vs. 3\");\n+  EXPECT_CHECK_ERROR(TVM_FFI_DCHECK_GE(3, 5), \"InternalError\", \"3 vs. 5\");\n+#endif\n+}\n+\n TEST(Error, AnyConvert) {\n   Any any = Error(\"TypeError\", \"here\", \"test0\");\n   Optional<Error> opt_err = any.as<Error>();",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".cc",
+      ".h"
+    ],
+    "scopes_guess": [
+      "include",
+      "tests"
+    ]
+  }
+}

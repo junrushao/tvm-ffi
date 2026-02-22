@@ -1,0 +1,62 @@
+{
+  "sha": "f7311e495820859fba26d19010fc5bda0275293d",
+  "sha7": "f7311e4",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-06-27T16:20:44-04:00",
+  "subject":
+      "[REFACTOR] Transition VisitAttrs to new reflection mechanism in tir/ir_builder/meta_schedule (#18096)",
+  "body":
+      "This PR transitions VisitAttrs to new reflection mechansim in the\nfollowing components: tir, ir_builder, meta_schedule",
+  "is_merge": false,
+  "parents": [
+    "a5a08b2553a8327cb821b17aa4028ff5ba52e8f0"
+  ],
+  "name_status": [
+    [
+      "M",
+      "include/tvm/ffi/reflection/reflection.h"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/type_traits.h"
+    ],
+    [
+      "M",
+      "tests/cpp/test_any.cc"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "include/tvm/ffi/reflection/reflection.h",
+      "additions": 7,
+      "deletions": 6
+    },
+    {
+      "path": "include/tvm/ffi/type_traits.h",
+      "additions": 40,
+      "deletions": 0
+    },
+    {
+      "path": "tests/cpp/test_any.cc",
+      "additions": 18,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/include/tvm/ffi/reflection/reflection.h b/include/tvm/ffi/reflection/reflection.h\nindex 04d9685..0a5e836 100644\n--- a/include/tvm/ffi/reflection/reflection.h\n+++ b/include/tvm/ffi/reflection/reflection.h\n@@ -162,8 +162,8 @@ class ObjectDef : public ReflectionDefBase {\n    *\n    * \\return The reflection definition.\n    */\n-  template <typename T, typename... Extra>\n-  TVM_FFI_INLINE ObjectDef& def_ro(const char* name, T Class::*field_ptr, Extra&&... extra) {\n+  template <typename T, typename BaseClass, typename... Extra>\n+  TVM_FFI_INLINE ObjectDef& def_ro(const char* name, T BaseClass::*field_ptr, Extra&&... extra) {\n     RegisterField(name, field_ptr, false, std::forward<Extra>(extra)...);\n     return *this;\n   }\n@@ -181,8 +181,8 @@ class ObjectDef : public ReflectionDefBase {\n    *\n    * \\return The reflection definition.\n    */\n-  template <typename T, typename... Extra>\n-  TVM_FFI_INLINE ObjectDef& def_rw(const char* name, T Class::*field_ptr, Extra&&... extra) {\n+  template <typename T, typename BaseClass, typename... Extra>\n+  TVM_FFI_INLINE ObjectDef& def_rw(const char* name, T BaseClass::*field_ptr, Extra&&... extra) {\n     static_assert(Class::_type_mutable, \"Only mutable classes are supported for writable fields\");\n     RegisterField(name, field_ptr, true, std::forward<Extra>(extra)...);\n     return *this;\n@@ -239,9 +239,10 @@ class ObjectDef : public ReflectionDefBase {\n     TVM_FFI_CHECK_SAFE_CALL(TVMFFITypeRegisterExtraInfo(type_index_, &info));\n   }\n \n-  template <typename T, typename... ExtraArgs>\n-  void RegisterField(const char* name, T Class::*field_ptr, bool writable,\n+  template <typename T, typename BaseClass, typename... ExtraArgs>\n+  void RegisterField(const char* name, T BaseClass::*field_ptr, bool writable,\n                      ExtraArgs&&... extra_args) {\n+    static_assert(std::is_base_of_v<BaseClass, Class>, \"BaseClass must be a base class of Class\");\n     TVMFFIFieldInfo info;\n     info.name = TVMFFIByteArray{name, std::char_traits<char>::length(name)};\n     info.field_static_type_index = TypeToFieldStaticTypeIndex<T>::value;\ndiff --git a/include/tvm/ffi/type_traits.h b/include/tvm/ffi/type_traits.h\nindex b33a6da..0cb03a1 100644\n--- a/include/tvm/ffi/type_traits.h\n+++ b/include/tvm/ffi/type_traits.h\n@@ -274,6 +274,46 @@ struct TypeTraits<Int, std::enable_if_t<std::is_integral_v<Int>>> : public TypeT\n   static TVM_FFI_INLINE std::string TypeStr() { return StaticTypeKey::kTVMFFIInt; }\n };\n \n+// Enum Integer POD values\n+template <typename IntEnum>\n+struct TypeTraits<IntEnum, std::enable_if_t<std::is_enum_v<IntEnum> &&\n+                                            std::is_integral_v<std::underlying_type_t<IntEnum>>>>\n+    : public TypeTraitsBase {\n+  static constexpr int32_t field_static_type_index = TypeIndex::kTVMFFIInt;\n+\n+  static TVM_FFI_INLINE void CopyToAnyView(const IntEnum& src, TVMFFIAny* result) {\n+    result->type_index = TypeIndex::kTVMFFIInt;\n+    result->v_int64 = static_cast<int64_t>(src);\n+  }\n+\n+  static TVM_FFI_INLINE void MoveToAny(IntEnum src, TVMFFIAny* result) {\n+    CopyToAnyView(src, result);\n+  }\n+\n+  static TVM_FFI_INLINE bool CheckAnyStrict(const TVMFFIAny* src) {\n+    // NOTE: CheckAnyStrict is always strict and should be consistent with MoveToAny\n+    return src->type_index == TypeIndex::kTVMFFIInt;\n+  }\n+\n+  static TVM_FFI_INLINE IntEnum CopyFromAnyViewAfterCheck(const TVMFFIAny* src) {\n+    return static_cast<IntEnum>(src->v_int64);\n+  }\n+\n+  static TVM_FFI_INLINE IntEnum MoveFromAnyAfterCheck(TVMFFIAny* src) {\n+    // POD type, we can just copy the value\n+    return CopyFromAnyViewAfterCheck(src);\n+  }\n+\n+  static TVM_FFI_INLINE std::optional<IntEnum> TryCastFromAnyView(const TVMFFIAny* src) {\n+    if (src->type_index == TypeIndex::kTVMFFIInt || src->type_index == TypeIndex::kTVMFFIBool) {\n+      return static_cast<IntEnum>(src->v_int64);\n+    }\n+    return std::nullopt;\n+  }\n+\n+  static TVM_FFI_INLINE std::string TypeStr() { return StaticTypeKey::kTVMFFIInt; }\n+};\n+\n // Float POD values\n template <typename Float>\n struct TypeTraits<Float, std::enable_if_t<std::is_floating_point_v<Float>>>\ndiff --git a/tests/cpp/test_any.cc b/tests/cpp/test_any.cc\nindex eea18c7..a1a2b45 100644\n--- a/tests/cpp/test_any.cc\n+++ b/tests/cpp/test_any.cc\n@@ -60,6 +60,24 @@ TEST(Any, Int) {\n   EXPECT_EQ(view0.CopyToTVMFFIAny().v_int64, 2);\n }\n \n+TEST(Any, Enum) {\n+  enum class ENum : int {\n+    A = 1,\n+    B = 2,\n+  };\n+\n+  AnyView view0;\n+  Optional<ENum> opt_v0 = view0.as<ENum>();\n+  EXPECT_TRUE(!opt_v0.has_value());\n+\n+  AnyView view1 = ENum::A;\n+  EXPECT_EQ(view1.CopyToTVMFFIAny().type_index, TypeIndex::kTVMFFIInt);\n+  EXPECT_EQ(view1.CopyToTVMFFIAny().v_int64, 1);\n+\n+  ENum v1 = view1.cast<ENum>();\n+  EXPECT_EQ(v1, ENum::A);\n+}\n+\n TEST(Any, bool) {\n   AnyView view0;\n   Optional<bool> opt_v0 = view0.as<bool>();",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".cc",
+      ".h"
+    ],
+    "scopes_guess": [
+      "include",
+      "tests"
+    ]
+  }
+}

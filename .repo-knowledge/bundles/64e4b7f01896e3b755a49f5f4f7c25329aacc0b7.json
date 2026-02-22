@@ -1,0 +1,453 @@
+{
+  "sha": "64e4b7f01896e3b755a49f5f4f7c25329aacc0b7",
+  "sha7": "64e4b7f",
+  "author_name": "Junru Shao",
+  "author_email": "junrushao@apache.org",
+  "date_iso": "2025-09-17T14:11:17-07:00",
+  "subject": "chore: Modernize pre-commit hooks (#19)",
+  "body":
+      "This PR makes the following changes:\n- Introduces pre-commit hooks that includes: \n  - check-yaml\n  - check-toml\n  - ruff-check and ruff-format\n  - clang-format\n  - cython-lint\n  - shell-format\n  - shell-check\n  - ASF header checks (migrated from `task_lint.sh`)\n  - Filetype checks (migrated from `task_lint.sh`)\n- Removes `tests/scripts/task_lint.sh` and unnecessary/conflicting\nchecks, including:\n  - isort (part of `ruff-format`)\n  - black (part of `ruff-format`)\n- Updates `lint` stage in `ci_test.yml`, replacing `task_lint.sh` with\nnative pre-commit hooks\n- Makes stage `test` to additionally depend on `lint`",
+  "is_merge": false,
+  "parents": [
+    "943289686340fc04bc15ec3b377bff22a1839bab"
+  ],
+  "name_status": [
+    [
+      "M",
+      ".github/workflows/ci_test.yml"
+    ],
+    [
+      "M",
+      ".pre-commit-config.yaml"
+    ],
+    [
+      "M",
+      "README.md"
+    ],
+    [
+      "M",
+      "docs/_static/custom.css"
+    ],
+    [
+      "M",
+      "docs/conf.py"
+    ],
+    [
+      "M",
+      "docs/get_started/quick_start.md"
+    ],
+    [
+      "M",
+      "docs/guides/compiler_integration.md"
+    ],
+    [
+      "M",
+      "docs/guides/python_guide.md"
+    ],
+    [
+      "M",
+      "docs/requirements.txt"
+    ],
+    [
+      "M",
+      "examples/packaging/python/my_ffi_extension/_ffi_api.py"
+    ],
+    [
+      "M",
+      "examples/quick_start/run_example.py"
+    ],
+    [
+      "M",
+      "examples/quick_start/run_example.sh"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/c_api.h"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/reflection/registry.h"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/__init__.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/_convert.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/_dtype.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/_ffi_api.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/_optional_torch_c_dlpack.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/base.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/config.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/container.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/cpp/load_inline.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/cython/base.pxi"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/cython/device.pxi"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/cython/dtype.pxi"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/cython/function.pxi"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/cython/object.pxi"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/cython/string.pxi"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/cython/tensor.pxi"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/error.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/libinfo.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/module.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/registry.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/stream.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/utils/lockfile.py"
+    ],
+    [
+      "M",
+      "tests/lint/check_asf_header.py"
+    ],
+    [
+      "M",
+      "tests/lint/check_file_type.py"
+    ],
+    [
+      "M",
+      "tests/lint/git-clang-format.sh"
+    ],
+    [
+      "M",
+      "tests/python/test_access_path.py"
+    ],
+    [
+      "M",
+      "tests/python/test_device.py"
+    ],
+    [
+      "M",
+      "tests/python/test_object.py"
+    ],
+    [
+      "M",
+      "tests/scripts/benchmark_dlpack.py"
+    ],
+    [
+      "M",
+      "tests/scripts/task_cpp_tests.sh"
+    ],
+    [
+      "M",
+      "tests/scripts/task_lint.sh"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": ".github/workflows/ci_test.yml",
+      "additions": 2,
+      "deletions": 19
+    },
+    {
+      "path": ".pre-commit-config.yaml",
+      "additions": 50,
+      "deletions": 1
+    },
+    {
+      "path": "README.md",
+      "additions": 0,
+      "deletions": 2
+    },
+    {
+      "path": "docs/_static/custom.css",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "docs/conf.py",
+      "additions": 3,
+      "deletions": 4
+    },
+    {
+      "path": "docs/get_started/quick_start.md",
+      "additions": 0,
+      "deletions": 1
+    },
+    {
+      "path": "docs/guides/compiler_integration.md",
+      "additions": 11,
+      "deletions": 12
+    },
+    {
+      "path": "docs/guides/python_guide.md",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "docs/requirements.txt",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "examples/packaging/python/my_ffi_extension/_ffi_api.py",
+      "additions": 0,
+      "deletions": 1
+    },
+    {
+      "path": "examples/quick_start/run_example.py",
+      "additions": 0,
+      "deletions": 1
+    },
+    {
+      "path": "examples/quick_start/run_example.sh",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "include/tvm/ffi/c_api.h",
+      "additions": 10,
+      "deletions": 10
+    },
+    {
+      "path": "include/tvm/ffi/reflection/registry.h",
+      "additions": 4,
+      "deletions": 4
+    },
+    {
+      "path": "python/tvm_ffi/__init__.py",
+      "additions": 1,
+      "deletions": 0
+    },
+    {
+      "path": "python/tvm_ffi/_convert.py",
+      "additions": 1,
+      "deletions": 0
+    },
+    {
+      "path": "python/tvm_ffi/_dtype.py",
+      "additions": 5,
+      "deletions": 1
+    },
+    {
+      "path": "python/tvm_ffi/_ffi_api.py",
+      "additions": 1,
+      "deletions": 0
+    },
+    {
+      "path": "python/tvm_ffi/_optional_torch_c_dlpack.py",
+      "additions": 1,
+      "deletions": 0
+    },
+    {
+      "path": "python/tvm_ffi/base.py",
+      "additions": 1,
+      "deletions": 0
+    },
+    {
+      "path": "python/tvm_ffi/config.py",
+      "additions": 18,
+      "deletions": 6
+    },
+    {
+      "path": "python/tvm_ffi/container.py",
+      "additions": 6,
+      "deletions": 1
+    },
+    {
+      "path": "python/tvm_ffi/cpp/load_inline.py",
+      "additions": 36,
+      "deletions": 11
+    },
+    {
+      "path": "python/tvm_ffi/cython/base.pxi",
+      "additions": 12,
+      "deletions": 14
+    },
+    {
+      "path": "python/tvm_ffi/cython/device.pxi",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "python/tvm_ffi/cython/dtype.pxi",
+      "additions": 1,
+      "deletions": 0
+    },
+    {
+      "path": "python/tvm_ffi/cython/function.pxi",
+      "additions": 13,
+      "deletions": 13
+    },
+    {
+      "path": "python/tvm_ffi/cython/object.pxi",
+      "additions": 1,
+      "deletions": 0
+    },
+    {
+      "path": "python/tvm_ffi/cython/string.pxi",
+      "additions": 0,
+      "deletions": 1
+    },
+    {
+      "path": "python/tvm_ffi/cython/tensor.pxi",
+      "additions": 2,
+      "deletions": 1
+    },
+    {
+      "path": "python/tvm_ffi/error.py",
+      "additions": 1,
+      "deletions": 0
+    },
+    {
+      "path": "python/tvm_ffi/libinfo.py",
+      "additions": 15,
+      "deletions": 4
+    },
+    {
+      "path": "python/tvm_ffi/module.py",
+      "additions": 3,
+      "deletions": 1
+    },
+    {
+      "path": "python/tvm_ffi/registry.py",
+      "additions": 1,
+      "deletions": 0
+    },
+    {
+      "path": "python/tvm_ffi/stream.py",
+      "additions": 1,
+      "deletions": 0
+    },
+    {
+      "path": "python/tvm_ffi/utils/lockfile.py",
+      "additions": 3,
+      "deletions": 1
+    },
+    {
+      "path": "tests/lint/check_asf_header.py",
+      "additions": 7,
+      "deletions": 2
+    },
+    {
+      "path": "tests/lint/check_file_type.py",
+      "additions": 8,
+      "deletions": 4
+    },
+    {
+      "path": "tests/lint/git-clang-format.sh",
+      "additions": 44,
+      "deletions": 47
+    },
+    {
+      "path": "tests/python/test_access_path.py",
+      "additions": 21,
+      "deletions": 6
+    },
+    {
+      "path": "tests/python/test_device.py",
+      "additions": 3,
+      "deletions": 1
+    },
+    {
+      "path": "tests/python/test_object.py",
+      "additions": 3,
+      "deletions": 1
+    },
+    {
+      "path": "tests/scripts/benchmark_dlpack.py",
+      "additions": 20,
+      "deletions": 29
+    },
+    {
+      "path": "tests/scripts/task_cpp_tests.sh",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "tests/scripts/task_lint.sh",
+      "additions": 14,
+      "deletions": 15
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/.github/workflows/ci_test.yml b/.github/workflows/ci_test.yml\nindex 1bed651..641d3a8 100644\n--- a/.github/workflows/ci_test.yml\n+++ b/.github/workflows/ci_test.yml\n@@ -47,30 +47,13 @@ jobs:\n \n   lint:\n     needs: [prepare]\n-    if: >\n-      needs.prepare.outputs.should_skip_ci_commit != 'true' &&\n-      needs.prepare.outputs.should_skip_ci_docs_only != 'true'\n-    name: Lint\n     runs-on: ubuntu-latest\n     steps:\n       - uses: actions/checkout@v4\n-        with:\n-          submodules: recursive\n-      - uses: actions/setup-python@v6\n-        with:\n-          python-version: '3.13'\n-      - name: Install dependencies\n-        run: |\n-          pip install black pylint ruff\n-          sudo apt-get install -y clang-format-15\n-\n-      - name: Lint\n-        run: |\n-          tests/scripts/task_lint.sh\n-\n+      - uses: pre-commit/action@2c7b3805fd2a0fd8c1884dcaebf91fc102a13ecd # v3.0.1\n \n   test:\n-    needs: [prepare]\n+    needs: [lint, prepare]\n     if: >\n       needs.prepare.outputs.should_skip_ci_commit != 'true' &&\n       needs.prepare.outputs.should_skip_ci_docs_only != 'true'\ndiff --git a/.pre-commit-config.yaml b/.pre-commit-config.yaml\nindex dc24845..f31f7f3 100644\n--- a/.pre-commit-config.yaml\n+++ b/.pre-commit-config.yaml\n@@ -15,8 +15,29 @@\n # specific language governing permissions and limitations\n # under the License.\n \n+# TODO(@junrushao): adding a few extra hooks:\n+# - Python type checking via mypy or ty\n+# - CMake linters\n+# - Conventional commits\n+default_install_hook_types:\n+  - pre-commit\n repos:\n-  # Standard hooks\n+  - repo: local\n+    hooks:\n+      - id: check-asf-header\n+        name: check ASF Header\n+        entry: python tests/lint/check_asf_header.py --check\n+        language: system\n+        pass_filenames: false\n+        verbose: false\n+  - repo: local\n+    hooks:\n+      - id: check-file-type\n+        name: check file types\n+        entry: python tests/lint/check_file_type.py\n+        language: system\n+        pass_filenames: false\n+        verbose: false\n   - repo: https://github.com/pre-commit/pre-commit-hooks\n     rev: v5.0.0\n     hooks:\n@@ -28,3 +49,31 @@ repos:\n       - id: mixed-line-ending\n       - id: requirements-txt-fixer\n       - id: trailing-whitespace\n+      - id: check-yaml\n+      - id: check-toml\n+  - repo: https://github.com/astral-sh/ruff-pre-commit\n+    rev: v0.12.3\n+    hooks:\n+      - id: ruff-check\n+        types_or: [python, pyi, jupyter]\n+        args: [--fix]\n+      - id: ruff-format\n+        types_or: [python, pyi, jupyter]\n+  - repo: https://github.com/pre-commit/mirrors-clang-format\n+    rev: \"v20.1.8\"\n+    hooks:\n+      - id: clang-format\n+  - repo: https://github.com/MarcoGorelli/cython-lint\n+    rev: v0.16.7\n+    hooks:\n+      - id: cython-lint\n+        args: [--max-line-length=120]\n+      - id: double-quote-cython-strings\n+  - repo: https://github.com/scop/pre-commit-shfmt\n+    rev: v3.12.0-2\n+    hooks:\n+      - id: shfmt\n+  - repo: https://github.com/shellcheck-py/shellcheck-py\n+    rev: v0.10.0.1\n+    hooks:\n+      - id: shellcheck\ndiff --git a/README.md b/README.md\nindex 525518e..88083e9 100644\n--- a/README.md\n+++ b/README.md\n@@ -18,5 +18,3 @@\n # tvm ffi\n \n [![CI](https://github.com/apache/tvm-ffi/actions/workflows/ci_test.yml/badge.svg)](https://github.com/apache/tvm-ffi/actions/workflows/ci_test.yml)\n-\n-\ndiff --git a/docs/_static/custom.css b/docs/_static/custom.css\nindex 6277c6d..088d499 100644\n--- a/docs/_static/custom.css\n+++ b/docs/_static/custom.css\n@@ -2,4 +2,4 @@\n    See: https://github.com/executablebooks/sphinx-book-theme/issues/732 */\n #rtd-footer-container {\n     margin: 0px !important;\n-}\n\\ No newline at end of file\n+}\ndiff --git a/docs/conf.py b/docs/conf.py\nindex 8a1c5b3..e621878 100644\n--- a/docs/conf.py\n+++ b/docs/conf.py\n@@ -16,7 +16,6 @@\n # under the License.\n # -*- coding: utf-8 -*-\n import os\n-import sys\n \n import tomli\n \n@@ -198,7 +197,7 @@ def footer_html():\n               <div class=\"dropdown\">\n                   <button class=\"btn btn-link dropdown-toggle\" type=\"button\" id=\"footerDropdown\" data-bs-toggle=\"dropdown\"\n                   aria-expanded=\"false\" style=\"font-size: 0.9em; color: #6c757d; text-decoration: none; padding: 0; border: none; background: none;\">\n-                      {footer_dropdown['name']}\n+                      {footer_dropdown[\"name\"]}\n                   </button>\n                   <ul class=\"dropdown-menu\" aria-labelledby=\"footerDropdown\" style=\"font-size: 0.9em;\">\n {dropdown_items}                  </ul>\n@@ -226,6 +225,6 @@ html_context = {\n     \"conf_py_path\": \"/docs/\",\n }\n \n-html_static_path = ['_static']\n+html_static_path = [\"_static\"]\n \n-html_css_files = ['custom.css']\n+html_css_files = [\"custom.css\"]\ndiff --git a/docs/get_started/quick_start.md b/docs/get_started/quick_start.md\nindex 449c1db..043ea28 100644\n--- a/docs/get_started/quick_start.md\n+++ b/docs/get_started/quick_start.md\n@@ -279,4 +279,3 @@ The main takeaway points are:\n - **ffi::Tensor** is a universal tensor structure that enables zero-copy exchange of array data\n - **Module loading** is provided by tvm ffi APIs in multiple languages.\n - **C ABI** is provided for easy low-level integration\n-\ndiff --git a/docs/guides/compiler_integration.md b/docs/guides/compiler_integration.md\nindex a1355af..7338dbf 100644\n--- a/docs/guides/compiler_integration.md\n+++ b/docs/guides/compiler_integration.md\n@@ -112,14 +112,14 @@ with various kernel DSLs and libraries.\n \n ## Runtime and State Management for Compilers\n \n-While TVM FFI provides a standard ABI for compiler-generated kernels, many compilers and domain-specific languages \n-(DSLs) require their own **runtime** to manage states like dynamic shapes, workspace memory, or other \n-application-specific data. This runtime can be a separate shared library accessible to all kernels from a specific \n+While TVM FFI provides a standard ABI for compiler-generated kernels, many compilers and domain-specific languages\n+(DSLs) require their own **runtime** to manage states like dynamic shapes, workspace memory, or other\n+application-specific data. This runtime can be a separate shared library accessible to all kernels from a specific\n compiler.\n \n ### Recommended Approach for State Management\n \n-The recommended approach for managing compiler-specific state is to define the state within a **separate shared library**. \n+The recommended approach for managing compiler-specific state is to define the state within a **separate shared library**.\n This library exposes its functionality by registering functions as global `tvm::ffi::Function`s.\n \n Here's a breakdown of the process:\n@@ -144,21 +144,21 @@ Here's a breakdown of the process:\n     This method allows both C++ and Python to access the runtime state through a consistent API.\n 3.  **Access State from Kernels**: Within your compiler-generated kernels, you can use\n     `GetGlobalRequired(\"mylang.get_global_state\")` in C++ or the C equivalent\n-    `TVMFFIGetGlobalFunction(\"mylang.get_global_state\", ...)` to get the function and then call it to retrieve the state \n+    `TVMFFIGetGlobalFunction(\"mylang.get_global_state\", ...)` to get the function and then call it to retrieve the state\n     pointer.\n \n ### Distributing the Runtime\n \n-For a user to use a kernel from your compiler, they must have access to your runtime library. The preferred method is to \n-package the runtime shared library (e.g., `libmylang_runtime.so`) as part of a Python or C++ package. Users must install \n-and import this package before loading any kernels compiled by your system. \n+For a user to use a kernel from your compiler, they must have access to your runtime library. The preferred method is to\n+package the runtime shared library (e.g., `libmylang_runtime.so`) as part of a Python or C++ package. Users must install\n+and import this package before loading any kernels compiled by your system.\n This approach ensures the state is shared among different kernels.\n \n ### Common vs. Custom State\n \n-It's important to distinguish between compiler-specific state and **common state** managed by TVM FFI. TVM FFI handles \n-common states like **streams** and **memory allocators** through environment functions (e.g., `TVMFFIEnvGetStream`), \n-allowing kernels to access these without managing their own. However, for any unique state required by your compiler, \n+It's important to distinguish between compiler-specific state and **common state** managed by TVM FFI. TVM FFI handles\n+common states like **streams** and **memory allocators** through environment functions (e.g., `TVMFFIEnvGetStream`),\n+allowing kernels to access these without managing their own. However, for any unique state required by your compiler,\n the global function registration approach is the most suitable method.\n \n ## Advanced: Custom Modules\n@@ -196,4 +196,3 @@ the overall import relations from `<import_tree>` and return the final composed\n As long as the compiler generates the `__tvm_ffi__library_bin` in the above format, {py:func}`tvm_ffi.load_module` will correctly\n handle the loading and recover the original module. Note that we will need the custom module class definition to be available\n during loading, either by importing another runtime DLL, or embedding it in the generated library.\n-\ndiff --git a/docs/guides/python_guide.md b/docs/guides/python_guide.md\nindex fdf03a5..cd997af 100644\n--- a/docs/guides/python_guide.md\n+++ b/docs/guides/python_guide.md\n@@ -178,7 +178,7 @@ torch.testing.assert_close(x + 1, y)\n ```\n \n The above code defines a C++ function `add_one_cpu` in Python script, compiles it on the fly and then loads the compiled\n-{py:class}`tvm_ffi.Module` object via {py:func}`tvm_ffi.cpp.load_inline`. You can then call the function `add_one_cpu` \n+{py:class}`tvm_ffi.Module` object via {py:func}`tvm_ffi.cpp.load_inline`. You can then call the function `add_one_cpu`\n from the module as usual.\n \n ## Error Handling\ndiff --git a/docs/requirements.txt b/docs/requirements.txt\nindex 74784b5..55a8565 100644\n--- a/docs/requirements.txt\n+++ b/docs/requirements.txt\n@@ -1,6 +1,6 @@\n autodocsumm\n-exhale\n breathe\n+exhale\n linkify-it-py\n matplotlib\n myst-parser\ndiff --git a/examples/packaging/python/my_ffi_extension/_ffi_api.py b/examples/packaging/python/my_ffi_extension/_ffi_api.py\nindex 616b1ee..5e03489 100644\n--- a/examples/packaging/python/my_ffi_extension/_ffi_api.py\n+++ b/examples/packaging/python/my_ffi_extension/_ffi_api.py\n@@ -17,7 +17,6 @@\n import tvm_ffi\n \n # make sure lib is loaded first\n-from .base import _LIB\n \n # this is a short cut to register all the global functions\n # prefixed by `my_ffi_extension.` to this module\ndiff --git a/examples/quick_start/run_example.py b/examples/quick_start/run_example.py\nindex e126af1..698bc2a 100644\n--- a/examples/quick_start/run_example.py\n+++ b/examples/quick_start/run_example.py\n@@ -21,7 +21,6 @@ try:\n except ImportError:\n     torch = None\n \n-import ctypes\n \n import numpy\n \ndiff --git a/examples/quick_start/run_example.sh b/examples/quick_start/run_example.sh\nindex 0602b85..09d8daa 100755\n--- a/examples/quick_start/run_example.sh\n+++ b/examples/quick_start/run_example.sh\n@@ -1,3 +1,4 @@\n+#!/bin/bash\n # Licensed to the Apache Software Foundation (ASF) under one\n # or more contributor license agreements.  See the NOTICE file\n # distributed with this work for additional information\n@@ -14,7 +15,6 @@\n # KIND, either express or implied.  See the License for the\n # specific language governing permissions and limitations\n # under the License.\n-#!/bin/bash\n set -ex\n \n cmake -B build -S .\ndiff --git a/include/tvm/ffi/c_api.h b/include/tvm/ffi/c_api.h\nindex 3dcdf4f..0ab4d08 100644\n--- a/include/tvm/ffi/c_api.h\n+++ b/include/tvm/ffi/c_api.h\n@@ -272,16 +272,16 @@ typedef struct {\n      */\n     uint32_t small_str_len;\n   };\n-  union {                  // 8 bytes\n-    int64_t v_int64;       // integers\n-    double v_float64;      // floating-point numbers\n-    void* v_ptr;           // typeless pointers\n-    const char* v_c_str;   // raw C-string\n-    TVMFFIObject* v_obj;   // ref counted objects\n-    DLDataType v_dtype;    // data type\n-    DLDevice v_device;     // device\n-    char v_bytes[8];       // small string\n-    uint64_t v_uint64;     // uint64 repr mainly used for hashing\n+  union {                 // 8 bytes\n+    int64_t v_int64;      // integers\n+    double v_float64;     // floating-point numbers\n+    void* v_ptr;          // typeless pointers\n+    const char* v_c_str;  // raw C-string\n+    TVMFFIObject* v_obj;  // ref counted objects\n+    DLDataType v_dtype;   // data type\n+    DLDevice v_device;    // device\n+    char v_bytes[8];      // small string\n+    uint64_t v_uint64;    // uint64 repr mainly used for hashing\n   };\n } TVMFFIAny;\n \ndiff --git a/include/tvm/ffi/reflection/registry.h b/include/tvm/ffi/reflection/registry.h\nindex 6a1a9b5..c0d984f 100644\n--- a/include/tvm/ffi/reflection/registry.h\n+++ b/include/tvm/ffi/reflection/registry.h\n@@ -113,7 +113,7 @@ class AttachFieldFlag : public FieldInfoTrait {\n  * \\returns The byteoffset\n  */\n template <typename Class, typename T>\n-TVM_FFI_INLINE int64_t GetFieldByteOffsetToObject(T Class::*field_ptr) {\n+TVM_FFI_INLINE int64_t GetFieldByteOffsetToObject(T Class::* field_ptr) {\n   int64_t field_offset_to_class =\n       reinterpret_cast<int64_t>(&(static_cast<Class*>(nullptr)->*field_ptr));\n   return field_offset_to_class - details::ObjectUnsafe::GetObjectOffsetToSubclass<Class>();\n@@ -350,7 +350,7 @@ class ObjectDef : public ReflectionDefBase {\n    * \\return The reflection definition.\n    */\n   template <typename T, typename BaseClass, typename... Extra>\n-  TVM_FFI_INLINE ObjectDef& def_ro(const char* name, T BaseClass::*field_ptr, Extra&&... extra) {\n+  TVM_FFI_INLINE ObjectDef& def_ro(const char* name, T BaseClass::* field_ptr, Extra&&... extra) {\n     RegisterField(name, field_ptr, false, std::forward<Extra>(extra)...);\n     return *this;\n   }\n@@ -369,7 +369,7 @@ class ObjectDef : public ReflectionDefBase {\n    * \\return The reflection definition.\n    */\n   template <typename T, typename BaseClass, typename... Extra>\n-  TVM_FFI_INLINE ObjectDef& def_rw(const char* name, T BaseClass::*field_ptr, Extra&&... extra) {\n+  TVM_FFI_INLINE ObjectDef& def_rw(const char* name, T BaseClass::* field_ptr, Extra&&... extra) {\n     static_assert(Class::_type_mutable, \"Only mutable classes are supported for writable fields\");\n     RegisterField(name, field_ptr, true, std::forward<Extra>(extra)...);\n     return *this;\n@@ -430,7 +430,7 @@ class ObjectDef : public ReflectionDefBase {\n   }\n \n   template <typename T, typename BaseClass, typename... ExtraArgs>\n-  void RegisterField(const char* name, T BaseClass::*field_ptr, bool writable,\n+  void RegisterField(const char* name, T BaseClass::* field_ptr, bool writable,\n                      ExtraArgs&&... extra_args) {\n     static_assert(std::is_base_of_v<BaseClass, Class>, \"BaseClass must be a base class of Class\");\n     TVMFFIFieldInfo info;\ndiff --git a/python/tvm_ffi/__init__.py b/python/tvm_ffi/__init__.py\nindex 9bafe2b..b3b070f 100644\n--- a/python/tvm_ffi/__init__.py\n+++ b/python/tvm_ffi/__init__.py\n@@ -15,6 +15,7 @@\n # specific language governing permissions and limitations\n # under the License.\n \"\"\"TVM FFI Python package.\"\"\"\n+\n # order matters here so we need to skip isort here\n # isort: skip_file\n # base always go first to load the libtvm_ffi\ndiff --git a/python/tvm_ffi/_convert.py b/python/tvm_ffi/_convert.py\nindex 7c7b515..cf311b2 100644\n--- a/python/tvm_ffi/_convert.py\n+++ b/python/tvm_ffi/_convert.py\n@@ -15,6 +15,7 @@\n # specific language governing permissions and limitations\n # under the License.\n \"\"\"Conversion utilities to bring python objects into ffi values.\"\"\"\n+\n from numbers import Number\n from typing import Any\n \ndiff --git a/python/tvm_ffi/_dtype.py b/python/tvm_ffi/_dtype.py\nindex 30409e4..1664d98 100644\n--- a/python/tvm_ffi/_dtype.py\n+++ b/python/tvm_ffi/_dtype.py\n@@ -15,6 +15,7 @@\n # specific language governing permissions and limitations\n # under the License.\n \"\"\"dtype class.\"\"\"\n+\n # pylint: disable=invalid-name\n from enum import IntEnum\n \n@@ -83,7 +84,10 @@ class dtype(str):\n             The new dtype with the given number of lanes.\n         \"\"\"\n         cdtype = core._create_dtype_from_tuple(\n-            core.DataType, self.__tvm_ffi_dtype__.type_code, self.__tvm_ffi_dtype__.bits, lanes\n+            core.DataType,\n+            self.__tvm_ffi_dtype__.type_code,\n+            self.__tvm_ffi_dtype__.bits,\n+            lanes,\n         )\n         val = str.__new__(dtype, str(cdtype))\n         val.__tvm_ffi_dtype__ = cdtype\ndiff --git a/python/tvm_ffi/_ffi_api.py b/python/tvm_ffi/_ffi_api.py\nindex 1c2326c..f9314dd 100644\n--- a/python/tvm_ffi/_ffi_api.py\n+++ b/python/tvm_ffi/_ffi_api.py\n@@ -15,6 +15,7 @@\n # specific language governing permissions and limitations\n # under the License.\n \"\"\"FFI API.\"\"\"\n+\n from . import registry\n \n registry.init_ffi_api(\"ffi\", __name__)\ndiff --git a/python/tvm_ffi/_optional_torch_c_dlpack.py b/python/tvm_ffi/_optional_torch_c_dlpack.py\nindex 6ff77cc..b96e9d0 100644\n--- a/python/tvm_ffi/_optional_torch_c_dlpack.py\n+++ b/python/tvm_ffi/_optional_torch_c_dlpack.py\n@@ -29,6 +29,7 @@ likely be phased away and deleted after changes landed and released in pytorch.\n This module will load slowly at first time due to JITing,\n subsequent calls will be much faster.\n \"\"\"\n+\n import warnings\n \n from . import libinfo\ndiff --git a/python/tvm_ffi/base.py b/python/tvm_ffi/base.py\nindex fbcc01c..8099955 100644\n--- a/python/tvm_ffi/base.py\n+++ b/python/tvm_ffi/base.py\n@@ -16,6 +16,7 @@\n # under the License.\n # coding: utf-8\n \"\"\"Base library for TVM FFI.\"\"\"\n+\n import ctypes\n import logging\n import os\ndiff --git a/python/tvm_ffi/config.py b/python/tvm_ffi/config.py\nindex 4e87caa..7e03680 100644\n--- a/python/tvm_ffi/config.py\n+++ b/python/tvm_ffi/config.py\n@@ -37,16 +37,28 @@ def __main__():\n         description=\"Get various configuration information needed to compile with tvm-ffi\"\n     )\n \n-    parser.add_argument(\"--includedir\", action=\"store_true\", help=\"Print include directory\")\n     parser.add_argument(\n-        \"--dlpack-includedir\", action=\"store_true\", help=\"Print dlpack include directory\"\n+        \"--includedir\", action=\"store_true\", help=\"Print include directory\"\n+    )\n+    parser.add_argument(\n+        \"--dlpack-includedir\",\n+        action=\"store_true\",\n+        help=\"Print dlpack include directory\",\n+    )\n+    parser.add_argument(\n+        \"--cmakedir\", action=\"store_true\", help=\"Print library directory\"\n+    )\n+    parser.add_argument(\n+        \"--sourcedir\", action=\"store_true\", help=\"Print source directory\"\n+    )\n+    parser.add_argument(\n+        \"--libfiles\", action=\"store_true\", help=\"Fully qualified library filenames\"\n     )\n-    parser.add_argument(\"--cmakedir\", action=\"store_true\", help=\"Print library directory\")\n-    parser.add_argument(\"--sourcedir\", action=\"store_true\", help=\"Print source directory\")\n-    parser.add_argument(\"--libfiles\", action=\"store_true\", help=\"Fully qualified library filenames\")\n     parser.add_argument(\"--libdir\", action=\"store_true\", help=\"Print library directory\")\n     parser.add_argument(\"--libs\", action=\"store_true\", help=\"Libraries to be linked\")\n-    parser.add_argument(\"--cython-lib-path\", action=\"store_true\", help=\"Print cython path\")\n+    parser.add_argument(\n+        \"--cython-lib-path\", action=\"store_true\", help=\"Print cython path\"\n+    )\n     parser.add_argument(\"--cxxflags\", action=\"store_true\", help=\"Print cxx flags\")\n     parser.add_argument(\"--cflags\", action=\"store_true\", help=\"Print c flags\")\n     parser.add_argument(\"--ldflags\", action=\"store_true\", help=\"Print ld flags\")\ndiff --git a/python/tvm_ffi/container.py b/python/tvm_ffi/container.py\nindex f64028f..8368cd4 100644\n--- a/python/tvm_ffi/container.py\n+++ b/python/tvm_ffi/container.py\n@@ -15,6 +15,7 @@\n # specific language governing permissions and limitations\n # under the License.\n \"\"\"Container classes.\"\"\"\n+\n import collections.abc\n from typing import Any, Mapping, Sequence\n \n@@ -248,4 +249,8 @@ class Map(core.Object, collections.abc.Mapping):\n         # exception safety handling for chandle=None\n         if self.__chandle__() == 0:\n             return type(self).__name__ + \"(chandle=None)\"\n-        return \"{\" + \", \".join([f\"{k.__repr__()}: {v.__repr__()}\" for k, v in self.items()]) + \"}\"\n+        return (\n+            \"{\"\n+            + \", \".join([f\"{k.__repr__()}: {v.__repr__()}\" for k, v in self.items()])\n+            + \"}\"\n+        )\ndiff --git a/python/tvm_ffi/cpp/load_inline.py b/python/tvm_ffi/cpp/load_inline.py\nindex ced9705..6ce3d11 100644\n--- a/python/tvm_ffi/cpp/load_inline.py\n+++ b/python/tvm_ffi/cpp/load_inline.py\n@@ -86,7 +86,9 @@ def _find_cuda_home() -> Optional[str]:\n         else:\n             # Guess #3\n             if IS_WINDOWS:\n-                cuda_homes = glob.glob(\"C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v*.*\")\n+                cuda_homes = glob.glob(\n+                    \"C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v*.*\"\n+                )\n                 if len(cuda_homes) == 0:\n                     cuda_home = \"\"\n                 else:\n@@ -162,7 +164,9 @@ def _run_command_in_dev_prompt(args, cwd, capture_output):\n             raise FileNotFoundError(\"No Visual Studio installation found.\")\n \n         # Construct the path to the VsDevCmd.bat file\n-        vsdevcmd_path = os.path.join(vs_install_path, \"Common7\", \"Tools\", \"VsDevCmd.bat\")\n+        vsdevcmd_path = os.path.join(\n+            vs_install_path, \"Common7\", \"Tools\", \"VsDevCmd.bat\"\n+        )\n \n         if not os.path.exists(vsdevcmd_path):\n             raise FileNotFoundError(f\"VsDevCmd.bat not found at: {vsdevcmd_path}\")\n@@ -175,7 +179,9 @@ def _run_command_in_dev_prompt(args, cwd, capture_output):\n         )\n \n         # Execute the command in a new shell\n-        return subprocess.run(cmd_command, cwd=cwd, capture_output=capture_output, shell=True)\n+        return subprocess.run(\n+            cmd_command, cwd=cwd, capture_output=capture_output, shell=True\n+        )\n \n     except (FileNotFoundError, subprocess.CalledProcessError) as e:\n         raise RuntimeError(\n@@ -217,7 +223,11 @@ def _generate_ninja_build(\n             \"/EHsc\",\n         ]\n         default_cuda_cflags = [\"-Xcompiler\", \"/std:c++17\", \"/O2\"]\n-        default_ldflags = [\"/DLL\", f\"/LIBPATH:{tvm_ffi_lib_path}\", f\"{tvm_ffi_lib_name}.lib\"]\n+        default_ldflags = [\n+            \"/DLL\",\n+            f\"/LIBPATH:{tvm_ffi_lib_path}\",\n+            f\"{tvm_ffi_lib_name}.lib\",\n+        ]\n     else:\n         default_cflags = [\"-std=c++17\", \"-fPIC\", \"-O2\"]\n         default_cuda_cflags = [\"-Xcompiler\", \"-fPIC\", \"-std=c++17\", \"-O2\"]\n@@ -226,12 +236,17 @@ def _generate_ninja_build(\n         if with_cuda:\n             # determine the compute capability of the current GPU\n             default_cuda_cflags += [_get_cuda_target()]\n-            default_ldflags += [\"-L{}\".format(os.path.join(_find_cuda_home(), \"lib64\")), \"-lcudart\"]\n+            default_ldflags += [\n+                \"-L{}\".format(os.path.join(_find_cuda_home(), \"lib64\")),\n+                \"-lcudart\",\n+            ]\n \n     cflags = default_cflags + [flag.strip() for flag in extra_cflags]\n     cuda_cflags = default_cuda_cflags + [flag.strip() for flag in extra_cuda_cflags]\n     ldflags = default_ldflags + [flag.strip() for flag in extra_ldflags]\n-    include_paths = default_include_paths + [os.path.abspath(path) for path in extra_include_paths]\n+    include_paths = default_include_paths + [\n+        os.path.abspath(path) for path in extra_include_paths\n+    ]\n \n     # append include paths\n     for path in include_paths:\n@@ -241,7 +256,9 @@ def _generate_ninja_build(\n     # flags\n     ninja = []\n     ninja.append(\"ninja_required_version = 1.3\")\n-    ninja.append(\"cxx = {}\".format(os.environ.get(\"CXX\", \"cl\" if IS_WINDOWS else \"c++\")))\n+    ninja.append(\n+        \"cxx = {}\".format(os.environ.get(\"CXX\", \"cl\" if IS_WINDOWS else \"c++\"))\n+    )\n     ninja.append(\"cflags = {}\".format(\" \".join(cflags)))\n     if with_cuda:\n         ninja.append(\"nvcc = {}\".format(os.path.join(_find_cuda_home(), \"bin\", \"nvcc\")))\n@@ -290,7 +307,9 @@ def _generate_ninja_build(\n         )\n     # Use appropriate extension based on platform\n     ext = \".dll\" if IS_WINDOWS else \".so\"\n-    ninja.append(\"build {}{}: link main.o{}\".format(name, ext, \" cuda.o\" if with_cuda else \"\"))\n+    ninja.append(\n+        \"build {}{}: link main.o{}\".format(name, ext, \" cuda.o\" if with_cuda else \"\")\n+    )\n     ninja.append(\"\")\n \n     # default target\n@@ -306,7 +325,9 @@ def _build_ninja(build_dir: str) -> None:\n     if num_workers is not None:\n         command += [\"-j\", num_workers]\n     if IS_WINDOWS:\n-        status = _run_command_in_dev_prompt(args=command, cwd=build_dir, capture_output=True)\n+        status = _run_command_in_dev_prompt(\n+            args=command, cwd=build_dir, capture_output=True\n+        )\n     else:\n         status = subprocess.run(args=command, cwd=build_dir, capture_output=True)\n     if status.returncode != 0:\n@@ -508,7 +529,9 @@ def load_inline(\n             extra_ldflags,\n             extra_include_paths,\n         )\n-        build_dir: str = os.path.join(build_directory, \"{}_{}\".format(name, source_hash))\n+        build_dir: str = os.path.join(\n+            build_directory, \"{}_{}\".format(name, source_hash)\n+        )\n     else:\n         build_dir = os.path.abspath(build_directory)\n     os.makedirs(build_dir, exist_ok=True)\n@@ -536,4 +559,6 @@ def load_inline(\n \n         # Use appropriate extension based on platform\n         ext = \".dll\" if IS_WINDOWS else \".so\"\n-        return load_module(os.path.abspath(os.path.join(build_dir, \"{}{}\".format(name, ext))))\n+        return load_module(\n+            os.path.abspath(os.path.join(build_dir, \"{}{}\".format(name, ext)))\n+        )\ndiff --git a/python/tvm_ffi/cython/base.pxi b/python/tvm_ffi/cython/base.pxi\nindex 77c9c7e..6fe10fd 100644\n--- a/python/tvm_ffi/cython/base.pxi\n+++ b/python/tvm_ffi/cython/base.pxi\n@@ -108,7 +108,6 @@ cdef extern from \"tvm/ffi/c_api.h\":\n         kTVMFFIModule = 73\n         kTVMFFIOpaquePyObject = 74\n \n-\n     ctypedef void* TVMFFIObjectHandle\n \n     ctypedef struct TVMFFIObject:\n@@ -153,9 +152,9 @@ cdef extern from \"tvm/ffi/c_api.h\":\n         kTVMFFIFieldFlagBitMaskHasDefault = 1 << 1\n         kTVMFFIFieldFlagBitMaskIsStaticMethod = 1 << 2\n \n-    ctypedef int (*TVMFFIFieldGetter)(void* field, TVMFFIAny* result) noexcept;\n-    ctypedef int (*TVMFFIFieldSetter)(void* field, const TVMFFIAny* value) noexcept;\n-    ctypedef int (*TVMFFIObjectCreator)(TVMFFIObjectHandle* result) noexcept;\n+    ctypedef int (*TVMFFIFieldGetter)(void* field, TVMFFIAny* result) noexcept\n+    ctypedef int (*TVMFFIFieldSetter)(void* field, const TVMFFIAny* value) noexcept\n+    ctypedef int (*TVMFFIObjectCreator)(TVMFFIObjectHandle* result) noexcept\n \n     ctypedef struct TVMFFIFieldInfo:\n         TVMFFIByteArray name\n@@ -202,7 +201,7 @@ cdef extern from \"tvm/ffi/c_api.h\":\n     int TVMFFIFunctionCall(TVMFFIObjectHandle func, TVMFFIAny* args, int32_t num_args,\n                            TVMFFIAny* result) nogil\n     int TVMFFIFunctionCreate(void* self, TVMFFISafeCallType safe_call,\n-                         void (*deleter)(void*), TVMFFIObjectHandle* out) nogil\n+                             void (*deleter)(void*), TVMFFIObjectHandle* out) nogil\n     int TVMFFIAnyViewToOwnedAny(const TVMFFIAny* any_view, TVMFFIAny* out) nogil\n     int TVMFFIFunctionSetGlobal(TVMFFIByteArray* name, TVMFFIObjectHandle f, int override) nogil\n     int TVMFFIFunctionGetGlobal(TVMFFIByteArray* name, TVMFFIObjectHandle* out) nogil\n@@ -216,17 +215,17 @@ cdef extern from \"tvm/ffi/c_api.h\":\n     int TVMFFIBytesFromByteArray(TVMFFIByteArray* input_, TVMFFIAny* out) nogil\n     int TVMFFIDataTypeFromString(TVMFFIByteArray* str, DLDataType* out) nogil\n     int TVMFFIDataTypeToString(const DLDataType* dtype, TVMFFIAny* out) nogil\n-    const TVMFFIByteArray* TVMFFITraceback(\n-        const char* filename, int lineno, const char* func, int cross_ffi_boundary) nogil;\n+    const TVMFFIByteArray* TVMFFITraceback(const char* filename, int lineno,\n+                                           const char* func, int cross_ffi_boundary) nogil\n     int TVMFFITensorFromDLPack(DLManagedTensor* src, int32_t require_alignment,\n-                                int32_t require_contiguous, TVMFFIObjectHandle* out) nogil\n+                               int32_t require_contiguous, TVMFFIObjectHandle* out) nogil\n     int TVMFFITensorFromDLPackVersioned(DLManagedTensorVersioned* src,\n                                         int32_t require_alignment,\n                                         int32_t require_contiguous,\n                                         TVMFFIObjectHandle* out) nogil\n     int TVMFFITensorToDLPack(TVMFFIObjectHandle src, DLManagedTensor** out) nogil\n     int TVMFFITensorToDLPackVersioned(TVMFFIObjectHandle src,\n-                                        DLManagedTensorVersioned** out) nogil\n+                                      DLManagedTensorVersioned** out) nogil\n     const TVMFFITypeInfo* TVMFFIGetTypeInfo(int32_t type_index) nogil\n     TVMFFIByteArray TVMFFISmallBytesGetContentByteArray(const TVMFFIAny* value) nogil\n     TVMFFIByteArray* TVMFFIBytesGetByteArrayPtr(TVMFFIObjectHandle obj) nogil\n@@ -241,9 +240,9 @@ cdef extern from \"tvm/ffi/extra/c_env_api.h\":\n \n     int TVMFFIEnvRegisterCAPI(const char* name, void* ptr) nogil\n     void* TVMFFIEnvGetStream(int32_t device_type, int32_t device_id) nogil\n-    int TVMFFIEnvSetStream(int32_t device_type, int32_t device_id,\n-                                  TVMFFIStreamHandle stream,\n-                                  TVMFFIStreamHandle* opt_out_original_stream) nogil\n+    int TVMFFIEnvSetStream(int32_t device_type, int32_t device_id, TVMFFIStreamHandle stream,\n+                           TVMFFIStreamHandle* opt_out_original_stream) nogil\n+\n \n def _env_set_current_stream(int device_type, int device_id, uint64_t stream):\n     cdef TVMFFIStreamHandle prev_stream = NULL\n@@ -256,8 +255,7 @@ def _env_set_current_stream(int device_type, int device_id, uint64_t stream):\n \n \n cdef extern from \"tvm_ffi_python_helpers.h\":\n-    # no need to expose fields of the call context\n-     # setter data structure\n+    # no need to expose fields of the call context setter data structure\n     ctypedef int (*DLPackFromPyObject)(\n         void* py_obj, DLManagedTensorVersioned** out, TVMFFIStreamHandle* env_stream\n     ) except -1\ndiff --git a/python/tvm_ffi/cython/device.pxi b/python/tvm_ffi/cython/device.pxi\nindex 85740a0..84c047f 100644\n--- a/python/tvm_ffi/cython/device.pxi\n+++ b/python/tvm_ffi/cython/device.pxi\n@@ -20,6 +20,7 @@ from enum import IntEnum\n \n _CLASS_DEVICE = None\n \n+\n def _set_class_device(cls):\n     global _CLASS_DEVICE\n     _CLASS_DEVICE = cls\n@@ -162,7 +163,6 @@ cdef class Device:\n     def __hash__(self):\n         return hash((self.cdevice.device_type, self.cdevice.device_id))\n \n-\n     def __device_type_name__(self):\n         return self._DEVICE_TYPE_TO_NAME[self.cdevice.device_type]\n \ndiff --git a/python/tvm_ffi/cython/dtype.pxi b/python/tvm_ffi/cython/dtype.pxi\nindex 4656b04..0036c80 100644\n--- a/python/tvm_ffi/cython/dtype.pxi\n+++ b/python/tvm_ffi/cython/dtype.pxi\n@@ -18,6 +18,7 @@\n \n _CLASS_DTYPE = None\n \n+\n def _set_class_dtype(cls):\n     global _CLASS_DTYPE\n     _CLASS_DTYPE = cls\ndiff --git a/python/tvm_ffi/cython/function.pxi b/python/tvm_ffi/cython/function.pxi\nindex c80e238..c4662ca 100644\n--- a/python/tvm_ffi/cython/function.pxi\n+++ b/python/tvm_ffi/cython/function.pxi\n@@ -88,9 +88,9 @@ cdef inline object make_ret(TVMFFIAny result, DLPackToPyObject c_dlpack_to_pyobj\n     raise ValueError(\"Unhandled type index %d\" % type_index)\n \n \n-##----------------------------------------------------------------------------\n-## Helper to simplify calling constructor\n-##----------------------------------------------------------------------------\n+# ----------------------------------------------------------------------------\n+#  Helper to simplify calling constructor\n+# ----------------------------------------------------------------------------\n cdef inline int ConstructorCall(void* constructor_handle,\n                                 PyObject* py_arg_tuple,\n                                 void** handle,\n@@ -109,9 +109,9 @@ cdef inline int ConstructorCall(void* constructor_handle,\n     handle[0] = result.v_ptr\n     return 0\n \n-##----------------------------------------------------------------------------\n-## Implementation of setters using same naming style as TVMFFIPyArgSetterXXX_\n-##----------------------------------------------------------------------------\n+# ----------------------------------------------------------------------------\n+#  Implementation of setters using same naming style as TVMFFIPyArgSetterXXX_\n+# ----------------------------------------------------------------------------\n cdef int TVMFFIPyArgSetterTensor_(\n     TVMFFIPyArgSetter* handle, TVMFFIPyCallContext* ctx,\n     PyObject* arg, TVMFFIAny* out\n@@ -219,8 +219,7 @@ cdef int TVMFFIPyArgSetterDLPack_(\n     out.v_ptr = temp_chandle\n     # record the stream from the source framework context when possible\n     temp_dltensor = TVMFFITensorGetDLTensorPtr(temp_chandle)\n-    if (temp_dltensor.device.device_type != kDLCPU and\n-        ctx.device_type != -1):\n+    if (temp_dltensor.device.device_type != kDLCPU and ctx.device_type != -1):\n         # __tvm_ffi_env_stream__ returns the expected stream that should be set\n         # through TVMFFIEnvSetStream when calling a TVM FFI function\n         if hasattr(arg, \"__tvm_ffi_env_stream__\"):\n@@ -571,9 +570,9 @@ cdef int TVMFFIPyArgSetterFactory_(PyObject* value, TVMFFIPyArgSetter* out) exce\n     out.func = TVMFFIPyArgSetterFallback_\n     return 0\n \n-#---------------------------------------------------------------------------------------------\n-## Implementation of function calling\n-#---------------------------------------------------------------------------------------------\n+# ---------------------------------------------------------------------------------------------\n+# Implementation of function calling\n+# ---------------------------------------------------------------------------------------------\n cdef class Function(Object):\n     \"\"\"Python class that wraps a function with tvm-ffi ABI.\n \n@@ -591,6 +590,7 @@ cdef class Function(Object):\n     property release_gil:\n         def __get__(self):\n             return self.c_release_gil != 0\n+\n         def __set__(self, value):\n             self.c_release_gil = value\n \n@@ -747,7 +747,7 @@ def _get_global_func(name, allow_missing):\n         return ret\n \n     if allow_missing:\n-       return None\n+        return None\n \n     raise ValueError(\"Cannot find global function %s\" % name)\n \n@@ -835,7 +835,7 @@ def _convert_to_opaque_object(object pyobject):\n \n def _print_debug_info():\n     \"\"\"Get the size of the dispatch map\"\"\"\n-    cdef size_t size =   TVMFFIPyGetDispatchMapSize()\n+    cdef size_t size = TVMFFIPyGetDispatchMapSize()\n     print(f\"TVMFFIPyGetDispatchMapSize: {size}\")\n \n \ndiff --git a/python/tvm_ffi/cython/object.pxi b/python/tvm_ffi/cython/object.pxi\nindex 90821e3..f47018c 100644\n--- a/python/tvm_ffi/cython/object.pxi\n+++ b/python/tvm_ffi/cython/object.pxi\n@@ -250,6 +250,7 @@ def _object_type_key_to_index(str type_key):\n         return tidx\n     return None\n \n+\n cdef inline str _type_index_to_key(int32_t tindex):\n     \"\"\"get the type key of object class\"\"\"\n     cdef const TVMFFITypeInfo* info = TVMFFIGetTypeInfo(tindex)\ndiff --git a/python/tvm_ffi/cython/string.pxi b/python/tvm_ffi/cython/string.pxi\nindex 4119e7b..0f9d11b 100644\n--- a/python/tvm_ffi/cython/string.pxi\n+++ b/python/tvm_ffi/cython/string.pxi\n@@ -28,7 +28,6 @@ cdef inline bytes _bytes_obj_get_py_bytes(obj):\n     return bytearray_to_bytes(bytes)\n \n \n-\n class String(str, PyNativeObject):\n     __slots__ = [\"__tvm_ffi_object__\"]\n     \"\"\"String object that is possibly returned by FFI call.\ndiff --git a/python/tvm_ffi/cython/tensor.pxi b/python/tvm_ffi/cython/tensor.pxi\nindex 1255f0b..dc8b75e 100644\n--- a/python/tvm_ffi/cython/tensor.pxi\n+++ b/python/tvm_ffi/cython/tensor.pxi\n@@ -106,7 +106,7 @@ cdef inline int _from_dlpack_universal(\n     # move to false as most frameworks get upgraded.\n     cdef int favor_legacy_dlpack = True\n \n-    if hasattr(ext_tensor, '__dlpack__'):\n+    if hasattr(ext_tensor, \"__dlpack__\"):\n         if favor_legacy_dlpack:\n             _from_dlpack(\n                 ext_tensor.__dlpack__(),\n@@ -305,6 +305,7 @@ cdef class DLTensorTestWrapper:\n \n     cdef Tensor tensor\n     cdef dict __dict__\n+\n     def __init__(self, tensor):\n         self.tensor = tensor\n \ndiff --git a/python/tvm_ffi/error.py b/python/tvm_ffi/error.py\nindex b09200d..cec6956 100644\n--- a/python/tvm_ffi/error.py\n+++ b/python/tvm_ffi/error.py\n@@ -16,6 +16,7 @@\n # under the License.\n # pylint: disable=invalid-name\n \"\"\"Error handling.\"\"\"\n+\n import ast\n import re\n import sys\ndiff --git a/python/tvm_ffi/libinfo.py b/python/tvm_ffi/libinfo.py\nindex 55c5140..8325c35 100644\n--- a/python/tvm_ffi/libinfo.py\n+++ b/python/tvm_ffi/libinfo.py\n@@ -75,7 +75,9 @@ def find_libtvm_ffi():\n     lib_found = [p for p in lib_dll_path if os.path.exists(p) and os.path.isfile(p)]\n \n     if not lib_found:\n-        raise RuntimeError(f\"Cannot find library: {name}\\nList of candidates:\\n{lib_dll_path}\")\n+        raise RuntimeError(\n+            f\"Cannot find library: {name}\\nList of candidates:\\n{lib_dll_path}\"\n+        )\n \n     return lib_found[0]\n \n@@ -108,7 +110,9 @@ def find_include_path():\n     \"\"\"Find header files for C compilation.\"\"\"\n     candidates = [\n         os.path.join(os.path.dirname(os.path.realpath(__file__)), \"include\"),\n-        os.path.join(os.path.dirname(os.path.realpath(__file__)), \"..\", \"..\", \"include\"),\n+        os.path.join(\n+            os.path.dirname(os.path.realpath(__file__)), \"..\", \"..\", \"include\"\n+        ),\n     ]\n     for candidate in candidates:\n         if os.path.isdir(candidate):\n@@ -130,12 +134,19 @@ def find_python_helper_include_path():\n \n def find_dlpack_include_path():\n     \"\"\"Find dlpack header files for C compilation.\"\"\"\n-    install_include_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), \"include\")\n+    install_include_path = os.path.join(\n+        os.path.dirname(os.path.realpath(__file__)), \"include\"\n+    )\n     if os.path.isdir(os.path.join(install_include_path, \"dlpack\")):\n         return install_include_path\n \n     source_include_path = os.path.join(\n-        os.path.dirname(os.path.realpath(__file__)), \"..\", \"..\", \"3rdparty\", \"dlpack\", \"include\"\n+        os.path.dirname(os.path.realpath(__file__)),\n+        \"..\",\n+        \"..\",\n+        \"3rdparty\",\n+        \"dlpack\",\n+        \"include\",\n     )\n     if os.path.isdir(source_include_path):\n         return source_include_path\ndiff --git a/python/tvm_ffi/module.py b/python/tvm_ffi/module.py\nindex 103956e..fbfb35d 100644\n--- a/python/tvm_ffi/module.py\n+++ b/python/tvm_ffi/module.py\n@@ -200,7 +200,9 @@ class Module(core.Object):\n         b : Bool\n             True if the module is compilation exportable.\n         \"\"\"\n-        return (self.get_property_mask() & ModulePropertyMask.COMPILATION_EXPORTABLE) != 0\n+        return (\n+            self.get_property_mask() & ModulePropertyMask.COMPILATION_EXPORTABLE\n+        ) != 0\n \n     def clear_imports(self):\n         \"\"\"Remove all imports of the module.\"\"\"\ndiff --git a/python/tvm_ffi/registry.py b/python/tvm_ffi/registry.py\nindex 2cd1ba1..f31dea3 100644\n--- a/python/tvm_ffi/registry.py\n+++ b/python/tvm_ffi/registry.py\n@@ -15,6 +15,7 @@\n # specific language governing permissions and limitations\n # under the License.\n \"\"\"FFI registry to register function and objects.\"\"\"\n+\n import sys\n \n from . import core\ndiff --git a/python/tvm_ffi/stream.py b/python/tvm_ffi/stream.py\nindex 598afca..084dca8 100644\n--- a/python/tvm_ffi/stream.py\n+++ b/python/tvm_ffi/stream.py\n@@ -16,6 +16,7 @@\n # under the License.\n # pylint: disable=invalid-name\n \"\"\"Stream context.\"\"\"\n+\n from ctypes import c_void_p\n from typing import Any, Optional, Union\n \ndiff --git a/python/tvm_ffi/utils/lockfile.py b/python/tvm_ffi/utils/lockfile.py\nindex 3b3197e..55ab41f 100644\n--- a/python/tvm_ffi/utils/lockfile.py\n+++ b/python/tvm_ffi/utils/lockfile.py\n@@ -64,7 +64,9 @@ class FileLock:\n                 )\n                 msvcrt.locking(self._file_descriptor, msvcrt.LK_NBLCK, 1)\n             else:  # Unix-like systems\n-                self._file_descriptor = os.open(self.lock_file_path, os.O_WRONLY | os.O_CREAT)\n+                self._file_descriptor = os.open(\n+                    self.lock_file_path, os.O_WRONLY | os.O_CREAT\n+                )\n                 fcntl.flock(self._file_descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)\n             return True\n         except (IOError, BlockingIOError):\ndiff --git a/tests/lint/check_asf_header.py b/tests/lint/check_asf_header.py\nindex d5d9bf5..48df954 100644\n--- a/tests/lint/check_asf_header.py\n+++ b/tests/lint/check_asf_header.py\n@@ -15,6 +15,7 @@\n # specific language governing permissions and limitations\n # under the License.\n \"\"\"Helper tool to add ASF header to files that cannot be handled by Rat.\"\"\"\n+\n import argparse\n import fnmatch\n import os\n@@ -187,7 +188,9 @@ def get_git_files():\n         if result.returncode == 0:\n             return [line.strip() for line in result.stdout.split(\"\\n\") if line.strip()]\n         else:\n-            print(\"Error: Could not get git files. Make sure you're in a git repository.\")\n+            print(\n+                \"Error: Could not get git files. Make sure you're in a git repository.\"\n+            )\n             print(\"Git command failed:\", result.stderr.strip())\n             return None\n     except FileNotFoundError:\n@@ -343,7 +346,9 @@ Examples:\n     )\n \n     parser.add_argument(\n-        \"--check\", action=\"store_true\", help=\"Check mode: report errors without modifying files\"\n+        \"--check\",\n+        action=\"store_true\",\n+        help=\"Check mode: report errors without modifying files\",\n     )\n \n     parser.add_argument(\ndiff --git a/tests/lint/check_file_type.py b/tests/lint/check_file_type.py\nindex b44d5f1..d666470 100644\n--- a/tests/lint/check_file_type.py\n+++ b/tests/lint/check_file_type.py\n@@ -15,6 +15,7 @@\n # specific language governing permissions and limitations\n # under the License.\n \"\"\"Helper tool to check file types that are allowed to checkin.\"\"\"\n+\n import os\n import subprocess\n import sys\n@@ -180,7 +181,7 @@ def main():\n     cmd = [\"git\", \"ls-files\"]\n     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)\n     (out, _) = proc.communicate()\n-    assert proc.returncode == 0, f'{\" \".join(cmd)} errored: {out}'\n+    assert proc.returncode == 0, f\"{' '.join(cmd)} errored: {out}\"\n     res = out.decode(\"utf-8\")\n     flist = res.split()\n     error_list = []\n@@ -211,11 +212,14 @@ def main():\n     if asf_copyright_list:\n         report = \"------File type check report----\\n\"\n         report += \"\\n\".join(asf_copyright_list) + \"\\n\"\n-        report += \"------Found %d files that has ASF header with copyright message----\\n\" % len(\n-            asf_copyright_list\n+        report += (\n+            \"------Found %d files that has ASF header with copyright message----\\n\"\n+            % len(asf_copyright_list)\n         )\n         report += \"--- Files with ASF header do not need Copyright lines.\\n\"\n-        report += \"--- Contributors retain copyright to their contribution by default.\\n\"\n+        report += (\n+            \"--- Contributors retain copyright to their contribution by default.\\n\"\n+        )\n         report += \"--- If a file comes with a different license, consider put it under the 3rdparty folder instead.\\n\"\n         report += \"---\\n\"\n         report += \"--- You can use the following steps to remove the copyright lines\\n\"\ndiff --git a/tests/lint/git-clang-format.sh b/tests/lint/git-clang-format.sh\nindex 70b3c5b..fee4803 100755\n--- a/tests/lint/git-clang-format.sh\n+++ b/tests/lint/git-clang-format.sh\n@@ -19,77 +19,74 @@ set -e\n set -u\n set -o pipefail\n \n-\n INPLACE_FORMAT=${INPLACE_FORMAT:=false}\n LINT_ALL_FILES=true\n REVISION=$(git rev-list --max-parents=0 HEAD)\n \n-while (( $# )); do\n-    case \"$1\" in\n-        -i)\n-            INPLACE_FORMAT=true\n-            shift 1\n-            ;;\n-        --rev)\n-            LINT_ALL_FILES=false\n-            REVISION=$2\n-            shift 2\n-            ;;\n-        *)\n-            echo \"Usage: tests/lint/git-clang-format.sh [-i] [--rev <commit>]\"\n-            echo \"\"\n-            echo \"Run clang-format on files that changed since <commit> or on all files in the repo\"\n-            echo \"Examples:\"\n-            echo \"- Compare last one commit: tests/lint/git-clang-format.sh --rev HEAD~1\"\n-            echo \"- Compare against upstream/main: tests/lint/git-clang-format.sh --rev upstream/main\"\n-            echo \"The -i will use black to format files in-place instead of checking them.\"\n-            exit 1\n-            ;;\n-    esac\n+while (($#)); do\n+\tcase \"$1\" in\n+\t-i)\n+\t\tINPLACE_FORMAT=true\n+\t\tshift 1\n+\t\t;;\n+\t--rev)\n+\t\tLINT_ALL_FILES=false\n+\t\tREVISION=$2\n+\t\tshift 2\n+\t\t;;\n+\t*)\n+\t\techo \"Usage: tests/lint/git-clang-format.sh [-i] [--rev <commit>]\"\n+\t\techo \"\"\n+\t\techo \"Run clang-format on files that changed since <commit> or on all files in the repo\"\n+\t\techo \"Examples:\"\n+\t\techo \"- Compare last one commit: tests/lint/git-clang-format.sh --rev HEAD~1\"\n+\t\techo \"- Compare against upstream/main: tests/lint/git-clang-format.sh --rev upstream/main\"\n+\t\techo \"The -i will use black to format files in-place instead of checking them.\"\n+\t\texit 1\n+\t\t;;\n+\tesac\n done\n \n-\n-cleanup()\n-{\n-    if [ -f /tmp/$$.clang-format.txt ]; then\n-       echo \"\"\n-       echo \"---------clang-format log----------\"\n-        cat /tmp/$$.clang-format.txt\n-    fi\n-    rm -rf /tmp/$$.clang-format.txt\n+cleanup() {\n+\tif [ -f /tmp/$$.clang-format.txt ]; then\n+\t\techo \"\"\n+\t\techo \"---------clang-format log----------\"\n+\t\tcat /tmp/$$.clang-format.txt\n+\tfi\n+\trm -rf /tmp/$$.clang-format.txt\n }\n trap cleanup 0\n \n CLANG_FORMAT=clang-format-15\n \n if [ -x \"$(command -v clang-format-15)\" ]; then\n-    CLANG_FORMAT=clang-format-15\n+\tCLANG_FORMAT=clang-format-15\n elif [ -x \"$(command -v clang-format)\" ]; then\n-    echo \"clang-format might be different from clang-format-15, expect potential difference.\"\n-    CLANG_FORMAT=clang-format\n+\techo \"clang-format might be different from clang-format-15, expect potential difference.\"\n+\tCLANG_FORMAT=clang-format\n else\n-    echo \"Cannot find clang-format-15\"\n-    exit 1\n+\techo \"Cannot find clang-format-15\"\n+\texit 1\n fi\n \n # Print out specific version\n ${CLANG_FORMAT} --version\n \n if [[ \"$INPLACE_FORMAT\" == \"true\" ]]; then\n-    echo \"Running inplace git-clang-format against $REVISION\"\n-    git-${CLANG_FORMAT} --extensions h,mm,c,cc,cu --binary=${CLANG_FORMAT} \"$REVISION\"\n-    exit 0\n+\techo \"Running inplace git-clang-format against $REVISION\"\n+\tgit-${CLANG_FORMAT} --extensions h,mm,c,cc,cu --binary=${CLANG_FORMAT} \"$REVISION\"\n+\texit 0\n fi\n \n if [[ \"$LINT_ALL_FILES\" == \"true\" ]]; then\n-    echo \"Running git-clang-format against all C++ files\"\n-    git-${CLANG_FORMAT} --diff --extensions h,mm,c,cc,cu --binary=${CLANG_FORMAT} \"$REVISION\" 1> /tmp/$$.clang-format.txt\n+\techo \"Running git-clang-format against all C++ files\"\n+\tgit-${CLANG_FORMAT} --diff --extensions h,mm,c,cc,cu --binary=${CLANG_FORMAT} \"$REVISION\" 1>/tmp/$$.clang-format.txt\n else\n-    echo \"Running git-clang-format against $REVISION\"\n-    git-${CLANG_FORMAT} --diff --extensions h,mm,c,cc,cu --binary=${CLANG_FORMAT} \"$REVISION\" 1> /tmp/$$.clang-format.txt\n+\techo \"Running git-clang-format against $REVISION\"\n+\tgit-${CLANG_FORMAT} --diff --extensions h,mm,c,cc,cu --binary=${CLANG_FORMAT} \"$REVISION\" 1>/tmp/$$.clang-format.txt\n fi\n \n-if grep --quiet -E \"diff\" < /tmp/$$.clang-format.txt; then\n-    echo \"clang-format lint error found. Consider running clang-format-15 on these files to fix them.\"\n-    exit 1\n+if grep --quiet -E \"diff\" </tmp/$$.clang-format.txt; then\n+\techo \"clang-format lint error found. Consider running clang-format-15 on these files to fix them.\"\n+\texit 1\n fi\ndiff --git a/tests/python/test_access_path.py b/tests/python/test_access_path.py\nindex d3f59fb..f70266b 100644\n--- a/tests/python/test_access_path.py\n+++ b/tests/python/test_access_path.py\n@@ -94,16 +94,25 @@ def test_path_is_prefix_of():\n     assert not AccessPath.root().attr(\"bar\").is_prefix_of(AccessPath.root().attr(\"foo\"))\n \n     # Shorter path is prefix of longer path with same start\n-    assert AccessPath.root().attr(\"foo\").is_prefix_of(AccessPath.root().attr(\"foo\").array_item(2))\n+    assert (\n+        AccessPath.root()\n+        .attr(\"foo\")\n+        .is_prefix_of(AccessPath.root().attr(\"foo\").array_item(2))\n+    )\n \n     # Longer path is not prefix of shorter path\n     assert (\n-        not AccessPath.root().attr(\"foo\").array_item(2).is_prefix_of(AccessPath.root().attr(\"foo\"))\n+        not AccessPath.root()\n+        .attr(\"foo\")\n+        .array_item(2)\n+        .is_prefix_of(AccessPath.root().attr(\"foo\"))\n     )\n \n     # Different paths are not prefixes\n     assert (\n-        not AccessPath.root().attr(\"foo\").is_prefix_of(AccessPath.root().attr(\"bar\").array_item(2))\n+        not AccessPath.root()\n+        .attr(\"foo\")\n+        .is_prefix_of(AccessPath.root().attr(\"bar\").array_item(2))\n     )\n \n \n@@ -124,10 +133,16 @@ def test_path_equal():\n     assert not (AccessPath.root().attr(\"bar\") == AccessPath.root().attr(\"foo\"))\n \n     # Shorter path does not equal longer path\n-    assert not (AccessPath.root().attr(\"foo\") == AccessPath.root().attr(\"foo\").array_item(2))\n+    assert not (\n+        AccessPath.root().attr(\"foo\") == AccessPath.root().attr(\"foo\").array_item(2)\n+    )\n \n     # Longer path does not equal shorter path\n-    assert not (AccessPath.root().attr(\"foo\").array_item(2) == AccessPath.root().attr(\"foo\"))\n+    assert not (\n+        AccessPath.root().attr(\"foo\").array_item(2) == AccessPath.root().attr(\"foo\")\n+    )\n \n     # Different paths are not equal\n-    assert not (AccessPath.root().attr(\"foo\") == AccessPath.root().attr(\"bar\").array_item(2))\n+    assert not (\n+        AccessPath.root().attr(\"foo\") == AccessPath.root().attr(\"bar\").array_item(2)\n+    )\ndiff --git a/tests/python/test_device.py b/tests/python/test_device.py\nindex 0ac4043..41a7985 100644\n--- a/tests/python/test_device.py\n+++ b/tests/python/test_device.py\n@@ -71,7 +71,9 @@ def test_device_with_dev_id(dev_type, dev_id, expected_device_type, expect_devic\n     assert dev.index == expect_device_id\n \n \n-@pytest.mark.parametrize(\"dev_type, dev_id\", [(\"cpu:0:0\", None), (\"cpu:?\", None), (\"cpu:\", None)])\n+@pytest.mark.parametrize(\n+    \"dev_type, dev_id\", [(\"cpu:0:0\", None), (\"cpu:?\", None), (\"cpu:\", None)]\n+)\n def test_deive_type_error(dev_type, dev_id):\n     with pytest.raises(ValueError):\n         tvm_ffi.device(dev_type, dev_id)\ndiff --git a/tests/python/test_object.py b/tests/python/test_object.py\nindex bab7c3e..0d40d17 100644\n--- a/tests/python/test_object.py\n+++ b/tests/python/test_object.py\n@@ -38,7 +38,9 @@ def test_method():\n \n def test_setter():\n     # test setter\n-    obj0 = tvm_ffi.testing.create_object(\"testing.TestObjectBase\", v_i64=10, v_str=\"hello\")\n+    obj0 = tvm_ffi.testing.create_object(\n+        \"testing.TestObjectBase\", v_i64=10, v_str=\"hello\"\n+    )\n     assert obj0.v_i64 == 10\n     obj0.v_i64 = 11\n     assert obj0.v_i64 == 11\ndiff --git a/tests/scripts/benchmark_dlpack.py b/tests/scripts/benchmark_dlpack.py\nindex 954598c..96f43d3 100644\n--- a/tests/scripts/benchmark_dlpack.py\n+++ b/tests/scripts/benchmark_dlpack.py\n@@ -36,6 +36,7 @@ Summary of some takeaways:\n -\n \n \"\"\"\n+\n import time\n \n import numpy as np\n@@ -182,27 +183,6 @@ def tvm_ffi_self_dlpack_nop(repeat):\n     bench_ffi_nop_from_dlpack(\"tvm_ffi.nop+from_dlpack(tvm)\", x, y, z, repeat)\n \n \n-def bench_ffi_nop_from_dlpack(name, x, y, z, repeat):\n-    \"\"\"run dlpack conversion + tvm_ffi.nop\n-\n-    Measures overhead of running dlpack for each args then invoke\n-    \"\"\"\n-    nop = tvm_ffi.get_global_func(\"testing.nop\")\n-    tx = tvm_ffi.from_dlpack(x)\n-    ty = tvm_ffi.from_dlpack(y)\n-    tz = tvm_ffi.from_dlpack(z)\n-    nop(tx, ty, tz)\n-\n-    start = time.time()\n-    for i in range(repeat):\n-        tx = tvm_ffi.from_dlpack(x)\n-        ty = tvm_ffi.from_dlpack(y)\n-        tz = tvm_ffi.from_dlpack(z)\n-        nop(tx, ty, tz)\n-    end = time.time()\n-    print_speed(name, (end - start) / repeat)\n-\n-\n def tvm_ffi_nop_from_torch_utils_to_dlpack(repeat):\n     \"\"\"\n     Measures overhead of running dlpack for each args then invoke\n@@ -238,7 +218,6 @@ def bench_tvm_ffi_nop_autodlpack(name, x, y, z, repeat):\n     \"\"\"\n     nop = tvm_ffi.get_global_func(\"testing.nop\")\n     nop(x, y, z)\n-    eps = 1e-6\n     start = time.time()\n     for i in range(repeat):\n         nop(x, y, z)\n@@ -262,7 +241,9 @@ def tvm_ffi_nop_autodlpack_from_torch(repeat, device=\"cpu\", stream=False):\n                 f\"tvm_ffi.nop.autodlpack(torch[{device}][stream])\", x, y, z, repeat\n             )\n     else:\n-        bench_tvm_ffi_nop_autodlpack(f\"tvm_ffi.nop.autodlpack(torch[{device}])\", x, y, z, repeat)\n+        bench_tvm_ffi_nop_autodlpack(\n+            f\"tvm_ffi.nop.autodlpack(torch[{device}])\", x, y, z, repeat\n+        )\n \n \n def tvm_ffi_nop_autodlpack_from_numpy(repeat):\n@@ -367,7 +348,7 @@ def bench_torch_get_current_stream(repeat, name, func):\n     \"\"\"\n     Measures overhead of running torch.cuda.current_stream\n     \"\"\"\n-    x = torch.arange(1, device=\"cuda\")\n+    x = torch.arange(1, device=\"cuda\")  # noqa: F841\n     func(0)\n     start = time.time()\n     for i in range(repeat):\n@@ -379,7 +360,9 @@ def bench_torch_get_current_stream(repeat, name, func):\n \n def populate_object_table(num_classes):\n     nop = tvm_ffi.get_global_func(\"testing.nop\")\n-    dummy_instances = [type(f\"DummyClass{i}\", (object,), {})() for i in range(num_classes)]\n+    dummy_instances = [\n+        type(f\"DummyClass{i}\", (object,), {})() for i in range(num_classes)\n+    ]\n     for instance in dummy_instances:\n         nop(instance)\n \n@@ -418,15 +401,23 @@ def main():\n     print(\"---------------------------------------------------\")\n     print(\"Benchmark x.__dlpack__(max_version=(1,1)) overhead\")\n     print(\"---------------------------------------------------\")\n-    bench_to_dlpack_versioned(torch.arange(1), \"torch.__dlpack__(max_version=(1,1))\", repeat)\n-    bench_to_dlpack_versioned(np.arange(1), \"numpy.__dlpack__(max_version=(1,1))\", repeat)\n     bench_to_dlpack_versioned(\n-        tvm_ffi.from_dlpack(torch.arange(1)), \"tvm.__dlpack__(max_version=(1,1))\", repeat\n+        torch.arange(1), \"torch.__dlpack__(max_version=(1,1))\", repeat\n+    )\n+    bench_to_dlpack_versioned(\n+        np.arange(1), \"numpy.__dlpack__(max_version=(1,1))\", repeat\n+    )\n+    bench_to_dlpack_versioned(\n+        tvm_ffi.from_dlpack(torch.arange(1)),\n+        \"tvm.__dlpack__(max_version=(1,1))\",\n+        repeat,\n     )\n     print(\"---------------------------------------------------\")\n     print(\"Benchmark torch.get_cuda_stream[default stream]\")\n     print(\"---------------------------------------------------\")\n-    bench_torch_get_current_stream(repeat, \"cpp-extension\", load_torch_get_current_cuda_stream())\n+    bench_torch_get_current_stream(\n+        repeat, \"cpp-extension\", load_torch_get_current_cuda_stream()\n+    )\n     bench_torch_get_current_stream(repeat, \"python\", torch_get_cuda_stream_native)\n     print(\"---------------------------------------------------\")\n     print(\"Benchmark torch.get_cuda_stream[non-default stream]\")\ndiff --git a/tests/scripts/task_cpp_tests.sh b/tests/scripts/task_cpp_tests.sh\nindex 27795cc..d7e935d 100755\n--- a/tests/scripts/task_cpp_tests.sh\n+++ b/tests/scripts/task_cpp_tests.sh\n@@ -22,6 +22,6 @@ BUILD_TYPE=RelWithDebugInfo\n rm -rf build/CMakeCache.txt\n \n cmake -G Ninja -S . -B build -DTVM_FFI_BUILD_TESTS=ON -DCMAKE_BUILD_TYPE=${BUILD_TYPE} \\\n-  -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DCMAKE_CXX_COMPILER_LAUNCHER=ccache\n+\t-DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DCMAKE_CXX_COMPILER_LAUNCHER=ccache\n cmake --build build --clean-first --config ${BUILD_TYPE} --target tvm_ffi_tests\n GTEST_COLOR=1 ctest -V -C ${BUILD_TYPE} --test-dir build --output-on-failure\ndiff --git a/tests/scripts/task_lint.sh b/tests/scripts/task_lint.sh\nindex 0d8aa4f..5b17cf8 100755\n--- a/tests/scripts/task_lint.sh\n+++ b/tests/scripts/task_lint.sh\n@@ -18,30 +18,29 @@\n \n set -euxo pipefail\n \n-cleanup()\n-{\n-  rm -rf /tmp/$$.*\n+cleanup() {\n+\trm -rf /tmp/$$.*\n }\n trap cleanup 0\n \n function run_lint {\n-  echo \"Checking file types...\"\n-  python tests/lint/check_file_type.py\n+\techo \"Checking file types...\"\n+\tpython tests/lint/check_file_type.py\n \n-  echo \"Checking ASF headers...\"\n-  python tests/lint/check_asf_header.py --check\n+\techo \"Checking ASF headers...\"\n+\tpython tests/lint/check_asf_header.py --check\n \n-  echo \"isort check...\"\n-  isort --check --diff .\n+\techo \"isort check...\"\n+\tisort --check --diff .\n \n-  echo \"black check...\"\n-  black --check --diff .\n+\techo \"black check...\"\n+\tblack --check --diff .\n \n-  echo \"ruff check...\"\n-  ruff check --diff .\n+\techo \"ruff check...\"\n+\truff check --diff .\n \n-  echo \"clang-format check...\"\n-  tests/lint/git-clang-format.sh\n+\techo \"clang-format check...\"\n+\ttests/lint/git-clang-format.sh\n }\n \n run_lint",
+  "heuristics": {
+    "tags": [
+      "build",
+      "ci",
+      "test"
+    ],
+    "extensions": [
+      ".css",
+      ".h",
+      ".md",
+      ".pxi",
+      ".py",
+      ".sh",
+      ".txt",
+      ".yaml",
+      ".yml"
+    ],
+    "scopes_guess": [
+      ".pre-commit-config.yaml",
+      "README.md",
+      "docs",
+      "examples",
+      "include",
+      "python",
+      "tests"
+    ]
+  }
+}

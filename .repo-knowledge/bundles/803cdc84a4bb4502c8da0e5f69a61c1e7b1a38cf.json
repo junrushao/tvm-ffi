@@ -1,0 +1,40 @@
+{
+  "sha": "803cdc84a4bb4502c8da0e5f69a61c1e7b1a38cf",
+  "sha7": "803cdc8",
+  "author_name": "Yaxing Cai",
+  "author_email": "caiyaxing666@gmail.com",
+  "date_iso": "2025-11-26T16:04:00-08:00",
+  "subject": "[DOCS] Update kernel library guide with device guard (#289)",
+  "body": "Update kernel library guide with device guard",
+  "is_merge": false,
+  "parents": [
+    "7f3bb77155645f90f7d221889b3795704ffd7d6f"
+  ],
+  "name_status": [
+    [
+      "M",
+      "docs/guides/kernel_library_guide.rst"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "docs/guides/kernel_library_guide.rst",
+      "additions": 15,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/docs/guides/kernel_library_guide.rst b/docs/guides/kernel_library_guide.rst\nindex 8966e30..82b1bff 100644\n--- a/docs/guides/kernel_library_guide.rst\n+++ b/docs/guides/kernel_library_guide.rst\n@@ -145,6 +145,21 @@ Explicit Update\n \n Once the devices on which the stream contexts reside cannot be inferred from the tensors, the explicit update on stream context table is necessary. TVM FFI provides :py:func:`tvm_ffi.use_torch_stream` and :py:func:`tvm_ffi.use_raw_stream` for manual stream context update. However, it is **recommended** to use implicit update above, to reduce code complexity.\n \n+Device Guard\n+============\n+\n+When launching kernels, kernel libraries may require the current device context to be set for a specific device. TVM FFI provides the :cpp:class:`tvm::ffi::CUDADeviceGuard` class to manage this, similar to :cpp:class:`c10::cuda::CUDAGuard`. When a :cpp:class:`tvm::ffi::CUDADeviceGuard` object is constructed with a device index, it saves the original device index (retrieved using ``cudaGetDevice``) and sets the current device to the given index (using ``cudaSetDevice``). Upon destruction (e.g., when it goes out of scope), the guard restores the current device to the original device index, also using ``cudaSetDevice``. This RAII pattern ensures the device context is handled correctly. Here is an example:\n+\n+.. code-block:: c++\n+\n+ void func(ffi::TensorView input, ...) {\n+   // current device index is original device index\n+   ffi::CUDADeviceGuard device_guard(input.device().device_id);\n+   // current device index is input device index\n+ }\n+\n+After ``func`` returns, the ``device_guard`` is destructed, and the original device index is restored.\n+\n Function Exporting\n ==================\n ",
+  "heuristics": {
+    "tags": [
+      "docs"
+    ],
+    "extensions": [
+      ".rst"
+    ],
+    "scopes_guess": [
+      "docs"
+    ]
+  }
+}

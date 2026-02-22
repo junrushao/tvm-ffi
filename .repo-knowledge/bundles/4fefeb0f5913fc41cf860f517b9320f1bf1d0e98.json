@@ -1,0 +1,39 @@
+{
+  "sha": "4fefeb0f5913fc41cf860f517b9320f1bf1d0e98",
+  "sha7": "4fefeb0",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-10-01T17:38:26-04:00",
+  "subject": "[TENSOR] Allow strides to be null for zerodim case (#82)",
+  "body":
+      "This PR fixes an outlier case where the strides maybe null when the\ntensor is zero ndim.",
+  "is_merge": false,
+  "parents": [
+    "1ec623678adea0ddba482d8d56d4ab2be440e694"
+  ],
+  "name_status": [
+    [
+      "M",
+      "include/tvm/ffi/container/tensor.h"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "include/tvm/ffi/container/tensor.h",
+      "additions": 5,
+      "deletions": 5
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/include/tvm/ffi/container/tensor.h b/include/tvm/ffi/container/tensor.h\nindex 5197d4e..f451aaf 100644\n--- a/include/tvm/ffi/container/tensor.h\n+++ b/include/tvm/ffi/container/tensor.h\n@@ -257,7 +257,7 @@ class Tensor : public ObjectRef {\n    */\n   ShapeView strides() const {\n     const TensorObj* obj = get();\n-    TVM_FFI_ICHECK(obj->strides != nullptr);\n+    TVM_FFI_ICHECK(obj->strides != nullptr || obj->ndim == 0);\n     return ShapeView(obj->strides, obj->ndim);\n   }\n \n@@ -367,7 +367,7 @@ class Tensor : public ObjectRef {\n       throw ffi::Error(error_context.kind, error_context.message,\n                        TVMFFIBacktrace(__FILE__, __LINE__, __func__, 0));\n     }\n-    if (tensor->dl_tensor.strides != nullptr) {\n+    if (tensor->dl_tensor.strides != nullptr || tensor->dl_tensor.ndim == 0) {\n       return Tensor(make_object<details::TensorObjFromDLPack<DLManagedTensorVersioned>>(\n           tensor, /*extra_strides_at_tail=*/false));\n     } else {\n@@ -394,7 +394,7 @@ class Tensor : public ObjectRef {\n     if (require_contiguous && !ffi::IsContiguous(tensor->dl_tensor)) {\n       TVM_FFI_THROW(RuntimeError) << \"FromDLPack: Tensor is not contiguous.\";\n     }\n-    if (tensor->dl_tensor.strides != nullptr) {\n+    if (tensor->dl_tensor.strides != nullptr || tensor->dl_tensor.ndim == 0) {\n       return Tensor(make_object<details::TensorObjFromDLPack<DLManagedTensor>>(\n           tensor, /*extra_strides_at_tail=*/false));\n     } else {\n@@ -423,7 +423,7 @@ class Tensor : public ObjectRef {\n     if (tensor->flags & DLPACK_FLAG_BITMASK_IS_SUBBYTE_TYPE_PADDED) {\n       TVM_FFI_THROW(RuntimeError) << \"Subbyte type padded is not yet supported\";\n     }\n-    if (tensor->dl_tensor.strides != nullptr) {\n+    if (tensor->dl_tensor.strides != nullptr || tensor->dl_tensor.ndim == 0) {\n       return Tensor(make_object<details::TensorObjFromDLPack<DLManagedTensorVersioned>>(\n           tensor, /*extra_strides_at_tail=*/false));\n     } else {\n@@ -545,7 +545,7 @@ class TensorView {\n    * \\return The strides of the Tensor.\n    */\n   ShapeView strides() const {\n-    TVM_FFI_ICHECK(tensor_.strides != nullptr);\n+    TVM_FFI_ICHECK(tensor_.strides != nullptr || tensor_.ndim == 0);\n     return ShapeView(tensor_.strides, tensor_.ndim);\n   }\n ",
+  "heuristics": {
+    "tags": [],
+    "extensions": [
+      ".h"
+    ],
+    "scopes_guess": [
+      "include"
+    ]
+  }
+}

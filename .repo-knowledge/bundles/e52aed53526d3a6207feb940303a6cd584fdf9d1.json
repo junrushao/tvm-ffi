@@ -1,0 +1,51 @@
+{
+  "sha": "e52aed53526d3a6207feb940303a6cd584fdf9d1",
+  "sha7": "e52aed5",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-07-29T19:52:58-04:00",
+  "subject": "[REFACTOR][FFI] Phase out SEqualReduce/SHashReduce (#18172)",
+  "body":
+      "This PR phases out old SEqualReduce/SHashReduce mechanism\nin favor of the new reflection mechanism via ffi/reflection.\nIt helps us to reduce the places we need to register the\nreflection related information.\n\nSee the current IR examples for upgrading to the new mechanism.",
+  "is_merge": false,
+  "parents": [
+    "59a837eb4040843051706cbf5c7b71725fd65364"
+  ],
+  "name_status": [
+    [
+      "M",
+      "include/tvm/ffi/object.h"
+    ],
+    [
+      "M",
+      "tests/cpp/testing_object.h"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "include/tvm/ffi/object.h",
+      "additions": 0,
+      "deletions": 4
+    },
+    {
+      "path": "tests/cpp/testing_object.h",
+      "additions": 0,
+      "deletions": 2
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/include/tvm/ffi/object.h b/include/tvm/ffi/object.h\nindex 05b936e..a49a9f1 100644\n--- a/include/tvm/ffi/object.h\n+++ b/include/tvm/ffi/object.h\n@@ -214,10 +214,6 @@ class Object {\n   static constexpr int32_t _type_depth = 0;\n   // the structural equality and hash kind of the type\n   static constexpr TVMFFISEqHashKind _type_s_eq_hash_kind = kTVMFFISEqHashKindUnsupported;\n-  // extra fields used by plug-ins for attribute visiting\n-  // and structural information\n-  static constexpr const bool _type_has_method_sequal_reduce = false;\n-  static constexpr const bool _type_has_method_shash_reduce = false;\n   // The following functions are provided by macro\n   // TVM_FFI_DECLARE_BASE_OBJECT_INFO and TVM_DECLARE_FINAL_OBJECT_INFO\n   /*!\ndiff --git a/tests/cpp/testing_object.h b/tests/cpp/testing_object.h\nindex 3d8b4b2..78ca008 100644\n--- a/tests/cpp/testing_object.h\n+++ b/tests/cpp/testing_object.h\n@@ -217,11 +217,9 @@ class TCustomFuncObj : public Object {\n   bool SEqual(const TCustomFuncObj* other,\n               ffi::TypedFunction<bool(AnyView, AnyView, bool, AnyView)> cmp) const {\n     if (!cmp(params, other->params, true, \"params\")) {\n-      std::cout << \"custom s_equal failed params\" << std::endl;\n       return false;\n     }\n     if (!cmp(body, other->body, false, \"body\")) {\n-      std::cout << \"custom s_equal failed body\" << std::endl;\n       return false;\n     }\n     return true;",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".h"
+    ],
+    "scopes_guess": [
+      "include",
+      "tests"
+    ]
+  }
+}

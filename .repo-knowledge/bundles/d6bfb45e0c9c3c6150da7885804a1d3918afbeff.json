@@ -1,0 +1,60 @@
+{
+  "sha": "d6bfb45e0c9c3c6150da7885804a1d3918afbeff",
+  "sha7": "d6bfb45",
+  "author_name": "Yaxing Cai",
+  "author_email": "caiyaxing666@gmail.com",
+  "date_iso": "2025-11-12T04:08:26-08:00",
+  "subject": "[ADDON] Add torch c dlpack for macos (#256)",
+  "body": "This PR adds the torch c dlpack for macos.",
+  "is_merge": false,
+  "parents": [
+    "4fc83d789052be1a30ca4678cd8cfb0250413e1d"
+  ],
+  "name_status": [
+    [
+      "M",
+      ".github/workflows/torch_c_dlpack.yml"
+    ],
+    [
+      "M",
+      "addons/torch_c_dlpack_ext/build_aot_wheels.sh"
+    ],
+    [
+      "M",
+      "addons/torch_c_dlpack_ext/build_backend.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": ".github/workflows/torch_c_dlpack.yml",
+      "additions": 25,
+      "deletions": 1
+    },
+    {
+      "path": "addons/torch_c_dlpack_ext/build_aot_wheels.sh",
+      "additions": 35,
+      "deletions": 9
+    },
+    {
+      "path": "addons/torch_c_dlpack_ext/build_backend.py",
+      "additions": 0,
+      "deletions": 2
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/.github/workflows/torch_c_dlpack.yml b/.github/workflows/torch_c_dlpack.yml\nindex 8d7296e..2054352 100644\n--- a/.github/workflows/torch_c_dlpack.yml\n+++ b/.github/workflows/torch_c_dlpack.yml\n@@ -66,6 +66,30 @@ jobs:\n         with:\n           name: pypi-wheels-linux-${{ matrix.arch }}-${{ matrix.python-version }}\n           path: ./wheelhouse/*.whl\n+  build_wheels_macos:\n+    strategy:\n+      fail-fast: false\n+      matrix:\n+        arch: [\"arm64\"]\n+        python-version: [\"cp39\", \"cp310\", \"cp311\", \"cp312\", \"cp313\", \"cp314\"]\n+    runs-on: macos-14\n+    steps:\n+      - uses: actions/checkout@v5\n+        with:\n+          repository: apache/tvm-ffi\n+          ref: main\n+          fetch-depth: 0\n+          submodules: recursive\n+          path: tvm-ffi\n+      - uses: astral-sh/setup-uv@v7\n+      - name: build torch libs and wheels\n+        working-directory: ./tvm-ffi\n+        run: |\n+          bash ./addons/torch_c_dlpack_ext/build_aot_wheels.sh ${{ matrix.arch }} ${{ matrix.python-version }}\n+      - uses: actions/upload-artifact@v4\n+        with:\n+          name: pypi-wheels-macos-${{ matrix.arch }}-${{ matrix.python-version }}\n+          path: ./tvm-ffi/addons/torch_c_dlpack_ext/wheelhouse/*.whl\n   build_source:\n     runs-on: ubuntu-latest\n     steps:\n@@ -90,7 +114,7 @@ jobs:\n           name: pypi-source\n           path: ./tvm-ffi/addons/torch_c_dlpack_ext/dist/*tar.gz\n   upload_pypi:\n-    needs: [build_wheels_linux, build_source]\n+    needs: [build_wheels_linux, build_wheels_macos, build_source]\n     runs-on: ubuntu-latest\n     environment: pypi\n     permissions:\ndiff --git a/addons/torch_c_dlpack_ext/build_aot_wheels.sh b/addons/torch_c_dlpack_ext/build_aot_wheels.sh\nindex 0361b5f..f8a4885 100755\n--- a/addons/torch_c_dlpack_ext/build_aot_wheels.sh\n+++ b/addons/torch_c_dlpack_ext/build_aot_wheels.sh\n@@ -21,6 +21,17 @@ set -eux\n arch=$1\n python_version=$2\n \n+os=$(uname -s)\n+\n+case \"$os\" in\n+    \"Linux\" | \"Darwin\")\n+        ;;\n+    *)\n+        echo \"Unknown OS: $os\"\n+        return 1\n+        ;;\n+esac\n+\n tvm_ffi=\"$PWD\"\n torch_c_dlpack_ext=\"$tvm_ffi\"/addons/torch_c_dlpack_ext\n \n@@ -54,7 +65,10 @@ function check_availability() {\n         \"2.4\")\n             ! [[ \"$arch\" == \"aarch64\" || \"$python_version\" == \"cp313\" || \"$python_version\" == \"cp314\" ]]\n             ;;\n-        \"2.5\" | \"2.6\")\n+        \"2.5\")\n+            ! [[ (\"$os\" == \"Linux\" && (\"$arch\" == \"aarch64\" || \"$python_version\" == \"cp314\")) || (\"$os\" == \"Darwin\" && (\"$python_version\" == \"cp313\" || \"$python_version\" == \"cp314\")) ]]\n+            ;;\n+        \"2.6\")\n             ! [[ \"$arch\" == \"aarch64\" || \"$python_version\" == \"cp314\" ]]\n             ;;\n         \"2.7\" | \"2.8\")\n@@ -74,15 +88,19 @@ function check_availability() {\n function build_libs() {\n     local torch_version=$1\n     if check_availability \"$torch_version\"; then\n-        mkdir \"$tvm_ffi\"/.venv -p\n         uv venv \"$tvm_ffi\"/.venv/torch\"$torch_version\" --python \"$python_version\"\n         source \"$tvm_ffi\"/.venv/torch\"$torch_version\"/bin/activate\n         uv pip install setuptools ninja\n-        uv pip install torch==\"$torch_version\" --index-url \"$(get_torch_url \"$torch_version\")\"\n+        if [[ \"$os\" == \"Linux\" ]]; then\n+            uv pip install torch==\"$torch_version\" --index-url \"$(get_torch_url \"$torch_version\")\"\n+        else\n+            uv pip install torch==\"$torch_version\"\n+        fi\n         uv pip install -v .\n-        mkdir \"$tvm_ffi\"/lib -p\n         python -m tvm_ffi.utils._build_optional_torch_c_dlpack --output-dir \"$tvm_ffi\"/lib\n-        python -m tvm_ffi.utils._build_optional_torch_c_dlpack --output-dir \"$tvm_ffi\"/lib --build-with-cuda\n+        if [[ \"$os\" == \"Linux\" ]]; then\n+            python -m tvm_ffi.utils._build_optional_torch_c_dlpack --output-dir \"$tvm_ffi\"/lib --build-with-cuda\n+        fi\n         ls \"$tvm_ffi\"/lib\n         deactivate\n         rm -rf \"$tvm_ffi\"/.venv/torch\"$torch_version\"\n@@ -91,6 +109,8 @@ function build_libs() {\n     fi\n }\n \n+mkdir -p \"$tvm_ffi\"/.venv\n+mkdir -p \"$tvm_ffi\"/lib\n torch_versions=(\"2.4\" \"2.5\" \"2.6\" \"2.7\" \"2.8\" \"2.9\")\n for version in \"${torch_versions[@]}\"; do\n     build_libs \"$version\"\n@@ -99,11 +119,17 @@ done\n cp \"$tvm_ffi\"/lib/*.so \"$torch_c_dlpack_ext\"/torch_c_dlpack_ext\n uv venv \"$tvm_ffi\"/.venv/build --python \"$python_version\"\n source \"$tvm_ffi\"/.venv/build/bin/activate\n-uv pip install build wheel auditwheel\n+uv pip install build wheel\n cd \"$torch_c_dlpack_ext\"\n python -m build -w\n ls dist\n-python -m wheel tags dist/*.whl --python-tag=\"$python_version\" --abi-tag=\"$python_version\" --remove\n-ls dist\n-auditwheel repair --exclude libtorch.so --exclude libtorch_cpu.so --exclude libc10.so --exclude libtorch_python.so dist/*.whl -w wheelhouse\n+if [[ \"$os\" == \"Linux\" ]]; then\n+    python -m wheel tags dist/*.whl --python-tag=\"$python_version\" --abi-tag=\"$python_version\" --remove\n+    uv pip install auditwheel\n+    auditwheel repair --exclude libtorch.so --exclude libtorch_cpu.so --exclude libc10.so --exclude libtorch_python.so --exclude libtorch_cuda.so --exclude libc10_cuda.so dist/*.whl -w wheelhouse\n+else\n+    python -m wheel tags dist/*.whl --python-tag=\"$python_version\" --abi-tag=\"$python_version\" --platform-tag=macosx_11_0_arm64 --remove\n+    uv pip install delocate\n+    delocate-wheel -v --ignore-missing-dependencies --exclude libtorch.dylib,libtorch_cpu.dylib,libc10.dylib,libtorch_python.dylib dist/*.whl -w wheelhouse\n+fi\n ls wheelhouse\ndiff --git a/addons/torch_c_dlpack_ext/build_backend.py b/addons/torch_c_dlpack_ext/build_backend.py\nindex 17bc2c4..e4504fa 100644\n--- a/addons/torch_c_dlpack_ext/build_backend.py\n+++ b/addons/torch_c_dlpack_ext/build_backend.py\n@@ -40,8 +40,6 @@ build_editable = orig.build_editable\n def _is_lib_prebuilt() -> bool:\n     if sys.platform.startswith(\"win32\"):\n         extension = \"dll\"\n-    elif sys.platform.startswith(\"darwin\"):\n-        extension = \"dylib\"\n     else:\n         extension = \"so\"\n     return next(_package_path.rglob(f\"*.{extension}\"), None) is not None",
+  "heuristics": {
+    "tags": [
+      "ci"
+    ],
+    "extensions": [
+      ".py",
+      ".sh",
+      ".yml"
+    ],
+    "scopes_guess": [
+      "addons"
+    ]
+  }
+}

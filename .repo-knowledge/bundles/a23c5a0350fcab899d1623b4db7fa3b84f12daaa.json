@@ -1,0 +1,39 @@
+{
+  "sha": "a23c5a0350fcab899d1623b4db7fa3b84f12daaa",
+  "sha7": "a23c5a0",
+  "author_name": "DarkSharpness",
+  "author_email": "76582120+DarkSharpness@users.noreply.github.com",
+  "date_iso": "2025-10-22T05:32:21+08:00",
+  "subject": "[Minor] Fix missing function ref in type traits (#186)",
+  "body":
+      "Before this fix, here's one failure case (modified from `add_one_cuda\nexample, and actually I encounter this error in a similar real-world\ncase.):\n\n```cpp\n// File: compile/add_one_cuda.cu\n#include <tvm/ffi/container/tensor.h>\n#include <tvm/ffi/extra/c_env_api.h>\n#include <tvm/ffi/function.h>\n\nnamespace tvm_ffi_example_cuda {\n\n__global__ void AddOneKernel(float* x, float* y, int n) {\n  int idx = blockIdx.x * blockDim.x + threadIdx.x;\n  if (idx < n) {\n    y[idx] = x[idx] + 1;\n  }\n}\n\nvoid AddOne(tvm::ffi::TensorView x, tvm::ffi::TensorView y) {\n  int64_t n = x.size(0);\n  float* x_data = static_cast<float*>(x.data_ptr());\n  float* y_data = static_cast<float*>(y.data_ptr());\n  int64_t threads = 256;\n  int64_t blocks = (n + threads - 1) / threads;\n  cudaStream_t stream =\n      static_cast<cudaStream_t>(TVMFFIEnvGetStream(x.device().device_type, x.device().device_id));\n  AddOneKernel<<<blocks, threads, 0, stream>>>(x_data, y_data, n);\n}\n\n// this will crash, because extra () will decltype as a reference type\nTVM_FFI_DLL_EXPORT_TYPED_FUNC(add_one_cuda, (tvm_ffi_example_cuda::AddOne));\n\n// this will also crash\nstatic constexpr auto& func = tvm_ffi_example_cuda::AddOne;\nTVM_FFI_DLL_EXPORT_TYPED_FUNC(add_one_cuda_1, func);\n\n}  // namespace tvm_ffi_example_cuda\n\n```",
+  "is_merge": false,
+  "parents": [
+    "53a7fe9f64a96eacdb044b1d7ac1ed1d17f3da70"
+  ],
+  "name_status": [
+    [
+      "M",
+      "include/tvm/ffi/function_details.h"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "include/tvm/ffi/function_details.h",
+      "additions": 2,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/include/tvm/ffi/function_details.h b/include/tvm/ffi/function_details.h\nindex e7766fd..e7db063 100644\n--- a/include/tvm/ffi/function_details.h\n+++ b/include/tvm/ffi/function_details.h\n@@ -113,6 +113,8 @@ template <typename R, typename... Args>\n struct FunctionInfo<R(Args...), void> : FuncFunctorImpl<R, Args...> {};\n template <typename R, typename... Args>\n struct FunctionInfo<R (*)(Args...), void> : FuncFunctorImpl<R, Args...> {};\n+template <typename R, typename... Args>\n+struct FunctionInfo<R (&)(Args...), void> : FuncFunctorImpl<R, Args...> {};\n // Support pointer-to-member functions used in reflection (e.g. &Class::method)\n template <typename Class, typename R, typename... Args>\n struct FunctionInfo<R (Class::*)(Args...), std::enable_if_t<std::is_base_of_v<Object, Class>>>",
+  "heuristics": {
+    "tags": [],
+    "extensions": [
+      ".h"
+    ],
+    "scopes_guess": [
+      "include"
+    ]
+  }
+}

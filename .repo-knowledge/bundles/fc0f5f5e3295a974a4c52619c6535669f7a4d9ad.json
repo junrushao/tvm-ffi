@@ -1,0 +1,133 @@
+{
+  "sha": "fc0f5f5e3295a974a4c52619c6535669f7a4d9ad",
+  "sha7": "fc0f5f5",
+  "author_name": "yifeifang",
+  "author_email": "Deweyfang@gmail.com",
+  "date_iso": "2025-09-20T12:55:23-07:00",
+  "subject": "Add Docker support and C++ CUDA example (#29)",
+  "body":
+      "Introduce a Dockerfile for setting up a development environment with\nimproved GPU support. Include a C++ example demonstrating CUDA\nfunctionality and enhance documentation for quick start and build\ninstructions. Update build scripts to support Ninja for faster builds.",
+  "is_merge": false,
+  "parents": [
+    "4f0b18c8d7536fbf5c51111c2acac84bf7eeaf58"
+  ],
+  "name_status": [
+    [
+      "M",
+      ".pre-commit-config.yaml"
+    ],
+    [
+      "M",
+      "CONTRIBUTING.md"
+    ],
+    [
+      "M",
+      "docs/get_started/quick_start.md"
+    ],
+    [
+      "M",
+      "examples/quick_start/CMakeLists.txt"
+    ],
+    [
+      "M",
+      "examples/quick_start/README.md"
+    ],
+    [
+      "A",
+      "examples/quick_start/requirements.txt"
+    ],
+    [
+      "M",
+      "examples/quick_start/run_example.sh"
+    ],
+    [
+      "A",
+      "examples/quick_start/src/run_example_cuda.cc"
+    ],
+    [
+      "A",
+      "tests/docker/Dockerfile"
+    ],
+    [
+      "M",
+      "tests/lint/check_file_type.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": ".pre-commit-config.yaml",
+      "additions": 4,
+      "deletions": 2
+    },
+    {
+      "path": "CONTRIBUTING.md",
+      "additions": 41,
+      "deletions": 0
+    },
+    {
+      "path": "docs/get_started/quick_start.md",
+      "additions": 14,
+      "deletions": 4
+    },
+    {
+      "path": "examples/quick_start/CMakeLists.txt",
+      "additions": 18,
+      "deletions": 10
+    },
+    {
+      "path": "examples/quick_start/README.md",
+      "additions": 38,
+      "deletions": 5
+    },
+    {
+      "path": "examples/quick_start/requirements.txt",
+      "additions": 3,
+      "deletions": 0
+    },
+    {
+      "path": "examples/quick_start/run_example.sh",
+      "additions": 16,
+      "deletions": 2
+    },
+    {
+      "path": "examples/quick_start/src/run_example_cuda.cc",
+      "additions": 94,
+      "deletions": 0
+    },
+    {
+      "path": "tests/docker/Dockerfile",
+      "additions": 72,
+      "deletions": 0
+    },
+    {
+      "path": "tests/lint/check_file_type.py",
+      "additions": 1,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/.pre-commit-config.yaml b/.pre-commit-config.yaml\nindex 8ea7c4a..8f762dc 100644\n--- a/.pre-commit-config.yaml\n+++ b/.pre-commit-config.yaml\n@@ -27,7 +27,8 @@ repos:\n       - id: check-asf-header\n         name: check ASF Header\n         entry: python tests/lint/check_asf_header.py --check\n-        language: system\n+        language: python\n+        language_version: python3\n         pass_filenames: false\n         verbose: false\n   - repo: local\n@@ -35,7 +36,8 @@ repos:\n       - id: check-file-type\n         name: check file types\n         entry: python tests/lint/check_file_type.py\n-        language: system\n+        language: python\n+        language_version: python3\n         pass_filenames: false\n         verbose: false\n   - repo: https://github.com/pre-commit/pre-commit-hooks\ndiff --git a/CONTRIBUTING.md b/CONTRIBUTING.md\nindex d89796b..e62a1d6 100644\n--- a/CONTRIBUTING.md\n+++ b/CONTRIBUTING.md\n@@ -43,6 +43,47 @@ For significant changes, it's often a good idea to open a GitHub issue first (wi\n It is optional, but can be very helpful as it allows the maintainers and the community to provide feedback and helps ensure your\n work aligns with the project's goals.\n \n+## Development with Docker\n+\n+The repository ships a development container that contains the full toolchain for\n+building the core library, and running examples.\n+\n+```bash\n+# Build the image (from the repository root)\n+docker build -t tvm-ffi-dev -f tests/docker/Dockerfile tests/docker\n+\n+# Start an interactive shell\n+docker run --rm -it \\\n+    -v \"$(pwd)\":/workspace/tvm-ffi \\\n+    -w /workspace/tvm-ffi \\\n+    tvm-ffi-dev bash\n+\n+# Start an interactive shell with GPU access\n+docker run --rm -it --gpus all \\\n+    -v \"$(pwd)\":/workspace/tvm-ffi \\\n+    -w /workspace/tvm-ffi \\\n+    tvm-ffi-dev bash\n+\n+> **Note** Ensure the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html)\n+> is installed on the host to make GPUs available inside the container.\n+```\n+\n+Inside the container you can install the project in editable mode and run the quick\n+start example exactly as described in `examples/quick_start/README.md`:\n+\n+```bash\n+# In /workspace/tvm-ffi/\n+pip install -ve .\n+\n+# Change working directory to sample\n+cd examples/quick_start\n+\n+# Install dependency, Build and run all examples\n+bash run_example.sh\n+```\n+\n+All build artifacts are written to the mounted workspace on the host machine, so you\n+can continue editing files with your local tooling.\n \n ## Stability and Minimalism\n \ndiff --git a/docs/get_started/quick_start.md b/docs/get_started/quick_start.md\nindex 043ea28..b422d10 100644\n--- a/docs/get_started/quick_start.md\n+++ b/docs/get_started/quick_start.md\n@@ -33,6 +33,7 @@ Before starting, ensure you have:\n - TVM FFI installed following [installation](./install.md)\n - C++ compiler with C++17 support\n - CMake 3.18 or later\n+- (Optional) Ninja build system (the quick-start uses Ninja for fast incremental builds)\n - (Optional) CUDA toolkit for GPU examples\n - (Optional) PyTorch for checking torch integrations\n \n@@ -47,8 +48,10 @@ The examples are now in the example folder, you can quickly build\n the example using the following command.\n ```bash\n cd examples/quick_start\n-cmake -B build -S .\n-cmake --build build\n+\n+# with ninja or omit -G Ninja to use default generator\n+cmake --fresh -G Ninja -B build -S .\n+cmake --build build --parallel\n ```\n \n After the build finishes, you can run the python examples by\n@@ -59,7 +62,13 @@ python run_example.py\n You can also run the c++ example\n \n ```\n-./build/example\n+./build/run_example\n+```\n+\n+If the CUDA toolkit is available, the GPU demo binary is built alongside the CPU sample:\n+\n+```\n+./build/run_example_cuda\n ```\n \n ## Walk through the Example\n@@ -74,7 +83,8 @@ examples/quick_start/\n │   ├── add_one_cpu.cc      # CPU implementation\n │   ├── add_one_c.c         # A low-level C based implementation\n │   ├── add_one_cuda.cu     # CUDA implementation\n-│   └── run_example.cc      # C++ usage example\n+│   ├── run_example.cc      # C++ usage example\n+│   └── run_example_cuda.cc # C++ with CUDA kernel usage example\n ├── run_example.py          # Python usage example\n ├── run_example.sh          # Build and run script\n └── CMakeLists.txt          # Build configuration\ndiff --git a/examples/quick_start/CMakeLists.txt b/examples/quick_start/CMakeLists.txt\nindex 0f6ea11..d3cd4b2 100644\n--- a/examples/quick_start/CMakeLists.txt\n+++ b/examples/quick_start/CMakeLists.txt\n@@ -19,17 +19,17 @@ cmake_minimum_required(VERSION 3.18)\n project(tvm_ffi_example)\n \n \n-# first find python related components\n+# Discover the Python interpreter so we can query tvm-ffi for its CMake package path.\n find_package(Python COMPONENTS Interpreter REQUIRED)\n \n-# call tvm_ffi.config to get the cmake directory and set it to tvm_ffi_ROOT\n+# Ask tvm-ffi where it stores its exported CMake files.\n execute_process(\n   COMMAND \"${Python_EXECUTABLE}\" -m tvm_ffi.config --cmakedir\n   OUTPUT_STRIP_TRAILING_WHITESPACE OUTPUT_VARIABLE tvm_ffi_ROOT)\n-# find package will automatically include the related projects\n+# Pull in the tvm-ffi CMake targets so we can link against them below.\n find_package(tvm_ffi CONFIG REQUIRED)\n \n-# use the projects as usual\n+# Build the CPU and C versions of the simple \"add one\" function that the examples call.\n add_library(add_one_cpu SHARED src/add_one_cpu.cc)\n add_library(add_one_c SHARED src/add_one_c.c)\n target_link_libraries(add_one_cpu tvm_ffi_header)\n@@ -47,23 +47,31 @@ set_target_properties(\n   SUFFIX \".so\"\n )\n \n-# Check if CUDA is available\n+# Optionally build the CUDA variant if the CUDA toolkit is present.\n if(NOT WIN32)\n-  find_package(CUDA QUIET)\n-  if(CUDA_FOUND)\n+  find_package(CUDAToolkit QUIET)\n+  if(CUDAToolkit_FOUND)\n     enable_language(CUDA)\n+\n     add_library(add_one_cuda SHARED src/add_one_cuda.cu)\n-    target_link_libraries(add_one_cuda tvm_ffi_shared)\n+    target_link_libraries(add_one_cuda PRIVATE tvm_ffi_shared)\n \n-    # show as add_one_cuda.so\n     set_target_properties(\n       add_one_cuda PROPERTIES\n       PREFIX \"\"\n       SUFFIX \".so\"\n-      )\n+    )\n+\n+    add_executable(run_example_cuda src/run_example_cuda.cc)\n+    set_target_properties(\n+      run_example_cuda PROPERTIES\n+      CXX_STANDARD 17\n+    )\n+    target_link_libraries(run_example_cuda PRIVATE tvm_ffi_shared CUDA::cudart)\n   endif()\n endif()\n \n+# CPU-only C++ driver used in the quick start guide.\n add_executable(run_example src/run_example.cc)\n set_target_properties(\n   run_example PROPERTIES\ndiff --git a/examples/quick_start/README.md b/examples/quick_start/README.md\nindex d4d130e..0e03133 100644\n--- a/examples/quick_start/README.md\n+++ b/examples/quick_start/README.md\n@@ -23,16 +23,46 @@ that can be loaded in different environments.\n The example implements a simple \"add one\" operation that adds 1 to each element\n of an input tensor, showing how to create C++ functions callable from Python.\n \n-You can run this quick start example by:\n+## Prerequisites\n+\n+Before running the quick start, ensure you have:\n+\n+- tvm-ffi installed locally (editable installs are convenient while iterating):\n+- Installation guide: [Installation guide](https://tvm.apache.org/ffi/get_started/install.html)\n \n ```bash\n-# ensure you installed tvm-ffi first\n-pip install -e ../..\n+# From the quick_start directory\n+pip install -ve ../..\n+```\n+\n+## Run the Quick Start\n \n-# Build and run the complete example\n+From `examples/quick_start` you can build and run everything with the helper script:\n+\n+```bash\n ./run_example.sh\n ```\n \n+The script picks an available CMake generator (preferring Ninja), configures a build in `build/`, compiles the C++ libraries and drivers, installs the Python dependencies from `requirements.txt`, and finally runs the Python and C++ demos. If the CUDA toolkit is detected it will also build and execute `run_example_cuda`.\n+\n+If you prefer to drive the build manually, run the following instead:\n+\n+```bash\n+# configure (omit -G Ninja if Ninja is not installed)\n+cmake --fresh -G Ninja -B build -S .\n+\n+# compile the example targets\n+cmake --build build --parallel\n+\n+# install python dependencies for the scripts\n+python -m pip install -r requirements.txt\n+\n+# run the demos\n+python run_example.py\n+./build/run_example\n+./build/run_example_cuda  # optional, requires CUDA toolkit\n+```\n+\n At a high level, the `TVM_FFI_DLL_EXPORT_TYPED_FUNC` macro helps to expose\n a C++ function into the TVM FFI C ABI convention for functions.\n Then the function can be accessed by different environments and languages\n@@ -42,9 +72,12 @@ in Python and C++.\n ## Key Files\n \n - `src/add_one_cpu.cc` - CPU implementation of the add_one function\n+- `src/add_one_c.c` - C implementation showing the C ABI workflow\n - `src/add_one_cuda.cu` - CUDA implementation for GPU operations\n+- `src/run_example.cc` - C++ example showing how to call the functions\n+- `src/run_example_cuda.cc` - C++ example showing how to call the CUDA functions\n - `run_example.py` - Python example showing how to call the functions\n-- `run_example.cc` - C++ example demonstrating the same functionality\n+- `run_example.sh` - Convenience script that builds and runs all examples\n \n ## Compile without CMake\n \ndiff --git a/examples/quick_start/requirements.txt b/examples/quick_start/requirements.txt\nnew file mode 100644\nindex 0000000..597d120\n--- /dev/null\n+++ b/examples/quick_start/requirements.txt\n@@ -0,0 +1,3 @@\n+# Editable Git install with no remote (apache-tvm-ffi==0.1.0b3)\n+numpy==2.2.6\n+PyYAML==5.4.1\ndiff --git a/examples/quick_start/run_example.sh b/examples/quick_start/run_example.sh\nindex 09d8daa..80aa37e 100755\n--- a/examples/quick_start/run_example.sh\n+++ b/examples/quick_start/run_example.sh\n@@ -17,11 +17,25 @@\n # under the License.\n set -ex\n \n-cmake -B build -S .\n-cmake --build build\n+if command -v ninja >/dev/null 2>&1; then\n+\tgenerator=\"Ninja\"\n+else\n+\techo \"Ninja not found, falling back to Unix Makefiles\" >&2\n+\tgenerator=\"Unix Makefiles\"\n+fi\n+\n+cmake --fresh -G \"$generator\" -B build -S .\n+cmake --build build --parallel\n+\n+# install python dependencies\n+python -m pip install -r requirements.txt\n \n # running python example\n python run_example.py\n \n # running c++ example\n ./build/run_example\n+\n+if [ -x ./build/run_example_cuda ]; then\n+\t./build/run_example_cuda\n+fi\ndiff --git a/examples/quick_start/src/run_example_cuda.cc b/examples/quick_start/src/run_example_cuda.cc\nnew file mode 100644\nindex 0000000..1fdd27c\n--- /dev/null\n+++ b/examples/quick_start/src/run_example_cuda.cc\n@@ -0,0 +1,94 @@\n+/*\n+ * Licensed to the Apache Software Foundation (ASF) under one\n+ * or more contributor license agreements.  See the NOTICE file\n+ * distributed with this work for additional information\n+ * regarding copyright ownership.  The ASF licenses this file\n+ * to you under the Apache License, Version 2.0 (the\n+ * \"License\"); you may not use this file except in compliance\n+ * with the License.  You may obtain a copy of the License at\n+ *\n+ *   http://www.apache.org/licenses/LICENSE-2.0\n+ *\n+ * Unless required by applicable law or agreed to in writing,\n+ * software distributed under the License is distributed on an\n+ * \"AS IS\" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY\n+ * KIND, either express or implied.  See the License for the\n+ * specific language governing permissions and limitations\n+ * under the License.\n+ */\n+\n+#include <cuda_runtime.h>\n+#include <tvm/ffi/container/tensor.h>\n+#include <tvm/ffi/error.h>\n+#include <tvm/ffi/extra/module.h>\n+\n+#include <iostream>\n+#include <vector>\n+\n+namespace ffi = tvm::ffi;\n+\n+// This example mirrors run_example.cc but keeps all data on the GPU by allocating\n+// CUDA tensors, invoking the add_one_cuda FFI function, and copying the result back\n+// to host memory so users can inspect the output.\n+struct CUDANDAlloc {\n+  void AllocData(DLTensor* tensor) {\n+    size_t data_size = ffi::GetDataSize(*tensor);\n+    void* ptr = nullptr;\n+    cudaError_t err = cudaMalloc(&ptr, data_size);\n+    TVM_FFI_ICHECK_EQ(err, cudaSuccess) << \"cudaMalloc failed: \" << cudaGetErrorString(err);\n+    tensor->data = ptr;\n+  }\n+\n+  void FreeData(DLTensor* tensor) {\n+    if (tensor->data != nullptr) {\n+      cudaError_t err = cudaFree(tensor->data);\n+      TVM_FFI_ICHECK_EQ(err, cudaSuccess) << \"cudaFree failed: \" << cudaGetErrorString(err);\n+      tensor->data = nullptr;\n+    }\n+  }\n+};\n+\n+inline ffi::Tensor Empty(ffi::Shape shape, DLDataType dtype, DLDevice device) {\n+  return ffi::Tensor::FromNDAlloc(CUDANDAlloc(), shape, dtype, device);\n+}\n+\n+int main() {\n+  // Load the CUDA implementation that run_example.cu exports during the CMake build.\n+  ffi::Module mod = ffi::Module::LoadFromFile(\"build/add_one_cuda.so\");\n+\n+  DLDataType f32_dtype{kDLFloat, 32, 1};\n+  DLDevice cuda_device{kDLCUDA, 0};\n+\n+  constexpr int ARRAY_SIZE = 5;\n+\n+  ffi::Tensor x = Empty({ARRAY_SIZE}, f32_dtype, cuda_device);\n+  ffi::Tensor y = Empty({ARRAY_SIZE}, f32_dtype, cuda_device);\n+\n+  std::vector<float> host_x(ARRAY_SIZE);\n+  for (int i = 0; i < ARRAY_SIZE; ++i) {\n+    host_x[i] = static_cast<float>(i);\n+  }\n+\n+  size_t nbytes = host_x.size() * sizeof(float);\n+  cudaError_t err = cudaMemcpy(x->data, host_x.data(), nbytes, cudaMemcpyHostToDevice);\n+  TVM_FFI_ICHECK_EQ(err, cudaSuccess)\n+      << \"cudaMemcpy host to device failed: \" << cudaGetErrorString(err);\n+\n+  // Call into the FFI function; tensors remain on device because they carry a\n+  // kDLCUDA device tag.\n+  ffi::Function add_one_cuda = mod->GetFunction(\"add_one_cuda\").value();\n+  add_one_cuda(x, y);\n+\n+  std::vector<float> host_y(host_x.size());\n+  err = cudaMemcpy(host_y.data(), y->data, nbytes, cudaMemcpyDeviceToHost);\n+  TVM_FFI_ICHECK_EQ(err, cudaSuccess)\n+      << \"cudaMemcpy device to host failed: \" << cudaGetErrorString(err);\n+\n+  std::cout << \"y after add_one_cuda(x, y)\" << std::endl;\n+  for (float value : host_y) {\n+    std::cout << value << \" \";\n+  }\n+  std::cout << std::endl;\n+\n+  return 0;\n+}\ndiff --git a/tests/docker/Dockerfile b/tests/docker/Dockerfile\nnew file mode 100644\nindex 0000000..1fd6e66\n--- /dev/null\n+++ b/tests/docker/Dockerfile\n@@ -0,0 +1,72 @@\n+# Licensed to the Apache Software Foundation (ASF) under one\n+# or more contributor license agreements.  See the NOTICE file\n+# distributed with this work for additional information\n+# regarding copyright ownership.  The ASF licenses this file\n+# to you under the Apache License, Version 2.0 (the\n+# \"License\"); you may not use this file except in compliance\n+# with the License.  You may obtain a copy of the License at\n+#\n+#   http://www.apache.org/licenses/LICENSE-2.0\n+#\n+# Unless required by applicable law or agreed to in writing,\n+# software distributed under the License is distributed on an\n+# \"AS IS\" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY\n+# KIND, either express or implied.  See the License for the\n+# specific language governing permissions and limitations\n+# under the License.\n+\n+# Using NVIDIA CUDA base image https://hub.docker.com/r/nvidia/cuda\n+# Based on your host CUDA driver version, you may need to select an older CUDA base image.\n+# See https://gitlab.com/nvidia/container-images/cuda/blob/master/doc/supported-tags.md\n+FROM nvidia/cuda:12.6.3-devel-ubuntu22.04\n+\n+ARG DEBIAN_FRONTEND=noninteractive\n+\n+# Install prerequisites for external repositories\n+RUN apt-get update \\\n+    && apt-get install -y --no-install-recommends \\\n+        ca-certificates \\\n+        curl \\\n+        gnupg \\\n+        wget \\\n+        lsb-release \\\n+    && rm -rf /var/lib/apt/lists/*\n+\n+# Add Kitware APT repository for CMake >= 3.24\n+RUN wget -O /tmp/kitware-archive.sh https://apt.kitware.com/kitware-archive.sh \\\n+    && bash /tmp/kitware-archive.sh \\\n+    && rm -f /tmp/kitware-archive.sh\n+\n+# Install build essentials, Git, and Python >= 3.9\n+RUN apt-get update \\\n+    && apt-get install -y --no-install-recommends \\\n+        build-essential \\\n+        clang \\\n+        clang-format \\\n+        clang-tidy \\\n+        cmake \\\n+        doxygen \\\n+        git \\\n+        graphviz \\\n+        ninja-build \\\n+        pandoc \\\n+        pkg-config \\\n+        python-is-python3 \\\n+        python3 \\\n+        python3-dev \\\n+        python3-pip \\\n+        python3-setuptools \\\n+        python3-venv \\\n+        python3-wheel \\\n+        unzip \\\n+        zip \\\n+    && rm -rf /var/lib/apt/lists/*\n+\n+# Provide a working directory for the project\n+WORKDIR /workspace\n+\n+# Optionally clone a repository during build with --build-arg REPO_URL=...\n+ARG REPO_URL\n+RUN if [ -n \"${REPO_URL}\" ]; then git clone \"${REPO_URL}\" repo; fi\n+\n+CMD [\"/bin/bash\"]\ndiff --git a/tests/lint/check_file_type.py b/tests/lint/check_file_type.py\nindex e9fb40f..9d08f9a 100644\n--- a/tests/lint/check_file_type.py\n+++ b/tests/lint/check_file_type.py\n@@ -110,6 +110,7 @@ ALLOW_FILE_NAME = {\n     \".clang-format\",\n     \".gitmodules\",\n     \"CODEOWNERSHIP\",\n+    \"Dockerfile\",\n }\n \n # List of specific files allowed in relpath to <proj_root>",
+  "heuristics": {
+    "tags": [
+      "build",
+      "test"
+    ],
+    "extensions": [
+      "",
+      ".cc",
+      ".md",
+      ".py",
+      ".sh",
+      ".txt",
+      ".yaml"
+    ],
+    "scopes_guess": [
+      ".pre-commit-config.yaml",
+      "CONTRIBUTING.md",
+      "docs",
+      "examples",
+      "tests"
+    ]
+  }
+}

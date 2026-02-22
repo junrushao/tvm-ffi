@@ -1,0 +1,74 @@
+{
+  "sha": "7358796ec49a9e28d32d18020357bbbab5ec24e1",
+  "sha7": "7358796",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-08-26T01:32:14-04:00",
+  "subject": "[FFI] Misc fixup for windows (#18234)",
+  "body": "This PR cleans up the ffi module to make it compatible for windows.",
+  "is_merge": false,
+  "parents": [
+    "2cf211f14a41a11c536fd16b6ea102dac3627c0a"
+  ],
+  "name_status": [
+    [
+      "M",
+      "cmake/Utils/AddGoogleTest.cmake"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/container/tuple.h"
+    ],
+    [
+      "M",
+      "src/ffi/extra/json_parser.cc"
+    ],
+    [
+      "M",
+      "tests/cpp/CMakeLists.txt"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "cmake/Utils/AddGoogleTest.cmake",
+      "additions": 1,
+      "deletions": 4
+    },
+    {
+      "path": "include/tvm/ffi/container/tuple.h",
+      "additions": 4,
+      "deletions": 5
+    },
+    {
+      "path": "src/ffi/extra/json_parser.cc",
+      "additions": 3,
+      "deletions": 3
+    },
+    {
+      "path": "tests/cpp/CMakeLists.txt",
+      "additions": 3,
+      "deletions": 2
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/cmake/Utils/AddGoogleTest.cmake b/cmake/Utils/AddGoogleTest.cmake\nindex 85e21ce..af84175 100644\n--- a/cmake/Utils/AddGoogleTest.cmake\n+++ b/cmake/Utils/AddGoogleTest.cmake\n@@ -26,10 +26,7 @@ FetchContent_Declare(\n )\n FetchContent_GetProperties(googletest)\n if (NOT googletest_POPULATED)\n-  FetchContent_Populate(googletest)\n-  message(STATUS \"Found googletest_SOURCE_DIR - ${googletest_SOURCE_DIR}\")\n-  message(STATUS \"Found googletest_BINARY_DIR - ${googletest_BINARY_DIR}\")\n-  add_subdirectory(${googletest_SOURCE_DIR} ${googletest_BINARY_DIR})\n+  FetchContent_MakeAvailable(googletest)\n   include(GoogleTest)\n   set_target_properties(gtest      PROPERTIES EXPORT_COMPILE_COMMANDS OFF EXCLUDE_FROM_ALL ON FOLDER 3rdparty)\n   set_target_properties(gtest_main PROPERTIES EXPORT_COMPILE_COMMANDS OFF EXCLUDE_FROM_ALL ON FOLDER 3rdparty)\ndiff --git a/include/tvm/ffi/container/tuple.h b/include/tvm/ffi/container/tuple.h\nindex 332f78a..be7e63f 100644\n--- a/include/tvm/ffi/container/tuple.h\n+++ b/include/tvm/ffi/container/tuple.h\n@@ -56,11 +56,10 @@ class Tuple : public ObjectRef {\n             typename = std::enable_if_t<(details::type_contains_v<Types, UTypes> && ...), int>>\n   Tuple(Tuple<UTypes...>&& other) : ObjectRef(std::move(other)) {}\n \n-  template <typename... UTypes,\n-            typename = std::enable_if_t<sizeof...(Types) == sizeof...(UTypes) &&\n-                                        !(sizeof...(Types) == 1 &&\n-                                          (std::is_same_v<std::remove_cv_t<UTypes>, Tuple<Types>> &&\n-                                           ...))>>\n+  template <typename... UTypes, typename = std::enable_if_t<\n+                                    sizeof...(Types) == sizeof...(UTypes) &&\n+                                    !(sizeof...(Types) == 1 &&\n+                                      (std::is_same_v<std::decay_t<UTypes>, Tuple<Types>> && ...))>>\n   explicit Tuple(UTypes&&... args) : ObjectRef(MakeTupleNode(std::forward<UTypes>(args)...)) {}\n \n   TVM_FFI_INLINE Tuple& operator=(const Tuple<Types...>& other) {\ndiff --git a/src/ffi/extra/json_parser.cc b/src/ffi/extra/json_parser.cc\nindex 8bd3726..c346e0d 100644\n--- a/src/ffi/extra/json_parser.cc\n+++ b/src/ffi/extra/json_parser.cc\n@@ -385,9 +385,9 @@ class JSONParserContext {\n             // W2 = 110111xxxxxxxxxx      // 0xDC00 + xxxxxxxxxx\n             //\n             // Range of W1 and W2:\n-            // 0xD800–0xDBFF for W1\n-            // 0xDC00–0xDFFF for W2\n-            // both W1 and W2 fit into 0xD800–0xDFFF\n+            // 0xD800 - 0xDBFF for W1\n+            // 0xDC00 - 0xDFFF for W2\n+            // both W1 and W2 fit into 0xD800 - 0xDFFF\n             // Detect if the first i16 fit into range of W1/W2\n             if (first_i16 >= 0xD800 && first_i16 <= 0xDFFF) {\n               // we are in the surrogate pair range\ndiff --git a/tests/cpp/CMakeLists.txt b/tests/cpp/CMakeLists.txt\nindex 37bfc67..c807fad 100644\n--- a/tests/cpp/CMakeLists.txt\n+++ b/tests/cpp/CMakeLists.txt\n@@ -10,16 +10,17 @@ add_executable(\n   EXCLUDE_FROM_ALL\n   ${_test_sources}\n )\n+\n set_target_properties(\n   tvm_ffi_tests PROPERTIES\n   CXX_STANDARD 17\n   CXX_STANDARD_REQUIRED ON\n   CXX_EXTENSIONS OFF\n-  MSVC_RUNTIME_LIBRARY \"MultiThreaded$<$<CONFIG:Debug>:Debug>\"\n   ARCHIVE_OUTPUT_DIRECTORY \"${CMAKE_BINARY_DIR}/lib\"\n   LIBRARY_OUTPUT_DIRECTORY \"${CMAKE_BINARY_DIR}/lib\"\n-  RUNTIME_OUTPUT_DIRECTORY \"${CMAKE_BINARY_DIR}/bin\"\n+  RUNTIME_OUTPUT_DIRECTORY \"${CMAKE_BINARY_DIR}/lib\"\n )\n+\n tvm_ffi_add_cxx_warning(tvm_ffi_tests)\n add_sanitizer_address(tvm_ffi_tests)\n tvm_ffi_add_apple_dsymutil(tvm_ffi_tests)",
+  "heuristics": {
+    "tags": [
+      "build",
+      "test"
+    ],
+    "extensions": [
+      ".cc",
+      ".cmake",
+      ".h",
+      ".txt"
+    ],
+    "scopes_guess": [
+      "cmake",
+      "include",
+      "src",
+      "tests"
+    ]
+  }
+}

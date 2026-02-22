@@ -1,0 +1,52 @@
+{
+  "sha": "7cd2e500f5f17079ac6bdf7bf4f79681c885714a",
+  "sha7": "7cd2e50",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-11-18T10:37:52-05:00",
+  "subject": "[chore] Hide symbols by default for extension build (#278)",
+  "body":
+      "This PR hides the symbols by default for extension build. not strictly\nnecessary good to avoid potential symbol conflict",
+  "is_merge": false,
+  "parents": [
+    "74f53c5710220285ce5f25ad7a09dcfdd683c72f"
+  ],
+  "name_status": [
+    [
+      "M",
+      "addons/torch_c_dlpack_ext/pyproject.toml"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/utils/_build_optional_torch_c_dlpack.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "addons/torch_c_dlpack_ext/pyproject.toml",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "python/tvm_ffi/utils/_build_optional_torch_c_dlpack.py",
+      "additions": 1,
+      "deletions": 1
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/addons/torch_c_dlpack_ext/pyproject.toml b/addons/torch_c_dlpack_ext/pyproject.toml\nindex 3b160b8..14a5996 100644\n--- a/addons/torch_c_dlpack_ext/pyproject.toml\n+++ b/addons/torch_c_dlpack_ext/pyproject.toml\n@@ -17,7 +17,7 @@\n \n [project]\n name = \"torch_c_dlpack_ext\"\n-version = \"0.1.2\"\n+version = \"0.1.3\"\n requires-python = \">=3.9\"\n description = \"torch c dlpack ext\"\n dependencies = [\"torch\"]\ndiff --git a/python/tvm_ffi/utils/_build_optional_torch_c_dlpack.py b/python/tvm_ffi/utils/_build_optional_torch_c_dlpack.py\nindex b18c40a..81762ef 100644\n--- a/python/tvm_ffi/utils/_build_optional_torch_c_dlpack.py\n+++ b/python/tvm_ffi/utils/_build_optional_torch_c_dlpack.py\n@@ -599,7 +599,7 @@ def _run_build_on_linux_like(\n     \"\"\"Build the module directly by invoking compiler commands (non-Windows only).\"\"\"\n     from tvm_ffi.libinfo import find_dlpack_include_path  # noqa: PLC0415\n \n-    default_cflags = [\"-std=c++17\", \"-fPIC\", \"-O3\"]\n+    default_cflags = [\"-std=c++17\", \"-fPIC\", \"-O3\", \"-fvisibility=hidden\"]\n     # Platform-specific linker flags\n     if IS_DARWIN:\n         # macOS uses @loader_path instead of $ORIGIN",
+  "heuristics": {
+    "tags": [
+      "build"
+    ],
+    "extensions": [
+      ".py",
+      ".toml"
+    ],
+    "scopes_guess": [
+      "addons",
+      "python"
+    ]
+  }
+}

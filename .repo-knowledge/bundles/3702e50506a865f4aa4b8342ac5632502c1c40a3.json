@@ -1,0 +1,38 @@
+{
+  "sha": "3702e50506a865f4aa4b8342ac5632502c1c40a3",
+  "sha7": "3702e50",
+  "author_name": "wrongtest",
+  "author_email": "wrongtest0@gmail.com",
+  "date_iso": "2025-08-31T21:58:26+08:00",
+  "subject": "[FFI] fix two seemingly migration issue (#18258)",
+  "body": "",
+  "is_merge": false,
+  "parents": [
+    "4523a834e6d7331870230873365a895ce94da050"
+  ],
+  "name_status": [
+    [
+      "M",
+      "python/tvm_ffi/cython/function.pxi"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "python/tvm_ffi/cython/function.pxi",
+      "additions": 1,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/python/tvm_ffi/cython/function.pxi b/python/tvm_ffi/cython/function.pxi\nindex 00a0bb3..a223da9 100644\n--- a/python/tvm_ffi/cython/function.pxi\n+++ b/python/tvm_ffi/cython/function.pxi\n@@ -186,6 +186,7 @@ cdef inline int make_args(tuple py_args, TVMFFIAny* out, list temp_args,\n             temp_args.append(tstr)\n         elif arg is None:\n             out[i].type_index = kTVMFFINone\n+            out[i].v_int64 = 0\n         elif isinstance(arg, Real):\n             out[i].type_index = kTVMFFIFloat\n             out[i].v_float64 = arg",
+  "heuristics": {
+    "tags": [],
+    "extensions": [
+      ".pxi"
+    ],
+    "scopes_guess": [
+      "python"
+    ]
+  }
+}

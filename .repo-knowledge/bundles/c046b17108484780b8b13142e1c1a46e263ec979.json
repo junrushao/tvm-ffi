@@ -1,0 +1,52 @@
+{
+  "sha": "c046b17108484780b8b13142e1c1a46e263ec979",
+  "sha7": "c046b17",
+  "author_name": "Junru Shao",
+  "author_email": "junrushao@apache.org",
+  "date_iso": "2025-10-07T16:02:21-07:00",
+  "subject": "fix: Use `tvm_ffi.dtype` instead of `DataType` in schema (#93)",
+  "body":
+      "`tvm_ffi.core.DataType` is an internal data structure attached to\n`tvm_ffi.dtype`, and `tvm_ffi.dtype` should always be the preferable way\ninterfacing in Python.",
+  "is_merge": false,
+  "parents": [
+    "0d8fec88eca5acaeaa7e771003d183c31711574a"
+  ],
+  "name_status": [
+    [
+      "M",
+      "python/tvm_ffi/cython/type_info.pxi"
+    ],
+    [
+      "M",
+      "tests/python/test_metadata.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "python/tvm_ffi/cython/type_info.pxi",
+      "additions": 1,
+      "deletions": 0
+    },
+    {
+      "path": "tests/python/test_metadata.py",
+      "additions": 2,
+      "deletions": 2
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/python/tvm_ffi/cython/type_info.pxi b/python/tvm_ffi/cython/type_info.pxi\nindex 4abfa4a..f48299c 100644\n--- a/python/tvm_ffi/cython/type_info.pxi\n+++ b/python/tvm_ffi/cython/type_info.pxi\n@@ -82,6 +82,7 @@ _TYPE_SCHEMA_ORIGIN_CONVERTER = {\n     \"const char*\": \"str\",\n     \"ffi.SmallStr\": \"str\",\n     \"ffi.String\": \"str\",\n+    \"DataType\": \"dtype\",\n }\n \n \ndiff --git a/tests/python/test_metadata.py b/tests/python/test_metadata.py\nindex 9f69bcc..fe19822 100644\n--- a/tests/python/test_metadata.py\n+++ b/tests/python/test_metadata.py\n@@ -29,7 +29,7 @@ from tvm_ffi.testing import _SchemaAllTypes\n         (\"testing.schema_id_float\", \"Callable[[float], float]\"),\n         (\"testing.schema_id_bool\", \"Callable[[bool], bool]\"),\n         (\"testing.schema_id_device\", \"Callable[[Device], Device]\"),\n-        (\"testing.schema_id_dtype\", \"Callable[[DataType], DataType]\"),\n+        (\"testing.schema_id_dtype\", \"Callable[[dtype], dtype]\"),\n         (\"testing.schema_id_string\", \"Callable[[str], str]\"),\n         (\"testing.schema_id_bytes\", \"Callable[[bytes], bytes]\"),\n         (\"testing.schema_id_func\", \"Callable[[Callable[..., Any]], Callable[..., Any]]\"),\n@@ -76,7 +76,7 @@ def test_schema_global_func(func_name: str, expected: str) -> None:\n         (\"v_int\", \"int\"),\n         (\"v_float\", \"float\"),\n         (\"v_device\", \"Device\"),\n-        (\"v_dtype\", \"DataType\"),\n+        (\"v_dtype\", \"dtype\"),\n         (\"v_string\", \"str\"),\n         (\"v_bytes\", \"bytes\"),\n         (\"v_opt_int\", \"int | None\"),",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".pxi",
+      ".py"
+    ],
+    "scopes_guess": [
+      "python",
+      "tests"
+    ]
+  }
+}

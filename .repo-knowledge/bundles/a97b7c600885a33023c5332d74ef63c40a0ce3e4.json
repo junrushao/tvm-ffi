@@ -1,0 +1,51 @@
+{
+  "sha": "a97b7c600885a33023c5332d74ef63c40a0ce3e4",
+  "sha7": "a97b7c6",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-10-15T11:37:29-04:00",
+  "subject": "[TEST] Fix the tensor loading order in test (#128)",
+  "body":
+      "If we load a module within a local scope,\nthat object's deleter resides in the loaded library. if the module is\nunloaded before the object is destroyed, the deleter may call an invalid\naddress. Keep the module loaded until all returned objects are deleted.\n\nThis PR fixes the testcase that have the related issues",
+  "is_merge": false,
+  "parents": [
+    "df04392b44a90f6641a7afb51638b324c8fb67ec"
+  ],
+  "name_status": [
+    [
+      "M",
+      "python/tvm_ffi/module.py"
+    ],
+    [
+      "M",
+      "tests/python/test_load_inline.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "python/tvm_ffi/module.py",
+      "additions": 27,
+      "deletions": 0
+    },
+    {
+      "path": "tests/python/test_load_inline.py",
+      "additions": 23,
+      "deletions": 9
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/python/tvm_ffi/module.py b/python/tvm_ffi/module.py\nindex ff05f93..659a641 100644\n--- a/python/tvm_ffi/module.py\n+++ b/python/tvm_ffi/module.py\n@@ -54,6 +54,33 @@ class Module(core.Object):\n     --------\n     :py:func:`tvm_ffi.load_module`\n \n+    Notes\n+    -----\n+    If you load a module within a local scope, be careful when any called function\n+    creates and returns an object. The memory deallocation routines are part of\n+    the library's code. If the module is unloaded before the object is destroyed,\n+    the deleter may call an invalid address. Keep the module loaded until all returned\n+    objects are deleted. You can safely use returned objects inside a nested function\n+    that finishes before the module goes out of scope. When possible, consider keeping\n+    the module alive in a long-lived/global scope (for example, in a global state) to\n+    avoid premature unloading.\n+\n+    .. code-block:: python\n+\n+        def bad_pattern(x):\n+            # Bad: unload order of `tensor` and `mod` is not guaranteed\n+            mod = tvm_ffi.load_module(\"path/to/library.so\")\n+            # ... do something with the tensor\n+            tensor = mod.func_create_and_return_tensor(x)\n+\n+        def good_pattern(x):\n+            # Good: `tensor` is freed before `mod` goes out of scope\n+            mod = tvm_ffi.load_module(\"path/to/library.so\")\n+            def run_some_tests():\n+                tensor = mod.func_create_and_return_tensor(x)\n+                # ... do something with the tensor\n+            run_some_tests()\n+\n     \"\"\"\n \n     # tvm-ffi-stubgen(begin): object/ffi.Module\ndiff --git a/tests/python/test_load_inline.py b/tests/python/test_load_inline.py\nindex 299e4c8..5b3e18d 100644\n--- a/tests/python/test_load_inline.py\n+++ b/tests/python/test_load_inline.py\n@@ -243,7 +243,14 @@ def test_load_inline_with_env_tensor_allocator() -> None:\n         \"\"\",\n         functions=[\"return_add_one\"],\n     )\n-    if torch is not None:\n+    assert torch is not None\n+\n+    def run_check() -> None:\n+        \"\"\"Must run in a separate function to ensure deletion happens before mod unloads.\n+\n+        When a module returns an object, the object deleter address is part of the\n+        loaded library. We need to keep the module loaded until the object is deleted.\n+        \"\"\"\n         x_cpu = torch.asarray([1, 2, 3, 4, 5], dtype=torch.float32, device=\"cpu\")\n         # test support for nested container passing\n         y_cpu = mod.return_add_one({\"x\": [x_cpu]})\n@@ -252,6 +259,8 @@ def test_load_inline_with_env_tensor_allocator() -> None:\n         assert y_cpu.dtype == torch.float32\n         torch.testing.assert_close(x_cpu + 1, y_cpu)\n \n+    run_check()\n+\n \n @pytest.mark.skipif(\n     torch is None or not torch.cuda.is_available(), reason=\"Requires torch and CUDA\"\n@@ -341,11 +350,16 @@ def test_cuda_memory_alloc_noleak() -> None:\n         \"\"\",\n         functions=[\"return_tensor\"],\n     )\n-    x = torch.arange(1024 * 1024, dtype=torch.float32, device=\"cuda\")\n-    current_allocated = torch.cuda.memory_allocated()\n-    repeat = 8\n-    for i in range(repeat):\n-        mod.return_tensor(x)\n-        diff = torch.cuda.memory_allocated() - current_allocated\n-        # memory should not grow as we loop over\n-        assert diff <= 1024**2 * 8\n+\n+    def run_check() -> None:\n+        \"\"\"Must run in a separate function to ensure deletion happens before mod unloads.\"\"\"\n+        x = torch.arange(1024 * 1024, dtype=torch.float32, device=\"cuda\")\n+        current_allocated = torch.cuda.memory_allocated()\n+        repeat = 8\n+        for i in range(repeat):\n+            mod.return_tensor(x)\n+            diff = torch.cuda.memory_allocated() - current_allocated\n+            # memory should not grow as we loop over\n+            assert diff <= 1024**2 * 8\n+\n+    run_check()",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".py"
+    ],
+    "scopes_guess": [
+      "python",
+      "tests"
+    ]
+  }
+}

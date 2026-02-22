@@ -1,0 +1,61 @@
+{
+  "sha": "262ca30aad858d818b919d5e670e80b7a57b89e4",
+  "sha7": "262ca30",
+  "author_name": "Junru Shao",
+  "author_email": "junrushao@apache.org",
+  "date_iso": "2025-12-12T11:22:40-08:00",
+  "subject": "chore(lint): Fix clang-tidy warnings (#340)",
+  "body": "",
+  "is_merge": false,
+  "parents": [
+    "8888eb4b254486fb1fb5baad7e9f24bc1cfac63a"
+  ],
+  "name_status": [
+    [
+      "M",
+      "include/tvm/ffi/container/tensor.h"
+    ],
+    [
+      "M",
+      "src/ffi/tensor.cc"
+    ],
+    [
+      "M",
+      "tests/cpp/test_tensor.cc"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "include/tvm/ffi/container/tensor.h",
+      "additions": 2,
+      "deletions": 2
+    },
+    {
+      "path": "src/ffi/tensor.cc",
+      "additions": 3,
+      "deletions": 2
+    },
+    {
+      "path": "tests/cpp/test_tensor.cc",
+      "additions": 6,
+      "deletions": 2
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/include/tvm/ffi/container/tensor.h b/include/tvm/ffi/container/tensor.h\nindex 6d7e637..857bd6b 100644\n--- a/include/tvm/ffi/container/tensor.h\n+++ b/include/tvm/ffi/container/tensor.h\n@@ -189,7 +189,7 @@ class TensorObjFromNDAlloc : public TensorObj {\n   template <typename... ExtraArgs>\n   TensorObjFromNDAlloc(TNDAlloc alloc, ffi::ShapeView shape, DLDataType dtype, DLDevice device,\n                        ExtraArgs&&... extra_args)\n-      : alloc_(alloc) {\n+      : alloc_(std::move(alloc)) {\n     this->device = device;\n     this->ndim = static_cast<int>(shape.size());\n     this->dtype = dtype;\n@@ -205,7 +205,7 @@ class TensorObjFromNDAlloc : public TensorObj {\n \n   template <typename... ExtraArgs>\n   TensorObjFromNDAlloc(TNDAlloc alloc, const DLTensor& prototype, ExtraArgs&&... extra_args)\n-      : alloc_(alloc) {\n+      : alloc_(std::move(alloc)) {\n     *static_cast<DLTensor*>(this) = prototype;\n     this->shape = reinterpret_cast<int64_t*>(reinterpret_cast<char*>(this) + sizeof(Self));\n     this->strides = this->shape + prototype.ndim;\ndiff --git a/src/ffi/tensor.cc b/src/ffi/tensor.cc\nindex 2033690..0a1563e 100644\n--- a/src/ffi/tensor.cc\n+++ b/src/ffi/tensor.cc\n@@ -56,7 +56,8 @@ int TVMFFITensorCreateUnsafeView(TVMFFIObjectHandle source, const DLTensor* prot\n \n   class ViewNDAlloc {\n    public:\n-    ViewNDAlloc(tvm::ffi::ObjectPtr<tvm::ffi::TensorObj> tensor) : tensor_(tensor) {}\n+    explicit ViewNDAlloc(tvm::ffi::ObjectPtr<tvm::ffi::TensorObj> tensor)\n+        : tensor_(std::move(tensor)) {}\n     void AllocData(DLTensor* tensor, void* data_ptr) { tensor->data = data_ptr; }\n     void FreeData(DLTensor* tensor) {}\n \n@@ -65,7 +66,7 @@ int TVMFFITensorCreateUnsafeView(TVMFFIObjectHandle source, const DLTensor* prot\n   };\n \n   void* source_data_ptr = prototype->data;\n-  size_t num_extra_i64_at_tail = prototype->ndim * 2;\n+  size_t num_extra_i64_at_tail = static_cast<size_t>(prototype->ndim) * 2;\n   ViewNDAlloc alloc(source_tensor);\n   tvm::ffi::Tensor ret_tensor(\n       tvm::ffi::make_inplace_array_object<tvm::ffi::details::TensorObjFromNDAlloc<ViewNDAlloc>,\ndiff --git a/tests/cpp/test_tensor.cc b/tests/cpp/test_tensor.cc\nindex ac3dbdb..b5c82bc 100644\n--- a/tests/cpp/test_tensor.cc\n+++ b/tests/cpp/test_tensor.cc\n@@ -213,7 +213,9 @@ TEST(Tensor, TensorViewAsStrided) {\n \n   // Fill with sequential values: [0, 1, 2, 3, 4, 5]\n   float* data = reinterpret_cast<float*>(tensor.data_ptr());\n-  for (int64_t i = 0; i < tensor.numel(); ++i) {\n+  size_t element_capacity = GetDataSize(tensor) / sizeof(float);\n+  ASSERT_EQ(element_capacity, static_cast<size_t>(tensor.numel()));\n+  for (size_t i = 0; i < element_capacity; ++i) {\n     data[i] = static_cast<float>(i);\n   }\n \n@@ -292,7 +294,9 @@ TEST(Tensor, AsStrided) {\n \n   // Fill with sequential values: [0, 1, 2, 3, 4, 5]\n   float* data = reinterpret_cast<float*>(tensor.data_ptr());\n-  for (int64_t i = 0; i < tensor.numel(); ++i) {\n+  size_t element_capacity = GetDataSize(tensor) / sizeof(float);\n+  ASSERT_EQ(element_capacity, static_cast<size_t>(tensor.numel()));\n+  for (size_t i = 0; i < element_capacity; ++i) {\n     data[i] = static_cast<float>(i);\n   }\n ",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".cc",
+      ".h"
+    ],
+    "scopes_guess": [
+      "include",
+      "src",
+      "tests"
+    ]
+  }
+}

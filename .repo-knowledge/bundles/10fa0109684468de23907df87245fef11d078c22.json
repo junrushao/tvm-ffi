@@ -1,0 +1,51 @@
+{
+  "sha": "10fa0109684468de23907df87245fef11d078c22",
+  "sha7": "10fa010",
+  "author_name": "Junru Shao",
+  "author_email": "junrushao@apache.org",
+  "date_iso": "2025-10-17T03:52:39-07:00",
+  "subject": "chore(release): Re-enable Python 3.8 Wheel on macOS (#162)",
+  "body": "",
+  "is_merge": false,
+  "parents": [
+    "39d675d5f9674345c040aae99b3b3a67b3f270a2"
+  ],
+  "name_status": [
+    [
+      "M",
+      ".github/workflows/publish_wheel.yml"
+    ],
+    [
+      "M",
+      "pyproject.toml"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": ".github/workflows/publish_wheel.yml",
+      "additions": 11,
+      "deletions": 2
+    },
+    {
+      "path": "pyproject.toml",
+      "additions": 1,
+      "deletions": 1
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/.github/workflows/publish_wheel.yml b/.github/workflows/publish_wheel.yml\nindex ffd77fd..6c6ea86 100644\n--- a/.github/workflows/publish_wheel.yml\n+++ b/.github/workflows/publish_wheel.yml\n@@ -41,7 +41,16 @@ jobs:\n           - {os: macos-14, arch: arm64, linux_image: \"\"}\n \n     steps:\n-      - uses: astral-sh/setup-uv@v4\n+      # Special handling for macOS arm64 + python 3.8.\n+      # Install Python 3.8 from `actions/setup-python`, which is an arm64 build;\n+      # N.B. Don't use `astral-sh/setup-uv` here as it provides an x86_64 build instead.\n+      # See also: https://cibuildwheel.pypa.io/en/stable/faq/#macos-building-cpython-38-wheels-on-arm64\n+      - uses: actions/setup-python@v5\n+        with:\n+          python-version: 3.8\n+        if: runner.os == 'macOS' && runner.arch == 'ARM64'\n+      - uses: astral-sh/setup-uv@b75a909f75acd358c2196fb9a5f1299a9a8868a4\n+        if: matrix.os != 'macOS' || matrix.arch != 'arm64'\n \n       - uses: actions/checkout@v4\n         with:\n@@ -93,7 +102,7 @@ jobs:\n           ref: ${{ github.event_name == 'workflow_dispatch' && inputs.branch || github.ref }}\n           submodules: recursive\n \n-      - uses: astral-sh/setup-uv@v4\n+      - uses: astral-sh/setup-uv@b75a909f75acd358c2196fb9a5f1299a9a8868a4  # v6.7.0\n \n       - name: Build sdist\n         run: pipx run build --sdist --outdir dist .\ndiff --git a/pyproject.toml b/pyproject.toml\nindex 8e215fb..013566b 100644\n--- a/pyproject.toml\n+++ b/pyproject.toml\n@@ -226,7 +226,7 @@ build-verbosity = 1\n # will be abi3 and can be used in future versions\n # ship 314t threaded nogil version\n build = [\"cp38-*\", \"cp39-*\", \"cp310-*\", \"cp311-*\", \"cp312-*\", \"cp314t-*\"]\n-skip = [\"*musllinux*\", \"cp38-macosx_*\"]\n+skip = [\"*musllinux*\"]\n # we only need to test on cp312\n test-skip = [\"cp38-*\", \"cp39-*\", \"cp310-*\", \"cp311-*\"]\n # focus on testing abi3 wheel",
+  "heuristics": {
+    "tags": [
+      "build",
+      "ci"
+    ],
+    "extensions": [
+      ".toml",
+      ".yml"
+    ],
+    "scopes_guess": [
+      "pyproject.toml"
+    ]
+  }
+}

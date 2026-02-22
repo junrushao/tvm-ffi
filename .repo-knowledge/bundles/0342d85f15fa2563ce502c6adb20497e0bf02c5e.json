@@ -1,0 +1,51 @@
+{
+  "sha": "0342d85f15fa2563ce502c6adb20497e0bf02c5e",
+  "sha7": "0342d85",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-07-31T14:48:10-04:00",
+  "subject": "[FFI] Fix SmallMapInit with duplicated keys (#18178)",
+  "body": "This PR fixes Small map init when there are duplicated keys",
+  "is_merge": false,
+  "parents": [
+    "3fc0391e29dac100ad37db45348090438e1db739"
+  ],
+  "name_status": [
+    [
+      "M",
+      "include/tvm/ffi/container/map.h"
+    ],
+    [
+      "M",
+      "tests/cpp/test_map.cc"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "include/tvm/ffi/container/map.h",
+      "additions": 20,
+      "deletions": 10
+    },
+    {
+      "path": "tests/cpp/test_map.cc",
+      "additions": 7,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/include/tvm/ffi/container/map.h b/include/tvm/ffi/container/map.h\nindex fc94ab1..7892e20 100644\n--- a/include/tvm/ffi/container/map.h\n+++ b/include/tvm/ffi/container/map.h\n@@ -1264,17 +1264,27 @@ inline ObjectPtr<Object> MapObj::CreateFromRange(IterType first, IterType last)\n   }\n   uint64_t cap = static_cast<uint64_t>(_cap);\n   if (cap < SmallMapObj::kMaxSize) {\n-    return SmallMapObj::CreateFromRange(cap, first, last);\n-  }\n-  uint32_t fib_shift;\n-  uint64_t n_slots;\n-  DenseMapObj::CalcTableSize(cap, &fib_shift, &n_slots);\n-  ObjectPtr<Object> obj = DenseMapObj::Empty(fib_shift, n_slots);\n-  for (; first != last; ++first) {\n-    KVType kv(*first);\n-    DenseMapObj::InsertMaybeReHash(std::move(kv), &obj);\n+    if (cap < 2) {\n+      return SmallMapObj::CreateFromRange(cap, first, last);\n+    }\n+    // need to insert to avoid duplicate keys\n+    ObjectPtr<Object> obj = SmallMapObj::Empty(cap);\n+    for (; first != last; ++first) {\n+      KVType kv(*first);\n+      SmallMapObj::InsertMaybeReHash(std::move(kv), &obj);\n+    }\n+    return obj;\n+  } else {\n+    uint32_t fib_shift;\n+    uint64_t n_slots;\n+    DenseMapObj::CalcTableSize(cap, &fib_shift, &n_slots);\n+    ObjectPtr<Object> obj = DenseMapObj::Empty(fib_shift, n_slots);\n+    for (; first != last; ++first) {\n+      KVType kv(*first);\n+      DenseMapObj::InsertMaybeReHash(std::move(kv), &obj);\n+    }\n+    return obj;\n   }\n-  return obj;\n }\n \n inline void MapObj::InsertMaybeReHash(KVType&& kv, ObjectPtr<Object>* map) {\ndiff --git a/tests/cpp/test_map.cc b/tests/cpp/test_map.cc\nindex b7c977f..98d8427 100644\n--- a/tests/cpp/test_map.cc\n+++ b/tests/cpp/test_map.cc\n@@ -356,4 +356,11 @@ TEST(Map, EmptyIter) {\n   // now m0 is dense map with all empty slots\n   EXPECT_EQ(m0.begin(), m0.end());\n }\n+\n+TEST(Map, DuplicatedKeysInit) {\n+  std::vector<std::pair<String, int>> data = {{\"a\", 1}, {\"a\", 2}, {\"a\", 3}};\n+  Map<String, int> map(data.begin(), data.end());\n+  EXPECT_EQ(map.size(), 1);\n+  EXPECT_EQ(map[\"a\"], 3);\n+}\n }  // namespace",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".cc",
+      ".h"
+    ],
+    "scopes_guess": [
+      "include",
+      "tests"
+    ]
+  }
+}

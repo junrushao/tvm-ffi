@@ -1,0 +1,40 @@
+{
+  "sha": "f9b5e7ddeef75d32f042901b25a3f5b40c1c383e",
+  "sha7": "f9b5e7d",
+  "author_name": "Yaxing Cai",
+  "author_email": "caiyaxing666@gmail.com",
+  "date_iso": "2026-01-12T01:25:22+08:00",
+  "subject": "[ADDONS] Update torch-c-dlpack-ext to 0.1.5 (#398)",
+  "body": "New release as LICENSE and NOTICE added",
+  "is_merge": false,
+  "parents": [
+    "f1736924f80fe12b79752e1b0713dbb843eb01e6"
+  ],
+  "name_status": [
+    [
+      "M",
+      "addons/torch_c_dlpack_ext/pyproject.toml"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "addons/torch_c_dlpack_ext/pyproject.toml",
+      "additions": 1,
+      "deletions": 1
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/addons/torch_c_dlpack_ext/pyproject.toml b/addons/torch_c_dlpack_ext/pyproject.toml\nindex d9fc049..4eb7d58 100644\n--- a/addons/torch_c_dlpack_ext/pyproject.toml\n+++ b/addons/torch_c_dlpack_ext/pyproject.toml\n@@ -17,7 +17,7 @@\n \n [project]\n name = \"torch_c_dlpack_ext\"\n-version = \"0.1.4\"\n+version = \"0.1.5\"\n requires-python = \">=3.9\"\n description = \"torch c dlpack ext\"\n dependencies = [\"torch\"]",
+  "heuristics": {
+    "tags": [
+      "build"
+    ],
+    "extensions": [
+      ".toml"
+    ],
+    "scopes_guess": [
+      "addons"
+    ]
+  }
+}

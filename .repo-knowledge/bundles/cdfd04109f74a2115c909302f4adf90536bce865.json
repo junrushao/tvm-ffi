@@ -1,0 +1,56 @@
+{
+  "sha": "cdfd04109f74a2115c909302f4adf90536bce865",
+  "sha7": "cdfd041",
+  "author_name": "Yaxing Cai",
+  "author_email": "caiyaxing666@gmail.com",
+  "date_iso": "2025-11-25T19:19:53-08:00",
+  "subject": "Add cuda DeviceGuard (#287)",
+  "body": "This PR adds the `DeviceGuard`, as `c10::cuda::CUDAGuard` in pytorch",
+  "is_merge": false,
+  "parents": [
+    "d49effdb22392363050e1f2d85cd4b31bf242cf0"
+  ],
+  "name_status": [
+    [
+      "A",
+      "include/tvm/ffi/extra/cuda/base.h"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/extra/cuda/cubin_launcher.h"
+    ],
+    [
+      "A",
+      "include/tvm/ffi/extra/cuda/device_guard.h"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "include/tvm/ffi/extra/cuda/base.h",
+      "additions": 54,
+      "deletions": 0
+    },
+    {
+      "path": "include/tvm/ffi/extra/cuda/cubin_launcher.h",
+      "additions": 4,
+      "deletions": 22
+    },
+    {
+      "path": "include/tvm/ffi/extra/cuda/device_guard.h",
+      "additions": 74,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/include/tvm/ffi/extra/cuda/base.h b/include/tvm/ffi/extra/cuda/base.h\nnew file mode 100644\nindex 0000000..810fa06\n--- /dev/null\n+++ b/include/tvm/ffi/extra/cuda/base.h\n@@ -0,0 +1,54 @@\n+/*\n+ * Licensed to the Apache Software Foundation (ASF) under one\n+ * or more contributor license agreements.  See the NOTICE file\n+ * distributed with this work for additional information\n+ * regarding copyright ownership.  The ASF licenses this file\n+ * to you under the Apache License, Version 2.0 (the\n+ * \"License\"); you may not use this file except in compliance\n+ * with the License.  You may obtain a copy of the License at\n+ *\n+ *   http://www.apache.org/licenses/LICENSE-2.0\n+ *\n+ * Unless required by applicable law or agreed to in writing,\n+ * software distributed under the License is distributed on an\n+ * \"AS IS\" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY\n+ * KIND, either express or implied.  See the License for the\n+ * specific language governing permissions and limitations\n+ * under the License.\n+ */\n+/*!\n+ * \\file tvm/ffi/extra/cuda/base.h\n+ * \\brief CUDA base utilities.\n+ */\n+#ifndef TVM_FFI_EXTRA_CUDA_BASE_H_\n+#define TVM_FFI_EXTRA_CUDA_BASE_H_\n+\n+#include <cuda_runtime.h>\n+#include <tvm/ffi/error.h>\n+\n+namespace tvm {\n+namespace ffi {\n+\n+/*!\n+ * \\brief Macro for checking CUDA runtime API errors.\n+ *\n+ * This macro checks the return value of CUDA runtime API calls and throws\n+ * a RuntimeError with detailed error information if the call fails.\n+ *\n+ * \\param stmt The CUDA runtime API call to check.\n+ */\n+#define TVM_FFI_CHECK_CUDA_ERROR(stmt)                                              \\\n+  do {                                                                              \\\n+    cudaError_t __err = (stmt);                                                     \\\n+    if (__err != cudaSuccess) {                                                     \\\n+      const char* __err_name = cudaGetErrorName(__err);                             \\\n+      const char* __err_str = cudaGetErrorString(__err);                            \\\n+      TVM_FFI_THROW(RuntimeError) << \"CUDA Runtime Error: \" << __err_name << \" (\"   \\\n+                                  << static_cast<int>(__err) << \"): \" << __err_str; \\\n+    }                                                                               \\\n+  } while (0)\n+\n+}  // namespace ffi\n+}  // namespace tvm\n+\n+#endif  // TVM_FFI_EXTRA_CUDA_BASE_H_\ndiff --git a/include/tvm/ffi/extra/cuda/cubin_launcher.h b/include/tvm/ffi/extra/cuda/cubin_launcher.h\nindex f0cc924..72eadd2 100644\n--- a/include/tvm/ffi/extra/cuda/cubin_launcher.h\n+++ b/include/tvm/ffi/extra/cuda/cubin_launcher.h\n@@ -26,12 +26,13 @@\n  * - Multi-GPU execution using CUDA primary contexts\n  * - Kernel parameter management and launch configuration\n  */\n-#ifndef TVM_FFI_EXTRA_CUBIN_LAUNCHER_H_\n-#define TVM_FFI_EXTRA_CUBIN_LAUNCHER_H_\n+#ifndef TVM_FFI_EXTRA_CUDA_CUBIN_LAUNCHER_H_\n+#define TVM_FFI_EXTRA_CUDA_CUBIN_LAUNCHER_H_\n \n #include <cuda_runtime.h>\n #include <tvm/ffi/error.h>\n #include <tvm/ffi/extra/c_env_api.h>\n+#include <tvm/ffi/extra/cuda/base.h>\n #include <tvm/ffi/string.h>\n \n #include <cstdint>\n@@ -40,25 +41,6 @@\n namespace tvm {\n namespace ffi {\n \n-/*!\n- * \\brief Macro for checking CUDA runtime API errors.\n- *\n- * This macro checks the return value of CUDA runtime API calls and throws\n- * a RuntimeError with detailed error information if the call fails.\n- *\n- * \\param stmt The CUDA runtime API call to check.\n- */\n-#define TVM_FFI_CHECK_CUDA_ERROR(stmt)                                              \\\n-  do {                                                                              \\\n-    cudaError_t __err = (stmt);                                                     \\\n-    if (__err != cudaSuccess) {                                                     \\\n-      const char* __err_name = cudaGetErrorName(__err);                             \\\n-      const char* __err_str = cudaGetErrorString(__err);                            \\\n-      TVM_FFI_THROW(RuntimeError) << \"CUDA Runtime Error: \" << __err_name << \" (\"   \\\n-                                  << static_cast<int>(__err) << \"): \" << __err_str; \\\n-    }                                                                               \\\n-  } while (0)\n-\n /*!\n  * \\brief A simple 3D dimension type for CUDA kernel launch configuration.\n  *\n@@ -619,4 +601,4 @@ inline CubinKernel CubinModule::operator[](const char* name) { return GetKernel(\n }  // namespace ffi\n }  // namespace tvm\n \n-#endif  // TVM_FFI_EXTRA_CUBIN_LAUNCHER_H_\n+#endif  // TVM_FFI_EXTRA_CUDA_CUBIN_LAUNCHER_H_\ndiff --git a/include/tvm/ffi/extra/cuda/device_guard.h b/include/tvm/ffi/extra/cuda/device_guard.h\nnew file mode 100644\nindex 0000000..083580f\n--- /dev/null\n+++ b/include/tvm/ffi/extra/cuda/device_guard.h\n@@ -0,0 +1,74 @@\n+/*\n+ * Licensed to the Apache Software Foundation (ASF) under one\n+ * or more contributor license agreements.  See the NOTICE file\n+ * distributed with this work for additional information\n+ * regarding copyright ownership.  The ASF licenses this file\n+ * to you under the Apache License, Version 2.0 (the\n+ * \"License\"); you may not use this file except in compliance\n+ * with the License.  You may obtain a copy of the License at\n+ *\n+ *   http://www.apache.org/licenses/LICENSE-2.0\n+ *\n+ * Unless required by applicable law or agreed to in writing,\n+ * software distributed under the License is distributed on an\n+ * \"AS IS\" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY\n+ * KIND, either express or implied.  See the License for the\n+ * specific language governing permissions and limitations\n+ * under the License.\n+ */\n+/*!\n+ * \\file tvm/ffi/extra/cuda/device_guard.h\n+ * \\brief Device guard structs.\n+ */\n+#ifndef TVM_FFI_EXTRA_CUDA_DEVICE_GUARD_H_\n+#define TVM_FFI_EXTRA_CUDA_DEVICE_GUARD_H_\n+\n+#include <tvm/ffi/extra/cuda/base.h>\n+\n+namespace tvm {\n+namespace ffi {\n+\n+/*!\n+ * \\brief CUDA Device Guard. On construction, it calls `cudaGetDevice` to set the CUDA device to\n+ * target index, and stores the original current device index. And on destruction, it sets the\n+ * current CUDA device back to original device index.\n+ *\n+ * Example usage:\n+ * \\code\n+ * void kernel(ffi::TensorView x) {\n+ *   ffi::CUDADeviceGuard guard(x.device().device_id);\n+ *   ...\n+ * }\n+ * \\endcode\n+ */\n+struct CUDADeviceGuard {\n+  CUDADeviceGuard() = delete;\n+  /*!\n+   * \\brief Constructor from a device index, and store the original device index.\n+   * \\param device_index The device index to guard.\n+   */\n+  explicit CUDADeviceGuard(int device_index) {\n+    target_device_index_ = device_index;\n+    TVM_FFI_CHECK_CUDA_ERROR(cudaGetDevice(&original_device_index_));\n+    if (target_device_index_ != original_device_index_) {\n+      TVM_FFI_CHECK_CUDA_ERROR(cudaSetDevice(device_index));\n+    }\n+  }\n+\n+  /*!\n+   * \\brief Destructor to set the current device index back to original one if different.\n+   */\n+  ~CUDADeviceGuard() noexcept(false) {\n+    if (original_device_index_ != target_device_index_) {\n+      TVM_FFI_CHECK_CUDA_ERROR(cudaSetDevice(original_device_index_));\n+    }\n+  }\n+\n+ private:\n+  int original_device_index_;\n+  int target_device_index_;\n+};\n+\n+}  // namespace ffi\n+}  // namespace tvm\n+#endif  // TVM_FFI_EXTRA_CUDA_DEVICE_GUARD_H_",
+  "heuristics": {
+    "tags": [],
+    "extensions": [
+      ".h"
+    ],
+    "scopes_guess": [
+      "include"
+    ]
+  }
+}

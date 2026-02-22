@@ -1,0 +1,197 @@
+{
+  "sha": "1ec623678adea0ddba482d8d56d4ab2be440e694",
+  "sha7": "1ec6236",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-10-01T16:03:57-04:00",
+  "subject": "[FEAT] Introduce TensorView for non-owning view (#81)",
+  "body":
+      "When exposing an FFI function, sometimes it is not always possible to\npass in an owning reference of a Tensor, in such case, it is better to\ninterface with the Tensor using non-owning view.\n\nThis PR adds a ffi::TensorView class to represent in-memory non-owning\nDLTensor view. It can be converted from DLTensorPtr* in the ffi argument\nbut cannot be promoted to an owning Tensor.\n\nWe recommend kernel ops to make use of TensorView when possible so the\nexposed ops can support broad range of inputs including non-owning ones.",
+  "is_merge": false,
+  "parents": [
+    "09477ce10de566f8cf511cce7dfe56e77759f100"
+  ],
+  "name_status": [
+    [
+      "M",
+      "docs/get_started/quick_start.md"
+    ],
+    [
+      "M",
+      "docs/guides/packaging.md"
+    ],
+    [
+      "M",
+      "docs/guides/python_guide.md"
+    ],
+    [
+      "M",
+      "examples/inline_module/main.py"
+    ],
+    [
+      "M",
+      "examples/packaging/src/extension.cc"
+    ],
+    [
+      "M",
+      "examples/quick_start/run_example.py"
+    ],
+    [
+      "M",
+      "examples/quick_start/src/add_one_cpu.cc"
+    ],
+    [
+      "M",
+      "examples/quick_start/src/add_one_cuda.cu"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/container/tensor.h"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/object.h"
+    ],
+    [
+      "M",
+      "pyproject.toml"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/__init__.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/cpp/load_inline.py"
+    ],
+    [
+      "M",
+      "rust/tvm-ffi/scripts/generate_example_lib.py"
+    ],
+    [
+      "M",
+      "tests/cpp/test_tensor.cc"
+    ],
+    [
+      "M",
+      "tests/python/test_build_inline.py"
+    ],
+    [
+      "M",
+      "tests/python/test_load_inline.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "docs/get_started/quick_start.md",
+      "additions": 3,
+      "deletions": 3
+    },
+    {
+      "path": "docs/guides/packaging.md",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "docs/guides/python_guide.md",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "examples/inline_module/main.py",
+      "additions": 3,
+      "deletions": 3
+    },
+    {
+      "path": "examples/packaging/src/extension.cc",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "examples/quick_start/run_example.py",
+      "additions": 2,
+      "deletions": 2
+    },
+    {
+      "path": "examples/quick_start/src/add_one_cpu.cc",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "examples/quick_start/src/add_one_cuda.cu",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "include/tvm/ffi/container/tensor.h",
+      "additions": 159,
+      "deletions": 0
+    },
+    {
+      "path": "include/tvm/ffi/object.h",
+      "additions": 2,
+      "deletions": 0
+    },
+    {
+      "path": "pyproject.toml",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "python/tvm_ffi/__init__.py",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "python/tvm_ffi/cpp/load_inline.py",
+      "additions": 2,
+      "deletions": 2
+    },
+    {
+      "path": "rust/tvm-ffi/scripts/generate_example_lib.py",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "tests/cpp/test_tensor.cc",
+      "additions": 24,
+      "deletions": 0
+    },
+    {
+      "path": "tests/python/test_build_inline.py",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "tests/python/test_load_inline.py",
+      "additions": 9,
+      "deletions": 9
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/docs/get_started/quick_start.md b/docs/get_started/quick_start.md\nindex 9a4ae3d..2ad8a41 100644\n--- a/docs/get_started/quick_start.md\n+++ b/docs/get_started/quick_start.md\n@@ -103,7 +103,7 @@ namespace tvm_ffi_example {\n \n namespace ffi = tvm::ffi;\n \n-void AddOne(ffi::Tensor x, ffi::Tensor y) {\n+void AddOne(ffi::TensorView x, ffi::TensorView y) {\n   // Validate inputs\n   TVM_FFI_ICHECK(x->ndim == 1) << \"x must be a 1D tensor\";\n   DLDataType f32_dtype{kDLFloat, 32, 1};\n@@ -131,7 +131,7 @@ TVM_FFI_DLL_EXPORT_TYPED_FUNC(add_one_cpu, tvm_ffi_example::AddOne);\n ### CUDA Implementation\n \n ```cpp\n-void AddOneCUDA(ffi::Tensor x, ffi::Tensor y) {\n+void AddOneCUDA(ffi::TensorView x, ffi::TensorView y) {\n   // Validation (same as CPU version)\n   // ...\n \n@@ -216,7 +216,7 @@ shows how to run the example exported function in C++.\n \n namespace ffi = tvm::ffi;\n \n-void CallAddOne(ffi::Tensor x, ffi::Tensor y) {\n+void CallAddOne(ffi::TensorView x, ffi::TensorView y) {\n   ffi::Module mod = ffi::Module::LoadFromFile(\"build/add_one_cpu.so\");\n   ffi::Function add_one_cpu = mod->GetFunction(\"add_one_cpu\").value();\n   add_one_cpu(x, y);\ndiff --git a/docs/guides/packaging.md b/docs/guides/packaging.md\nindex a50f413..2a82e0a 100644\n--- a/docs/guides/packaging.md\n+++ b/docs/guides/packaging.md\n@@ -149,7 +149,7 @@ which can later be accessed via `tvm_ffi.load_module`.\n Here's a basic example of the function implementation:\n \n ```c++\n-void AddOne(ffi::Tensor x, ffi::Tensor y) {\n+void AddOne(ffi::TensorView x, ffi::TensorView y) {\n   // ... implementation omitted ...\n }\n \ndiff --git a/docs/guides/python_guide.md b/docs/guides/python_guide.md\nindex de2adfa..7b977e7 100644\n--- a/docs/guides/python_guide.md\n+++ b/docs/guides/python_guide.md\n@@ -151,7 +151,7 @@ import tvm_ffi.cpp\n \n # define the cpp source code\n cpp_source = '''\n-     void add_one_cpu(tvm::ffi::Tensor x, tvm::ffi::Tensor y) {\n+     void add_one_cpu(tvm::ffi::TensorView x, tvm::ffi::TensorView y) {\n        // implementation of a library function\n        TVM_FFI_ICHECK(x->ndim == 1) << \"x must be a 1D tensor\";\n        DLDataType f32_dtype{kDLFloat, 32, 1};\ndiff --git a/examples/inline_module/main.py b/examples/inline_module/main.py\nindex 7231132..d0ba6fe 100644\n--- a/examples/inline_module/main.py\n+++ b/examples/inline_module/main.py\n@@ -26,7 +26,7 @@ def main() -> None:\n     mod: Module = tvm_ffi.cpp.load_inline(\n         name=\"hello\",\n         cpp_sources=r\"\"\"\n-            void add_one_cpu(tvm::ffi::Tensor x, tvm::ffi::Tensor y) {\n+            void add_one_cpu(tvm::ffi::TensorView x, tvm::ffi::TensorView y) {\n               // implementation of a library function\n               TVM_FFI_ICHECK(x->ndim == 1) << \"x must be a 1D tensor\";\n               DLDataType f32_dtype{kDLFloat, 32, 1};\n@@ -39,7 +39,7 @@ def main() -> None:\n               }\n             }\n \n-            void add_one_cuda(tvm::ffi::Tensor x, tvm::ffi::Tensor y);\n+            void add_one_cuda(tvm::ffi::TensorView x, tvm::ffi::TensorView y);\n         \"\"\",\n         cuda_sources=r\"\"\"\n             __global__ void AddOneKernel(float* x, float* y, int n) {\n@@ -49,7 +49,7 @@ def main() -> None:\n               }\n             }\n \n-            void add_one_cuda(tvm::ffi::Tensor x, tvm::ffi::Tensor y) {\n+            void add_one_cuda(tvm::ffi::TensorView x, tvm::ffi::TensorView y) {\n               // implementation of a library function\n               TVM_FFI_ICHECK(x->ndim == 1) << \"x must be a 1D tensor\";\n               DLDataType f32_dtype{kDLFloat, 32, 1};\ndiff --git a/examples/packaging/src/extension.cc b/examples/packaging/src/extension.cc\nindex 6a7324f..c99bd07 100644\n--- a/examples/packaging/src/extension.cc\n+++ b/examples/packaging/src/extension.cc\n@@ -44,7 +44,7 @@ namespace ffi = tvm::ffi;\n  */\n void RaiseError(ffi::String msg) { TVM_FFI_THROW(RuntimeError) << msg; }\n \n-void AddOne(ffi::Tensor x, ffi::Tensor y) {\n+void AddOne(ffi::TensorView x, ffi::TensorView y) {\n   // implementation of a library function\n   TVM_FFI_ICHECK(x->ndim == 1) << \"x must be a 1D tensor\";\n   DLDataType f32_dtype{kDLFloat, 32, 1};\ndiff --git a/examples/quick_start/run_example.py b/examples/quick_start/run_example.py\nindex 2e2b7f3..65c188d 100644\n--- a/examples/quick_start/run_example.py\n+++ b/examples/quick_start/run_example.py\n@@ -28,7 +28,7 @@ def run_add_one_cpu() -> None:\n     x = numpy.array([1, 2, 3, 4, 5], dtype=numpy.float32)\n     y = numpy.empty_like(x)\n     # tvm-ffi automatically handles DLPack compatible tensors\n-    # torch tensors can be viewed as ffi::Tensor or DLTensor*\n+    # torch tensors can be viewed as ffi::TensorView\n     # in the background\n     mod.add_one_cpu(x, y)\n     print(\"numpy.result after add_one(x, y)\")\n@@ -37,7 +37,7 @@ def run_add_one_cpu() -> None:\n     x = torch.tensor([1, 2, 3, 4, 5], dtype=torch.float32)\n     y = torch.empty_like(x)\n     # tvm-ffi automatically handles DLPack compatible tensors\n-    # torch tensors can be viewed as ffi::Tensor or DLTensor*\n+    # torch tensors can be viewed as ffi::TensorView\n     # in the background\n     mod.add_one_cpu(x, y)\n     print(\"torch.result after add_one(x, y)\")\ndiff --git a/examples/quick_start/src/add_one_cpu.cc b/examples/quick_start/src/add_one_cpu.cc\nindex 76b9b37..886af13 100644\n--- a/examples/quick_start/src/add_one_cpu.cc\n+++ b/examples/quick_start/src/add_one_cpu.cc\n@@ -23,7 +23,7 @@\n \n namespace tvm_ffi_example {\n \n-void AddOne(tvm::ffi::Tensor x, tvm::ffi::Tensor y) {\n+void AddOne(tvm::ffi::TensorView x, tvm::ffi::TensorView y) {\n   // implementation of a library function\n   TVM_FFI_ICHECK(x->ndim == 1) << \"x must be a 1D tensor\";\n   DLDataType f32_dtype{kDLFloat, 32, 1};\ndiff --git a/examples/quick_start/src/add_one_cuda.cu b/examples/quick_start/src/add_one_cuda.cu\nindex 52f1e74..b15f807 100644\n--- a/examples/quick_start/src/add_one_cuda.cu\n+++ b/examples/quick_start/src/add_one_cuda.cu\n@@ -31,7 +31,7 @@ __global__ void AddOneKernel(float* x, float* y, int n) {\n   }\n }\n \n-void AddOneCUDA(tvm::ffi::Tensor x, tvm::ffi::Tensor y) {\n+void AddOneCUDA(tvm::ffi::TensorView x, tvm::ffi::TensorView y) {\n   // implementation of a library function\n   TVM_FFI_ICHECK(x->ndim == 1) << \"x must be a 1D tensor\";\n   DLDataType f32_dtype{kDLFloat, 32, 1};\ndiff --git a/include/tvm/ffi/container/tensor.h b/include/tvm/ffi/container/tensor.h\nindex 675de51..5197d4e 100644\n--- a/include/tvm/ffi/container/tensor.h\n+++ b/include/tvm/ffi/container/tensor.h\n@@ -458,6 +458,165 @@ class Tensor : public ObjectRef {\n   TensorObj* get_mutable() const { return const_cast<TensorObj*>(get()); }\n };\n \n+/*!\n+ * \\brief A non-owning view of a Tensor.\n+ *\n+ * This class stores a light-weight non-owning view of a Tensor.\n+ * This is useful for accessing tensor data without retaining a strong reference to the Tensor.\n+ * Since the caller may not always be able to pass in a strong referenced tensor.\n+ *\n+ * It is the user's responsibility to ensure\n+ * that the underlying tensor data outlives the `TensorView`.\n+ * This responsibility extends to all data pointed to by the underlying DLTensor.\n+ * This includes not only the tensor elements in data but also the memory for shape and strides.\n+ *\n+ * When exposing a function that expects only expects a TensorView, we recommend using\n+ * ffi::TensorView as the argument type instead of ffi::Tensor.\n+ */\n+class TensorView {\n+ public:\n+  /*!\n+   * \\brief Create a TensorView from a Tensor.\n+   * \\param tensor The input Tensor.\n+   */\n+  TensorView(const Tensor& tensor) {  // NOLINT(*)\n+    TVM_FFI_ICHECK(tensor.defined());\n+    tensor_ = *tensor.operator->();\n+  }  // NOLINT(*)\n+  /*!\n+   * \\brief Create a TensorView from a DLTensor.\n+   * \\param tensor The input DLTensor.\n+   */\n+  TensorView(const DLTensor* tensor) {  // NOLINT(*)\n+    TVM_FFI_ICHECK(tensor != nullptr);\n+    tensor_ = *tensor;\n+  }\n+  /*!\n+   * \\brief Copy constructor.\n+   * \\param tensor The input TensorView.\n+   */\n+  TensorView(const TensorView& tensor) = default;\n+  /*!\n+   * \\brief Move constructor.\n+   * \\param tensor The input TensorView.\n+   */\n+  TensorView(TensorView&& tensor) = default;\n+  /*!\n+   * \\brief Copy assignment operator.\n+   * \\param tensor The input TensorView.\n+   * \\return The created TensorView.\n+   */\n+  TensorView& operator=(const TensorView& tensor) = default;\n+  /*!\n+   * \\brief Move assignment operator.\n+   * \\param tensor The input TensorView.\n+   * \\return The created TensorView.\n+   */\n+  TensorView& operator=(TensorView&& tensor) = default;\n+  /*!\n+   * \\brief Assignment operator from a Tensor.\n+   * \\param tensor The input Tensor.\n+   * \\return The created TensorView.\n+   */\n+  TensorView& operator=(const Tensor& tensor) {\n+    TVM_FFI_ICHECK(tensor.defined());\n+    tensor_ = *tensor.operator->();\n+    return *this;\n+  }\n+\n+  // explicitly delete move constructor\n+  TensorView(Tensor&& tensor) = delete;  // NOLINT(*)\n+  // delete move assignment operator from owned tensor\n+  TensorView& operator=(Tensor&& tensor) = delete;\n+  /*!\n+   * \\brief Get the underlying DLTensor pointer.\n+   * \\return The underlying DLTensor pointer.\n+   */\n+  const DLTensor* operator->() const { return &tensor_; }\n+\n+  /*!\n+   * \\brief Get the shape of the Tensor.\n+   * \\return The shape of the Tensor.\n+   */\n+  ShapeView shape() const { return ShapeView(tensor_.shape, tensor_.ndim); }\n+\n+  /*!\n+   * \\brief Get the strides of the Tensor.\n+   * \\return The strides of the Tensor.\n+   */\n+  ShapeView strides() const {\n+    TVM_FFI_ICHECK(tensor_.strides != nullptr);\n+    return ShapeView(tensor_.strides, tensor_.ndim);\n+  }\n+\n+  /*!\n+   * \\brief Get the data pointer of the Tensor.\n+   * \\return The data pointer of the Tensor.\n+   */\n+  void* data_ptr() const { return tensor_.data; }\n+\n+  /*!\n+   * \\brief Get the number of dimensions in the Tensor.\n+   * \\return The number of dimensions in the Tensor.\n+   */\n+  int32_t ndim() const { return tensor_.ndim; }\n+\n+  /*!\n+   * \\brief Get the number of elements in the Tensor.\n+   * \\return The number of elements in the Tensor.\n+   */\n+  int64_t numel() const { return this->shape().Product(); }\n+\n+  /*!\n+   * \\brief Get the data type of the Tensor.\n+   * \\return The data type of the Tensor.\n+   */\n+  DLDataType dtype() const { return tensor_.dtype; }\n+\n+  /*!\n+   * \\brief Check if the Tensor is contiguous.\n+   * \\return True if the Tensor is contiguous, false otherwise.\n+   */\n+  bool IsContiguous() const { return tvm::ffi::IsContiguous(tensor_); }\n+\n+ private:\n+  DLTensor tensor_;\n+};\n+\n+// TensorView type, allow implicit casting from DLTensor*\n+// NOTE: we deliberately do not support MoveToAny and MoveFromAny since it does not retain ownership\n+template <>\n+struct TypeTraits<TensorView> : public TypeTraitsBase {\n+  static constexpr bool storage_enabled = false;\n+  static constexpr int32_t field_static_type_index = TypeIndex::kTVMFFIDLTensorPtr;\n+\n+  TVM_FFI_INLINE static void CopyToAnyView(const TensorView& src, TVMFFIAny* result) {\n+    result->type_index = TypeIndex::kTVMFFIDLTensorPtr;\n+    result->zero_padding = 0;\n+    TVM_FFI_CLEAR_PTR_PADDING_IN_FFI_ANY(result);\n+    result->v_ptr = const_cast<DLTensor*>(src.operator->());\n+  }\n+\n+  TVM_FFI_INLINE static bool CheckAnyStrict(const TVMFFIAny* src) {\n+    return src->type_index == TypeIndex::kTVMFFIDLTensorPtr;\n+  }\n+\n+  TVM_FFI_INLINE static TensorView CopyFromAnyViewAfterCheck(const TVMFFIAny* src) {\n+    return TensorView(static_cast<DLTensor*>(src->v_ptr));\n+  }\n+\n+  TVM_FFI_INLINE static std::optional<TensorView> TryCastFromAnyView(const TVMFFIAny* src) {\n+    if (src->type_index == TypeIndex::kTVMFFIDLTensorPtr) {\n+      return TensorView(static_cast<DLTensor*>(src->v_ptr));\n+    } else if (src->type_index == TypeIndex::kTVMFFITensor) {\n+      return TensorView(TVMFFITensorGetDLTensorPtr(src->v_obj));\n+    }\n+    return std::nullopt;\n+  }\n+\n+  TVM_FFI_INLINE static std::string TypeStr() { return StaticTypeKey::kTVMFFIDLTensorPtr; }\n+};\n+\n }  // namespace ffi\n }  // namespace tvm\n \ndiff --git a/include/tvm/ffi/object.h b/include/tvm/ffi/object.h\nindex 6eac9a4..796173f 100644\n--- a/include/tvm/ffi/object.h\n+++ b/include/tvm/ffi/object.h\n@@ -82,6 +82,8 @@ struct StaticTypeKey {\n   static constexpr const char* kTVMFFIDataType = \"DataType\";\n   /*! \\brief The type key for Device */\n   static constexpr const char* kTVMFFIDevice = \"Device\";\n+  /*! \\brief The type key for DLTensor* */\n+  static constexpr const char* kTVMFFIDLTensorPtr = \"DLTensor*\";\n   /*! \\brief The type key for const char* */\n   static constexpr const char* kTVMFFIRawStr = \"const char*\";\n   /*! \\brief The type key for TVMFFIByteArray* */\ndiff --git a/pyproject.toml b/pyproject.toml\nindex ff52507..b655e88 100644\n--- a/pyproject.toml\n+++ b/pyproject.toml\n@@ -17,7 +17,7 @@\n \n [project]\n name = \"apache-tvm-ffi\"\n-version = \"0.1.0b12\"\n+version = \"0.1.0b13\"\n description = \"tvm ffi\"\n \n authors = [{ name = \"TVM FFI team\" }]\ndiff --git a/python/tvm_ffi/__init__.py b/python/tvm_ffi/__init__.py\nindex 9a9ed83..112cd2b 100644\n--- a/python/tvm_ffi/__init__.py\n+++ b/python/tvm_ffi/__init__.py\n@@ -17,7 +17,7 @@\n \"\"\"TVM FFI Python package.\"\"\"\n \n # version\n-__version__ = \"0.1.0b12\"\n+__version__ = \"0.1.0b13\"\n \n # order matters here so we need to skip isort here\n # isort: skip_file\ndiff --git a/python/tvm_ffi/cpp/load_inline.py b/python/tvm_ffi/cpp/load_inline.py\nindex 3d1d5b5..623ff88 100644\n--- a/python/tvm_ffi/cpp/load_inline.py\n+++ b/python/tvm_ffi/cpp/load_inline.py\n@@ -453,7 +453,7 @@ def build_inline(  # noqa: PLR0915, PLR0912\n \n         # define the cpp source code\n         cpp_source = '''\n-             void add_one_cpu(tvm::ffi::Tensor x, tvm::ffi::Tensor y) {\n+             void add_one_cpu(tvm::ffi::TensorView x, tvm::ffi::TensorView y) {\n                // implementation of a library function\n                TVM_FFI_ICHECK(x->ndim == 1) << \"x must be a 1D tensor\";\n                DLDataType f32_dtype{kDLFloat, 32, 1};\n@@ -661,7 +661,7 @@ def load_inline(\n \n         # define the cpp source code\n         cpp_source = '''\n-             void add_one_cpu(tvm::ffi::Tensor x, tvm::ffi::Tensor y) {\n+             void add_one_cpu(tvm::ffi::TensorView x, tvm::ffi::TensorView y) {\n                // implementation of a library function\n                TVM_FFI_ICHECK(x->ndim == 1) << \"x must be a 1D tensor\";\n                DLDataType f32_dtype{kDLFloat, 32, 1};\ndiff --git a/rust/tvm-ffi/scripts/generate_example_lib.py b/rust/tvm-ffi/scripts/generate_example_lib.py\nindex be38f17..43e822b 100644\n--- a/rust/tvm-ffi/scripts/generate_example_lib.py\n+++ b/rust/tvm-ffi/scripts/generate_example_lib.py\n@@ -32,7 +32,7 @@ def main() -> None:\n     output_lib_path = tvm_ffi.cpp.build_inline(\n         name=\"hello\",\n         cpp_sources=r\"\"\"\n-            void add_one_cpu(tvm::ffi::Tensor x, tvm::ffi::Tensor y) {\n+            void add_one_cpu(tvm::ffi::TensorView x, tvm::ffi::TensorView y) {\n               // implementation of a library function\n               TVM_FFI_ICHECK(x->ndim == 1) << \"x must be a 1D tensor\";\n               DLDataType f32_dtype{kDLFloat, 32, 1};\ndiff --git a/tests/cpp/test_tensor.cc b/tests/cpp/test_tensor.cc\nindex bb9158a..f746a4a 100644\n--- a/tests/cpp/test_tensor.cc\n+++ b/tests/cpp/test_tensor.cc\n@@ -163,4 +163,28 @@ TEST(Tensor, DLPackAllocError) {\n       tvm::ffi::Error);\n }\n \n+TEST(Tensor, TensorView) {\n+  Tensor tensor = Empty({1, 2, 3}, DLDataType({kDLFloat, 32, 1}), DLDevice({kDLCPU, 0}));\n+  TensorView tensor_view = tensor;\n+\n+  EXPECT_EQ(tensor_view.shape().size(), 3);\n+  EXPECT_EQ(tensor_view.shape()[0], 1);\n+  EXPECT_EQ(tensor_view.shape()[1], 2);\n+  EXPECT_EQ(tensor_view.shape()[2], 3);\n+  EXPECT_EQ(tensor_view.dtype().code, kDLFloat);\n+  EXPECT_EQ(tensor_view.dtype().bits, 32);\n+  EXPECT_EQ(tensor_view.dtype().lanes, 1);\n+\n+  AnyView result = tensor_view;\n+  EXPECT_EQ(result.type_index(), TypeIndex::kTVMFFIDLTensorPtr);\n+  TensorView tensor_view2 = result.as<TensorView>().value();\n+  EXPECT_EQ(tensor_view2.shape().size(), 3);\n+  EXPECT_EQ(tensor_view2.shape()[0], 1);\n+  EXPECT_EQ(tensor_view2.shape()[1], 2);\n+  EXPECT_EQ(tensor_view2.shape()[2], 3);\n+  EXPECT_EQ(tensor_view2.dtype().code, kDLFloat);\n+  EXPECT_EQ(tensor_view2.dtype().bits, 32);\n+  EXPECT_EQ(tensor_view2.dtype().lanes, 1);\n+}\n+\n }  // namespace\ndiff --git a/tests/python/test_build_inline.py b/tests/python/test_build_inline.py\nindex d436271..5e3b191 100644\n--- a/tests/python/test_build_inline.py\n+++ b/tests/python/test_build_inline.py\n@@ -24,7 +24,7 @@ def test_build_inline_cpp() -> None:\n     output_lib_path = tvm_ffi.cpp.build_inline(\n         name=\"hello\",\n         cpp_sources=r\"\"\"\n-            void add_one_cpu(tvm::ffi::Tensor x, tvm::ffi::Tensor y) {\n+            void add_one_cpu(tvm::ffi::TensorView x, tvm::ffi::TensorView y) {\n               // implementation of a library function\n               TVM_FFI_ICHECK(x->ndim == 1) << \"x must be a 1D tensor\";\n               DLDataType f32_dtype{kDLFloat, 32, 1};\ndiff --git a/tests/python/test_load_inline.py b/tests/python/test_load_inline.py\nindex 229dc62..cd61c57 100644\n--- a/tests/python/test_load_inline.py\n+++ b/tests/python/test_load_inline.py\n@@ -36,7 +36,7 @@ def test_load_inline_cpp() -> None:\n     mod: Module = tvm_ffi.cpp.load_inline(\n         name=\"hello\",\n         cpp_sources=r\"\"\"\n-            void add_one_cpu(tvm::ffi::Tensor x, tvm::ffi::Tensor y) {\n+            void add_one_cpu(tvm::ffi::TensorView x, tvm::ffi::TensorView y) {\n               // implementation of a library function\n               TVM_FFI_ICHECK(x->ndim == 1) << \"x must be a 1D tensor\";\n               DLDataType f32_dtype{kDLFloat, 32, 1};\n@@ -62,7 +62,7 @@ def test_load_inline_cpp_with_docstrings() -> None:\n     mod: Module = tvm_ffi.cpp.load_inline(\n         name=\"hello\",\n         cpp_sources=r\"\"\"\n-            void add_one_cpu(tvm::ffi::Tensor x, tvm::ffi::Tensor y) {\n+            void add_one_cpu(tvm::ffi::TensorView x, tvm::ffi::TensorView y) {\n               // implementation of a library function\n               TVM_FFI_ICHECK(x->ndim == 1) << \"x must be a 1D tensor\";\n               DLDataType f32_dtype{kDLFloat, 32, 1};\n@@ -89,7 +89,7 @@ def test_load_inline_cpp_multiple_sources() -> None:\n         name=\"hello\",\n         cpp_sources=[\n             r\"\"\"\n-            void add_one_cpu(tvm::ffi::Tensor x, tvm::ffi::Tensor y) {\n+            void add_one_cpu(tvm::ffi::TensorView x, tvm::ffi::TensorView y) {\n               // implementation of a library function\n               TVM_FFI_ICHECK(x->ndim == 1) << \"x must be a 1D tensor\";\n               DLDataType f32_dtype{kDLFloat, 32, 1};\n@@ -103,7 +103,7 @@ def test_load_inline_cpp_multiple_sources() -> None:\n             }\n         \"\"\",\n             r\"\"\"\n-            void add_two_cpu(tvm::ffi::Tensor x, tvm::ffi::Tensor y) {\n+            void add_two_cpu(tvm::ffi::TensorView x, tvm::ffi::TensorView y) {\n               // implementation of a library function\n               TVM_FFI_ICHECK(x->ndim == 1) << \"x must be a 1D tensor\";\n               DLDataType f32_dtype{kDLFloat, 32, 1};\n@@ -130,7 +130,7 @@ def test_load_inline_cpp_build_dir() -> None:\n     mod: Module = tvm_ffi.cpp.load_inline(\n         name=\"hello\",\n         cpp_sources=r\"\"\"\n-            void add_one_cpu(tvm::ffi::Tensor x, tvm::ffi::Tensor y) {\n+            void add_one_cpu(tvm::ffi::TensorView x, tvm::ffi::TensorView y) {\n               // implementation of a library function\n               TVM_FFI_ICHECK(x->ndim == 1) << \"x must be a 1D tensor\";\n               DLDataType f32_dtype{kDLFloat, 32, 1};\n@@ -167,7 +167,7 @@ def test_load_inline_cuda() -> None:\n               }\n             }\n \n-            void add_one_cuda(tvm::ffi::Tensor x, tvm::ffi::Tensor y, int64_t raw_stream) {\n+            void add_one_cuda(tvm::ffi::TensorView x, tvm::ffi::TensorView y, int64_t raw_stream) {\n               // implementation of a library function\n               TVM_FFI_ICHECK(x->ndim == 1) << \"x must be a 1D tensor\";\n               DLDataType f32_dtype{kDLFloat, 32, 1};\n@@ -261,7 +261,7 @@ def test_load_inline_both() -> None:\n     mod: Module = tvm_ffi.cpp.load_inline(\n         name=\"hello\",\n         cpp_sources=r\"\"\"\n-            void add_one_cpu(tvm::ffi::Tensor x, tvm::ffi::Tensor y) {\n+            void add_one_cpu(tvm::ffi::TensorView x, tvm::ffi::TensorView y) {\n               // implementation of a library function\n               TVM_FFI_ICHECK(x->ndim == 1) << \"x must be a 1D tensor\";\n               DLDataType f32_dtype{kDLFloat, 32, 1};\n@@ -274,7 +274,7 @@ def test_load_inline_both() -> None:\n               }\n             }\n \n-            void add_one_cuda(tvm::ffi::Tensor x, tvm::ffi::Tensor y);\n+            void add_one_cuda(tvm::ffi::TensorView x, tvm::ffi::TensorView y);\n         \"\"\",\n         cuda_sources=r\"\"\"\n             __global__ void AddOneKernel(float* x, float* y, int n) {\n@@ -284,7 +284,7 @@ def test_load_inline_both() -> None:\n               }\n             }\n \n-            void add_one_cuda(tvm::ffi::Tensor x, tvm::ffi::Tensor y) {\n+            void add_one_cuda(tvm::ffi::TensorView x, tvm::ffi::TensorView y) {\n               // implementation of a library function\n               TVM_FFI_ICHECK(x->ndim == 1) << \"x must be a 1D tensor\";\n               DLDataType f32_dtype{kDLFloat, 32, 1};",
+  "heuristics": {
+    "tags": [
+      "build",
+      "test"
+    ],
+    "extensions": [
+      ".cc",
+      ".cu",
+      ".h",
+      ".md",
+      ".py",
+      ".toml"
+    ],
+    "scopes_guess": [
+      "docs",
+      "examples",
+      "include",
+      "pyproject.toml",
+      "python",
+      "rust",
+      "tests"
+    ]
+  }
+}

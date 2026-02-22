@@ -1,0 +1,38 @@
+{
+  "sha": "84cfbeb12bc5ef6d9eb434095949c205433c9e35",
+  "sha7": "84cfbeb",
+  "author_name": "Twice",
+  "author_email": "twice@apache.org",
+  "date_iso": "2025-07-05T14:20:50+08:00",
+  "subject": "[FFI] Use fold expression to simplify for_each (#18116)",
+  "body": "",
+  "is_merge": false,
+  "parents": [
+    "fa5e2ac9438d824628b6d1495414c4010f5a9820"
+  ],
+  "name_status": [
+    [
+      "M",
+      "include/tvm/ffi/base_details.h"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "include/tvm/ffi/base_details.h",
+      "additions": 4,
+      "deletions": 11
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/include/tvm/ffi/base_details.h b/include/tvm/ffi/base_details.h\nindex 6b0dee4..fb7be1a 100644\n--- a/include/tvm/ffi/base_details.h\n+++ b/include/tvm/ffi/base_details.h\n@@ -136,23 +136,16 @@ namespace ffi {\n namespace details {\n \n // for each iterator\n-template <bool stop, std::size_t I, typename F>\n struct for_each_dispatcher {\n-  template <typename T, typename... Args>\n-  static void run(const F& f, T&& value, Args&&... args) {  // NOLINT(*)\n-    f(I, std::forward<T>(value));\n-    for_each_dispatcher<sizeof...(Args) == 0, (I + 1), F>::run(f, std::forward<Args>(args)...);\n+  template <typename F, typename... Args, size_t... I>\n+  static void run(std::index_sequence<I...>, const F& f, Args&&... args) {  // NOLINT(*)\n+    (f(I, std::forward<Args>(args)), ...);\n   }\n };\n \n-template <std::size_t I, typename F>\n-struct for_each_dispatcher<true, I, F> {\n-  static void run(const F&) {}  // NOLINT(*)\n-};\n-\n template <typename F, typename... Args>\n void for_each(const F& f, Args&&... args) {  // NOLINT(*)\n-  for_each_dispatcher<sizeof...(Args) == 0, 0, F>::run(f, std::forward<Args>(args)...);\n+  for_each_dispatcher::run(std::index_sequence_for<Args...>{}, f, std::forward<Args>(args)...);\n }\n \n /*!",
+  "heuristics": {
+    "tags": [],
+    "extensions": [
+      ".h"
+    ],
+    "scopes_guess": [
+      "include"
+    ]
+  }
+}

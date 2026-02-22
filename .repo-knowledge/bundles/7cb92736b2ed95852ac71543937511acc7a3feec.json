@@ -1,0 +1,80 @@
+{
+  "sha": "7cb92736b2ed95852ac71543937511acc7a3feec",
+  "sha7": "7cb9273",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-08-05T15:44:33-04:00",
+  "subject": "[FFI][REFACTOR] Migrate the Save/Load JSON to the new reflection (#18188)",
+  "body":
+      "This PR migrates the Save/Load JSON to the new reflection based mechanism.\n\nThis is a breaking change that updates the the JSON format\nto ffi/extra/serialization to handle the serialization,\nsee the json graph schema comment in ffi/extra/serialization.h\nfor the format, which roughly aligns with the old style.\n\nAfter this change, we no longer need node/reflection and reflection vtable.\nWe can also phase out TVM_REGISTER_NODE and TVM_REGISTER_OBJECT to have a single\nplace that defines the reflection.",
+  "is_merge": false,
+  "parents": [
+    "8eaefe04a044292e071263aca309b6991124c566"
+  ],
+  "name_status": [
+    [
+      "A",
+      "include/tvm/ffi/reflection/creator.h"
+    ],
+    [
+      "M",
+      "src/ffi/extra/serialization.cc"
+    ],
+    [
+      "M",
+      "tests/cpp/extra/test_serialization.cc"
+    ],
+    [
+      "R096",
+      "tests/cpp/test_reflection.cc"
+    ],
+    [
+      "M",
+      "tests/cpp/testing_object.h"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "include/tvm/ffi/reflection/creator.h",
+      "additions": 112,
+      "deletions": 0
+    },
+    {
+      "path": "src/ffi/extra/serialization.cc",
+      "additions": 13,
+      "deletions": 2
+    },
+    {
+      "path": "tests/cpp/extra/test_serialization.cc",
+      "additions": 18,
+      "deletions": 0
+    },
+    {
+      "path": "tests/cpp/{test_reflection_accessor.cc => test_reflection.cc}",
+      "additions": 6,
+      "deletions": 0
+    },
+    {
+      "path": "tests/cpp/testing_object.h",
+      "additions": 1,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/include/tvm/ffi/reflection/creator.h b/include/tvm/ffi/reflection/creator.h\nnew file mode 100644\nindex 0000000..983b803\n--- /dev/null\n+++ b/include/tvm/ffi/reflection/creator.h\n@@ -0,0 +1,112 @@\n+/*\n+ * Licensed to the Apache Software Foundation (ASF) under one\n+ * or more contributor license agreements.  See the NOTICE file\n+ * distributed with this work for additional information\n+ * regarding copyright ownership.  The ASF licenses this file\n+ * to you under the Apache License, Version 2.0 (the\n+ * \"License\"); you may not use this file except in compliance\n+ * with the License.  You may obtain a copy of the License at\n+ *\n+ *   http://www.apache.org/licenses/LICENSE-2.0\n+ *\n+ * Unless required by applicable law or agreed to in writing,\n+ * software distributed under the License is distributed on an\n+ * \"AS IS\" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY\n+ * KIND, either express or implied.  See the License for the\n+ * specific language governing permissions and limitations\n+ * under the License.\n+ */\n+/*!\n+ * \\file tvm/ffi/reflection/creator.h\n+ * \\brief Reflection-based creator to create objects from type key and fields.\n+ */\n+#ifndef TVM_FFI_REFLECTION_CREATOR_H_\n+#define TVM_FFI_REFLECTION_CREATOR_H_\n+\n+#include <tvm/ffi/any.h>\n+#include <tvm/ffi/container/map.h>\n+#include <tvm/ffi/reflection/accessor.h>\n+#include <tvm/ffi/string.h>\n+\n+namespace tvm {\n+namespace ffi {\n+namespace reflection {\n+/*!\n+ * \\brief helper wrapper class of TVMFFITypeInfo to create object based on reflection.\n+ */\n+class ObjectCreator {\n+ public:\n+  explicit ObjectCreator(std::string_view type_key)\n+      : ObjectCreator(TVMFFIGetTypeInfo(TypeKeyToIndex(type_key))) {}\n+\n+  explicit ObjectCreator(const TVMFFITypeInfo* type_info) : type_info_(type_info) {\n+    int32_t type_index = type_info->type_index;\n+    if (type_info->metadata == nullptr) {\n+      TVM_FFI_THROW(RuntimeError) << \"Type `\" << TypeIndexToTypeKey(type_index)\n+                                  << \"` does not have reflection registered\";\n+    }\n+    if (type_info->metadata->creator == nullptr) {\n+      TVM_FFI_THROW(RuntimeError) << \"Type `\" << TypeIndexToTypeKey(type_index)\n+                                  << \"` does not support default constructor, \"\n+                                  << \"as a result cannot be created via reflection\";\n+    }\n+  }\n+\n+  /**\n+   * \\brief Create an object from a map of fields.\n+   * \\param fields The fields of the object.\n+   * \\return The created object.\n+   */\n+  Any operator()(const Map<String, Any>& fields) const {\n+    TVMFFIObjectHandle handle;\n+    TVM_FFI_CHECK_SAFE_CALL(type_info_->metadata->creator(&handle));\n+    ObjectPtr<Object> ptr =\n+        details::ObjectUnsafe::ObjectPtrFromOwned<Object>(static_cast<TVMFFIObject*>(handle));\n+    size_t match_field_count = 0;\n+    ForEachFieldInfo(type_info_, [&](const TVMFFIFieldInfo* field_info) {\n+      String field_name(field_info->name);\n+      void* field_addr = reinterpret_cast<char*>(ptr.get()) + field_info->offset;\n+      if (fields.count(field_name) != 0) {\n+        Any field_value = fields[field_name];\n+        field_info->setter(field_addr, reinterpret_cast<const TVMFFIAny*>(&field_value));\n+        ++match_field_count;\n+      } else if (field_info->flags & kTVMFFIFieldFlagBitMaskHasDefault) {\n+        field_info->setter(field_addr, &(field_info->default_value));\n+      } else {\n+        TVM_FFI_THROW(TypeError) << \"Required field `\"\n+                                 << String(field_info->name.data, field_info->name.size)\n+                                 << \"` not set in type `\"\n+                                 << String(type_info_->type_key.data, type_info_->type_key.size)\n+                                 << \"`\";\n+      }\n+    });\n+    if (match_field_count == fields.size()) return ObjectRef(ptr);\n+    // report error that checks if contains extra fields that are not in the type\n+    auto check_field_name = [&](const String& field_name) {\n+      bool found = false;\n+      ForEachFieldInfoWithEarlyStop(type_info_, [&](const TVMFFIFieldInfo* field_info) {\n+        if (field_name.compare(field_info->name) == 0) {\n+          found = true;\n+          return true;\n+        }\n+        return false;\n+      });\n+      return found;\n+    };\n+    for (const auto& [field_name, _] : fields) {\n+      if (!check_field_name(field_name)) {\n+        TVM_FFI_THROW(TypeError) << \"Type `\"\n+                                 << String(type_info_->type_key.data, type_info_->type_key.size)\n+                                 << \"` does not have field `\" << field_name << \"`\";\n+      }\n+    }\n+    TVM_FFI_UNREACHABLE();\n+  }\n+\n+ private:\n+  const TVMFFITypeInfo* type_info_;\n+};\n+}  // namespace reflection\n+}  // namespace ffi\n+}  // namespace tvm\n+#endif  // TVM_FFI_REFLECTION_CREATOR_H_\ndiff --git a/src/ffi/extra/serialization.cc b/src/ffi/extra/serialization.cc\nindex b3230f3..8d9df03 100644\n--- a/src/ffi/extra/serialization.cc\n+++ b/src/ffi/extra/serialization.cc\n@@ -24,6 +24,7 @@\n #include <tvm/ffi/any.h>\n #include <tvm/ffi/container/array.h>\n #include <tvm/ffi/container/map.h>\n+#include <tvm/ffi/container/shape.h>\n #include <tvm/ffi/dtype.h>\n #include <tvm/ffi/error.h>\n #include <tvm/ffi/extra/base64.h>\n@@ -119,6 +120,12 @@ class ObjectGraphSerializer {\n         node.Set(\"data\", CreateMapData(map));\n         break;\n       }\n+      case TypeIndex::kTVMFFIShape: {\n+        ffi::Shape shape = details::AnyUnsafe::CopyFromAnyViewAfterCheck<ffi::Shape>(value);\n+        node.Set(\"type\", ffi::StaticTypeKey::kTVMFFIShape);\n+        node.Set(\"data\", Array<int64_t>(shape->data, shape->data + shape->size));\n+        break;\n+      }\n       default: {\n         if (value.type_index() >= TypeIndex::kTVMFFIStaticObjectBegin) {\n           // serialize type key since type index is runtime dependent\n@@ -157,10 +164,10 @@ class ObjectGraphSerializer {\n \n   // create the data for the object, if the type has a custom data to json function,\n   // use it. otherwise, we go over the fields and create the data.\n-  json::Object CreateObjectData(const Any& value) {\n+  json::Value CreateObjectData(const Any& value) {\n     static reflection::TypeAttrColumn data_to_json = reflection::TypeAttrColumn(\"__data_to_json__\");\n     if (data_to_json[value.type_index()] != nullptr) {\n-      return data_to_json[value.type_index()].cast<Function>()(value).cast<json::Object>();\n+      return data_to_json[value.type_index()].cast<Function>()(value);\n     }\n     // NOTE: invariant: lhs and rhs are already the same type\n     const TVMFFITypeInfo* type_info = TVMFFIGetTypeInfo(value.type_index());\n@@ -286,6 +293,10 @@ class ObjectGraphDeserializer {\n       case TypeIndex::kTVMFFIArray: {\n         return DecodeArrayData(node[\"data\"].cast<json::Array>());\n       }\n+      case TypeIndex::kTVMFFIShape: {\n+        Array<int64_t> data = node[\"data\"].cast<Array<int64_t>>();\n+        return ffi::Shape(data);\n+      }\n       default: {\n         return DecodeObjectData(type_index, node[\"data\"]);\n       }\ndiff --git a/tests/cpp/extra/test_serialization.cc b/tests/cpp/extra/test_serialization.cc\nindex f0aefa3..9d18e6a 100644\n--- a/tests/cpp/extra/test_serialization.cc\n+++ b/tests/cpp/extra/test_serialization.cc\n@@ -19,6 +19,7 @@\n #include <gtest/gtest.h>\n #include <tvm/ffi/container/array.h>\n #include <tvm/ffi/container/map.h>\n+#include <tvm/ffi/container/shape.h>\n #include <tvm/ffi/dtype.h>\n #include <tvm/ffi/extra/serialization.h>\n #include <tvm/ffi/extra/structural_equal.h>\n@@ -271,6 +272,23 @@ TEST(Serialization, Maps) {\n   EXPECT_TRUE(StructuralEqual()(FromJSONGraph(expected_duplicated), duplicated_map));\n }\n \n+TEST(Serialization, Shapes) {\n+  Shape empty_shape;\n+\n+  json::Object expected_empty_shape = json::Object{\n+      {\"root_index\", 0},\n+      {\"nodes\", json::Array{json::Object{{\"type\", \"ffi.Shape\"}, {\"data\", json::Array{}}}}}};\n+  EXPECT_TRUE(StructuralEqual()(ToJSONGraph(empty_shape), expected_empty_shape));\n+  EXPECT_TRUE(StructuralEqual()(FromJSONGraph(expected_empty_shape), empty_shape));\n+\n+  Shape shape({1, 2, 3});\n+  json::Object expected_shape = json::Object{\n+      {\"root_index\", 0},\n+      {\"nodes\", json::Array{json::Object{{\"type\", \"ffi.Shape\"}, {\"data\", json::Array{1, 2, 3}}}}}};\n+  EXPECT_TRUE(StructuralEqual()(ToJSONGraph(shape), expected_shape));\n+  EXPECT_TRUE(StructuralEqual()(FromJSONGraph(expected_shape), shape));\n+}\n+\n TEST(Serialization, TestObjectVar) {\n   TVar x = TVar(\"x\");\n   json::Object expected_x = json::Object{\ndiff --git a/tests/cpp/test_reflection_accessor.cc b/tests/cpp/test_reflection.cc\nsimilarity index 96%\nrename from tests/cpp/test_reflection_accessor.cc\nrename to tests/cpp/test_reflection.cc\nindex cb5145d..98915c5 100644\n--- a/tests/cpp/test_reflection_accessor.cc\n+++ b/tests/cpp/test_reflection.cc\n@@ -21,6 +21,7 @@\n #include <tvm/ffi/container/map.h>\n #include <tvm/ffi/object.h>\n #include <tvm/ffi/reflection/accessor.h>\n+#include <tvm/ffi/reflection/creator.h>\n #include <tvm/ffi/reflection/registry.h>\n #include <tvm/ffi/string.h>\n \n@@ -159,4 +160,9 @@ TEST(Reflection, FuncRegister) {\n   EXPECT_EQ(fget_value(a).cast<int>(), 12);\n }\n \n+TEST(Reflection, ObjectCreator) {\n+  namespace refl = tvm::ffi::reflection;\n+  refl::ObjectCreator creator(\"test.Int\");\n+  EXPECT_EQ(creator(Map<String, Any>({{\"value\", 1}})).cast<TInt>()->value, 1);\n+}\n }  // namespace\ndiff --git a/tests/cpp/testing_object.h b/tests/cpp/testing_object.h\nindex c5725da..fe3ba1b 100644\n--- a/tests/cpp/testing_object.h\n+++ b/tests/cpp/testing_object.h\n@@ -59,6 +59,7 @@ class TIntObj : public TNumberObj {\n  public:\n   int64_t value;\n \n+  TIntObj() = default;\n   TIntObj(int64_t value) : value(value) {}\n \n   int64_t GetValue() const { return value; }",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".cc",
+      ".h"
+    ],
+    "scopes_guess": [
+      "include",
+      "src",
+      "tests"
+    ]
+  }
+}

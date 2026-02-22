@@ -1,0 +1,39 @@
+{
+  "sha": "ec422f1a144ac5c544957835d8358bc1238e8b83",
+  "sha7": "ec422f1",
+  "author_name": "Junru Shao",
+  "author_email": "junrushao@apache.org",
+  "date_iso": "2025-10-04T05:48:09-07:00",
+  "subject": "chore: Remove redundant forward declaration (#88)",
+  "body":
+      "follow up of this comment:\nhttps://github.com/apache/tvm-ffi/pull/36#discussion_r2403536230",
+  "is_merge": false,
+  "parents": [
+    "28fe3cc7fc23b725ddefbb3ca1e1899a7dfd530c"
+  ],
+  "name_status": [
+    [
+      "M",
+      "include/tvm/ffi/function_details.h"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "include/tvm/ffi/function_details.h",
+      "additions": 0,
+      "deletions": 2
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/include/tvm/ffi/function_details.h b/include/tvm/ffi/function_details.h\nindex 43c0fa4..ae9de33 100644\n--- a/include/tvm/ffi/function_details.h\n+++ b/include/tvm/ffi/function_details.h\n@@ -34,8 +34,6 @@\n \n namespace tvm {\n namespace ffi {\n-// forward declaration\n-class Function;\n namespace details {\n \n template <typename ArgType>",
+  "heuristics": {
+    "tags": [],
+    "extensions": [
+      ".h"
+    ],
+    "scopes_guess": [
+      "include"
+    ]
+  }
+}

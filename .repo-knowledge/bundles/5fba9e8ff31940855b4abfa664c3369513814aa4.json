@@ -1,0 +1,38 @@
+{
+  "sha": "5fba9e8ff31940855b4abfa664c3369513814aa4",
+  "sha7": "5fba9e8",
+  "author_name": "Nguyen Duy Loc",
+  "author_email": "77536430+locnd182644@users.noreply.github.com",
+  "date_iso": "2025-10-04T01:09:46+07:00",
+  "subject": "[COMPILE] Fixed error compile when using compiler gcc 8.x (#85)",
+  "body": "Co-authored-by: Tianqi Chen <tqchen@users.noreply.github.com>",
+  "is_merge": false,
+  "parents": [
+    "6e9b78538d5bfa867c6b438943c0617a85c1a72e"
+  ],
+  "name_status": [
+    [
+      "M",
+      "include/tvm/ffi/type_traits.h"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "include/tvm/ffi/type_traits.h",
+      "additions": 14,
+      "deletions": 3
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/include/tvm/ffi/type_traits.h b/include/tvm/ffi/type_traits.h\nindex 0f19719..0fce70b 100644\n--- a/include/tvm/ffi/type_traits.h\n+++ b/include/tvm/ffi/type_traits.h\n@@ -301,11 +301,22 @@ struct TypeTraits<Int, std::enable_if_t<std::is_integral_v<Int>>> : public TypeT\n   TVM_FFI_INLINE static std::string TypeStr() { return StaticTypeKey::kTVMFFIInt; }\n };\n \n+/// \\cond Doxygen_Suppress\n+\n+// trait to check if a type is an integeral enum\n+// note that we need this trait so we can confirm underlying_type_t is an integral type\n+// to avoid potential undefined behavior\n+template <typename T, bool = std::is_enum_v<T>>\n+constexpr bool is_integeral_enum_v = false;\n+\n+template <typename T>\n+constexpr bool is_integeral_enum_v<T, true> = std::is_integral_v<std::underlying_type_t<T>>;\n+\n+/// \\endcond\n+\n // Enum Integer POD values\n template <typename IntEnum>\n-struct TypeTraits<IntEnum, std::enable_if_t<std::is_enum_v<IntEnum> &&\n-                                            std::is_integral_v<std::underlying_type_t<IntEnum>>>>\n-    : public TypeTraitsBase {\n+struct TypeTraits<IntEnum, std::enable_if_t<is_integeral_enum_v<IntEnum>>> : public TypeTraitsBase {\n   static constexpr int32_t field_static_type_index = TypeIndex::kTVMFFIInt;\n \n   TVM_FFI_INLINE static void CopyToAnyView(const IntEnum& src, TVMFFIAny* result) {",
+  "heuristics": {
+    "tags": [],
+    "extensions": [
+      ".h"
+    ],
+    "scopes_guess": [
+      "include"
+    ]
+  }
+}

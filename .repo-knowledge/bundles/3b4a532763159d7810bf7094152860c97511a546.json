@@ -1,0 +1,41 @@
+{
+  "sha": "3b4a532763159d7810bf7094152860c97511a546",
+  "sha7": "3b4a532",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2026-01-11T17:49:46-05:00",
+  "subject": "[CMAKE] Allow explicit turning threads off (#400)",
+  "body": "",
+  "is_merge": false,
+  "parents": [
+    "0d157dc81551bdf57b26ae9cde62bf37fdc0f8ca"
+  ],
+  "name_status": [
+    [
+      "M",
+      "CMakeLists.txt"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "CMakeLists.txt",
+      "additions": 3,
+      "deletions": 4
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/CMakeLists.txt b/CMakeLists.txt\nindex 395bd74..7ba198c 100644\n--- a/CMakeLists.txt\n+++ b/CMakeLists.txt\n@@ -21,6 +21,7 @@ project(tvm_ffi LANGUAGES CXX C)\n \n option(TVM_FFI_USE_LIBBACKTRACE \"Enable libbacktrace\" ON)\n option(TVM_FFI_USE_EXTRA_CXX_API \"Enable extra CXX API in shared lib\" ON)\n+option(TVM_FFI_USE_THREADS \"Link against threads in shared lib\" ON)\n option(TVM_FFI_BACKTRACE_ON_SEGFAULT \"Set signal handler to print backtrace on segfault\" ON)\n \n include(${CMAKE_CURRENT_LIST_DIR}/cmake/Utils/DetectTargetTriple.cmake)\n@@ -122,10 +123,8 @@ endif ()\n tvm_ffi_add_msvc_flags(tvm_ffi_objs)\n tvm_ffi_add_target_from_obj(tvm_ffi tvm_ffi_objs)\n \n-find_package(Threads)\n-if (Threads_FOUND)\n-  # link to threads library if found on some cross-compilation platforms, the threads library maynot\n-  # be found but downstream may still be able to build extra alternatives via source bundle\n+if (TVM_FFI_USE_THREADS)\n+  find_package(Threads REQUIRED)\n   target_link_libraries(tvm_ffi_shared PRIVATE Threads::Threads)\n   target_link_libraries(tvm_ffi_static INTERFACE Threads::Threads)\n endif ()",
+  "heuristics": {
+    "tags": [
+      "build",
+      "docs"
+    ],
+    "extensions": [
+      ".txt"
+    ],
+    "scopes_guess": [
+      "CMakeLists.txt"
+    ]
+  }
+}

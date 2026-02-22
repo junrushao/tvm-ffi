@@ -1,0 +1,52 @@
+{
+  "sha": "0f8bf9fc582fff89e838cadf2aacbfb2a5724ddf",
+  "sha7": "0f8bf9f",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-10-20T21:07:30-07:00",
+  "subject": "Introduce Device Protocol (#179)",
+  "body":
+      "This PR introduces `__dlpack_device__` protocol for Device class that\ncan be used to bring in device classes into ffi calls.",
+  "is_merge": false,
+  "parents": [
+    "5e648f052f93a423f7ef3cb20d2675925d64bf96"
+  ],
+  "name_status": [
+    [
+      "M",
+      "python/tvm_ffi/cython/function.pxi"
+    ],
+    [
+      "M",
+      "tests/python/test_function.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "python/tvm_ffi/cython/function.pxi",
+      "additions": 18,
+      "deletions": 0
+    },
+    {
+      "path": "tests/python/test_function.py",
+      "additions": 16,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/python/tvm_ffi/cython/function.pxi b/python/tvm_ffi/cython/function.pxi\nindex 1138476..bf84091 100644\n--- a/python/tvm_ffi/cython/function.pxi\n+++ b/python/tvm_ffi/cython/function.pxi\n@@ -324,6 +324,19 @@ cdef int TVMFFIPyArgSetterDevice_(\n     out.v_device = (<Device>arg).cdevice\n     return 0\n \n+cdef int TVMFFIPyArgSetterDLPackDeviceProtocol_(\n+    TVMFFIPyArgSetter* handle, TVMFFIPyCallContext* ctx,\n+    PyObject* py_arg, TVMFFIAny* out\n+) except -1:\n+    \"\"\"Setter for dlpack device protocol\"\"\"\n+    cdef object arg = <object>py_arg\n+    cdef tuple dlpack_device = arg.__dlpack_device__()\n+    out.type_index = kTVMFFIDevice\n+    out.v_device = TVMFFIDLDeviceFromIntPair(\n+        <int32_t>dlpack_device[0],\n+        <int32_t>dlpack_device[1]\n+    )\n+    return 0\n \n cdef int TVMFFIPyArgSetterStr_(\n     TVMFFIPyArgSetter* handle, TVMFFIPyCallContext* ctx,\n@@ -716,6 +729,11 @@ cdef int TVMFFIPyArgSetterFactory_(PyObject* value, TVMFFIPyArgSetter* out) exce\n         # prefer dlpack as it covers all DLDataType struct\n         out.func = TVMFFIPyArgSetterDLPackDataTypeProtocol_\n         return 0\n+    if hasattr(arg_class, \"__dlpack_device__\") and not hasattr(arg_class, \"__dlpack__\"):\n+        # if a class have __dlpack_device__ but not __dlpack__\n+        # then it is a DLPack device protocol\n+        out.func = TVMFFIPyArgSetterDLPackDeviceProtocol_\n+        return 0\n     if isinstance(arg, Exception):\n         out.func = TVMFFIPyArgSetterException_\n         return 0\ndiff --git a/tests/python/test_function.py b/tests/python/test_function.py\nindex 6123a8e..8d6dd34 100644\n--- a/tests/python/test_function.py\n+++ b/tests/python/test_function.py\n@@ -328,3 +328,19 @@ def test_function_with_dlpack_data_type_protocol() -> None:\n     x = DLPackDataTypeProtocol((dtype.type_code, dtype.bits, dtype.lanes))\n     y = fecho(x)\n     assert y == dtype\n+\n+\n+def test_function_with_dlpack_device_protocol() -> None:\n+    device = tvm_ffi.device(\"cuda:1\")\n+\n+    class DLPackDeviceProtocol:\n+        def __init__(self, device: tvm_ffi.Device) -> None:\n+            self.device = device\n+\n+        def __dlpack_device__(self) -> tuple[int, int]:\n+            return (self.device.dlpack_device_type(), self.device.index)\n+\n+    fecho = tvm_ffi.get_global_func(\"testing.echo\")\n+    x = DLPackDeviceProtocol(device)\n+    y = fecho(x)\n+    assert y == device",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".pxi",
+      ".py"
+    ],
+    "scopes_guess": [
+      "python",
+      "tests"
+    ]
+  }
+}

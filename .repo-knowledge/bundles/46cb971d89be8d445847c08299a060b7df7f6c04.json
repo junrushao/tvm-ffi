@@ -1,0 +1,58 @@
+{
+  "sha": "46cb971d89be8d445847c08299a060b7df7f6c04",
+  "sha7": "46cb971",
+  "author_name": "Junru Shao",
+  "author_email": "junrushao@apache.org",
+  "date_iso": "2026-01-04T14:51:39-08:00",
+  "subject": "doc: c++ toolchain (#373)",
+  "body": "",
+  "is_merge": false,
+  "parents": [
+    "8caa0cbe70e369a525192be0e0f159702dacb71c"
+  ],
+  "name_status": [
+    [
+      "M",
+      "docs/index.rst"
+    ],
+    [
+      "A",
+      "docs/packaging/cpp_tooling.rst"
+    ],
+    [
+      "M",
+      "docs/packaging/python_packaging.rst"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "docs/index.rst",
+      "additions": 1,
+      "deletions": 0
+    },
+    {
+      "path": "docs/packaging/cpp_tooling.rst",
+      "additions": 217,
+      "deletions": 0
+    },
+    {
+      "path": "docs/packaging/python_packaging.rst",
+      "additions": 2,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/docs/index.rst b/docs/index.rst\nindex 0ef3916..2387846 100644\n--- a/docs/index.rst\n+++ b/docs/index.rst\n@@ -65,6 +65,7 @@ Table of Contents\n    :caption: Packaging\n \n    packaging/python_packaging.rst\n+   packaging/cpp_tooling.rst\n    packaging/cpp_packaging.md\n \n .. toctree::\ndiff --git a/docs/packaging/cpp_tooling.rst b/docs/packaging/cpp_tooling.rst\nnew file mode 100644\nindex 0000000..80cc755\n--- /dev/null\n+++ b/docs/packaging/cpp_tooling.rst\n@@ -0,0 +1,217 @@\n+.. Licensed to the Apache Software Foundation (ASF) under one\n+.. or more contributor license agreements.  See the NOTICE file\n+.. distributed with this work for additional information\n+.. regarding copyright ownership.  The ASF licenses this file\n+.. to you under the Apache License, Version 2.0 (the\n+.. \"License\"); you may not use this file except in compliance\n+.. with the License.  You may obtain a copy of the License at\n+..\n+..   http://www.apache.org/licenses/LICENSE-2.0\n+..\n+.. Unless required by applicable law or agreed to in writing,\n+.. software distributed under the License is distributed on an\n+.. \"AS IS\" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY\n+.. KIND, either express or implied.  See the License for the\n+.. specific language governing permissions and limitations\n+.. under the License.\n+\n+C++ Tooling\n+===========\n+\n+This guide covers the TVM-FFI C++ toolchain, focusing on header layout, CMake\n+integration, and editor setup for a smooth local workflow.\n+\n+.. admonition:: Prerequisite\n+   :class: hint\n+\n+   - Compiler: C++17-capable toolchain (GCC/Clang/MSVC)\n+   - CMake: 3.18 or newer\n+   - TVM-FFI installed via\n+\n+     .. code-block:: bash\n+\n+        pip install --reinstall --upgrade apache-tvm-ffi\n+\n+\n+C++ Headers\n+-----------\n+\n+**Core APIs.** Most of the APIs are exposed via a single umbrella header.\n+\n+.. code-block:: cpp\n+\n+  #include <tvm/ffi/tvm_ffi.h>\n+\n+\n+Extra features live in dedicated headers under the\n+`tvm/ffi/extra/ <https://github.com/apache/tvm-ffi/tree/main/include/tvm/ffi/extra>`_\n+subdirectory and should be included only when needed.\n+\n+**Environment API**. Use the environment API to access the caller's allocator,\n+stream, and device:\n+\n+.. code-block:: cpp\n+\n+  #include <tvm/ffi/extra/c_env_api.h>\n+\n+\n+**Dynamic module loading**. Dynamic module loading lives in the extra API and\n+requires its own header:\n+\n+.. code-block:: cpp\n+\n+  #include <tvm/ffi/extra/module.h>\n+\n+\n+**CUBIN launcher**. See :doc:`CUBIN launching utilities <../guides/cubin_launcher>`; the header is:\n+\n+.. code-block:: cpp\n+\n+  #include <tvm/ffi/extra/cuda/cubin_launcher.h>\n+\n+\n+CMake Usage\n+-----------\n+\n+TVM-FFI ships CMake utilities and imported targets through its package configuration.\n+The two primary functions are ``tvm_ffi_configure_target`` and ``tvm_ffi_install``,\n+both defined in ``cmake/Utils/Library.cmake``.\n+\n+Configure Target\n+~~~~~~~~~~~~~~~~\n+\n+The configure helper wires a target to TVM-FFI and provides sensible defaults.\n+It links the TVM-FFI headers and shared library, and it configures debug symbol handling.\n+Optionally, it runs the Python :ref:`stub generation <sec-subgen>` tool after\n+the build completes.\n+\n+.. code-block:: cmake\n+\n+  tvm_ffi_configure_target(\n+    <target>\n+    [LINK_SHARED  ON|OFF  ]\n+    [LINK_HEADER  ON|OFF  ]\n+    [DEBUG_SYMBOL ON|OFF  ]\n+    [MSVC_FLAGS   ON|OFF  ]\n+    [STUB_INIT    ON|OFF  ]\n+    [STUB_DIR     <dir>   ]\n+    [STUB_PKG     <pkg>   ]\n+    [STUB_PREFIX  <prefix>]\n+  )\n+\n+:LINK_SHARED: (default: ON) Link against the TVM-FFI shared library\n+  ``tvm_ffi::shared``. Set OFF for header-only usage or deferred runtime loading.\n+:LINK_HEADER: (default: ON) Link against the TVM-FFI headers via\n+  ``tvm_ffi::header``. Set OFF when you manage include paths and compile\n+  definitions manually.\n+:DEBUG_SYMBOL: (default: ON) Enable debug symbol post-processing hooks. On\n+  Apple platforms this runs ``dsymutil``.\n+:MSVC_FLAGS: (default: ON) Apply MSVC compatibility flags.\n+:STUB_DIR: (default: \"\") Output directory for generated Python stubs. When set,\n+  stub generation runs as a post-build step.\n+:STUB_INIT: (default: OFF) Allow the stub generator to initialize a new package layout.\n+  Requires ``STUB_DIR``.\n+:STUB_PKG: (default: \"\") Package name passed to the stub generator. Requires ``STUB_DIR``\n+  and ``STUB_INIT=ON``.\n+:STUB_PREFIX: (default: \"\") Module prefix passed to the stub generator. Requires\n+  ``STUB_DIR`` and ``STUB_INIT=ON``.\n+\n+\n+Install Target\n+~~~~~~~~~~~~~~\n+\n+The install helper handles extra artifacts associated with a target.\n+``DESTINATION`` defaults to ``.`` (relative to ``CMAKE_INSTALL_PREFIX``).\n+On Apple platforms the target ``.dSYM`` bundle is installed when present.\n+On non-Apple platforms, this is currently a no-op.\n+\n+.. code-block:: cmake\n+\n+  tvm_ffi_install(\n+    <target>\n+    [DESTINATION <dir>]\n+  )\n+\n+:DESTINATION: Install destination directory relative to ``CMAKE_INSTALL_PREFIX``.\n+\n+\n+CMake Example\n+~~~~~~~~~~~~~\n+\n+.. code-block:: cmake\n+\n+  find_package(tvm_ffi CONFIG REQUIRED)  # requires tvm_ffi_ROOT\n+  tvm_ffi_configure_target(my-shared-lib)  # configure TVM-FFI linkage\n+  install(TARGETS my-shared-lib DESTINATION .)\n+  tvm_ffi_install(my-shared-lib DESTINATION .)  # install extra artifacts\n+\n+\n+Set ``tvm_ffi_ROOT``\n+~~~~~~~~~~~~~~~~~~~~\n+\n+For a pure C++ build, CMake may fail when it reaches\n+\n+.. code-block:: cmake\n+\n+  find_package(tvm_ffi CONFIG REQUIRED)\n+\n+if it cannot locate the TVM-FFI package. In that case, set\n+``tvm_ffi_ROOT`` to the TVM-FFI CMake package directory.\n+\n+.. code-block:: bash\n+\n+   cmake -S . -B build \\\n+     -Dtvm_ffi_ROOT=\"$(tvm-ffi-config --cmakedir)\"\n+\n+\n+.. note::\n+\n+   When packaging Python wheels with scikit-build-core, ``tvm_ffi_ROOT`` is\n+   discovered automatically from the active Python environment, so you usually\n+   do not need to set it explicitly.\n+\n+\n+VSCode/Cursor\n+-------------\n+\n+The following settings help CMake Tools integrate with TVM-FFI and generate the\n+``compile_commands.json`` used by clangd:\n+\n+.. code-block:: json\n+\n+   {\n+       \"cmake.buildDirectory\": \"${workspaceFolder}/build-vscode\",\n+       \"cmake.configureArgs\": [\n+           \"-DCMAKE_EXPORT_COMPILE_COMMANDS=ON\"\n+       ],\n+       \"cmake.configureSettings\": {\n+           \"Python_EXECUTABLE\": \"${workspaceFolder}/.venv/bin/python3\",\n+           \"tvm_ffi_ROOT\": \"${workspaceFolder}/.venv/lib/pythonX.Y/site-packages/tvm_ffi/share/cmake/tvm_ffi\"\n+       }\n+   }\n+\n+\n+.. important::\n+\n+  Make sure ``Python_EXECUTABLE`` and ``tvm_ffi_ROOT`` match the virtual\n+  environment you intend to use.\n+\n+\n+clangd\n+------\n+\n+Create a ``.clangd`` file at your project root and point it to the CMake\n+compilation database. The snippet below also removes NVCC flags that clangd\n+does not understand:\n+\n+.. code-block:: yaml\n+\n+   CompileFlags:\n+     CompilationDatabase: build-vscode/\n+     Remove: # for NVCC compatibility\n+       - -forward-unknown-to-host-compiler\n+       - --generate-code*\n+       - -Xcompiler*\n+\n+Make sure your CMake configure step enables ``compile_commands.json`` via\n+``-DCMAKE_EXPORT_COMPILE_COMMANDS=ON``.\ndiff --git a/docs/packaging/python_packaging.rst b/docs/packaging/python_packaging.rst\nindex 3dd6a41..c3d8f81 100644\n--- a/docs/packaging/python_packaging.rst\n+++ b/docs/packaging/python_packaging.rst\n@@ -309,6 +309,8 @@ we can safely exclude this dependency from the final wheel.\n    # Windows\n    delvewheel repair --exclude tvm_ffi.dll -w dist dist\\\\*.whl\n \n+.. _sec-subgen:\n+\n Stub Generation Tool\n --------------------\n ",
+  "heuristics": {
+    "tags": [
+      "docs"
+    ],
+    "extensions": [
+      ".rst"
+    ],
+    "scopes_guess": [
+      "docs"
+    ]
+  }
+}

@@ -1,0 +1,61 @@
+{
+  "sha": "c1df05f3555d4e2a9e1a32822c0f41ccb8467251",
+  "sha7": "c1df05f",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-11-08T09:23:22-05:00",
+  "subject": "[PYTHON] Further streamline number handling (#242)",
+  "body":
+      "This PR further streamlines number handling by\nintroducing two custom protocols and move Integral and Real handling to\nmore conservative path.",
+  "is_merge": false,
+  "parents": [
+    "8ee0e49ad95796a80384301db7cce97fcef32583"
+  ],
+  "name_status": [
+    [
+      "M",
+      "python/tvm_ffi/_convert.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/cython/function.pxi"
+    ],
+    [
+      "M",
+      "tests/python/test_function.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "python/tvm_ffi/_convert.py",
+      "additions": 4,
+      "deletions": 0
+    },
+    {
+      "path": "python/tvm_ffi/cython/function.pxi",
+      "additions": 66,
+      "deletions": 5
+    },
+    {
+      "path": "tests/python/test_function.py",
+      "additions": 33,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/python/tvm_ffi/_convert.py b/python/tvm_ffi/_convert.py\nindex d0a44e3..f090d28 100644\n--- a/python/tvm_ffi/_convert.py\n+++ b/python/tvm_ffi/_convert.py\n@@ -129,6 +129,10 @@ def convert(value: Any) -> Any:  # noqa: PLR0911,PLR0912\n         return value\n     elif hasattr(value, \"__dlpack_device__\"):\n         return value\n+    elif hasattr(value, \"__tvm_ffi_int__\"):\n+        return value\n+    elif hasattr(value, \"__tvm_ffi_float__\"):\n+        return value\n     else:\n         # in this case, it is an opaque python object\n         return core._convert_to_opaque_object(value)\ndiff --git a/python/tvm_ffi/cython/function.pxi b/python/tvm_ffi/cython/function.pxi\nindex 3ebe862..2db7c1a 100644\n--- a/python/tvm_ffi/cython/function.pxi\n+++ b/python/tvm_ffi/cython/function.pxi\n@@ -17,7 +17,7 @@\n import ctypes\n import threading\n import os\n-from numbers import Real, Integral\n+from numbers import Integral, Real\n from typing import Any, Callable\n \n \n@@ -276,7 +276,33 @@ cdef int TVMFFIPyArgSetterDLPack_(\n     return 0\n \n \n-cdef int TVMFFIPyArgSetterFFIObjectCompatible_(\n+cdef int TVMFFIPyArgSetterIntegral_(\n+    TVMFFIPyArgSetter* handle, TVMFFIPyCallContext* ctx,\n+    PyObject* py_arg, TVMFFIAny* out\n+) except -1:\n+    \"\"\"Setter for Integral\"\"\"\n+    cdef object arg = <object>py_arg\n+    out.type_index = kTVMFFIInt\n+    # keep it in cython so it will also check for fallback cases\n+    # where the arg is not exactly the int class\n+    out.v_int64 = <long long>arg\n+    return 0\n+\n+\n+cdef int TVMFFIPyArgSetterReal_(\n+    TVMFFIPyArgSetter* handle, TVMFFIPyCallContext* ctx,\n+    PyObject* py_arg, TVMFFIAny* out\n+) except -1:\n+    \"\"\"Setter for Real\"\"\"\n+    cdef object arg = <object>py_arg\n+    out.type_index = kTVMFFIFloat\n+    # keep it in cython so it will also check for fallback cases\n+    # where the arg is not exactly the float class\n+    out.v_float64 = <double>arg\n+    return 0\n+\n+\n+cdef int TVMFFIPyArgSetterFFIObjectProtocol_(\n     TVMFFIPyArgSetter* handle, TVMFFIPyCallContext* ctx,\n     PyObject* py_arg, TVMFFIAny* out\n ) except -1:\n@@ -608,6 +634,7 @@ cdef int TVMFFIPyArgSetterDTypeFromNumpy_(\n     out.v_dtype = NUMPY_DTYPE_TO_DL_DATA_TYPE[py_obj]\n     return 0\n \n+\n cdef int TVMFFIPyArgSetterDLPackDataTypeProtocol_(\n     TVMFFIPyArgSetter* handle, TVMFFIPyCallContext* ctx,\n     PyObject* py_arg, TVMFFIAny* out\n@@ -621,6 +648,29 @@ cdef int TVMFFIPyArgSetterDLPackDataTypeProtocol_(\n     out.v_dtype.lanes = <long long>dltype_data_type[2]\n     return 0\n \n+\n+cdef int TVMFFIPyArgSetterIntProtocol_(\n+    TVMFFIPyArgSetter* handle, TVMFFIPyCallContext* ctx,\n+    PyObject* py_arg, TVMFFIAny* out\n+) except -1:\n+    \"\"\"Setter for class with __tvm_ffi_int__() method\"\"\"\n+    cdef object arg = <object>py_arg\n+    out.type_index = kTVMFFIInt\n+    out.v_int64 = <long long>(arg.__tvm_ffi_int__())\n+    return 0\n+\n+\n+cdef int TVMFFIPyArgSetterFloatProtocol_(\n+    TVMFFIPyArgSetter* handle, TVMFFIPyCallContext* ctx,\n+    PyObject* py_arg, TVMFFIAny* out\n+) except -1:\n+    \"\"\"Setter for class with __tvm_ffi_float__() method\"\"\"\n+    cdef object arg = <object>py_arg\n+    out.type_index = kTVMFFIFloat\n+    out.v_float64 = <double>(arg.__tvm_ffi_float__())\n+    return 0\n+\n+\n cdef _DISPATCH_TYPE_KEEP_ALIVE = set()\n cdef _DISPATCH_TYPE_KEEP_ALIVE_LOCK = threading.Lock()\n \n@@ -668,7 +718,7 @@ cdef int TVMFFIPyArgSetterFactory_(PyObject* value, TVMFFIPyArgSetter* out) exce\n         # can directly map to tvm ffi object\n         # usually used for solutions that takes subclass of ffi.Object\n         # as a member variable\n-        out.func = TVMFFIPyArgSetterFFIObjectCompatible_\n+        out.func = TVMFFIPyArgSetterFFIObjectProtocol_\n         return 0\n     if os.environ.get(\"TVM_FFI_SKIP_C_DLPACK_EXCHANGE_API\", \"0\") != \"1\":\n         # Check for DLPackExchangeAPI struct (new approach)\n@@ -698,10 +748,15 @@ cdef int TVMFFIPyArgSetterFactory_(PyObject* value, TVMFFIPyArgSetter* out) exce\n         out.func = TVMFFIPyArgSetterBool_\n         return 0\n     if isinstance(arg, Integral):\n-        out.func = TVMFFIPyArgSetterInt_\n+        # must occur before Real check\n+        # cannot simply use TVMFFIPyArgSetterInt\n+        # because Integral may not be exactly the int class\n+        out.func = TVMFFIPyArgSetterIntegral_\n         return 0\n     if isinstance(arg, Real):\n-        out.func = TVMFFIPyArgSetterFloat_\n+        # cannot simply use TVMFFIPyArgSetterFloat\n+        # because Real may not be exactly the float class\n+        out.func = TVMFFIPyArgSetterReal_\n         return 0\n     # dtype is a subclass of str, so this check must occur before str\n     if isinstance(arg, _CLASS_DTYPE):\n@@ -760,6 +815,12 @@ cdef int TVMFFIPyArgSetterFactory_(PyObject* value, TVMFFIPyArgSetter* out) exce\n         # then it is a DLPack device protocol\n         out.func = TVMFFIPyArgSetterDLPackDeviceProtocol_\n         return 0\n+    if hasattr(arg_class, \"__tvm_ffi_int__\"):\n+        out.func = TVMFFIPyArgSetterIntProtocol_\n+        return 0\n+    if hasattr(arg_class, \"__tvm_ffi_float__\"):\n+        out.func = TVMFFIPyArgSetterFloatProtocol_\n+        return 0\n     if isinstance(arg, Exception):\n         out.func = TVMFFIPyArgSetterException_\n         return 0\ndiff --git a/tests/python/test_function.py b/tests/python/test_function.py\nindex a1e68b0..a24395a 100644\n--- a/tests/python/test_function.py\n+++ b/tests/python/test_function.py\n@@ -350,3 +350,36 @@ def test_function_with_dlpack_device_protocol() -> None:\n     x = DLPackDeviceProtocol(device)\n     y = fecho(x)\n     assert y == device\n+\n+\n+def test_integral_float_variants_passing() -> None:\n+    fecho = tvm_ffi.get_global_func(\"testing.echo\")\n+    y = fecho(np.int32(1))\n+    assert isinstance(y, int)\n+    assert y == 1\n+\n+    y = fecho(np.float64(2.0))\n+    assert isinstance(y, float)\n+    assert y == 2.0\n+\n+    class IntProtocol:\n+        def __init__(self, value: int) -> None:\n+            self.value = value\n+\n+        def __tvm_ffi_int__(self) -> int:\n+            return self.value\n+\n+    y = fecho(IntProtocol(10))\n+    assert isinstance(y, int)\n+    assert y == 10\n+\n+    class FloatProtocol:\n+        def __init__(self, value: float) -> None:\n+            self.value = value\n+\n+        def __tvm_ffi_float__(self) -> float:\n+            return self.value\n+\n+    y = fecho(FloatProtocol(10))\n+    assert isinstance(y, float)\n+    assert y == 10",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".pxi",
+      ".py"
+    ],
+    "scopes_guess": [
+      "python",
+      "tests"
+    ]
+  }
+}

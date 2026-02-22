@@ -1,0 +1,70 @@
+{
+  "sha": "7163aeba46e572d7f979f83d47b56ecec4e49ec6",
+  "sha7": "7163aeb",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-09-14T18:31:31-04:00",
+  "subject": "[DOCS] Fix lint and improve docs (#13)",
+  "body": "This PR fixes previous lint error\nalso improves docs",
+  "is_merge": false,
+  "parents": [
+    "4383b1a6d81f5403879e9266f3d0924a289c227a"
+  ],
+  "name_status": [
+    [
+      "M",
+      ".asf.yaml"
+    ],
+    [
+      "M",
+      "cmake/Utils/AddGoogleTest.cmake"
+    ],
+    [
+      "M",
+      "docs/guides/compiler_integration.md"
+    ],
+    [
+      "M",
+      "docs/reference/python/cpp/index.rst"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": ".asf.yaml",
+      "additions": 2,
+      "deletions": 1
+    },
+    {
+      "path": "cmake/Utils/AddGoogleTest.cmake",
+      "additions": 1,
+      "deletions": 0
+    },
+    {
+      "path": "docs/guides/compiler_integration.md",
+      "additions": 13,
+      "deletions": 12
+    },
+    {
+      "path": "docs/reference/python/cpp/index.rst",
+      "additions": 17,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/.asf.yaml b/.asf.yaml\nindex 4893631..b5bf070 100644\n--- a/.asf.yaml\n+++ b/.asf.yaml\n@@ -29,7 +29,8 @@ github:\n     # in a separate branch(e.g. dev), confirm things works\n     # before changing it to main\n     dev:\n-      # note: do not set status check for now before we setup skip ci\n+      # note: do not set status check for now\n+      # committer will check ci status before merging\n       required_pull_request_reviews:\n         required_approving_review_count: 1\n \ndiff --git a/cmake/Utils/AddGoogleTest.cmake b/cmake/Utils/AddGoogleTest.cmake\nindex af84175..e5a7a84 100644\n--- a/cmake/Utils/AddGoogleTest.cmake\n+++ b/cmake/Utils/AddGoogleTest.cmake\n@@ -48,6 +48,7 @@ macro(tvm_ffi_add_googletest target_name)\n   target_link_libraries(${target_name} PRIVATE gtest_main)\n   gtest_discover_tests(${target_name}\n     WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}\n+    TEST_DISCOVERY_TIMEOUT 300\n     DISCOVERY_MODE PRE_TEST\n     PROPERTIES\n       VS_DEBUGGER_WORKING_DIRECTORY \"${PROJECT_SOURCE_DIR}\"\ndiff --git a/docs/guides/compiler_integration.md b/docs/guides/compiler_integration.md\nindex eedebff..96f5b2f 100644\n--- a/docs/guides/compiler_integration.md\n+++ b/docs/guides/compiler_integration.md\n@@ -29,9 +29,10 @@ build code. To connect these functions to the FFI convention, one can use the\n following options:\n \n - For compilers that generate host functions via codegen (e.g., LLVM), one can\n-  generate the symbol `__tvm_ffi_func_name` directly following the ABI convention.\n+  generate the symbol `__tvm_ffi_<func_name>`, where `<funcname>` is the exported\n+  function.\n - For kernel generators that generate C++ host code, one can directly\n-  use `TVM_FFI_DLL_EXPORT_TYPED_FUNC` to expose the symbol.\n+  use {c:macro}`TVM_FFI_DLL_EXPORT_TYPED_FUNC` to expose the symbol.\n \n The following code snippet shows C code that corresponds to a\n function performing `add_one` under the ABI. It is reasonably straightforward for\n@@ -77,8 +78,8 @@ int __tvm_ffi_add_one(\n \n Some of the key takeaways include:\n - Prefix the symbol with `__tvm_ffi_`\n-- Call `TVMFFIEnvGetStream` to get the current environment stream\n-- Use return value for error handling, set error via `TVMFFIErrorSetRaisedFromCStr`.\n+- Call {cpp:func}`TVMFFIEnvGetStream` to get the current environment stream\n+- Use return value for error handling, set error via {cpp:func}`TVMFFIErrorSetRaisedFromCStr`.\n \n You can also check out the [ABI overview](../concepts/abi_overview.md) for a more complete guide.\n \n@@ -95,7 +96,7 @@ Op.call_tvm_ffi(\"my_func\", *args)\n   global functions that are registered and invoke them.\n - For ahead-of-time compilation (AOT) with minimum runtime, the AOT compiler can generate\n   direct calls into FFI functions:\n-  - Use the TVMFFIFunctionCall API to call into custom `ffi::Function`s\n+  - Use the TVMFFIFunctionCall API to call into custom {cpp:class}`tvm::ffi::Function`s\n   - If the function exposes a C symbol following the FFI ABI, call it directly.\n \n This approach provides a unified mechanism to call into any libraries and other DSLs\n@@ -106,16 +107,16 @@ with various kernel DSLs and libraries.\n \n While the standard dynamic library module is sufficient for many use cases,\n sometimes it may be helpful to package a custom runtime module that wraps over a driver API.\n-For example, using `cuModuleLoad` explicitly to load generated PTX code and expose it as an `ffi::Function`.\n+For example, using `cuModuleLoad` explicitly to load generated PTX code and expose it as an {cpp:class}`tvm::ffi::Function`.\n The {cpp:class}`tvm::ffi::ModuleObj` interface provides a way to support this need.\n-Generally, the steps include subclassing the `tvm::ffi::ModuleObj`:\n+Generally, the steps include subclassing the {cpp:class}`tvm::ffi::ModuleObj`:\n \n-- Provide a specific `kind` string to identify the module type\n-- Override `GetPropertyMask` to indicate:\n+- Provide a specific {cpp:func}`tvm::ffi::ModuleObj::kind` string to identify the module type\n+- Override {cpp:func}`tvm::ffi::ModuleObj::GetPropertyMask` to indicate:\n   - The module is `ffi::Module::kRunnable` (executable)\n   - If binary serialization is supported, also add `ffi::Module::kBinarySerializable`\n-- Override `GetFunction` to specify how functions can be loaded from custom data\n-- Register binary serialization/deserialization `SaveToBytes` and register a global\n+- Override {cpp:func}`tvm::ffi::ModuleObj::GetFunction` to specify how functions loaded\n+- Register binary serialization/deserialization {cpp:func}`tvm::ffi::ModuleObj::SaveToBytes` and register a global\n   function `ffi.Module.load_from_bytes.<kind>`\n \n ### Enable Export and Loading\n@@ -128,7 +129,7 @@ We allow libraries to embed a binary symbol `__tvm_ffi__library_bin` in the foll\n - `<import_tree>` uses CSR sparse array format: `<indptr: vec<u64>> <child_indices: vec<u64>>`\n   to store child indices of each node (each node is a Module instance)\n - `<key>` stores the module kind, or can be `_lib`:\n-  - `_lib` indicates the module corresponds to the dynamic library itself with functions in shared library symbols\n+  - `_lib` indicates the module corresponds to the dynamic library itself\n   - For other cases, `val: bytes` contains the serialized bytes from the custom module\n - Both `bytes` and `str` are serialized as `<size: u64> <content>`\n \ndiff --git a/docs/reference/python/cpp/index.rst b/docs/reference/python/cpp/index.rst\nindex 8737633..c104335 100644\n--- a/docs/reference/python/cpp/index.rst\n+++ b/docs/reference/python/cpp/index.rst\n@@ -1,3 +1,20 @@\n+..  Licensed to the Apache Software Foundation (ASF) under one\n+    or more contributor license agreements.  See the NOTICE file\n+    distributed with this work for additional information\n+    regarding copyright ownership.  The ASF licenses this file\n+    to you under the Apache License, Version 2.0 (the\n+    \"License\"); you may not use this file except in compliance\n+    with the License.  You may obtain a copy of the License at\n+\n+..    http://www.apache.org/licenses/LICENSE-2.0\n+\n+..  Unless required by applicable law or agreed to in writing,\n+    software distributed under the License is distributed on an\n+    \"AS IS\" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY\n+    KIND, either express or implied.  See the License for the\n+    specific language governing permissions and limitations\n+    under the License.\n+\n tvm_ffi.cpp\n -----------\n ",
+  "heuristics": {
+    "tags": [],
+    "extensions": [
+      ".cmake",
+      ".md",
+      ".rst",
+      ".yaml"
+    ],
+    "scopes_guess": [
+      ".asf.yaml",
+      "cmake",
+      "docs"
+    ]
+  }
+}

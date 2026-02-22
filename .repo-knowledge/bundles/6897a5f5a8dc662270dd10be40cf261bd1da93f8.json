@@ -1,0 +1,117 @@
+{
+  "sha": "6897a5f5a8dc662270dd10be40cf261bd1da93f8",
+  "sha7": "6897a5f",
+  "author_name": "Junru Shao",
+  "author_email": "junrushao@apache.org",
+  "date_iso": "2025-11-08T17:54:28-08:00",
+  "subject": "fix(cython): Make sure `TypeInfo` is properly registered by all classes (#246)",
+  "body":
+      "Before this commit, `parent_type_info` of a few Cython classes is not\nproperly propagated, because of the registration ordering. This PR fixes\nthis behavior and adds tests to safeguard this case.",
+  "is_merge": false,
+  "parents": [
+    "4edf4f30e50c52e082ad178eb91016378335040d"
+  ],
+  "name_status": [
+    [
+      "M",
+      "python/tvm_ffi/core.pyi"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/cython/core.pyx"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/cython/device.pxi"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/cython/error.pxi"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/cython/function.pxi"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/cython/object.pxi"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/cython/string.pxi"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/cython/tensor.pxi"
+    ],
+    [
+      "M",
+      "tests/python/test_object.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "python/tvm_ffi/core.pyi",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "python/tvm_ffi/cython/core.pyx",
+      "additions": 14,
+      "deletions": 2
+    },
+    {
+      "path": "python/tvm_ffi/cython/device.pxi",
+      "additions": 0,
+      "deletions": 2
+    },
+    {
+      "path": "python/tvm_ffi/cython/error.pxi",
+      "additions": 0,
+      "deletions": 3
+    },
+    {
+      "path": "python/tvm_ffi/cython/function.pxi",
+      "additions": 0,
+      "deletions": 2
+    },
+    {
+      "path": "python/tvm_ffi/cython/object.pxi",
+      "additions": 9,
+      "deletions": 1
+    },
+    {
+      "path": "python/tvm_ffi/cython/string.pxi",
+      "additions": 0,
+      "deletions": 7
+    },
+    {
+      "path": "python/tvm_ffi/cython/tensor.pxi",
+      "additions": 0,
+      "deletions": 1
+    },
+    {
+      "path": "tests/python/test_object.py",
+      "additions": 59,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/python/tvm_ffi/core.pyi b/python/tvm_ffi/core.pyi\nindex 8141748..261803c 100644\n--- a/python/tvm_ffi/core.pyi\n+++ b/python/tvm_ffi/core.pyi\n@@ -62,12 +62,12 @@ class PyNativeObject:\n     __slots__: list[str]\n     def __init_cached_object_by_constructor__(self, fconstructor: Any, *args: Any) -> None: ...\n \n-def _set_class_object(cls: type) -> None: ...\n def _register_object_by_index(type_index: int, type_cls: type) -> TypeInfo: ...\n def _object_type_key_to_index(type_key: str) -> int | None: ...\n def _set_type_cls(type_info: TypeInfo, type_cls: type) -> None: ...\n def _lookup_or_register_type_info_from_type_key(type_key: str) -> TypeInfo: ...\n def _lookup_type_attr(type_index: int, attr_key: str) -> Any: ...\n+def _type_cls_to_type_info(type_cls: type) -> TypeInfo | None: ...\n \n class Error(Object):\n     def __init__(self, kind: str, message: str, backtrace: str) -> None: ...\ndiff --git a/python/tvm_ffi/cython/core.pyx b/python/tvm_ffi/cython/core.pyx\nindex 90679a2..6ffdc7e 100644\n--- a/python/tvm_ffi/cython/core.pyx\n+++ b/python/tvm_ffi/cython/core.pyx\n@@ -17,12 +17,24 @@\n # KIND, either express or implied.  See the License for the\n # specific language governing permissions and limitations\n # under the License.\n+\n+# N.B. Make sure `_register_object_by_index` is called in inheritance order,\n+# where the base class has to be registered before the derived class.\n+# Otherwise, `TypeInfo.parent_type_info` may not be properly propagated to the derived class.\n include \"./base.pxi\"\n include \"./type_info.pxi\"\n-include \"./dtype.pxi\"\n-include \"./device.pxi\"\n include \"./object.pxi\"\n+_register_object_by_index(kTVMFFIObject, Object)\n include \"./error.pxi\"\n+_register_object_by_index(kTVMFFIError, Error)\n+include \"./dtype.pxi\"\n+_register_object_by_index(kTVMFFIDataType, DataType)\n+include \"./device.pxi\"\n+_register_object_by_index(kTVMFFIDevice, Device)\n include \"./string.pxi\"\n+_register_object_by_index(kTVMFFIStr, String)\n+_register_object_by_index(kTVMFFIBytes, Bytes)\n include \"./tensor.pxi\"\n+_register_object_by_index(kTVMFFITensor, Tensor)\n include \"./function.pxi\"\n+_register_object_by_index(kTVMFFIFunction, Function)\ndiff --git a/python/tvm_ffi/cython/device.pxi b/python/tvm_ffi/cython/device.pxi\nindex 413ef40..9539827 100644\n--- a/python/tvm_ffi/cython/device.pxi\n+++ b/python/tvm_ffi/cython/device.pxi\n@@ -1,5 +1,3 @@\n-\n-\n # Licensed to the Apache Software Foundation (ASF) under one\n # or more contributor license agreements.  See the NOTICE file\n # distributed with this work for additional information\ndiff --git a/python/tvm_ffi/cython/error.pxi b/python/tvm_ffi/cython/error.pxi\nindex 9ade8c2..d85cb87 100644\n--- a/python/tvm_ffi/cython/error.pxi\n+++ b/python/tvm_ffi/cython/error.pxi\n@@ -104,9 +104,6 @@ cdef class Error(Object):\n         return bytearray_to_str(&(TVMFFIErrorGetCellPtr(self.chandle).backtrace))\n \n \n-_register_object_by_index(kTVMFFIError, Error)\n-\n-\n cdef inline Error move_from_last_error():\n     # raise last error\n     error = Error.__new__(Error)\ndiff --git a/python/tvm_ffi/cython/function.pxi b/python/tvm_ffi/cython/function.pxi\nindex 2db7c1a..c1fb6a2 100644\n--- a/python/tvm_ffi/cython/function.pxi\n+++ b/python/tvm_ffi/cython/function.pxi\n@@ -1007,8 +1007,6 @@ cdef class Function(Object):\n         (<Object>func).chandle = chandle\n         return func\n \n-_register_object_by_index(kTVMFFIFunction, Function)\n-\n \n def _register_global_func(name: str, pyfunc: Callable[..., Any] | Function, override: bool) -> Function:\n     cdef TVMFFIObjectHandle chandle\ndiff --git a/python/tvm_ffi/cython/object.pxi b/python/tvm_ffi/cython/object.pxi\nindex 49c7595..c8e1508 100644\n--- a/python/tvm_ffi/cython/object.pxi\n+++ b/python/tvm_ffi/cython/object.pxi\n@@ -487,6 +487,8 @@ cdef _update_registry(int type_index, object type_key, object type_info, object\n     TYPE_INDEX_TO_CLS[type_index] = type_cls\n     TYPE_INDEX_TO_INFO[type_index] = type_info\n     TYPE_KEY_TO_INFO[type_key] = type_info\n+    if type_cls is not None:\n+        TYPE_CLS_TO_INFO[type_cls] = type_info\n \n \n def _register_object_by_index(int type_index, object type_cls):\n@@ -498,12 +500,13 @@ def _register_object_by_index(int type_index, object type_cls):\n \n \n def _set_type_cls(object type_info, object type_cls):\n-    global TYPE_INDEX_TO_INFO, TYPE_INDEX_TO_CLS\n+    global TYPE_INDEX_TO_INFO, TYPE_INDEX_TO_CLS, TYPE_CLS_TO_INFO\n     assert type_info.type_cls is None, f\"Type already registered for {type_info.type_key}\"\n     assert TYPE_INDEX_TO_INFO[type_info.type_index] is type_info\n     assert TYPE_KEY_TO_INFO[type_info.type_key] is type_info\n     type_info.type_cls = type_cls\n     TYPE_INDEX_TO_CLS[type_info.type_index] = type_cls\n+    TYPE_CLS_TO_INFO[type_cls] = type_info\n \n \n def _lookup_or_register_type_info_from_type_key(type_key: str) -> TypeInfo:\n@@ -523,8 +526,13 @@ def _lookup_type_attr(type_index: int32_t, attr_key: str) -> Any:\n     return make_ret(column.data[type_index])\n \n \n+def _type_cls_to_type_info(type_cls: type) -> TypeInfo | None:\n+    return TYPE_CLS_TO_INFO.get(type_cls, None)\n+\n+\n cdef list TYPE_INDEX_TO_CLS = []\n cdef list TYPE_INDEX_TO_INFO = []\n+cdef dict TYPE_CLS_TO_INFO = {}\n cdef dict TYPE_KEY_TO_INFO = {}\n \n _set_class_object(Object)\ndiff --git a/python/tvm_ffi/cython/string.pxi b/python/tvm_ffi/cython/string.pxi\nindex d7bce4d..2c23a08 100644\n--- a/python/tvm_ffi/cython/string.pxi\n+++ b/python/tvm_ffi/cython/string.pxi\n@@ -66,9 +66,6 @@ class String(str, PyNativeObject):\n         return val\n \n \n-_register_object_by_index(kTVMFFIStr, String)\n-\n-\n class Bytes(bytes, PyNativeObject):\n     \"\"\"Byte buffer that interoperates with FFI while behaving like ``bytes``.\n \n@@ -90,7 +87,3 @@ class Bytes(bytes, PyNativeObject):\n         val = bytes.__new__(cls, content)\n         val._tvm_ffi_cached_object = obj\n         return val\n-\n-\n-_register_object_by_index(kTVMFFIBytes, Bytes)\n-_register_object_by_index(kTVMFFIObject, Object)\ndiff --git a/python/tvm_ffi/cython/tensor.pxi b/python/tvm_ffi/cython/tensor.pxi\nindex 0985056..e6fba34 100644\n--- a/python/tvm_ffi/cython/tensor.pxi\n+++ b/python/tvm_ffi/cython/tensor.pxi\n@@ -330,7 +330,6 @@ cdef class Tensor(Object):\n \n \n _set_class_tensor(Tensor)\n-_register_object_by_index(kTVMFFITensor, Tensor)\n \n \n cdef int _dltensor_test_wrapper_from_pyobject(\ndiff --git a/tests/python/test_object.py b/tests/python/test_object.py\nindex 4701a74..c39b0be 100644\n--- a/tests/python/test_object.py\n+++ b/tests/python/test_object.py\n@@ -14,11 +14,14 @@\n # KIND, either express or implied.  See the License for the\n # specific language governing permissions and limitations\n # under the License.\n+from __future__ import annotations\n+\n import sys\n from typing import Any\n \n import pytest\n import tvm_ffi\n+import tvm_ffi.testing\n from tvm_ffi.core import TypeInfo\n \n \n@@ -169,3 +172,59 @@ def test_unregistered_object_fallback() -> None:\n     for _ in range(5):\n         obj = tvm_ffi.testing.make_unregistered_object()\n         _check_type(obj)\n+\n+\n+@pytest.mark.parametrize(\n+    \"test_cls, type_key, parent_cls\",\n+    [\n+        (tvm_ffi.Object, \"ffi.Object\", None),\n+        (tvm_ffi.Tensor, \"ffi.Tensor\", tvm_ffi.Object),\n+        (tvm_ffi.core.DataType, \"DataType\", None),\n+        (tvm_ffi.Device, \"Device\", None),\n+        (tvm_ffi.Shape, \"ffi.Shape\", tvm_ffi.Object),\n+        (tvm_ffi.Module, \"ffi.Module\", tvm_ffi.Object),\n+        (tvm_ffi.Function, \"ffi.Function\", tvm_ffi.Object),\n+        (tvm_ffi.core.Error, \"ffi.Error\", tvm_ffi.Object),\n+        (tvm_ffi.core.String, \"ffi.String\", tvm_ffi.Object),\n+        (tvm_ffi.core.Bytes, \"ffi.Bytes\", tvm_ffi.Object),\n+        (tvm_ffi.Tensor, \"ffi.Tensor\", tvm_ffi.Object),\n+        (tvm_ffi.Array, \"ffi.Array\", tvm_ffi.Object),\n+        (tvm_ffi.Map, \"ffi.Map\", tvm_ffi.Object),\n+        (tvm_ffi.access_path.AccessStep, \"ffi.reflection.AccessStep\", tvm_ffi.Object),\n+        (tvm_ffi.access_path.AccessPath, \"ffi.reflection.AccessPath\", tvm_ffi.Object),\n+        (tvm_ffi.testing.TestIntPair, \"testing.TestIntPair\", tvm_ffi.Object),\n+        (tvm_ffi.testing.TestObjectBase, \"testing.TestObjectBase\", tvm_ffi.Object),\n+        (\n+            tvm_ffi.testing.TestObjectDerived,\n+            \"testing.TestObjectDerived\",\n+            tvm_ffi.testing.TestObjectBase,\n+        ),\n+        (tvm_ffi.testing._TestCxxClassBase, \"testing.TestCxxClassBase\", tvm_ffi.Object),\n+        (\n+            tvm_ffi.testing._TestCxxClassDerived,\n+            \"testing.TestCxxClassDerived\",\n+            tvm_ffi.testing._TestCxxClassBase,\n+        ),\n+        (\n+            tvm_ffi.testing._TestCxxClassDerivedDerived,\n+            \"testing.TestCxxClassDerivedDerived\",\n+            tvm_ffi.testing._TestCxxClassDerived,\n+        ),\n+        (tvm_ffi.testing._TestCxxInitSubset, \"testing.TestCxxInitSubset\", tvm_ffi.Object),\n+        (tvm_ffi.testing._SchemaAllTypes, \"testing.SchemaAllTypes\", tvm_ffi.Object),\n+    ],\n+)\n+def test_type_info_attachment(test_cls: type, type_key: str, parent_cls: type | None) -> None:\n+    type_info = tvm_ffi.core._type_cls_to_type_info(test_cls)\n+    assert type_info is not None\n+    assert type_info.type_cls is test_cls\n+    assert type_info.type_key == type_key, (\n+        f\"Expected type key `{type_key}` but got `{type_info.type_key}`\"\n+    )\n+    parent_type_info = type_info.parent_type_info\n+    if parent_type_info is None:\n+        assert parent_cls is None\n+    else:\n+        assert parent_type_info.type_cls is parent_cls, (\n+            f\"Expected parent type {parent_cls}, but got {parent_type_info.type_cls}\"\n+        )",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".pxi",
+      ".py",
+      ".pyi",
+      ".pyx"
+    ],
+    "scopes_guess": [
+      "python",
+      "tests"
+    ]
+  }
+}

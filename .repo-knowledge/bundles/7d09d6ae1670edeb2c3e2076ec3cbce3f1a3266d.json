@@ -1,0 +1,50 @@
+{
+  "sha": "7d09d6ae1670edeb2c3e2076ec3cbce3f1a3266d",
+  "sha7": "7d09d6a",
+  "author_name": "Balint Cristian",
+  "author_email": "cristian.balint@gmail.com",
+  "date_iso": "2025-08-29T03:01:09+03:00",
+  "subject": "[FFI][CMAKE] Revert cmake libbacktrace URL and update submodule (#18249)",
+  "body":
+      "* Revert the URL out from cmake for libbacktrace\n* Switch git submodule to upstream HEAD instead\n\nAs per discussed here https://github.com/apache/tvm/pull/18246#issuecomment-3234991244,\nthis reverts in favour of git submodule way.\n\nAs per finding in the same discuss the upstream [already](https://github.com/ianlancetaylor/libbacktrace/blob/793921876c981ce49759114d7bb89bb89b2d3a2d/macho.c#L1273-L1275) incorporates [the one patch](https://github.com/ianlancetaylor/libbacktrace/compare/master...tlc-pack:libbacktrace:master) used, and MacOS works fine.",
+  "is_merge": false,
+  "parents": [
+    "b245f1f9f96bf21a36dfb5b6db29de8e47c92103"
+  ],
+  "name_status": [
+    [
+      "M",
+      "3rdparty/libbacktrace"
+    ],
+    [
+      "M",
+      "cmake/Utils/AddLibbacktrace.cmake"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "3rdparty/libbacktrace",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "cmake/Utils/AddLibbacktrace.cmake",
+      "additions": 0,
+      "deletions": 2
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/3rdparty/libbacktrace b/3rdparty/libbacktrace\nindex 08f7c7e..7939218 160000\n--- a/3rdparty/libbacktrace\n+++ b/3rdparty/libbacktrace\n@@ -1 +1 @@\n-Subproject commit 08f7c7e69f8ea61a0c4151359bc8023be8e9217b\n+Subproject commit 793921876c981ce49759114d7bb89bb89b2d3a2d\ndiff --git a/cmake/Utils/AddLibbacktrace.cmake b/cmake/Utils/AddLibbacktrace.cmake\nindex 2c51bd0..e920a1f 100644\n--- a/cmake/Utils/AddLibbacktrace.cmake\n+++ b/cmake/Utils/AddLibbacktrace.cmake\n@@ -33,8 +33,6 @@ function(_libbacktrace_compile)\n \n   ExternalProject_Add(project_libbacktrace\n     PREFIX libbacktrace\n-    GIT_REPOSITORY \"https://github.com/ianlancetaylor/libbacktrace.git\"\n-    GIT_TAG \"793921876c981ce49759114d7bb89bb89b2d3a2d\"\n     SOURCE_DIR ${_libbacktrace_source}\n     BINARY_DIR ${_libbacktrace_prefix}\n     CONFIGURE_COMMAND",
+  "heuristics": {
+    "tags": [],
+    "extensions": [
+      "",
+      ".cmake"
+    ],
+    "scopes_guess": [
+      "3rdparty",
+      "cmake"
+    ]
+  }
+}

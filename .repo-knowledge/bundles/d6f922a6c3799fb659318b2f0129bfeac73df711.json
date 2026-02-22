@@ -1,0 +1,41 @@
+{
+  "sha": "d6f922a6c3799fb659318b2f0129bfeac73df711",
+  "sha7": "d6f922a",
+  "author_name": "Junru Shao",
+  "author_email": "junrushao@apache.org",
+  "date_iso": "2025-10-21T04:49:41-07:00",
+  "subject": "Fix README.md (#183)",
+  "body":
+      "* Fix markdown lint\n* Add links to:\n📚 [Documentation](https://tvm.apache.org/ffi/) | 🚀\n[Quickstart](https://tvm.apache.org/ffi/get_started/quickstart.html)\n* Removed CI badge",
+  "is_merge": false,
+  "parents": [
+    "aeaeca0af7143d905714c99702493a441ca92726"
+  ],
+  "name_status": [
+    [
+      "M",
+      "README.md"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "README.md",
+      "additions": 5,
+      "deletions": 5
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/README.md b/README.md\nindex f238e7c..91901a6 100644\n--- a/README.md\n+++ b/README.md\n@@ -17,7 +17,7 @@\n \n # TVM FFI: Open ABI and FFI for Machine Learning Systems\n \n-[![CI](https://github.com/apache/tvm-ffi/actions/workflows/ci_test.yml/badge.svg)](https://github.com/apache/tvm-ffi/actions/workflows/ci_test.yml)\n+📚 [Documentation](https://tvm.apache.org/ffi/) | 🚀 [Quickstart](https://tvm.apache.org/ffi/get_started/quickstart.html)\n \n Apache TVM FFI is an open ABI and FFI for machine learning systems. It is a minimal, framework-agnostic,\n yet flexible open convention with the following systems in mind:\n@@ -30,10 +30,10 @@ yet flexible open convention with the following systems in mind:\n \n ## Features\n \n-* **Stable, minimal C ABI** designed for kernels, DSLs, and runtime extensibility.\n-* **Zero-copy interop** across PyTorch, JAX, and CuPy using [DLPack protocol](https://data-apis.org/array-api/2024.12/design_topics/data_interchange.html).\n-* **Compact value and call convention** covering common data types for ultra low-overhead ML applications.\n-* **Multi-language support** out of the box: Python, C++, and Rust (with a path towards more languages).\n+- **Stable, minimal C ABI** designed for kernels, DSLs, and runtime extensibility.\n+- **Zero-copy interop** across PyTorch, JAX, and CuPy using [DLPack protocol](https://data-apis.org/array-api/2024.12/design_topics/data_interchange.html).\n+- **Compact value and call convention** covering common data types for ultra low-overhead ML applications.\n+- **Multi-language support** out of the box: Python, C++, and Rust (with a path towards more languages).\n \n These enable broad **interoperability** across frameworks, libraries, DSLs, and agents; the ability to **ship one wheel** for multiple frameworks and Python versions (including free-threaded Python); and consistent infrastructure across environments.\n ",
+  "heuristics": {
+    "tags": [
+      "docs"
+    ],
+    "extensions": [
+      ".md"
+    ],
+    "scopes_guess": [
+      "README.md"
+    ]
+  }
+}

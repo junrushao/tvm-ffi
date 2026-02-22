@@ -1,0 +1,63 @@
+{
+  "sha": "2002e28bcf94fee5e9b85014e59528284e470cfd",
+  "sha7": "2002e28",
+  "author_name": "Junru Shao",
+  "author_email": "junrushao@apache.org",
+  "date_iso": "2025-10-15T11:32:39-07:00",
+  "subject": "chore(build): Fix Windows Build (#134)",
+  "body":
+      "- Explicitly link `tvm_ffi_cython` to `Python::Module` or\n`Python::SABIModule`\n- Fallback to `InterlockedAdd64` if `_InlineInterlockedAdd64` is not\navailable\n- Upgrade CI to test Python >= 3.10",
+  "is_merge": false,
+  "parents": [
+    "4206f16e539e60d0955423aa042f3c64d8489da4"
+  ],
+  "name_status": [
+    [
+      "M",
+      ".github/workflows/ci_test.yml"
+    ],
+    [
+      "M",
+      "CMakeLists.txt"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/base_details.h"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": ".github/workflows/ci_test.yml",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "CMakeLists.txt",
+      "additions": 2,
+      "deletions": 0
+    },
+    {
+      "path": "include/tvm/ffi/base_details.h",
+      "additions": 4,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/.github/workflows/ci_test.yml b/.github/workflows/ci_test.yml\nindex e5361f3..0fa1554 100644\n--- a/.github/workflows/ci_test.yml\n+++ b/.github/workflows/ci_test.yml\n@@ -80,7 +80,7 @@ jobs:\n       matrix:\n         include:\n           - {os: ubuntu-latest, arch: x86_64, python_version: '3.14t'}\n-          - {os: ubuntu-24.04-arm, arch: aarch64, python_version: '3.9'}\n+          - {os: ubuntu-24.04-arm, arch: aarch64, python_version: '3.10'}\n           - {os: windows-latest, arch: AMD64, python_version: '3.12'}\n           - {os: macos-14, arch: arm64, python_version: '3.13'}\n \ndiff --git a/CMakeLists.txt b/CMakeLists.txt\nindex 3c4c69a..8928863 100644\n--- a/CMakeLists.txt\n+++ b/CMakeLists.txt\n@@ -240,8 +240,10 @@ if (TVM_FFI_BUILD_PYTHON_MODULE)\n   if (Python_VERSION VERSION_GREATER_EQUAL \"3.12\" AND NOT PYTHON_IS_FREE_THREADED)\n     # >= Python3.12, use Use_SABI version\n     python_add_library(tvm_ffi_cython MODULE \"${_core_cpp}\" USE_SABI 3.12)\n+    target_link_libraries(tvm_ffi_cython PRIVATE Python::SABIModule)\n     set_target_properties(tvm_ffi_cython PROPERTIES OUTPUT_NAME \"core\")\n     if (NOT WIN32)\n+      target_link_libraries(tvm_ffi_cython PRIVATE Python::Module)\n       set_target_properties(tvm_ffi_cython PROPERTIES SUFFIX \".abi3.so\")\n     endif ()\n   else ()\ndiff --git a/include/tvm/ffi/base_details.h b/include/tvm/ffi/base_details.h\nindex 51d1b4f..4e83648 100644\n--- a/include/tvm/ffi/base_details.h\n+++ b/include/tvm/ffi/base_details.h\n@@ -41,6 +41,10 @@\n #endif\n \n #include <windows.h>\n+#if (defined(_M_ARM64) || defined(_ARM64_) || defined(_M_ARM64EC)) && \\\n+    !defined(_InlineInterlockedAdd64)\n+#define _InlineInterlockedAdd64 InterlockedAdd64\n+#endif\n \n #ifdef ERROR\n #undef ERROR",
+  "heuristics": {
+    "tags": [
+      "build",
+      "ci"
+    ],
+    "extensions": [
+      ".h",
+      ".txt",
+      ".yml"
+    ],
+    "scopes_guess": [
+      "CMakeLists.txt",
+      "include"
+    ]
+  }
+}

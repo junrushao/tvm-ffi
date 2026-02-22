@@ -1,0 +1,50 @@
+{
+  "sha": "a999de6efa7f59b6a120ddc1b762eafc290d45a6",
+  "sha7": "a999de6",
+  "author_name": "Kathryn (Jinqi) Chen",
+  "author_email": "65606304+Kathryn-cat@users.noreply.github.com",
+  "date_iso": "2025-11-20T18:41:34-08:00",
+  "subject": "fix: clang tidy issue (#279)",
+  "body": "",
+  "is_merge": false,
+  "parents": [
+    "ac7bf68058b392c3a8475619016fde48bd08334b"
+  ],
+  "name_status": [
+    [
+      "M",
+      "src/ffi/testing/testing.cc"
+    ],
+    [
+      "M",
+      "tests/cpp/test_metadata.cc"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "src/ffi/testing/testing.cc",
+      "additions": 2,
+      "deletions": 2
+    },
+    {
+      "path": "tests/cpp/test_metadata.cc",
+      "additions": 3,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/src/ffi/testing/testing.cc b/src/ffi/testing/testing.cc\nindex 876801f..d38c027 100644\n--- a/src/ffi/testing/testing.cc\n+++ b/src/ffi/testing/testing.cc\n@@ -335,9 +335,9 @@ Variant<int64_t, String, Array<int64_t>> schema_variant_mix(\n }\n \n // Complex nested types\n-Map<String, Array<int64_t>> schema_arr_map_opt(Array<Optional<int64_t>> arr,\n+Map<String, Array<int64_t>> schema_arr_map_opt(const Array<Optional<int64_t>>& arr,\n                                                Map<String, Array<int64_t>> mp,\n-                                               Optional<String> os) {\n+                                               const Optional<String>& os) {\n   // no-op combine\n   if (os.has_value()) {\n     Array<int64_t> extra;\ndiff --git a/tests/cpp/test_metadata.cc b/tests/cpp/test_metadata.cc\nindex d0dfebd..ddb1abd 100644\n--- a/tests/cpp/test_metadata.cc\n+++ b/tests/cpp/test_metadata.cc\n@@ -31,9 +31,12 @@\n \n // Forward declarations for exported FFI functions\n extern \"C\" {\n+// NOLINTNEXTLINE(bugprone-reserved-identifier)\n int __tvm_ffi__metadata_testing_dll_schema_id_int(void*, const TVMFFIAny*, int32_t, TVMFFIAny*);\n+// NOLINTNEXTLINE(bugprone-reserved-identifier)\n int __tvm_ffi__metadata_testing_dll_test_add_with_docstring(void*, const TVMFFIAny*, int32_t,\n                                                             TVMFFIAny*);\n+// NOLINTNEXTLINE(bugprone-reserved-identifier)\n int __tvm_ffi__doc_testing_dll_test_add_with_docstring(void*, const TVMFFIAny*, int32_t,\n                                                        TVMFFIAny*);\n }",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".cc"
+    ],
+    "scopes_guess": [
+      "src",
+      "tests"
+    ]
+  }
+}

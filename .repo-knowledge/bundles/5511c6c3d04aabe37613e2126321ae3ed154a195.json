@@ -1,0 +1,70 @@
+{
+  "sha": "5511c6c3d04aabe37613e2126321ae3ed154a195",
+  "sha7": "5511c6c",
+  "author_name": "Yaoyao Ding",
+  "author_email": "dingyaoyao.cs@gmail.com",
+  "date_iso": "2025-09-14T21:04:25-04:00",
+  "subject": "add runtime support section (#14)",
+  "body": "",
+  "is_merge": false,
+  "parents": [
+    "7163aeba46e572d7f979f83d47b56ecec4e49ec6"
+  ],
+  "name_status": [
+    [
+      "A",
+      "docs/_static/custom.css"
+    ],
+    [
+      "M",
+      "docs/conf.py"
+    ],
+    [
+      "M",
+      "docs/guides/compiler_integration.md"
+    ],
+    [
+      "M",
+      "tests/lint/check_file_type.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "docs/_static/custom.css",
+      "additions": 5,
+      "deletions": 0
+    },
+    {
+      "path": "docs/conf.py",
+      "additions": 4,
+      "deletions": 0
+    },
+    {
+      "path": "docs/guides/compiler_integration.md",
+      "additions": 52,
+      "deletions": 0
+    },
+    {
+      "path": "tests/lint/check_file_type.py",
+      "additions": 1,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/docs/_static/custom.css b/docs/_static/custom.css\nnew file mode 100644\nindex 0000000..6277c6d\n--- /dev/null\n+++ b/docs/_static/custom.css\n@@ -0,0 +1,5 @@\n+/* Avoid the uncessary scrollbar on the primiary sidebar\n+   See: https://github.com/executablebooks/sphinx-book-theme/issues/732 */\n+#rtd-footer-container {\n+    margin: 0px !important;\n+}\n\\ No newline at end of file\ndiff --git a/docs/conf.py b/docs/conf.py\nindex f86f9bd..8a1c5b3 100644\n--- a/docs/conf.py\n+++ b/docs/conf.py\n@@ -225,3 +225,7 @@ html_context = {\n     \"github_version\": \"main\",\n     \"conf_py_path\": \"/docs/\",\n }\n+\n+html_static_path = ['_static']\n+\n+html_css_files = ['custom.css']\ndiff --git a/docs/guides/compiler_integration.md b/docs/guides/compiler_integration.md\nindex 96f5b2f..0eaf1ff 100644\n--- a/docs/guides/compiler_integration.md\n+++ b/docs/guides/compiler_integration.md\n@@ -103,6 +103,58 @@ This approach provides a unified mechanism to call into any libraries and other\n that expose kernels following the FFI convention, enabling seamless interoperability\n with various kernel DSLs and libraries.\n \n+\n+## Runtime and State Management for Compilers\n+\n+While TVM FFI provides a standard ABI for compiler-generated kernels, many compilers and domain-specific languages \n+(DSLs) require their own **runtime** to manage states like dynamic shapes, workspace memory, or other \n+application-specific data. This runtime can be a separate shared library accessible to all kernels from a specific \n+compiler.\n+\n+### Recommended Approach for State Management\n+\n+The recommended approach for managing compiler-specific state is to define the state within a **separate shared library**. \n+This library exposes its functionality by registering functions as global `tvm::ffi::Function`s.\n+\n+Here's a breakdown of the process:\n+\n+1.  **Define a Global State**: Create a class or structure to hold your compiler's runtime state. A simple singleton pattern is often used for this.\n+2.  **Register Global Functions**: Use the `TVM_FFI_STATIC_INIT_BLOCK()` macro to register a global function that returns a pointer to your state. For example:\n+    ```c++\n+    class GlobalState {\n+      ... // your state variables here\n+     public:\n+       GlobalState* Global() {\n+          static auto *inst = new GlobalState();\n+          return inst;\n+       }\n+    };\n+    TVM_FFI_STATIC_INIT_BLOCK() {\n+      using refl = tvm::ffi::reflection;\n+      refl.GlobalDef().def(\"mylang.get_global_state\", []()-> void*{ return GlobalState::Global()});\n+      // other runtime APIs can be registered here\n+    }\n+    ```\n+    This method allows both C++ and Python to access the runtime state through a consistent API.\n+3.  **Access State from Kernels**: Within your compiler-generated kernels, you can use\n+    `GetGlobalRequired(\"mylang.get_global_state\")` in C++ or the C equivalent\n+    `TVMFFIGetGlobalFunction(\"mylang.get_global_state\", ...)` to get the function and then call it to retrieve the state \n+    pointer.\n+\n+### Distributing the Runtime\n+\n+For a user to use a kernel from your compiler, they must have access to your runtime library. The preferred method is to \n+package the runtime shared library (e.g., `libmylang_runtime.so`) as part of a Python or C++ package. Users must install \n+and import this package before loading any kernels compiled by your system. \n+This approach ensures the state is shared among different kernels.\n+\n+### Common vs. Custom State\n+\n+It's important to distinguish between compiler-specific state and **common state** managed by TVM FFI. TVM FFI handles \n+common states like **streams** and **memory allocators** through environment functions (e.g., `TVMFFIEnvGetStream`), \n+allowing kernels to access these without managing their own. However, for any unique state required by your compiler, \n+the global function registration approach is the most suitable method.\n+\n ## Advanced: Custom Modules\n \n While the standard dynamic library module is sufficient for many use cases,\ndiff --git a/tests/lint/check_file_type.py b/tests/lint/check_file_type.py\nindex f5ab2b9..b44d5f1 100644\n--- a/tests/lint/check_file_type.py\n+++ b/tests/lint/check_file_type.py\n@@ -61,6 +61,7 @@ ALLOW_EXTENSION = {\n     \"txt\",\n     \"md\",\n     \"rst\",\n+    \"css\",\n     # sgx\n     \"edl\",\n     \"lds\",",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".css",
+      ".md",
+      ".py"
+    ],
+    "scopes_guess": [
+      "docs",
+      "tests"
+    ]
+  }
+}

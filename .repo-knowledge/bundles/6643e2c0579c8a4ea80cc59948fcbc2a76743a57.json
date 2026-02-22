@@ -1,0 +1,39 @@
+{
+  "sha": "6643e2c0579c8a4ea80cc59948fcbc2a76743a57",
+  "sha7": "6643e2c",
+  "author_name": "Guan-Ming (Wesley) Chiu",
+  "author_email": "105915352+guan404ming@users.noreply.github.com",
+  "date_iso": "2026-01-09T21:59:31+08:00",
+  "subject": "docs: document structural_equal and structural_hash for Array and Map (#379)",
+  "body":
+      "## Why\n\nUsers need guidance on how to perform structural equality comparison for\ncontainers.\n\n## How\n\n- Add notes to Array and Map docstrings pointing to structural_equal and\nstructural_hash APIs",
+  "is_merge": false,
+  "parents": [
+    "e8028e826b78ed4c2848e8f64194dff4ba271bf8"
+  ],
+  "name_status": [
+    [
+      "M",
+      "python/tvm_ffi/container.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "python/tvm_ffi/container.py",
+      "additions": 8,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/python/tvm_ffi/container.py b/python/tvm_ffi/container.py\nindex 2b64ed6..3f6884f 100644\n--- a/python/tvm_ffi/container.py\n+++ b/python/tvm_ffi/container.py\n@@ -144,6 +144,10 @@ class Array(core.Object, Sequence[T]):\n         a = tvm_ffi.Array([1, 2, 3])\n         assert tuple(a) == (1, 2, 3)\n \n+    Notes\n+    -----\n+    For structural equality and hashing, use ``structural_equal`` and ``structural_hash`` APIs.\n+\n     See Also\n     --------\n     :py:func:`tvm_ffi.convert`\n@@ -298,6 +302,10 @@ class Map(core.Object, Mapping[K, V]):\n         assert amap[\"a\"] == 1\n         assert amap[\"b\"] == 2\n \n+    Notes\n+    -----\n+    For structural equality and hashing, use ``structural_equal`` and ``structural_hash`` APIs.\n+\n     See Also\n     --------\n     :py:func:`tvm_ffi.convert`",
+  "heuristics": {
+    "tags": [],
+    "extensions": [
+      ".py"
+    ],
+    "scopes_guess": [
+      "python"
+    ]
+  }
+}

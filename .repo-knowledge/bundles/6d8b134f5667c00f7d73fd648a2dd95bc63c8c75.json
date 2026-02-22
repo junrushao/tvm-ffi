@@ -1,0 +1,39 @@
+{
+  "sha": "6d8b134f5667c00f7d73fd648a2dd95bc63c8c75",
+  "sha7": "6d8b134",
+  "author_name": "Jo Shields",
+  "author_email": "directhex@apebox.org",
+  "date_iso": "2025-11-07T14:07:20-05:00",
+  "subject": "Allow handling of load-bearing compiler flags for dlpack (#231)",
+  "body":
+      "This is... largely a follow-up to\nhttps://github.com/flashinfer-ai/flashinfer/pull/1801 introduced by the\nnew dependency.\n\nIt is fairly common in niche scenarios - e.g. anywhere involving\nembedded development or cross-compilation - for compiler options to be\nmore than decorative. For example, I sped up our (QEMU-based) CI by 80%\nby using an x64 build of clang, inside a riscv64 build root, so Python\nwould think \"I am doing riscv64 native builds\" but CXX would point to\nthe x64 clang++ binary. Works great, but has a hard dependency on\npassing values for `--sysroot` and `--target`.\n\nSince adding the tvm-ffi dependency, this has been broken in flashinfer,\nas `import tvm_ffi` shells out to the dlpack build script without\npassing any load-bearing compiler flags.\n\nSo... add support for those.\n\nBefore:\n\n```\n>>> import tvm_ffi\nTraceback (most recent call last):\n  File \"/tmp/tvm-ffi/python/tvm_ffi/utils/_build_optional_torch_c_dlpack.py\", line 835, in <module>\n    main()\n  File \"/tmp/tvm-ffi/python/tvm_ffi/utils/_build_optional_torch_c_dlpack.py\", line 828, in main\n    build_ninja(build_dir=str(build_dir))\n  File \"/tmp/tvm-ffi/python/tvm_ffi/cpp/extension.py\", line 353, in build_ninja\n    raise RuntimeError(\"\\n\".join(msg))\nRuntimeError: ninja exited with status 1\nstdout:\n[1/2] /x64-prefix/bin/clang++ -MMD -MF main.o.d -std=c++17 -fPIC -O2 -DBUILD_WITH_CUDA -D_GLIBCXX_USE_CXX11_ABI=1 -I/tmp/tvm-ffi/python/tvm_ffi/../../3rdparty/dlpack/include -I/usr/include/python3.12 -I/tmp/flashinfer/.venv/lib/python3.12/site-packages/torch/include -I/tmp/flashinfer/.venv/lib/python3.12/site-packages/torch/include/torch/csrc/api/include -I/prefix/include -c /tmp/tvm-ffi-torch-c-dlpack-ei5_rkaa/addon.cc -o main.o\nFAILED: [code=1] main.o\n/x64-prefix/bin/clang++ -MMD -MF main.o.d -std=c++17 -fPIC -O2 -DBUILD_WITH_CUDA -D_GLIBCXX_USE_CXX11_ABI=1 -I/tmp/tvm-ffi/python/tvm_ffi/../../3rdparty/dlpack/include -I/usr/include/python3.12 -I/tmp/flashinfer/.venv/lib/python3.12/site-packages/torch/include -I/tmp/flashinfer/.venv/lib/python3.12/site-packages/torch/include/torch/csrc/api/include -I/prefix/include -c /tmp/tvm-ffi-torch-c-dlpack-ei5_rkaa/addon.cc -o main.o\nIn file included from /tmp/tvm-ffi-torch-c-dlpack-ei5_rkaa/addon.cc:2:\nIn file included from /tmp/tvm-ffi/python/tvm_ffi/../../3rdparty/dlpack/include/dlpack/dlpack.h:35:\nIn file included from /x64-prefix/lib/clang/21/include/stdint.h:56:\n/usr/include/stdint.h:26:10: fatal error: 'bits/libc-header-start.h' file not found\n   26 | #include <bits/libc-header-start.h>\n      |          ^~~~~~~~~~~~~~~~~~~~~~~~~~\n1 error generated.\nninja: build stopped: subcommand failed.\n```\n\nAfter:\n\n```\n# export DLPACK_EXTRA_CFLAGS=\"--target=riscv64-unknown-linux-gnu --sysroot=/\"\n# export DLPACK_EXTRA_LDFLAGS=\"--target=riscv64-linux-gnu --sysroot=/ -L/prefix/lib\"\n>>> import tvm_ffi\n>>>\n```",
+  "is_merge": false,
+  "parents": [
+    "6c85e562c00f098743ed257ff4516a250f5145e7"
+  ],
+  "name_status": [
+    [
+      "M",
+      "python/tvm_ffi/utils/_build_optional_torch_c_dlpack.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "python/tvm_ffi/utils/_build_optional_torch_c_dlpack.py",
+      "additions": 24,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/python/tvm_ffi/utils/_build_optional_torch_c_dlpack.py b/python/tvm_ffi/utils/_build_optional_torch_c_dlpack.py\nindex 4be433f..eb7f897 100644\n--- a/python/tvm_ffi/utils/_build_optional_torch_c_dlpack.py\n+++ b/python/tvm_ffi/utils/_build_optional_torch_c_dlpack.py\n@@ -568,6 +568,22 @@ extern \"C\" DLL_EXPORT int64_t TorchDLPackExchangeAPIPtr() {\n \"\"\"\n \n \n+def parse_env_flags(env_var_name: str) -> list[str]:\n+    env_flags = os.environ.get(env_var_name)\n+    if env_flags:\n+        try:\n+            import shlex  # noqa: PLC0415\n+\n+            return shlex.split(env_flags)\n+        except ValueError as e:\n+            print(\n+                f\"Warning: Could not parse {env_var_name} with shlex: {e}. Falling back to simple split.\",\n+                file=sys.stderr,\n+            )\n+            return env_flags.split()\n+    return []\n+\n+\n def _generate_ninja_build(\n     build_dir: Path,\n     libname: str,\n@@ -791,6 +807,14 @@ def main() -> None:  # noqa: PLR0912, PLR0915\n                 ldflags.append(f\"-L{python_libdir}\")\n                 ldflags.append(f\"-l{py_version}\")\n \n+        env_ldflags = parse_env_flags(\"TVM_FFI_JIT_EXTRA_LDFLAGS\")\n+        if env_ldflags:\n+            ldflags.extend(env_ldflags)\n+\n+        env_cflags = parse_env_flags(\"TVM_FFI_JIT_EXTRA_CFLAGS\")\n+        if env_cflags:\n+            cflags.extend(env_cflags)\n+\n         # generate ninja build file\n         _generate_ninja_build(\n             build_dir=build_dir,",
+  "heuristics": {
+    "tags": [],
+    "extensions": [
+      ".py"
+    ],
+    "scopes_guess": [
+      "python"
+    ]
+  }
+}

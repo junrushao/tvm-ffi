@@ -1,0 +1,73 @@
+{
+  "sha": "42e0612838b231570864474ed3e1a8b1b0ebdfca",
+  "sha7": "42e0612",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-10-16T13:50:10-04:00",
+  "subject": "Introduce opaque ptr protocol (#147)",
+  "body":
+      "This PR introduces opaque ptr protocol of so DSL can pass in opaque c\nstructs if needed and pass through to internla function.",
+  "is_merge": false,
+  "parents": [
+    "d2e9aa678b53a67d9e0e757992191b95f9a726e1"
+  ],
+  "name_status": [
+    [
+      "M",
+      "pyproject.toml"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/__init__.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/cython/function.pxi"
+    ],
+    [
+      "M",
+      "tests/python/test_function.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "pyproject.toml",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "python/tvm_ffi/__init__.py",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "python/tvm_ffi/cython/function.pxi",
+      "additions": 15,
+      "deletions": 0
+    },
+    {
+      "path": "tests/python/test_function.py",
+      "additions": 15,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/pyproject.toml b/pyproject.toml\nindex 0800264..fa27da1 100644\n--- a/pyproject.toml\n+++ b/pyproject.toml\n@@ -17,7 +17,7 @@\n \n [project]\n name = \"apache-tvm-ffi\"\n-version = \"0.1.0b19\"\n+version = \"0.1.0b20\"\n description = \"tvm ffi\"\n \n authors = [{ name = \"TVM FFI team\" }]\ndiff --git a/python/tvm_ffi/__init__.py b/python/tvm_ffi/__init__.py\nindex d2bf5a8..c97396e 100644\n--- a/python/tvm_ffi/__init__.py\n+++ b/python/tvm_ffi/__init__.py\n@@ -18,7 +18,7 @@\n \n # order matters here so we need to skip isort here\n # isort: skip_file\n-__version__ = \"0.1.0b19\"\n+__version__ = \"0.1.0b20\"\n \n # HACK: try importing torch first, to avoid a potential\n # symbol conflict when both torch and tvm_ffi are imported.\ndiff --git a/python/tvm_ffi/cython/function.pxi b/python/tvm_ffi/cython/function.pxi\nindex 66cf4b9..46079bf 100644\n--- a/python/tvm_ffi/cython/function.pxi\n+++ b/python/tvm_ffi/cython/function.pxi\n@@ -423,6 +423,18 @@ cdef int TVMFFIPyArgSetterCtypesVoidPtr_(\n     return 0\n \n \n+cdef int TVMFFIPyArgSetterFFIOpaquePtrCompatible_(\n+    TVMFFIPyArgSetter* handle, TVMFFIPyCallContext* ctx,\n+    PyObject* py_arg, TVMFFIAny* out\n+) except -1:\n+    \"\"\"Setter for objects that implement the `__tvm_ffi_opaque_ptr__` protocol.\"\"\"\n+    cdef object arg = <object>py_arg\n+    cdef long long long_ptr = <long long>arg.__tvm_ffi_opaque_ptr__()\n+    out.type_index = kTVMFFIOpaquePtr\n+    out.v_ptr = <void*>long_ptr\n+    return 0\n+\n+\n cdef int TVMFFIPyArgSetterObjectRValueRef_(\n     TVMFFIPyArgSetter* handle, TVMFFIPyCallContext* ctx,\n     PyObject* py_arg, TVMFFIAny* out\n@@ -675,6 +687,9 @@ cdef int TVMFFIPyArgSetterFactory_(PyObject* value, TVMFFIPyArgSetter* out) exce\n     if isinstance(arg, ctypes.c_void_p):\n         out.func = TVMFFIPyArgSetterCtypesVoidPtr_\n         return 0\n+    if hasattr(arg_class, \"__tvm_ffi_opaque_ptr__\"):\n+        out.func = TVMFFIPyArgSetterFFIOpaquePtrCompatible_\n+        return 0\n     if callable(arg):\n         out.func = TVMFFIPyArgSetterCallable_\n         return 0\ndiff --git a/tests/python/test_function.py b/tests/python/test_function.py\nindex cc932f5..797e1a4 100644\n--- a/tests/python/test_function.py\n+++ b/tests/python/test_function.py\n@@ -297,3 +297,18 @@ def test_function_subclass() -> None:\n     assert isinstance(fechoed, tvm_ffi.Function)\n     assert fechoed.__chandle__() == f_sub.__chandle__()\n     assert fechoed(10) == 10\n+\n+\n+def test_function_with_opaque_ptr_protocol() -> None:\n+    class MyObject:\n+        def __init__(self, value: Any) -> None:\n+            self.value = value\n+\n+        def __tvm_ffi_opaque_ptr__(self) -> Any:\n+            return self.value\n+\n+    fecho = tvm_ffi.get_global_func(\"testing.echo\")\n+    x = MyObject(10)\n+    y = fecho(x)\n+    assert isinstance(y, ctypes.c_void_p)\n+    assert y.value == 10",
+  "heuristics": {
+    "tags": [
+      "build",
+      "test"
+    ],
+    "extensions": [
+      ".pxi",
+      ".py",
+      ".toml"
+    ],
+    "scopes_guess": [
+      "pyproject.toml",
+      "python",
+      "tests"
+    ]
+  }
+}

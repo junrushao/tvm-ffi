@@ -1,0 +1,39 @@
+{
+  "sha": "0ee644421cae936c459a3e0ff41863cf07259647",
+  "sha7": "0ee6444",
+  "author_name": "Kexing Zhou",
+  "author_email": "KEKE_046@pku.edu.cn",
+  "date_iso": "2025-11-01T07:25:51+08:00",
+  "subject": "Minor improvement on type hint of `register_object` (#212)",
+  "body":
+      "Update type hint for register_object function.\nThis pull request introduces a minor type hint improvement to the\n`register_object` function in `python/tvm_ffi/registry.py`. The change\nenhances type safety by introducing a type variable for the function's\nreturn type.\n\n* Improved type hinting for `register_object` by adding a `_T` type\nvariable, ensuring the decorator preserves the original type of the\nclass it decorates.\n\nBefore, the decorated object is treated as a value, and cause type lint\nerrors\n\n<img width=\"592\" height=\"171\" alt=\"image\"\nsrc=\"https://github.com/user-attachments/assets/a5cd248a-c48e-4755-8706-c836993ee6f0\"\n/>\n\nAfter, the object is treated as a type\n\n<img width=\"596\" height=\"183\" alt=\"image\"\nsrc=\"https://github.com/user-attachments/assets/4b0bd484-7e6a-4830-b10a-bec8f90da9de\"\n/>\n\n---------\n\nCo-authored-by: Junru Shao <junrushao1994@gmail.com>",
+  "is_merge": false,
+  "parents": [
+    "bc0d225fc4d8b0ac651a5b370bf770be336ad083"
+  ],
+  "name_status": [
+    [
+      "M",
+      "python/tvm_ffi/registry.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "python/tvm_ffi/registry.py",
+      "additions": 8,
+      "deletions": 5
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/python/tvm_ffi/registry.py b/python/tvm_ffi/registry.py\nindex d149488..ce1d15f 100644\n--- a/python/tvm_ffi/registry.py\n+++ b/python/tvm_ffi/registry.py\n@@ -20,7 +20,7 @@ from __future__ import annotations\n \n import json\n import sys\n-from typing import Any, Callable, Literal, overload\n+from typing import Any, Callable, Literal, TypeVar, overload\n \n from . import core\n from .core import TypeInfo\n@@ -29,7 +29,10 @@ from .core import TypeInfo\n _SKIP_UNKNOWN_OBJECTS = False\n \n \n-def register_object(type_key: str | type | None = None) -> Callable[[type], type] | type:\n+_T = TypeVar(\"_T\", bound=type)\n+\n+\n+def register_object(type_key: str | None = None) -> Callable[[_T], _T]:\n     \"\"\"Register object type.\n \n     Parameters\n@@ -51,7 +54,7 @@ def register_object(type_key: str | type | None = None) -> Callable[[type], type\n \n     \"\"\"\n \n-    def _register(cls: type, object_name: str) -> type:\n+    def _register(cls: _T, object_name: str) -> _T:\n         \"\"\"Register the object type with the FFI core.\"\"\"\n         type_index = core._object_type_key_to_index(object_name)\n         if type_index is None:\n@@ -65,12 +68,12 @@ def register_object(type_key: str | type | None = None) -> Callable[[type], type\n \n     if isinstance(type_key, str):\n \n-        def _decorator_with_name(cls: type) -> type:\n+        def _decorator_with_name(cls: _T) -> _T:\n             return _register(cls, type_key)\n \n         return _decorator_with_name\n \n-    def _decorator_default(cls: type) -> type:\n+    def _decorator_default(cls: _T) -> _T:\n         return _register(cls, cls.__name__)\n \n     if type_key is None:",
+  "heuristics": {
+    "tags": [],
+    "extensions": [
+      ".py"
+    ],
+    "scopes_guess": [
+      "python"
+    ]
+  }
+}

@@ -1,0 +1,82 @@
+{
+  "sha": "a15364746d60766bfaf6e0a6ccdb2353ceee7d7d",
+  "sha7": "a153647",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-10-10T21:02:25-04:00",
+  "subject": "[CYTHON] Expose API to construct Function from extern c (#99)",
+  "body":
+      "This PR exposes `Function.__from_extern_c__` method that allows\nconstructing of a function from raw int and an optional keep alive var.\nIt can be helpful to be used to create a function from JIT execution\nengine that provides such a symbol.",
+  "is_merge": false,
+  "parents": [
+    "b64b46f32e845b650850d73a5828a2d3f07d3406"
+  ],
+  "name_status": [
+    [
+      "M",
+      "python/tvm_ffi/core.pyi"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/cython/base.pxi"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/cython/function.pxi"
+    ],
+    [
+      "M",
+      "src/ffi/extra/testing.cc"
+    ],
+    [
+      "M",
+      "tests/python/test_function.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "python/tvm_ffi/core.pyi",
+      "additions": 22,
+      "deletions": 0
+    },
+    {
+      "path": "python/tvm_ffi/cython/base.pxi",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "python/tvm_ffi/cython/function.pxi",
+      "additions": 49,
+      "deletions": 0
+    },
+    {
+      "path": "src/ffi/extra/testing.cc",
+      "additions": 13,
+      "deletions": 1
+    },
+    {
+      "path": "tests/python/test_function.py",
+      "additions": 20,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/python/tvm_ffi/core.pyi b/python/tvm_ffi/core.pyi\nindex 45a7d28..54f292c 100644\n--- a/python/tvm_ffi/core.pyi\n+++ b/python/tvm_ffi/core.pyi\n@@ -528,6 +528,28 @@ class Function(Object):\n         Python object.\n         \"\"\"\n \n+    @staticmethod\n+    def __from_extern_c__(c_symbol: int, keep_alive_object: Any | None = None) -> Function:\n+        \"\"\"Construct a ``Function`` from a C symbol and keep_alive_object.\n+\n+        Parameters\n+        ----------\n+        c_symbol : int\n+            function pointer to the safe call function\n+            The function pointer must ignore the first argument,\n+            which is the function handle\n+\n+        keep_alive_object : object\n+            optional closure to be captured and kept alive\n+            Usually can be the execution engine that JITed the function\n+\n+        Returns\n+        -------\n+        Function\n+            The constructed ``Function`` instance.\n+\n+        \"\"\"\n+\n def _register_global_func(\n     name: str, pyfunc: Callable[..., Any] | Function, override: bool\n ) -> Function: ...\ndiff --git a/python/tvm_ffi/cython/base.pxi b/python/tvm_ffi/cython/base.pxi\nindex 221bb04..0478575 100644\n--- a/python/tvm_ffi/cython/base.pxi\n+++ b/python/tvm_ffi/cython/base.pxi\n@@ -114,7 +114,7 @@ cdef extern from \"tvm/ffi/c_api.h\":\n         uint64_t combined_ref_count\n         int32_t type_index\n         uint32_t __padding\n-        void (*deleter)(TVMFFIObject* self)\n+        void (*deleter)(void* self, int flags)\n \n     ctypedef struct TVMFFIAny:\n         int32_t type_index\ndiff --git a/python/tvm_ffi/cython/function.pxi b/python/tvm_ffi/cython/function.pxi\nindex 4c7461c..3988039 100644\n--- a/python/tvm_ffi/cython/function.pxi\n+++ b/python/tvm_ffi/cython/function.pxi\n@@ -630,6 +630,7 @@ cdef int TVMFFIPyArgSetterFactory_(PyObject* value, TVMFFIPyArgSetter* out) exce\n     out.func = TVMFFIPyArgSetterFallback_\n     return 0\n \n+\n # ---------------------------------------------------------------------------------------------\n # Implementation of function calling\n # ---------------------------------------------------------------------------------------------\n@@ -677,6 +678,54 @@ cdef class Function(Object):\n             raise_existing_error()\n         raise move_from_last_error().py_error()\n \n+    @staticmethod\n+    def __from_extern_c__(c_symbol: int, keep_alive_object: object = None) -> \"Function\":\n+        \"\"\"Convert a function from extern C address and closure object\n+\n+        Parameters\n+        ----------\n+        c_symbol : int\n+            function pointer to the safe call function\n+            The function pointer must ignore the first argument,\n+            which is the function handle\n+\n+        keep_alive_object : object\n+            optional closure to be captured and kept alive\n+            Usually can be the execution engine that JITed the function\n+\n+        Returns\n+        -------\n+        Function\n+            The function object\n+        \"\"\"\n+        cdef TVMFFIObjectHandle chandle\n+        # must first convert to int64_t\n+        cdef int64_t c_symbol_as_long_long = c_symbol\n+        cdef void* safe_call_addr_ptr = <void*>c_symbol_as_long_long\n+        cdef PyObject* closure_py_obj = <PyObject*>keep_alive_object\n+        cdef int ret_code\n+        if keep_alive_object is None:\n+            ret_code = TVMFFIFunctionCreate(\n+                NULL, <TVMFFISafeCallType>safe_call_addr_ptr, NULL,\n+                &chandle\n+            )\n+        else:\n+            # otherwise, we use Python object\n+            Py_INCREF(keep_alive_object)\n+            ret_code = TVMFFIFunctionCreate(\n+                closure_py_obj, <TVMFFISafeCallType>safe_call_addr_ptr, TVMFFIPyObjectDeleter,\n+                &chandle\n+            )\n+            if ret_code != 0:\n+                # cleanup during error handling\n+                Py_DECREF(keep_alive_object)\n+\n+        CHECK_CALL(ret_code)\n+        func = Function.__new__(Function)\n+        (<Object>func).chandle = chandle\n+        return func\n+\n+\n _register_object_by_index(kTVMFFIFunction, Function)\n \n \ndiff --git a/src/ffi/extra/testing.cc b/src/ffi/extra/testing.cc\nindex 1898bda..b5b1202 100644\n--- a/src/ffi/extra/testing.cc\n+++ b/src/ffi/extra/testing.cc\n@@ -18,6 +18,7 @@\n  */\n // This file is used for testing the FFI API.\n #include <dlpack/dlpack.h>\n+#include <tvm/ffi/any.h>\n #include <tvm/ffi/container/array.h>\n #include <tvm/ffi/container/map.h>\n #include <tvm/ffi/container/tensor.h>\n@@ -172,6 +173,13 @@ TVM_FFI_NO_INLINE void TestApply(PackedArgs args, Any* ret) {\n   f.CallPacked(args.Slice(1), ret);\n }\n \n+int __add_one_c_symbol(void*, const TVMFFIAny* args, int32_t num_args, TVMFFIAny* ret) {\n+  TVM_FFI_SAFE_CALL_BEGIN();\n+  int x = reinterpret_cast<const AnyView*>(args)[0].cast<int>();\n+  reinterpret_cast<Any*>(ret)[0] = x + 1;\n+  TVM_FFI_SAFE_CALL_END();\n+}\n+\n TVM_FFI_STATIC_INIT_BLOCK() {\n   namespace refl = tvm::ffi::reflection;\n \n@@ -241,7 +249,11 @@ TVM_FFI_STATIC_INIT_BLOCK() {\n            })\n       .def(\"testing.object_use_count\", [](const Object* obj) { return obj->use_count(); })\n       .def(\"testing.make_unregistered_object\",\n-           []() { return ObjectRef(make_object<TestUnregisteredObject>(41, 42)); });\n+           []() { return ObjectRef(make_object<TestUnregisteredObject>(41, 42)); })\n+      .def(\"testing.get_add_one_c_symbol\", []() {\n+        TVMFFISafeCallType symbol = __add_one_c_symbol;\n+        return reinterpret_cast<int64_t>(reinterpret_cast<void*>(symbol));\n+      });\n }\n \n }  // namespace ffi\ndiff --git a/tests/python/test_function.py b/tests/python/test_function.py\nindex edc9ffd..d7f26c4 100644\n--- a/tests/python/test_function.py\n+++ b/tests/python/test_function.py\n@@ -21,6 +21,7 @@ import sys\n from typing import Any\n \n import numpy as np\n+import pytest\n import tvm_ffi\n \n \n@@ -221,3 +222,22 @@ def test_echo_with_opaque_object() -> None:\n     z = fcallback(x)\n     assert z is x\n     assert sys.getrefcount(x) == 4\n+\n+\n+def test_function_from_c_symbol() -> None:\n+    add_one_c_symbol = tvm_ffi.get_global_func(\"testing.get_add_one_c_symbol\")()\n+    fadd_one = tvm_ffi.Function.__from_extern_c__(add_one_c_symbol)\n+    assert fadd_one(1) == 2\n+    assert fadd_one(2) == 3\n+\n+    with pytest.raises(TypeError):\n+        fadd_one(None)\n+\n+    keep_alive = [1, 2, 3]\n+    base_ref_count = sys.getrefcount(keep_alive)\n+    fadd_one = tvm_ffi.Function.__from_extern_c__(add_one_c_symbol, keep_alive)\n+    assert fadd_one(1) == 2\n+    assert fadd_one(2) == 3\n+    assert sys.getrefcount(keep_alive) == base_ref_count + 1\n+    fadd_one = None\n+    assert sys.getrefcount(keep_alive) == base_ref_count",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".cc",
+      ".pxi",
+      ".py",
+      ".pyi"
+    ],
+    "scopes_guess": [
+      "python",
+      "src",
+      "tests"
+    ]
+  }
+}

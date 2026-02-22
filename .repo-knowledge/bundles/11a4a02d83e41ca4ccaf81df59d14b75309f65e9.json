@@ -1,0 +1,39 @@
+{
+  "sha": "11a4a02d83e41ca4ccaf81df59d14b75309f65e9",
+  "sha7": "11a4a02",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-06-05T13:33:25-04:00",
+  "subject": "[REFACTOR][FFI] Update symbol name for library module (#18042)",
+  "body":
+      "This PR updates the symbol name for library module to reflect\nthe latest design. The goal is to stablize the name so we can also\nbring module to ffi layer.",
+  "is_merge": false,
+  "parents": [
+    "1c9b17a3565d779811ca961746e4d8279f0dabe1"
+  ],
+  "name_status": [
+    [
+      "M",
+      "include/tvm/ffi/c_api.h"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "include/tvm/ffi/c_api.h",
+      "additions": 2,
+      "deletions": 2
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/include/tvm/ffi/c_api.h b/include/tvm/ffi/c_api.h\nindex 996eaa3..7cf7543 100644\n--- a/include/tvm/ffi/c_api.h\n+++ b/include/tvm/ffi/c_api.h\n@@ -251,7 +251,7 @@ typedef struct {\n  *\n  * Safe call explicitly catches exception on function boundary.\n  *\n- * \\param self The function handle\n+ * \\param handle The function handle\n  * \\param num_args Number of input arguments\n  * \\param args The input arguments to the call.\n  * \\param result Store output result.\n@@ -278,7 +278,7 @@ typedef struct {\n  * \\sa TVMFFIErrorSetRaised\n  * \\sa TVMFFIErrorSetRaisedByCStr\n  */\n-typedef int (*TVMFFISafeCallType)(void* self, const TVMFFIAny* args, int32_t num_args,\n+typedef int (*TVMFFISafeCallType)(void* handle, const TVMFFIAny* args, int32_t num_args,\n                                   TVMFFIAny* result);\n \n /*!",
+  "heuristics": {
+    "tags": [],
+    "extensions": [
+      ".h"
+    ],
+    "scopes_guess": [
+      "include"
+    ]
+  }
+}

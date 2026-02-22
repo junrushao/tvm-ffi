@@ -1,0 +1,48 @@
+{
+  "sha": "3f4f4f11184fc9862670d929a32ab81beb79286b",
+  "sha7": "3f4f4f1",
+  "author_name": "Ruihang Lai",
+  "author_email": "ruihangl@cs.cmu.edu",
+  "date_iso": "2025-08-22T08:02:38-04:00",
+  "subject": "[FFI] Fix JSON parser/writer for the fast-math flag (#18221)",
+  "body":
+      "This PR fixes the JSON parser and writer for the support of the\nfast-math flag.\n\nPrior to this PR, there would be the following error when compiling\nTVM with fast-math. This PR fixes this issue.\n```\n/home/ruihangl/Workspace/tvm/ffi/src/ffi/extra/json_writer.cc: In static member function ‘static bool tvm::ffi::json::JSONWriter::FastMathSafeIsNaN(double)’:\n/home/ruihangl/Workspace/tvm/ffi/src/ffi/extra/json_writer.cc:69:22: error: dereferencing type-punned pointer will break strict-aliasing rules [-Werror=strict-aliasing]\n   69 |     uint64_t bits = *reinterpret_cast<const uint64_t*>(&x);\n      |                      ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n/home/ruihangl/Workspace/tvm/ffi/src/ffi/extra/json_writer.cc: In static member function ‘static bool tvm::ffi::json::JSONWriter::FastMathSafeIsInf(double)’:\n/home/ruihangl/Workspace/tvm/ffi/src/ffi/extra/json_writer.cc:84:22: error: dereferencing type-punned pointer will break strict-aliasing rules [-Werror=strict-aliasing]\n   84 |     uint64_t bits = *reinterpret_cast<const uint64_t*>(&x);\n      |                      ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n```",
+  "is_merge": false,
+  "parents": [
+    "023ea448be6e86e09f4ebaba5a235ee53f3cdeef"
+  ],
+  "name_status": [
+    [
+      "M",
+      "src/ffi/extra/json_parser.cc"
+    ],
+    [
+      "M",
+      "src/ffi/extra/json_writer.cc"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "src/ffi/extra/json_parser.cc",
+      "additions": 18,
+      "deletions": 6
+    },
+    {
+      "path": "src/ffi/extra/json_writer.cc",
+      "additions": 12,
+      "deletions": 2
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/src/ffi/extra/json_parser.cc b/src/ffi/extra/json_parser.cc\nindex 3107e4d..8bd3726 100644\n--- a/src/ffi/extra/json_parser.cc\n+++ b/src/ffi/extra/json_parser.cc\n@@ -298,8 +298,12 @@ class JSONParserContext {\n  private:\n   static double FastMathSafePosInf() {\n #ifdef __FAST_MATH__\n-    const uint64_t inf_bits = 0x7FF0000000000000ULL;\n-    return *reinterpret_cast<const double*>(&inf_bits);\n+    union {\n+      uint64_t from;\n+      double to;\n+    } u;\n+    u.from = 0x7FF0000000000000ULL;  // write \"from\", read \"to\"\n+    return u.to;\n #else\n     return std::numeric_limits<double>::infinity();\n #endif\n@@ -307,8 +311,12 @@ class JSONParserContext {\n \n   static double FastMathSafeNegInf() {\n #ifdef __FAST_MATH__\n-    const uint64_t inf_bits = 0xFFF0000000000000ULL;\n-    return *reinterpret_cast<const double*>(&inf_bits);\n+    union {\n+      uint64_t from;\n+      double to;\n+    } u;\n+    u.from = 0xFFF0000000000000ULL;  // write \"from\", read \"to\"\n+    return u.to;\n #else\n     return -std::numeric_limits<double>::infinity();\n #endif\n@@ -316,8 +324,12 @@ class JSONParserContext {\n \n   static double FastMathSafeNaN() {\n #ifdef __FAST_MATH__\n-    const uint64_t nan_bits = 0x7FF8000000000000ULL;\n-    return *reinterpret_cast<const double*>(&nan_bits);\n+    union {\n+      uint64_t from;\n+      double to;\n+    } u;\n+    u.from = 0x7FF8000000000000ULL;  // write \"from\", read \"to\"\n+    return u.to;\n #else\n     return std::numeric_limits<double>::quiet_NaN();\n #endif\ndiff --git a/src/ffi/extra/json_writer.cc b/src/ffi/extra/json_writer.cc\nindex 81d321d..c2cd3f2 100644\n--- a/src/ffi/extra/json_writer.cc\n+++ b/src/ffi/extra/json_writer.cc\n@@ -66,7 +66,12 @@ class JSONWriter {\n     // IEEE 754 standard: https://en.wikipedia.org/wiki/IEEE_754\n     // NaN is encoded as all 1s in the exponent and non-zero in the mantissa\n     static_assert(sizeof(double) == sizeof(uint64_t), \"Unexpected double size\");\n-    uint64_t bits = *reinterpret_cast<const uint64_t*>(&x);\n+    union {\n+      double from;\n+      uint64_t to;\n+    } u;\n+    u.from = x;  // write \"from\", read \"to\"\n+    uint64_t bits = u.to;\n     uint64_t exponent = (bits >> 52) & 0x7FF;\n     uint64_t mantissa = bits & 0xFFFFFFFFFFFFFull;\n     return (exponent == 0x7FF) && (mantissa != 0);\n@@ -81,7 +86,12 @@ class JSONWriter {\n     // IEEE 754 standard: https://en.wikipedia.org/wiki/IEEE_754\n     // Inf is encoded as all 1s in the exponent and zero in the mantissa\n     static_assert(sizeof(double) == sizeof(uint64_t), \"Unexpected double size\");\n-    uint64_t bits = *reinterpret_cast<const uint64_t*>(&x);\n+    union {\n+      double from;\n+      uint64_t to;\n+    } u;\n+    u.from = x;  // write \"from\", read \"to\"\n+    uint64_t bits = u.to;\n     uint64_t exponent = (bits >> 52) & 0x7FF;\n     uint64_t mantissa = bits & 0xFFFFFFFFFFFFFull;\n     // inf is encoded as all 1s in the exponent and zero in the mantissa",
+  "heuristics": {
+    "tags": [],
+    "extensions": [
+      ".cc"
+    ],
+    "scopes_guess": [
+      "src"
+    ]
+  }
+}

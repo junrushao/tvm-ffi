@@ -1,0 +1,51 @@
+{
+  "sha": "668ce835939ff60a99c7d982266cf4bdc90ca35b",
+  "sha7": "668ce83",
+  "author_name": "Guan-Ming (Wesley) Chiu",
+  "author_email": "105915352+guan404ming@users.noreply.github.com",
+  "date_iso": "2026-01-27T06:09:27+08:00",
+  "subject": "fix: handle empty metadata in get_global_func_metadata (#417)",
+  "body":
+      "## Related Issue\n\nFixes #208\n\n## Why\n\nPython-registered global functions without metadata cause\nJSONDecodeError when get_global_func_metadata() is called because the\nFFI returns an empty string which json.loads() cannot parse.\n\n## How\n\n- Check for empty metadata string before JSON parsing\n- Return empty dict for functions without metadata\n- Add regression test for Python functions without metadata",
+  "is_merge": false,
+  "parents": [
+    "e6e5d3a20bf8e04f88d0de3623b243a3a97593b4"
+  ],
+  "name_status": [
+    [
+      "M",
+      "python/tvm_ffi/registry.py"
+    ],
+    [
+      "M",
+      "tests/python/test_metadata.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "python/tvm_ffi/registry.py",
+      "additions": 2,
+      "deletions": 1
+    },
+    {
+      "path": "tests/python/test_metadata.py",
+      "additions": 11,
+      "deletions": 1
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/python/tvm_ffi/registry.py b/python/tvm_ffi/registry.py\nindex 5b484cd..9ea8e2c 100644\n--- a/python/tvm_ffi/registry.py\n+++ b/python/tvm_ffi/registry.py\n@@ -275,7 +275,8 @@ def get_global_func_metadata(name: str) -> dict[str, Any]:\n         Register a Python callable as a global FFI function.\n \n     \"\"\"\n-    return json.loads(get_global_func(\"ffi.GetGlobalFuncMetadata\")(name) or \"{}\")\n+    metadata_json = get_global_func(\"ffi.GetGlobalFuncMetadata\")(name)\n+    return json.loads(metadata_json) if metadata_json else {}\n \n \n def init_ffi_api(namespace: str, target_module_name: str | None = None) -> None:\ndiff --git a/tests/python/test_metadata.py b/tests/python/test_metadata.py\nindex 116afd3..4d91462 100644\n--- a/tests/python/test_metadata.py\n+++ b/tests/python/test_metadata.py\n@@ -17,7 +17,7 @@\n from typing import Any\n \n import pytest\n-from tvm_ffi import get_global_func_metadata\n+from tvm_ffi import get_global_func_metadata, register_global_func, remove_global_func\n from tvm_ffi.core import TypeInfo, TypeSchema, _lookup_type_attr\n from tvm_ffi.testing import _SchemaAllTypes\n \n@@ -163,6 +163,16 @@ def test_metadata_global_func() -> None:\n     assert metadata[\"str_attr\"] == \"hello\"\n \n \n+def test_metadata_empty_for_python_func() -> None:\n+    @register_global_func(\"test.python_func_no_metadata\")\n+    def simple_func(x: int) -> int:\n+        return x + 1\n+\n+    metadata = get_global_func_metadata(\"test.python_func_no_metadata\")\n+    assert metadata == {}\n+    remove_global_func(\"test.python_func_no_metadata\")\n+\n+\n def test_metadata_field() -> None:\n     type_info: TypeInfo = getattr(_SchemaAllTypes, \"__tvm_ffi_type_info__\")\n     for field in type_info.fields:",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".py"
+    ],
+    "scopes_guess": [
+      "python",
+      "tests"
+    ]
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "sha": "af9fc0691b96b3ad9f325255784b568495165411",
+  "sha7": "af9fc06",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-10-15T22:20:10-04:00",
+  "subject": "chore: enable issues (#141)",
+  "body": "",
+  "is_merge": false,
+  "parents": [
+    "59c91c17eb7ef4f24cf00faedc82f1a8e0fc53a3"
+  ],
+  "name_status": [
+    [
+      "M",
+      ".asf.yaml"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": ".asf.yaml",
+      "additions": 6,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/.asf.yaml b/.asf.yaml\nindex 4c917af..1d179c9 100644\n--- a/.asf.yaml\n+++ b/.asf.yaml\n@@ -23,6 +23,12 @@ github:\n     - gpu\n     - machine-learning\n \n+  features:\n+    # Enable issue management\n+    issues: true\n+    # Enable projects for project management boards\n+    projects: true\n+\n   protected_branches:\n     # NOTE: when updating the config\n     # make sure to first update the branch protection name",
+  "heuristics": {
+    "tags": [],
+    "extensions": [
+      ".yaml"
+    ],
+    "scopes_guess": [
+      ".asf.yaml"
+    ]
+  }
+}

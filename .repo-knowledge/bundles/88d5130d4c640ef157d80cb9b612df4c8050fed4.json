@@ -1,0 +1,38 @@
+{
+  "sha": "88d5130d4c640ef157d80cb9b612df4c8050fed4",
+  "sha7": "88d5130",
+  "author_name": "Junru Shao",
+  "author_email": "junrushao@apache.org",
+  "date_iso": "2025-11-30T09:20:04-08:00",
+  "subject": "fix: Use-after-move when handling std::tuple (#293)",
+  "body": "See: https://github.com/apache/tvm-ffi/pull/228#discussion_r2573338636",
+  "is_merge": false,
+  "parents": [
+    "c3fc8f7f0e95a97beed342b6ddec4c3f6add0441"
+  ],
+  "name_status": [
+    [
+      "M",
+      "include/tvm/ffi/extra/stl.h"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "include/tvm/ffi/extra/stl.h",
+      "additions": 7,
+      "deletions": 3
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/include/tvm/ffi/extra/stl.h b/include/tvm/ffi/extra/stl.h\nindex 523f77f..462e699 100644\n--- a/include/tvm/ffi/extra/stl.h\n+++ b/include/tvm/ffi/extra/stl.h\n@@ -122,7 +122,11 @@ struct TypeTraits<details::ListTemplate> : public details::STLTypeTrait {\n     auto array = ArrayObj::Empty(static_cast<std::int64_t>(sizeof...(Is)));\n     auto dst = array->MutableBegin();\n     // increase size after each new to ensure exception safety\n-    ((::new (dst++) Any(std::get<Is>(std::forward<Tuple>(src))), array->size_++), ...);\n+    std::apply(\n+        [&](auto&&... elems) {\n+          ((::new (dst++) Any(std::forward<decltype(elems)>(elems)), array->size_++), ...);\n+        },\n+        std::forward<Tuple>(src));\n     return array;\n   }\n \n@@ -265,9 +269,9 @@ struct TypeTraits<std::vector<T>> : public TypeTraits<details::ListTemplate> {\n       auto array = CopyFromAnyImpl<ArrayObj>(src);\n       auto begin = array->MutableBegin();\n       auto result = Self{};\n-      auto length = array->size_;\n+      int64_t length = array->size_;\n       result.reserve(length);\n-      for (std::size_t i = 0; i < length; ++i) {\n+      for (int64_t i = 0; i < length; ++i) {\n         result.emplace_back(ConstructFromAny<T>(begin[i]));\n       }\n       return result;",
+  "heuristics": {
+    "tags": [],
+    "extensions": [
+      ".h"
+    ],
+    "scopes_guess": [
+      "include"
+    ]
+  }
+}

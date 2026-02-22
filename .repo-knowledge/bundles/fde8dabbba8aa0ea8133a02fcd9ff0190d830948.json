@@ -1,0 +1,73 @@
+{
+  "sha": "fde8dabbba8aa0ea8133a02fcd9ff0190d830948",
+  "sha7": "fde8dab",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-09-27T20:46:13-04:00",
+  "subject": "[CYTHON] Fix stream passing bug (#68)",
+  "body":
+      "This PR fixes a bug in stream passing which breaks expected stream\npassing behavior. Also added a regression case via load_inline_cuda to\nguard this issue (needs CUDA env to run atm).",
+  "is_merge": false,
+  "parents": [
+    "8ca0719f74bef289d80c8704343ed7c1607db8f3"
+  ],
+  "name_status": [
+    [
+      "M",
+      "pyproject.toml"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/__init__.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/cython/function.pxi"
+    ],
+    [
+      "M",
+      "tests/python/test_load_inline.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "pyproject.toml",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "python/tvm_ffi/__init__.py",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "python/tvm_ffi/cython/function.pxi",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "tests/python/test_load_inline.py",
+      "additions": 13,
+      "deletions": 2
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/pyproject.toml b/pyproject.toml\nindex f734184..4a6a734 100644\n--- a/pyproject.toml\n+++ b/pyproject.toml\n@@ -17,7 +17,7 @@\n \n [project]\n name = \"apache-tvm-ffi\"\n-version = \"0.1.0b10\"\n+version = \"0.1.0b11\"\n description = \"tvm ffi\"\n \n authors = [{ name = \"TVM FFI team\" }]\ndiff --git a/python/tvm_ffi/__init__.py b/python/tvm_ffi/__init__.py\nindex 807f9a9..d88a35e 100644\n--- a/python/tvm_ffi/__init__.py\n+++ b/python/tvm_ffi/__init__.py\n@@ -17,7 +17,7 @@\n \"\"\"TVM FFI Python package.\"\"\"\n \n # version\n-__version__ = \"0.1.0b10\"\n+__version__ = \"0.1.0b11\"\n \n # order matters here so we need to skip isort here\n # isort: skip_file\ndiff --git a/python/tvm_ffi/cython/function.pxi b/python/tvm_ffi/cython/function.pxi\nindex 095e3d6..2fa75fb 100644\n--- a/python/tvm_ffi/cython/function.pxi\n+++ b/python/tvm_ffi/cython/function.pxi\n@@ -155,7 +155,7 @@ cdef int TVMFFIPyArgSetterDLPackCExporter_(\n     if this.c_dlpack_tensor_allocator != NULL:\n         ctx.c_dlpack_tensor_allocator = this.c_dlpack_tensor_allocator\n \n-    if ctx.device_id != -1:\n+    if ctx.device_type != -1:\n         # already queried device, do not do it again, pass NULL to stream\n         if (this.c_dlpack_from_pyobject)(arg, &temp_managed_tensor, NULL) != 0:\n             return -1\ndiff --git a/tests/python/test_load_inline.py b/tests/python/test_load_inline.py\nindex cd46bf5..229dc62 100644\n--- a/tests/python/test_load_inline.py\n+++ b/tests/python/test_load_inline.py\n@@ -167,7 +167,7 @@ def test_load_inline_cuda() -> None:\n               }\n             }\n \n-            void add_one_cuda(tvm::ffi::Tensor x, tvm::ffi::Tensor y) {\n+            void add_one_cuda(tvm::ffi::Tensor x, tvm::ffi::Tensor y, int64_t raw_stream) {\n               // implementation of a library function\n               TVM_FFI_ICHECK(x->ndim == 1) << \"x must be a 1D tensor\";\n               DLDataType f32_dtype{kDLFloat, 32, 1};\n@@ -184,6 +184,8 @@ def test_load_inline_cuda() -> None:\n               // with torch.Tensors\n               cudaStream_t stream = static_cast<cudaStream_t>(\n                   TVMFFIEnvGetStream(x->device.device_type, x->device.device_id));\n+              TVM_FFI_ICHECK_EQ(reinterpret_cast<int64_t>(stream), raw_stream)\n+                << \"stream must be the same as raw_stream\";\n               // launch the kernel\n               AddOneKernel<<<nblock, nthread_per_block, 0, stream>>>(static_cast<float*>(x->data),\n                                                                      static_cast<float*>(y->data), n);\n@@ -193,9 +195,18 @@ def test_load_inline_cuda() -> None:\n     )\n \n     if torch is not None:\n+        # test with raw stream\n         x_cuda = torch.asarray([1, 2, 3, 4, 5], dtype=torch.float32, device=\"cuda\")\n         y_cuda = torch.empty_like(x_cuda)\n-        mod.add_one_cuda(x_cuda, y_cuda)\n+        mod.add_one_cuda(x_cuda, y_cuda, 0)\n+        torch.testing.assert_close(x_cuda + 1, y_cuda)\n+\n+        # test with torch stream\n+        y_cuda = torch.empty_like(x_cuda)\n+        stream = torch.cuda.Stream()\n+        with torch.cuda.stream(stream):\n+            mod.add_one_cuda(x_cuda, y_cuda, stream.cuda_stream)\n+        stream.synchronize()\n         torch.testing.assert_close(x_cuda + 1, y_cuda)\n \n ",
+  "heuristics": {
+    "tags": [
+      "build",
+      "test"
+    ],
+    "extensions": [
+      ".pxi",
+      ".py",
+      ".toml"
+    ],
+    "scopes_guess": [
+      "pyproject.toml",
+      "python",
+      "tests"
+    ]
+  }
+}

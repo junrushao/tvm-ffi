@@ -1,0 +1,92 @@
+{
+  "sha": "f6303b23fd97909b59f6ff67b85f2203371f5db1",
+  "sha7": "f6303b2",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-10-11T10:42:40-04:00",
+  "subject": "[CYTHON] Enable ffi function creation from MLIR Packed function (#100)",
+  "body":
+      "MLIR Execution engine generates function that corresponds to the packed\nsignature. As of now it is hard to access the raw extern C function\npointer of SafeCall directly when we declare the signature in LLVM\ndialect.\n\nThis helper enables us to create ffi.Function from safe call function\npointer that are exposed as MLIR packed function pointer calling\nconvention. It can help facilitate DSLs that leverages MLIR execution\nengine to do JIT.\n\nNote that in theory MLIR execution engine should be able to also support\nsome form of \"extern C\" feature that directly exposes the funtion\npointers of C-compatible functions with an attribute tag. So we keep\nthis feature in the python helper layer for now in case MLIR execution\nengine supports it in the future.",
+  "is_merge": false,
+  "parents": [
+    "a15364746d60766bfaf6e0a6ccdb2353ceee7d7d"
+  ],
+  "name_status": [
+    [
+      "M",
+      "python/tvm_ffi/core.pyi"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/cython/base.pxi"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/cython/function.pxi"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/cython/tvm_ffi_python_helpers.h"
+    ],
+    [
+      "M",
+      "src/ffi/extra/testing.cc"
+    ],
+    [
+      "M",
+      "tests/python/test_function.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "python/tvm_ffi/core.pyi",
+      "additions": 24,
+      "deletions": 2
+    },
+    {
+      "path": "python/tvm_ffi/cython/base.pxi",
+      "additions": 4,
+      "deletions": 0
+    },
+    {
+      "path": "python/tvm_ffi/cython/function.pxi",
+      "additions": 66,
+      "deletions": 7
+    },
+    {
+      "path": "python/tvm_ffi/cython/tvm_ffi_python_helpers.h",
+      "additions": 84,
+      "deletions": 0
+    },
+    {
+      "path": "src/ffi/extra/testing.cc",
+      "additions": 16,
+      "deletions": 3
+    },
+    {
+      "path": "tests/python/test_function.py",
+      "additions": 23,
+      "deletions": 1
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/python/tvm_ffi/core.pyi b/python/tvm_ffi/core.pyi\nindex 54f292c..092515a 100644\n--- a/python/tvm_ffi/core.pyi\n+++ b/python/tvm_ffi/core.pyi\n@@ -529,7 +529,7 @@ class Function(Object):\n         \"\"\"\n \n     @staticmethod\n-    def __from_extern_c__(c_symbol: int, keep_alive_object: Any | None = None) -> Function:\n+    def __from_extern_c__(c_symbol: int, *, keep_alive_object: Any | None = None) -> Function:\n         \"\"\"Construct a ``Function`` from a C symbol and keep_alive_object.\n \n         Parameters\n@@ -540,8 +540,10 @@ class Function(Object):\n             which is the function handle\n \n         keep_alive_object : object\n-            optional closure to be captured and kept alive\n+            optional object to be captured and kept alive\n             Usually can be the execution engine that JITed the function\n+            to ensure we keep the execution environment alive\n+            as long as the function is alive\n \n         Returns\n         -------\n@@ -550,6 +552,26 @@ class Function(Object):\n \n         \"\"\"\n \n+    @staticmethod\n+    def __from_mlir_packed_safe_call__(\n+        mlir_packed_symbol: int, *, keep_alive_object: Any | None = None\n+    ) -> Function:\n+        \"\"\"Construct a ``Function`` from a MLIR packed safe call function pointer.\n+\n+        Parameters\n+        ----------\n+        mlir_packed_symbol : int\n+            function pointer to the MLIR packed call function pointer\n+            that represents a safe call function\n+\n+        keep_alive_object : object\n+            optional object to be captured and kept alive\n+            Usually can be the execution engine that JITed the function\n+            to ensure we keep the execution environment alive\n+            as long as the function is alive\n+\n+        \"\"\"\n+\n def _register_global_func(\n     name: str, pyfunc: Callable[..., Any] | Function, override: bool\n ) -> Function: ...\ndiff --git a/python/tvm_ffi/cython/base.pxi b/python/tvm_ffi/cython/base.pxi\nindex 0478575..dcc338a 100644\n--- a/python/tvm_ffi/cython/base.pxi\n+++ b/python/tvm_ffi/cython/base.pxi\n@@ -339,6 +339,10 @@ cdef extern from \"tvm_ffi_python_helpers.h\":\n     int TVMFFIPyArgSetterInt_(TVMFFIPyArgSetter*, TVMFFIPyCallContext*, PyObject* arg, TVMFFIAny* out) except -1\n     int TVMFFIPyArgSetterBool_(TVMFFIPyArgSetter*, TVMFFIPyCallContext*, PyObject* arg, TVMFFIAny* out) except -1\n     int TVMFFIPyArgSetterNone_(TVMFFIPyArgSetter*, TVMFFIPyCallContext*, PyObject* arg, TVMFFIAny* out) except -1\n+    # MLIRPackedSafeCall\n+    void* TVMFFIPyMLIRPackedSafeCallCreate(void (*mlir_packed_safe_call)(void**) noexcept, PyObject* keep_alive_object)\n+    int TVMFFIPyMLIRPackedSafeCallInvoke(void* self, const TVMFFIAny* args, int32_t num_args, TVMFFIAny* rv)\n+    void TVMFFIPyMLIRPackedSafeCallDeleter(void* self)\n     # deleter for python objects\n     void TVMFFIPyObjectDeleter(void* py_obj) noexcept nogil\n \ndiff --git a/python/tvm_ffi/cython/function.pxi b/python/tvm_ffi/cython/function.pxi\nindex 3988039..a6cc3be 100644\n--- a/python/tvm_ffi/cython/function.pxi\n+++ b/python/tvm_ffi/cython/function.pxi\n@@ -679,24 +679,30 @@ cdef class Function(Object):\n         raise move_from_last_error().py_error()\n \n     @staticmethod\n-    def __from_extern_c__(c_symbol: int, keep_alive_object: object = None) -> \"Function\":\n-        \"\"\"Convert a function from extern C address and closure object\n+    def __from_extern_c__(\n+        c_symbol: int,\n+        *,\n+        keep_alive_object: object = None\n+    ) -> Function:\n+        \"\"\"Convert a function from extern C address.\n \n         Parameters\n         ----------\n         c_symbol : int\n-            function pointer to the safe call function\n+            Function pointer to the safe call function.\n             The function pointer must ignore the first argument,\n-            which is the function handle\n+            which is the function handle.\n \n         keep_alive_object : object\n-            optional closure to be captured and kept alive\n-            Usually can be the execution engine that JITed the function\n+            Optional object to be captured and kept alive.\n+            Usually this can be the execution engine that JIT-compiled the function\n+            to ensure we keep the execution environment alive\n+            as long as the function is alive.\n \n         Returns\n         -------\n         Function\n-            The function object\n+            The function object.\n         \"\"\"\n         cdef TVMFFIObjectHandle chandle\n         # must first convert to int64_t\n@@ -725,6 +731,59 @@ cdef class Function(Object):\n         (<Object>func).chandle = chandle\n         return func\n \n+    @staticmethod\n+    def __from_mlir_packed_safe_call__(\n+        mlir_packed_symbol: int,\n+        *,\n+        keep_alive_object: object = None\n+    ) -> Function:\n+        \"\"\"Convert a function from MLIR packed safe call function pointer.\n+\n+        Parameters\n+        ----------\n+        mlir_packed_symbol : int\n+            Function pointer to the MLIR packed call function\n+            that represents a safe call function.\n+\n+        keep_alive_object : object\n+            Optional object to be captured and kept alive.\n+            Usually this can be the execution engine that JIT-compiled the function\n+            to ensure we keep the execution environment alive\n+            as long as the function is alive.\n+\n+        Returns\n+        -------\n+        Function\n+            The function object.\n+        \"\"\"\n+        cdef TVMFFIObjectHandle chandle\n+        # must first convert to int64_t\n+        cdef int64_t c_symbol_as_long_long = mlir_packed_symbol\n+        cdef void* packed_call_addr_ptr = <void*>c_symbol_as_long_long\n+        cdef PyObject* keepalive_py_obj\n+        if keep_alive_object is None:\n+            keepalive_py_obj = NULL\n+        else:\n+            keepalive_py_obj = <PyObject*>keep_alive_object\n+\n+        cdef void* mlir_packed_safe_call = TVMFFIPyMLIRPackedSafeCallCreate(\n+            <void (*)(void**) noexcept>packed_call_addr_ptr,\n+            keepalive_py_obj\n+        )\n+        cdef int ret_code\n+        ret_code = TVMFFIFunctionCreate(\n+            mlir_packed_safe_call,\n+            TVMFFIPyMLIRPackedSafeCallInvoke,\n+            TVMFFIPyMLIRPackedSafeCallDeleter,\n+            &chandle\n+        )\n+        if ret_code != 0:\n+            # cleanup during error handling\n+            TVMFFIPyMLIRPackedSafeCallDeleter(mlir_packed_safe_call)\n+        CHECK_CALL(ret_code)\n+        func = Function.__new__(Function)\n+        (<Object>func).chandle = chandle\n+        return func\n \n _register_object_by_index(kTVMFFIFunction, Function)\n \ndiff --git a/python/tvm_ffi/cython/tvm_ffi_python_helpers.h b/python/tvm_ffi/cython/tvm_ffi_python_helpers.h\nindex e507f03..ea60d51 100644\n--- a/python/tvm_ffi/cython/tvm_ffi_python_helpers.h\n+++ b/python/tvm_ffi/cython/tvm_ffi_python_helpers.h\n@@ -592,6 +592,90 @@ TVM_FFI_INLINE void TVMFFIPyPushTempPyObject(TVMFFIPyCallContext* ctx, PyObject*\n   ctx->temp_py_objects[ctx->num_temp_py_objects++] = arg;\n }\n \n+//----------------------------------------------------------\n+// Helpers for MLIR redirection\n+//----------------------------------------------------------\n+/*!\n+ * \\brief Function specialization that leverages MLIR packed safe call definitions.\n+ *\n+ * The MLIR execution engine generates functions that correspond to the packed signature.\n+ * As of now, it is hard to access the raw extern C function pointer of SafeCall\n+ * directly when we declare the signature in LLVM dialect.\n+ *\n+ * Note that in theory, the MLIR execution engine should be able to support\n+ * some form of \"extern C\" feature that directly exposes the function pointers\n+ * of C-compatible functions with an attribute tag. So we keep this feature\n+ * in the Python helper layer for now in case the MLIR execution engine supports it in the future.\n+ *\n+ * This helper enables us to create ffi::Function from the MLIR packed\n+ * safe call function pointer instead of following the redirection pattern\n+ * in `TVMFFIPyMLIRPackedSafeCall::Invoke`.\n+ *\n+ * \\sa TVMFFIPyMLIRPackedSafeCall::Invoke\n+ */\n+class TVMFFIPyMLIRPackedSafeCall {\n+ public:\n+  TVMFFIPyMLIRPackedSafeCall(void (*mlir_packed_safe_call)(void**), PyObject* keep_alive_object)\n+      : mlir_packed_safe_call_(mlir_packed_safe_call), keep_alive_object_(keep_alive_object) {\n+    if (keep_alive_object_) {\n+      Py_IncRef(keep_alive_object_);\n+    }\n+  }\n+\n+  ~TVMFFIPyMLIRPackedSafeCall() {\n+    if (keep_alive_object_) {\n+      Py_DecRef(keep_alive_object_);\n+    }\n+  }\n+\n+  static int Invoke(void* func, const TVMFFIAny* args, int32_t num_args, TVMFFIAny* rv) {\n+    TVMFFIPyMLIRPackedSafeCall* self = reinterpret_cast<TVMFFIPyMLIRPackedSafeCall*>(func);\n+    int ret_code = 0;\n+    void* handle = nullptr;\n+    void* mlir_args[] = {&handle, const_cast<TVMFFIAny**>(&args), &num_args, &rv, &ret_code};\n+    (*self->mlir_packed_safe_call_)(mlir_args);\n+    return ret_code;\n+  }\n+\n+  static void Deleter(void* self) { delete static_cast<TVMFFIPyMLIRPackedSafeCall*>(self); }\n+\n+ private:\n+  void (*mlir_packed_safe_call_)(void**);\n+  PyObject* keep_alive_object_;\n+};\n+\n+/*!\n+ * \\brief Create a TVMFFIPyMLIRPackedSafeCall handle\n+ * \\param mlir_packed_safe_call The MLIR packed safe call function\n+ * \\param keep_alive_object The keep alive object\n+ * \\return The TVMFFIPyMLIRPackedSafeCall object\n+ */\n+void* TVMFFIPyMLIRPackedSafeCallCreate(void (*mlir_packed_safe_call)(void**),\n+                                       PyObject* keep_alive_object) {\n+  return new TVMFFIPyMLIRPackedSafeCall(mlir_packed_safe_call, keep_alive_object);\n+}\n+\n+/*!\n+ * \\brief Call the MLIR packed safe call function\n+ * \\param self The TVMFFIPyMLIRPackedSafeCall object\n+ * \\param args The arguments\n+ * \\param num_args The number of arguments\n+ * \\param rv The result\n+ * \\return The return code\n+ */\n+int TVMFFIPyMLIRPackedSafeCallInvoke(void* self, const TVMFFIAny* args, int32_t num_args,\n+                                     TVMFFIAny* rv) {\n+  return TVMFFIPyMLIRPackedSafeCall::Invoke(self, args, num_args, rv);\n+}\n+\n+/*!\n+ * \\brief Delete the TVMFFIPyMLIRPackedSafeCall object\n+ * \\param self The TVMFFIPyMLIRPackedSafeCall object\n+ */\n+void TVMFFIPyMLIRPackedSafeCallDeleter(void* self) {\n+  return TVMFFIPyMLIRPackedSafeCall::Deleter(self);\n+}\n+\n //------------------------------------------------------------------------------------\n // Helpers for free-threaded python\n //------------------------------------------------------------------------------------\ndiff --git a/src/ffi/extra/testing.cc b/src/ffi/extra/testing.cc\nindex b5b1202..13f0044 100644\n--- a/src/ffi/extra/testing.cc\n+++ b/src/ffi/extra/testing.cc\n@@ -180,6 +180,15 @@ int __add_one_c_symbol(void*, const TVMFFIAny* args, int32_t num_args, TVMFFIAny\n   TVM_FFI_SAFE_CALL_END();\n }\n \n+void _mlir_add_one_c_symbol(void** packed_args) {\n+  void* handle = *reinterpret_cast<void**>(packed_args[0]);\n+  const TVMFFIAny* args = *reinterpret_cast<const TVMFFIAny**>(packed_args[1]);\n+  int32_t num_args = *reinterpret_cast<int32_t*>(packed_args[2]);\n+  TVMFFIAny* rv = *reinterpret_cast<TVMFFIAny**>(packed_args[3]);\n+  int* ret_code = reinterpret_cast<int*>(packed_args[4]);\n+  *ret_code = __add_one_c_symbol(handle, args, num_args, rv);\n+}\n+\n TVM_FFI_STATIC_INIT_BLOCK() {\n   namespace refl = tvm::ffi::reflection;\n \n@@ -250,9 +259,13 @@ TVM_FFI_STATIC_INIT_BLOCK() {\n       .def(\"testing.object_use_count\", [](const Object* obj) { return obj->use_count(); })\n       .def(\"testing.make_unregistered_object\",\n            []() { return ObjectRef(make_object<TestUnregisteredObject>(41, 42)); })\n-      .def(\"testing.get_add_one_c_symbol\", []() {\n-        TVMFFISafeCallType symbol = __add_one_c_symbol;\n-        return reinterpret_cast<int64_t>(reinterpret_cast<void*>(symbol));\n+      .def(\"testing.get_add_one_c_symbol\",\n+           []() {\n+             TVMFFISafeCallType symbol = __add_one_c_symbol;\n+             return reinterpret_cast<int64_t>(reinterpret_cast<void*>(symbol));\n+           })\n+      .def(\"testing.get_mlir_add_one_c_symbol\", []() {\n+        return reinterpret_cast<int64_t>(reinterpret_cast<void*>(_mlir_add_one_c_symbol));\n       });\n }\n \ndiff --git a/tests/python/test_function.py b/tests/python/test_function.py\nindex d7f26c4..71aecbc 100644\n--- a/tests/python/test_function.py\n+++ b/tests/python/test_function.py\n@@ -235,7 +235,29 @@ def test_function_from_c_symbol() -> None:\n \n     keep_alive = [1, 2, 3]\n     base_ref_count = sys.getrefcount(keep_alive)\n-    fadd_one = tvm_ffi.Function.__from_extern_c__(add_one_c_symbol, keep_alive)\n+    fadd_one = tvm_ffi.Function.__from_extern_c__(add_one_c_symbol, keep_alive_object=keep_alive)\n+    assert fadd_one(1) == 2\n+    assert fadd_one(2) == 3\n+    assert sys.getrefcount(keep_alive) == base_ref_count + 1\n+    fadd_one = None\n+    assert sys.getrefcount(keep_alive) == base_ref_count\n+\n+\n+def test_function_from_mlir_packed_safe_call() -> None:\n+    add_one_c_symbol = tvm_ffi.get_global_func(\"testing.get_mlir_add_one_c_symbol\")()\n+    fadd_one = tvm_ffi.Function.__from_mlir_packed_safe_call__(add_one_c_symbol)\n+    assert fadd_one(1) == 2\n+    assert fadd_one(2) == 3\n+\n+    keep_alive = [1, 2, 3]\n+    base_ref_count = sys.getrefcount(keep_alive)\n+    fadd_one = tvm_ffi.Function.__from_mlir_packed_safe_call__(\n+        add_one_c_symbol, keep_alive_object=keep_alive\n+    )\n+\n+    with pytest.raises(TypeError):\n+        fadd_one(None)\n+\n     assert fadd_one(1) == 2\n     assert fadd_one(2) == 3\n     assert sys.getrefcount(keep_alive) == base_ref_count + 1",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".cc",
+      ".h",
+      ".pxi",
+      ".py",
+      ".pyi"
+    ],
+    "scopes_guess": [
+      "python",
+      "src",
+      "tests"
+    ]
+  }
+}

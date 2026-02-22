@@ -1,0 +1,118 @@
+{
+  "sha": "5a3e3cbd4dbdf1f01d61bdfbe17b38134cc45e84",
+  "sha7": "5a3e3cb",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-09-01T09:19:17-04:00",
+  "subject": "[FFI][DOCS] Add missing files in packaging example (#18261)",
+  "body":
+      "This PR adds the missing files in packaging example\nalso renames get_started to quick_start",
+  "is_merge": false,
+  "parents": [
+    "ca9c3d10bb9640bffb972302f7064e49e592a526"
+  ],
+  "name_status": [
+    [
+      "A",
+      "examples/packaging/run_example.py"
+    ],
+    [
+      "A",
+      "examples/packaging/src/extension.cc"
+    ],
+    [
+      "R100",
+      "examples/quick_start/get_started/CMakeLists.txt"
+    ],
+    [
+      "R100",
+      "examples/quick_start/get_started/README.md"
+    ],
+    [
+      "R100",
+      "examples/quick_start/get_started/run_example.py"
+    ],
+    [
+      "R100",
+      "examples/quick_start/get_started/run_example.sh"
+    ],
+    [
+      "R100",
+      "examples/quick_start/get_started/src/add_one_cpu.cc"
+    ],
+    [
+      "R100",
+      "examples/quick_start/get_started/src/add_one_cuda.cu"
+    ],
+    [
+      "R100",
+      "examples/quick_start/get_started/src/run_example.cc"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "examples/packaging/run_example.py",
+      "additions": 40,
+      "deletions": 0
+    },
+    {
+      "path": "examples/packaging/src/extension.cc",
+      "additions": 88,
+      "deletions": 0
+    },
+    {
+      "path": "examples/{ => quick_start}/get_started/CMakeLists.txt",
+      "additions": 0,
+      "deletions": 0
+    },
+    {
+      "path": "examples/{ => quick_start}/get_started/README.md",
+      "additions": 0,
+      "deletions": 0
+    },
+    {
+      "path": "examples/{ => quick_start}/get_started/run_example.py",
+      "additions": 0,
+      "deletions": 0
+    },
+    {
+      "path": "examples/{ => quick_start}/get_started/run_example.sh",
+      "additions": 0,
+      "deletions": 0
+    },
+    {
+      "path": "examples/{ => quick_start}/get_started/src/add_one_cpu.cc",
+      "additions": 0,
+      "deletions": 0
+    },
+    {
+      "path": "examples/{ => quick_start}/get_started/src/add_one_cuda.cu",
+      "additions": 0,
+      "deletions": 0
+    },
+    {
+      "path": "examples/{ => quick_start}/get_started/src/run_example.cc",
+      "additions": 0,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/examples/packaging/run_example.py b/examples/packaging/run_example.py\nnew file mode 100644\nindex 0000000..88efae2\n--- /dev/null\n+++ b/examples/packaging/run_example.py\n@@ -0,0 +1,40 @@\n+# Licensed to the Apache Software Foundation (ASF) under one\n+# or more contributor license agreements.  See the NOTICE file\n+# distributed with this work for additional information\n+# regarding copyright ownership.  The ASF licenses this file\n+# to you under the Apache License, Version 2.0 (the\n+# \"License\"); you may not use this file except in compliance\n+# with the License.  You may obtain a copy of the License at\n+#\n+#   http://www.apache.org/licenses/LICENSE-2.0\n+#\n+# Unless required by applicable law or agreed to in writing,\n+# software distributed under the License is distributed on an\n+# \"AS IS\" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY\n+# KIND, either express or implied.  See the License for the\n+# specific language governing permissions and limitations.\n+# Base logic to load library for extension package\n+import torch\n+import sys\n+import tvm_ffi_extension\n+\n+\n+def run_add_one():\n+    x = torch.tensor([1, 2, 3, 4, 5], dtype=torch.float32)\n+    y = torch.empty_like(x)\n+    tvm_ffi_extension.add_one(x, y)\n+    print(y)\n+\n+\n+def run_raise_error():\n+    tvm_ffi_extension.raise_error(\"This is an error\")\n+\n+\n+if __name__ == \"__main__\":\n+    if len(sys.argv) > 1:\n+        if sys.argv[1] == \"add_one\":\n+            run_add_one()\n+        elif sys.argv[1] == \"raise_error\":\n+            run_raise_error()\n+    else:\n+        print(\"Usage: python run_example.py <add_one|raise_error>\")\ndiff --git a/examples/packaging/src/extension.cc b/examples/packaging/src/extension.cc\nnew file mode 100644\nindex 0000000..20a1f91\n--- /dev/null\n+++ b/examples/packaging/src/extension.cc\n@@ -0,0 +1,88 @@\n+/*\n+ * Licensed to the Apache Software Foundation (ASF) under one\n+ * or more contributor license agreements.  See the NOTICE file\n+ * distributed with this work for additional information\n+ * regarding copyright ownership.  The ASF licenses this file\n+ * to you under the Apache License, Version 2.0 (the\n+ * \"License\"); you may not use this file except in compliance\n+ * with the License.  You may obtain a copy of the License at\n+ *\n+ *   http://www.apache.org/licenses/LICENSE-2.0\n+ *\n+ * Unless required by applicable law or agreed to in writing,\n+ * software distributed under the License is distributed on an\n+ * \"AS IS\" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY\n+ * KIND, either express or implied.  See the License for the\n+ * specific language governing permissions and limitations\n+ * under the License.\n+ */\n+/*!\n+ * \\file example.cc\n+ * \\brief Example of a tvm-ffi based library that registers various functions.\n+ *\n+ * It is a simple example that demonstrates how to package a tvm-ffi library into a python wheel.\n+ * The library is written in C++ and can be compiled into a shared library.\n+ * The shared library can then be loaded into python and used to call the functions.\n+ */\n+#include <tvm/ffi/dtype.h>\n+#include <tvm/ffi/error.h>\n+#include <tvm/ffi/function.h>\n+#include <tvm/ffi/reflection/registry.h>\n+\n+namespace tvm_ffi_extension {\n+\n+namespace ffi = tvm::ffi;\n+\n+/*!\n+ * \\brief Raises a runtime error\n+ *\n+ * This is an example function to show how to raise and propagate\n+ * an error across the language boundary.\n+ *\n+ * \\param msg The message to raise the error with\n+ */\n+void RaiseError(ffi::String msg) { TVM_FFI_THROW(RuntimeError) << msg; }\n+\n+void AddOne(DLTensor* x, DLTensor* y) {\n+  // implementation of a library function\n+  TVM_FFI_ICHECK(x->ndim == 1) << \"x must be a 1D tensor\";\n+  DLDataType f32_dtype{kDLFloat, 32, 1};\n+  TVM_FFI_ICHECK(x->dtype == f32_dtype) << \"x must be a float tensor\";\n+  TVM_FFI_ICHECK(y->ndim == 1) << \"y must be a 1D tensor\";\n+  TVM_FFI_ICHECK(y->dtype == f32_dtype) << \"y must be a float tensor\";\n+  TVM_FFI_ICHECK(x->shape[0] == y->shape[0]) << \"x and y must have the same shape\";\n+  for (int i = 0; i < x->shape[0]; ++i) {\n+    static_cast<float*>(y->data)[i] = static_cast<float*>(x->data)[i] + 1;\n+  }\n+}\n+\n+// expose global symbol add_one\n+TVM_FFI_DLL_EXPORT_TYPED_FUNC(add_one, tvm_ffi_extension::AddOne);\n+\n+// The static initialization block is\n+// called once when the library is loaded.\n+TVM_FFI_STATIC_INIT_BLOCK({\n+  namespace refl = tvm::ffi::reflection;\n+  // In this particular example, we use the reflection mechanisms to\n+  // register the functions directly into the global function table.\n+  //\n+  // This is an alternative approach to TVM_FFI_DLL_EXPORT_TYPED_FUNC\n+  // that exports the function directly as C symbol that follows tvm-ffi abi.\n+  //\n+  // - For functions that are expected to be static part of tvm_ffi_example project,\n+  //   one can use reflection mechanisms to register the globa function.\n+  // - For functions that are compiled and dynamically loaded at runtime, consider\n+  //   using the normal export mechanism so they won't be exposed to the global function table.\n+  //\n+  // Make sure to have a unique name across all registered functions,\n+  // always prefix with a package namespace name to avoid name collision.\n+  //\n+  // The function can then be found via tvm_ffi.get_global_func(name)\n+  // If the function is expected to stay throughout the lifetime of the program/\n+  //\n+  // When registering via reflection mechanisms, the library do not need to be loaded via\n+  // tvm::ffi::Module::LoadFromFile, instead, just load the dll or simply bundle into the\n+  // final project\n+  refl::GlobalDef().def(\"tvm_ffi_extension.raise_error\", RaiseError);\n+});\n+}  // namespace tvm_ffi_extension\ndiff --git a/examples/get_started/CMakeLists.txt b/examples/quick_start/get_started/CMakeLists.txt\nsimilarity index 100%\nrename from examples/get_started/CMakeLists.txt\nrename to examples/quick_start/get_started/CMakeLists.txt\ndiff --git a/examples/get_started/README.md b/examples/quick_start/get_started/README.md\nsimilarity index 100%\nrename from examples/get_started/README.md\nrename to examples/quick_start/get_started/README.md\ndiff --git a/examples/get_started/run_example.py b/examples/quick_start/get_started/run_example.py\nsimilarity index 100%\nrename from examples/get_started/run_example.py\nrename to examples/quick_start/get_started/run_example.py\ndiff --git a/examples/get_started/run_example.sh b/examples/quick_start/get_started/run_example.sh\nsimilarity index 100%\nrename from examples/get_started/run_example.sh\nrename to examples/quick_start/get_started/run_example.sh\ndiff --git a/examples/get_started/src/add_one_cpu.cc b/examples/quick_start/get_started/src/add_one_cpu.cc\nsimilarity index 100%\nrename from examples/get_started/src/add_one_cpu.cc\nrename to examples/quick_start/get_started/src/add_one_cpu.cc\ndiff --git a/examples/get_started/src/add_one_cuda.cu b/examples/quick_start/get_started/src/add_one_cuda.cu\nsimilarity index 100%\nrename from examples/get_started/src/add_one_cuda.cu\nrename to examples/quick_start/get_started/src/add_one_cuda.cu\ndiff --git a/examples/get_started/src/run_example.cc b/examples/quick_start/get_started/src/run_example.cc\nsimilarity index 100%\nrename from examples/get_started/src/run_example.cc\nrename to examples/quick_start/get_started/src/run_example.cc",
+  "heuristics": {
+    "tags": [
+      "build"
+    ],
+    "extensions": [
+      ".cc",
+      ".cu",
+      ".md",
+      ".py",
+      ".sh",
+      ".txt"
+    ],
+    "scopes_guess": [
+      "examples"
+    ]
+  }
+}

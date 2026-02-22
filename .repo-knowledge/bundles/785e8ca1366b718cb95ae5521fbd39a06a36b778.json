@@ -1,0 +1,61 @@
+{
+  "sha": "785e8ca1366b718cb95ae5521fbd39a06a36b778",
+  "sha7": "785e8ca",
+  "author_name": "Junru Shao",
+  "author_email": "junrushao@apache.org",
+  "date_iso": "2025-09-18T19:52:55-07:00",
+  "subject": "feat: Add typestubs for Cython generated code (#24)",
+  "body":
+      "After this PR, if Pylance still reports missing imports `core`, you may\nset:\n\n```\n\"python.analysis.extraPaths\": [\"./build/\"]\n```\n\nin base directory.",
+  "is_merge": false,
+  "parents": [
+    "71dea752f43267b1929a119672b6862db20ac8aa"
+  ],
+  "name_status": [
+    [
+      "M",
+      "python/tvm_ffi/_tensor.py"
+    ],
+    [
+      "A",
+      "python/tvm_ffi/core.pyi"
+    ],
+    [
+      "M",
+      "tests/lint/check_asf_header.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "python/tvm_ffi/_tensor.py",
+      "additions": 13,
+      "deletions": 5
+    },
+    {
+      "path": "python/tvm_ffi/core.pyi",
+      "additions": 227,
+      "deletions": 0
+    },
+    {
+      "path": "tests/lint/check_asf_header.py",
+      "additions": 1,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/python/tvm_ffi/_tensor.py b/python/tvm_ffi/_tensor.py\nindex 903a69d..8d06bd2 100644\n--- a/python/tvm_ffi/_tensor.py\n+++ b/python/tvm_ffi/_tensor.py\n@@ -21,12 +21,20 @@\n from numbers import Integral\n from typing import Any, Optional, Union\n \n-from . import _ffi_api, core, registry\n-from .core import Device, DLDeviceType, Tensor, from_dlpack\n+from . import _ffi_api, registry\n+from .core import (\n+    _CLASS_DEVICE,\n+    Device,\n+    DLDeviceType,\n+    PyNativeObject,\n+    Tensor,\n+    _shape_obj_get_py_tuple,\n+    from_dlpack,\n+)\n \n \n @registry.register_object(\"ffi.Shape\")\n-class Shape(tuple, core.PyNativeObject):\n+class Shape(tuple, PyNativeObject):\n     \"\"\"Shape tuple that represents `ffi::Shape` returned by a ffi call.\n \n     Note:\n@@ -46,7 +54,7 @@ class Shape(tuple, core.PyNativeObject):\n     # pylint: disable=no-self-argument\n     def __from_tvm_ffi_object__(cls, obj: Any) -> \"Shape\":\n         \"\"\"Construct from a given tvm object.\"\"\"\n-        content = core._shape_obj_get_py_tuple(obj)\n+        content = _shape_obj_get_py_tuple(obj)\n         val = tuple.__new__(cls, content)\n         val.__tvm_ffi_object__ = obj\n         return val\n@@ -78,7 +86,7 @@ def device(device_type: Union[str, int, DLDeviceType], index: Optional[int] = No\n       assert tvm_ffi.device(\"cpu:0\") == tvm_ffi.device(\"cpu\", 0)\n \n     \"\"\"\n-    return core._CLASS_DEVICE(device_type, index)\n+    return _CLASS_DEVICE(device_type, index)\n \n \n __all__ = [\"DLDeviceType\", \"Device\", \"Tensor\", \"device\", \"from_dlpack\"]\ndiff --git a/python/tvm_ffi/core.pyi b/python/tvm_ffi/core.pyi\nnew file mode 100644\nindex 0000000..d57d020\n--- /dev/null\n+++ b/python/tvm_ffi/core.pyi\n@@ -0,0 +1,227 @@\n+# Licensed to the Apache Software Foundation (ASF) under one\n+# or more contributor license agreements.  See the NOTICE file\n+# distributed with this work for additional information\n+# regarding copyright ownership.  The ASF licenses this file\n+# to you under the Apache License, Version 2.0 (the\n+# \"License\"); you may not use this file except in compliance\n+# with the License.  You may obtain a copy of the License at\n+#\n+#   http://www.apache.org/licenses/LICENSE-2.0\n+#\n+# Unless required by applicable law or agreed to in writing,\n+# software distributed under the License is distributed on an\n+# \"AS IS\" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY\n+# KIND, either express or implied.  See the License for the\n+# specific language governing permissions and limitations\n+# under the License.\n+\"\"\"Typestubs for Cython.\"\"\"\n+\n+from __future__ import annotations\n+\n+import types\n+from enum import IntEnum\n+from typing import Any, Callable\n+\n+# Public module-level variables referenced by Python code\n+ERROR_NAME_TO_TYPE: dict[str, type]\n+ERROR_TYPE_TO_NAME: dict[type, str]\n+\n+_WITH_APPEND_TRACEBACK: Callable[[BaseException, str], BaseException] | None\n+_TRACEBACK_TO_STR: Callable[[types.TracebackType | None], str] | None\n+\n+# DLPack protocol version (defined in tensor.pxi)\n+__dlpack_version__: tuple[int, int]\n+\n+class Object:\n+    \"\"\"Base class of all TVM FFI objects.\"\"\"\n+\n+    def __ctypes_handle__(self) -> Any: ...\n+    def __chandle__(self) -> int: ...\n+    def __reduce__(self) -> Any: ...\n+    def __getstate__(self) -> dict[str, Any]: ...\n+    def __setstate__(self, state: dict[str, Any]) -> None: ...\n+    def __repr__(self) -> str: ...\n+    def __eq__(self, other: Any) -> bool: ...\n+    def __ne__(self, other: Any) -> bool: ...\n+    def __hash__(self) -> int: ...\n+    def __init_handle_by_constructor__(self, fconstructor: Function, *args: Any) -> None: ...\n+    def same_as(self, other: Any) -> bool: ...\n+    def _move(self) -> ObjectRValueRef: ...\n+    def __move_handle_from__(self, other: Object) -> None: ...\n+\n+class ObjectConvertible:\n+    \"\"\"Base class for all classes that can be converted to Object.\"\"\"\n+\n+    def asobject(self) -> Object: ...\n+\n+class ObjectRValueRef:\n+    \"\"\"Represent an RValue ref to an object that can be moved.\"\"\"\n+\n+    obj: Object\n+    def __init__(self, obj: Object) -> None: ...\n+\n+class OpaquePyObject(Object):\n+    \"\"\"Opaque PyObject container.\"\"\"\n+\n+    def pyobject(self) -> Any: ...\n+\n+class PyNativeObject:\n+    \"\"\"Base class of all TVM objects that also subclass python's builtin types.\"\"\"\n+\n+    __slots__: list[str]\n+    def __init_tvm_ffi_object_by_constructor__(\n+        self, fconstructor: Function, *args: Any\n+    ) -> None: ...\n+\n+def _set_class_object(cls: type) -> None: ...\n+def _register_object_by_index(index: int, cls: type) -> None: ...\n+def _object_type_key_to_index(type_key: str) -> int | None: ...\n+def _add_class_attrs_by_reflection(type_index: int, cls: type) -> type: ...\n+\n+class Error(Object):\n+    \"\"\"Base class for FFI errors.\"\"\"\n+\n+    def __init__(self, kind: str, message: str, traceback: str) -> None: ...\n+    def update_traceback(self, traceback: str) -> None: ...\n+    def py_error(self) -> BaseException: ...\n+    @property\n+    def kind(self) -> str: ...\n+    @property\n+    def message(self) -> str: ...\n+    @property\n+    def traceback(self) -> str: ...\n+\n+def _convert_to_ffi_error(error: BaseException) -> Error: ...\n+def _env_set_current_stream(device_type: int, device_id: int, stream: int) -> int: ...\n+\n+class DataType:\n+    \"\"\"DataType wrapper around DLDataType.\"\"\"\n+\n+    def __init__(self, dtype_str: str) -> None: ...\n+    def __reduce__(self) -> Any: ...\n+    def __eq__(self, other: Any) -> bool: ...\n+    def __ne__(self, other: Any) -> bool: ...\n+    @property\n+    def type_code(self) -> int: ...\n+    @property\n+    def bits(self) -> int: ...\n+    @property\n+    def lanes(self) -> int: ...\n+    @property\n+    def itemsize(self) -> int: ...\n+    def __str__(self) -> str: ...\n+\n+def _set_class_dtype(cls: type) -> None: ...\n+def _create_dtype_from_tuple(cls: type[DataType], code: int, bits: int, lanes: int) -> DataType: ...\n+\n+class DLDeviceType(IntEnum):\n+    \"\"\"Enum that maps to DLDeviceType.\"\"\"\n+\n+    kDLCPU = 1\n+    kDLCUDA = 2\n+    kDLCUDAHost = 3\n+    kDLOpenCL = 4\n+    kDLVulkan = 7\n+    kDLMetal = 8\n+    kDLVPI = 9\n+    kDLROCM = 10\n+    kDLROCMHost = 11\n+    kDLExtDev = 12\n+    kDLCUDAManaged = 13\n+    kDLOneAPI = 14\n+    kDLWebGPU = 15\n+    kDLHexagon = 16\n+\n+class Device:\n+    \"\"\"Device represents a device in the ffi system.\"\"\"\n+\n+    def __init__(self, device_type: str | int, index: int | None = None) -> None: ...\n+    def __reduce__(self) -> Any: ...\n+    def __eq__(self, other: Any) -> bool: ...\n+    def __ne__(self, other: Any) -> bool: ...\n+    def __str__(self) -> str: ...\n+    def __repr__(self) -> str: ...\n+    def __hash__(self) -> int: ...\n+    def __device_type_name__(self) -> str: ...\n+    @property\n+    def type(self) -> str: ...\n+    @property\n+    def index(self) -> int: ...\n+    def dlpack_device_type(self) -> int: ...\n+\n+def _set_class_device(cls: type) -> None: ...\n+\n+_CLASS_DEVICE: type[Device]\n+\n+def _shape_obj_get_py_tuple(obj: Any) -> tuple[int, ...]: ...\n+\n+class Tensor(Object):\n+    \"\"\"Tensor object that represents a managed n-dimensional array.\"\"\"\n+\n+    @property\n+    def shape(self) -> tuple[int, ...]: ...\n+    @property\n+    def dtype(self) -> Any: ...  # returned as python dtype (str subclass)\n+    @property\n+    def device(self) -> Device: ...\n+    def _to_dlpack(self) -> Any: ...\n+    def _to_dlpack_versioned(self) -> Any: ...\n+    def __dlpack_device__(self) -> tuple[int, int]: ...\n+    def __dlpack__(\n+        self,\n+        *,\n+        stream: Any | None = None,\n+        max_version: tuple[int, int] | None = None,\n+        dl_device: tuple[int, int] | None = None,\n+        copy: bool | None = None,\n+    ) -> Any: ...\n+\n+def from_dlpack(\n+    ext_tensor: Any, *, require_alignment: int = ..., require_contiguous: bool = ...\n+) -> Tensor: ...\n+\n+class DLTensorTestWrapper:\n+    \"\"\"Wrapper of a Tensor that exposes DLPack protocol, only for testing purpose.\"\"\"\n+\n+    __c_dlpack_from_pyobject__: int\n+    def __init__(self, tensor: Tensor) -> None: ...\n+    def __tvm_ffi_env_stream__(self) -> int: ...\n+    def __dlpack_device__(self) -> tuple[int, int]: ...\n+    def __dlpack__(self, **kwargs: Any) -> Any: ...\n+\n+def _dltensor_test_wrapper_c_dlpack_from_pyobject_as_intptr() -> int: ...\n+\n+class Function(Object):\n+    \"\"\"Python class that wraps a function with tvm-ffi ABI.\"\"\"\n+\n+    @property\n+    def release_gil(self) -> bool: ...\n+    @release_gil.setter\n+    def release_gil(self, value: bool) -> None: ...\n+    def __call__(self, *args: Any) -> Any: ...\n+\n+def _register_global_func(\n+    name: str, pyfunc: Callable[..., Any] | Function, override: bool\n+) -> Function: ...\n+def _get_global_func(name: str, allow_missing: bool) -> Function | None: ...\n+def _convert_to_ffi_func(pyfunc: Callable[..., Any]) -> Function: ...\n+def _convert_to_opaque_object(pyobject: Any) -> OpaquePyObject: ...\n+def _print_debug_info() -> None: ...\n+\n+class String(str, PyNativeObject):\n+    __slots__ = [\"__tvm_ffi_object__\"]\n+    __tvm_ffi_object__: Object | None\n+\n+    def __new__(cls, value: str) -> String: ...\n+\n+    # pylint: disable=no-self-argument\n+    def __from_tvm_ffi_object__(cls, obj: Any) -> String: ...\n+\n+class Bytes(bytes, PyNativeObject):\n+    __slots__ = [\"__tvm_ffi_object__\"]\n+    __tvm_ffi_object__: Object | None\n+\n+    def __new__(cls, value: bytes) -> Bytes: ...\n+\n+    # pylint: disable=no-self-argument\n+    def __from_tvm_ffi_object__(cls, obj: Any) -> Bytes: ...\ndiff --git a/tests/lint/check_asf_header.py b/tests/lint/check_asf_header.py\nindex 5ad7571..da30464 100644\n--- a/tests/lint/check_asf_header.py\n+++ b/tests/lint/check_asf_header.py\n@@ -148,6 +148,7 @@ FMT_MAP = {\n     \"go\": header_cstyle,\n     \"java\": header_cstyle,\n     \"h\": header_cstyle,\n+    \"pyi\": header_pystyle,\n     \"py\": header_pystyle,\n     \"toml\": header_pystyle,\n     \"yml\": header_pystyle,",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".py",
+      ".pyi"
+    ],
+    "scopes_guess": [
+      "python",
+      "tests"
+    ]
+  }
+}

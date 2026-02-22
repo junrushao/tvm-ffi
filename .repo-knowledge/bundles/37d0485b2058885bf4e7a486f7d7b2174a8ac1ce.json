@@ -1,0 +1,61 @@
+{
+  "sha": "37d0485b2058885bf4e7a486f7d7b2174a8ac1ce",
+  "sha7": "37d0485",
+  "author_name": "Hubert Lu",
+  "author_email": "55214931+hubertlu-tw@users.noreply.github.com",
+  "date_iso": "2026-02-20T07:07:07-08:00",
+  "subject":
+      "ROCm: fix DLPack current_work_stream and force addon override for Torch exchange API (#466)",
+  "body":
+      "## Motivation\n\nOn ROCm, graph-capture-sensitive callers (for example SGLang JIT\nkernels) can hit stream mismatch behavior through the Torch DLPack\nexchange API path. In practice this shows up as HIP graph empty-capture\nwarnings and forced downstream workarounds in callers.\n\nWe want `tvm-ffi` to provide a correct ROCm stream callback and let\ndownstream projects remove ROCm-specific Python bridging code.\n\n## Reproducer\n\n### Minimal `tvm-ffi` reproducer\n\n- New test: `tests/python/test_current_work_stream_gpu.py`\n- It obtains `torch.Tensor.__dlpack_c_exchange_api__`, calls\n`current_work_stream`, and verifies stream identity against a\nnon-default torch stream.\n- It checks:\n  - `kDLCUDA` always\n  - `kDLROCM` on HIP runtime\n\n## Fix\n\n### 1) ROCm stream callback implementation\n\nFile:\n\n- `python/tvm_ffi/utils/_build_optional_torch_c_dlpack.py`\n\nChanges:\n\n- Include `ATen/hip/impl/HIPStreamMasqueradingAsCUDA.h` for ROCm builds.\n- In `CurrentWorkStream(...)`:\n  - ROCm build path now returns:\n- `c10::hip::getCurrentHIPStreamMasqueradingAsCUDA(device_id).stream()`\n  - CUDA build path remains:\n    - `at::cuda::getCurrentCUDAStream(device_id).stream()`\n\nThis aligns stream reporting with ROCm semantics used by PyTorch HIP\nstream handling.\n\n### 2) Ensure ROCm uses `tvm-ffi` addon API\n\nFile:\n\n- `python/tvm_ffi/_optional_torch_c_dlpack.py`\n\nChanges:\n\n- On ROCm (`torch.cuda.is_available() and torch.version.hip is not\nNone`), do not early-return just because torch already exposes\n`__dlpack_c_exchange_api__`.\n- Force loading/using the `tvm-ffi` addon capsule on ROCm so the fixed\ncallback is actually active.\n- NVIDIA/CUDA path remains unchanged.\n\n## Validation\n\n### `tvm-ffi` side\n\n- `python -m pytest -q tests/python/test_current_work_stream_gpu.py`\n- Result: pass\n\n### Downstream impact check (SGLang)\n\nTo verify this can remove divergence in SGLang JIT path, we temporarily\nremoved:\n\n- `hip_ensure_tvm_ffi_stream(...)`\n- `to_tvm_tensor_cached(...)`\nRef:\nhttps://github.com/sgl-project/sglang/pull/18992/changes/df80efb85eee5f5c2be4241865a77508ae0d7a69#diff-ff0d21f07b9d4c75f02741e8e63e4eee34a1bd24e8f74c7b6b96f0f19ee97bd8R204-R233",
+  "is_merge": false,
+  "parents": [
+    "07546c750337c73e1d74cf4e1a29c32fbee0c139"
+  ],
+  "name_status": [
+    [
+      "M",
+      "python/tvm_ffi/_optional_torch_c_dlpack.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/utils/_build_optional_torch_c_dlpack.py"
+    ],
+    [
+      "A",
+      "tests/python/test_current_work_stream_gpu.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "python/tvm_ffi/_optional_torch_c_dlpack.py",
+      "additions": 3,
+      "deletions": 2
+    },
+    {
+      "path": "python/tvm_ffi/utils/_build_optional_torch_c_dlpack.py",
+      "additions": 8,
+      "deletions": 1
+    },
+    {
+      "path": "tests/python/test_current_work_stream_gpu.py",
+      "additions": 96,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/python/tvm_ffi/_optional_torch_c_dlpack.py b/python/tvm_ffi/_optional_torch_c_dlpack.py\nindex 594abae..7012108 100644\n--- a/python/tvm_ffi/_optional_torch_c_dlpack.py\n+++ b/python/tvm_ffi/_optional_torch_c_dlpack.py\n@@ -94,7 +94,8 @@ def load_torch_c_dlpack_extension() -> Any:  # noqa: PLR0912, PLR0915\n         import torch  # noqa: PLC0415\n         import torch.version  # noqa: PLC0415\n \n-        if _check_and_update_dlpack_c_exchange_api(torch.Tensor):\n+        prefer_rocm_override = bool(torch.cuda.is_available() and torch.version.hip is not None)\n+        if _check_and_update_dlpack_c_exchange_api(torch.Tensor) and not prefer_rocm_override:\n             # skip loading the extension if the __dlpack_c_exchange_api__\n             # attribute is already set so we don't have to do it in\n             # newer version of PyTorch\n@@ -106,7 +107,7 @@ def load_torch_c_dlpack_extension() -> Any:  # noqa: PLR0912, PLR0915\n     try:\n         import torch_c_dlpack_ext  # noqa: PLC0415, F401\n \n-        if _check_and_update_dlpack_c_exchange_api(torch.Tensor):\n+        if _check_and_update_dlpack_c_exchange_api(torch.Tensor) and not prefer_rocm_override:\n             return None\n     except ImportError:\n         pass\ndiff --git a/python/tvm_ffi/utils/_build_optional_torch_c_dlpack.py b/python/tvm_ffi/utils/_build_optional_torch_c_dlpack.py\nindex 8f38530..7277568 100644\n--- a/python/tvm_ffi/utils/_build_optional_torch_c_dlpack.py\n+++ b/python/tvm_ffi/utils/_build_optional_torch_c_dlpack.py\n@@ -48,6 +48,7 @@ cpp_source = \"\"\"\n #endif\n #ifdef BUILD_WITH_ROCM\n #include <c10/hip/HIPStream.h>\n+#include <ATen/hip/impl/HIPStreamMasqueradingAsCUDA.h>\n #endif\n \n using namespace std;\n@@ -506,8 +507,14 @@ struct TorchDLPackExchangeAPI : public DLPackExchangeAPI {\n   // Get current CUDA/ROCm work stream\n   static int CurrentWorkStream(DLDeviceType device_type, int32_t device_id, void** out_stream) {\n     try {\n+#ifdef BUILD_WITH_ROCM\n+      if (device_type == kDLROCM || device_type == kDLCUDA) {\n+        *out_stream = c10::hip::getCurrentHIPStreamMasqueradingAsCUDA(device_id).stream();\n+        return 0;\n+      }\n+#endif\n #ifdef BUILD_WITH_CUDA\n-      if (device_type == kDLCUDA || device_type == kDLROCM) {\n+      if (device_type == kDLCUDA) {\n         *out_stream = at::cuda::getCurrentCUDAStream(device_id).stream();\n         return 0;\n       }\ndiff --git a/tests/python/test_current_work_stream_gpu.py b/tests/python/test_current_work_stream_gpu.py\nnew file mode 100644\nindex 0000000..fcd3b94\n--- /dev/null\n+++ b/tests/python/test_current_work_stream_gpu.py\n@@ -0,0 +1,96 @@\n+# Licensed to the Apache Software Foundation (ASF) under one\n+# or more contributor license agreements.  See the NOTICE file\n+# distributed with this work for additional information\n+# regarding copyright ownership.  The ASF licenses this file to\n+# you under the Apache License, Version 2.0 (the\n+# \"License\"); you may not use this file except in compliance\n+# with the License.  You may obtain a copy of the License at\n+#\n+#   http://www.apache.org/licenses/LICENSE-2.0\n+#\n+# Unless required by applicable law or agreed to in writing,\n+# software distributed under the License is distributed on an\n+# \"AS IS\" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY\n+# KIND, either express or implied.  See the License for the\n+# specific language governing permissions and limitations\n+# under the License.\n+\n+from __future__ import annotations\n+\n+import ctypes\n+\n+import pytest\n+\n+try:\n+    import torch\n+    import tvm_ffi  # noqa: F401\n+    from torch.utils import cpp_extension\n+    from tvm_ffi import libinfo\n+except ImportError:\n+    torch = None  # ty: ignore[invalid-assignment]\n+\n+if torch is None:\n+    _HAS_TORCH = False\n+    _HAS_GPU = False\n+    _HAS_DLPACK_EXCHANGE_API = False\n+else:\n+    _HAS_TORCH = True\n+    _HAS_GPU = bool(torch.cuda.is_available())\n+    _HAS_DLPACK_EXCHANGE_API = bool(hasattr(torch.Tensor, \"__dlpack_c_exchange_api__\"))\n+\n+\n+@pytest.mark.skipif(not _HAS_TORCH, reason=\"Requires torch\")\n+@pytest.mark.skipif(not _HAS_GPU, reason=\"Requires GPU runtime\")\n+@pytest.mark.skipif(not _HAS_DLPACK_EXCHANGE_API, reason=\"Requires __dlpack_c_exchange_api__\")\n+def test_current_work_stream_matches_torch_stream() -> None:\n+    assert torch is not None\n+    api_attr = torch.Tensor.__dlpack_c_exchange_api__\n+\n+    pythonapi = ctypes.pythonapi\n+    pythonapi.PyCapsule_GetPointer.restype = ctypes.c_size_t\n+    pythonapi.PyCapsule_GetPointer.argtypes = [ctypes.py_object, ctypes.c_char_p]\n+    api_ptr = pythonapi.PyCapsule_GetPointer(api_attr, b\"dlpack_exchange_api\")\n+    assert api_ptr != 0\n+\n+    source = r\"\"\"\n+    #include <torch/extension.h>\n+    #include <dlpack/dlpack.h>\n+\n+    void assert_current_work_stream(int64_t api_ptr_int, bool is_hip, int64_t expected_stream) {\n+        DLPackExchangeAPI* api = reinterpret_cast<DLPackExchangeAPI*>(api_ptr_int);\n+        TORCH_CHECK(api != nullptr, \"API pointer is NULL\");\n+        TORCH_CHECK(api->current_work_stream != nullptr, \"current_work_stream is NULL\");\n+\n+        void* stream_cuda = nullptr;\n+        int result_cuda = api->current_work_stream(kDLCUDA, 0, &stream_cuda);\n+        TORCH_CHECK(result_cuda == 0, \"current_work_stream(kDLCUDA) failed\");\n+        TORCH_CHECK(reinterpret_cast<int64_t>(stream_cuda) == expected_stream,\n+                    \"kDLCUDA stream mismatch\");\n+\n+        if (is_hip) {\n+            void* stream_rocm = nullptr;\n+            int result_rocm = api->current_work_stream(kDLROCM, 0, &stream_rocm);\n+            TORCH_CHECK(result_rocm == 0, \"current_work_stream(kDLROCM) failed\");\n+            TORCH_CHECK(reinterpret_cast<int64_t>(stream_rocm) == expected_stream,\n+                        \"kDLROCM stream mismatch\");\n+        }\n+    }\n+    \"\"\"\n+\n+    include_paths = libinfo.include_paths()\n+    include_paths += cpp_extension.include_paths(\"cuda\")\n+\n+    mod = cpp_extension.load_inline(\n+        name=\"test_current_work_stream_gpu_ext\",\n+        cpp_sources=[source],\n+        functions=[\"assert_current_work_stream\"],\n+        with_cuda=torch.cuda.is_available(),\n+        extra_include_paths=include_paths,\n+    )\n+\n+    device_id = torch.cuda.current_device()\n+    is_hip = torch.version.hip is not None\n+    stream = torch.cuda.Stream(device=device_id)\n+    with torch.cuda.stream(stream):\n+        expected_stream = int(stream.cuda_stream)\n+        mod.assert_current_work_stream(api_ptr, is_hip, expected_stream)",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".py"
+    ],
+    "scopes_guess": [
+      "python",
+      "tests"
+    ]
+  }
+}

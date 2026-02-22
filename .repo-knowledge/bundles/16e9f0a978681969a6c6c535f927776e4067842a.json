@@ -1,0 +1,111 @@
+{
+  "sha": "16e9f0a978681969a6c6c535f927776e4067842a",
+  "sha7": "16e9f0a",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-05-08T13:55:33-04:00",
+  "subject": "[REFACTOR][FFI] Cleanup container redirections (#17929)",
+  "body":
+      "This PR cleans up the container redirections and headers\nso the files directly points to new ones in ffi folder\n\n- runtime/shape_tuple.h => ffi/container/shape.h\n  - for IntTuple alias, introduce runtime/int_tuple.h for now\n- runtime/container/array.h => ffi/container/array.h\n- runtime/container/map.h => ffi/container/map.h\n- runtime/container/optional.h => ffi/optional.h\n- runtime/container/string.h => ffi/string.h\n- runtime/container/variant.h => ffi/container/variant.h\n- runtime/container/tuple.h => ffi/container/tuple.h\n\nWe also introduce limited number of tvm::ffi classes into tvm namespace,\nwhen they are commonly used and their is no ambiguity.",
+  "is_merge": false,
+  "parents": [
+    "95868ab1072699468a1250a5d63b71a4d8ce2a3e"
+  ],
+  "name_status": [
+    [
+      "M",
+      "include/tvm/ffi/cast.h"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/container/array.h"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/container/map.h"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/container/tuple.h"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/container/variant.h"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/function.h"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/memory.h"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/optional.h"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/string.h"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "include/tvm/ffi/cast.h",
+      "additions": 5,
+      "deletions": 0
+    },
+    {
+      "path": "include/tvm/ffi/container/array.h",
+      "additions": 4,
+      "deletions": 0
+    },
+    {
+      "path": "include/tvm/ffi/container/map.h",
+      "additions": 5,
+      "deletions": 1
+    },
+    {
+      "path": "include/tvm/ffi/container/tuple.h",
+      "additions": 4,
+      "deletions": 0
+    },
+    {
+      "path": "include/tvm/ffi/container/variant.h",
+      "additions": 4,
+      "deletions": 0
+    },
+    {
+      "path": "include/tvm/ffi/function.h",
+      "additions": 1,
+      "deletions": 0
+    },
+    {
+      "path": "include/tvm/ffi/memory.h",
+      "additions": 4,
+      "deletions": 0
+    },
+    {
+      "path": "include/tvm/ffi/optional.h",
+      "additions": 3,
+      "deletions": 0
+    },
+    {
+      "path": "include/tvm/ffi/string.h",
+      "additions": 5,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/include/tvm/ffi/cast.h b/include/tvm/ffi/cast.h\nindex 99069fb..5995abb 100644\n--- a/include/tvm/ffi/cast.h\n+++ b/include/tvm/ffi/cast.h\n@@ -156,5 +156,10 @@ inline OptionalType Downcast(const std::optional<Any>& ref) {\n }\n \n }  // namespace ffi\n+\n+// Expose to the tvm namespace\n+// Rationale: convinience and no ambiguity\n+using ffi::Downcast;\n+using ffi::GetRef;\n }  // namespace tvm\n #endif  // TVM_FFI_CAST_H_\ndiff --git a/include/tvm/ffi/container/array.h b/include/tvm/ffi/container/array.h\nindex 5922eac..ce00436 100644\n--- a/include/tvm/ffi/container/array.h\n+++ b/include/tvm/ffi/container/array.h\n@@ -1031,5 +1031,9 @@ inline constexpr bool type_contains_v<Array<T>, Array<U>> = type_contains_v<T, U\n }  // namespace details\n \n }  // namespace ffi\n+\n+// Expose to the tvm namespace\n+// Rationale: convinience and no ambiguity\n+using ffi::Array;\n }  // namespace tvm\n #endif  // TVM_FFI_CONTAINER_ARRAY_H_\ndiff --git a/include/tvm/ffi/container/map.h b/include/tvm/ffi/container/map.h\nindex 7d805d6..d2dd1a5 100644\n--- a/include/tvm/ffi/container/map.h\n+++ b/include/tvm/ffi/container/map.h\n@@ -1396,7 +1396,7 @@ class Map : public ObjectRef {\n   iterator end() const { return iterator(GetMapObj()->end()); }\n   /*! \\return find the key and returns the associated iterator */\n   iterator find(const K& key) const { return iterator(GetMapObj()->find(key)); }\n-  /*! \\return The value associated with the key, NullOpt if not found */\n+  /*! \\return The value associated with the key, std::nullopt if not found */\n   std::optional<V> Get(const K& key) const {\n     MapObj::iterator iter = GetMapObj()->find(key);\n     if (iter == GetMapObj()->end()) {\n@@ -1602,5 +1602,9 @@ inline constexpr bool type_contains_v<Map<K, V>, Map<KU, VU>> =\n }  // namespace details\n \n }  // namespace ffi\n+\n+// Expose to the tvm namespace\n+// Rationale: convinience and no ambiguity\n+using ffi::Map;\n }  // namespace tvm\n #endif  // TVM_FFI_CONTAINER_MAP_H_\ndiff --git a/include/tvm/ffi/container/tuple.h b/include/tvm/ffi/container/tuple.h\nindex 63c3646..641d006 100644\n--- a/include/tvm/ffi/container/tuple.h\n+++ b/include/tvm/ffi/container/tuple.h\n@@ -275,5 +275,9 @@ inline constexpr bool type_contains_v<Tuple<T...>, Tuple<U...>> = (type_contains\n }  // namespace details\n \n }  // namespace ffi\n+\n+// Expose to the tvm namespace\n+// Rationale: convinience and no ambiguity\n+using ffi::Tuple;\n }  // namespace tvm\n #endif  // TVM_FFI_CONTAINER_TUPLE_H_\ndiff --git a/include/tvm/ffi/container/variant.h b/include/tvm/ffi/container/variant.h\nindex c8b58ba..f134be8 100644\n--- a/include/tvm/ffi/container/variant.h\n+++ b/include/tvm/ffi/container/variant.h\n@@ -194,5 +194,9 @@ template <typename... V, typename T>\n inline constexpr bool type_contains_v<Variant<V...>, T> = (type_contains_v<V, T> || ...);\n }  // namespace details\n }  // namespace ffi\n+\n+// Expose to the tvm namespace\n+// Rationale: convinience and no ambiguity\n+using ffi::Variant;\n }  // namespace tvm\n #endif  // TVM_FFI_CONTAINER_VARIANT_H_\ndiff --git a/include/tvm/ffi/function.h b/include/tvm/ffi/function.h\nindex bdcca7b..2bf6b96 100644\n--- a/include/tvm/ffi/function.h\n+++ b/include/tvm/ffi/function.h\n@@ -909,6 +909,7 @@ inline int32_t TypeKeyToIndex(std::string_view type_key) {\n  */\n #define TVM_FFI_REGISTER_GLOBAL(OpName) \\\n   TVM_FFI_STR_CONCAT(TVM_FFI_FUNC_REG_VAR_DEF, __COUNTER__) = ::tvm::ffi::Function::Registry(OpName)\n+\n }  // namespace ffi\n }  // namespace tvm\n #endif  // TVM_FFI_FUNCTION_H_\ndiff --git a/include/tvm/ffi/memory.h b/include/tvm/ffi/memory.h\nindex d3af2dd..eb317d2 100644\n--- a/include/tvm/ffi/memory.h\n+++ b/include/tvm/ffi/memory.h\n@@ -205,5 +205,9 @@ inline ObjectPtr<ArrayType> make_inplace_array_object(size_t num_elems, Args&&..\n }\n \n }  // namespace ffi\n+\n+// Export the make_object function\n+// rationale: ease of use, and no ambiguity\n+using ffi::make_object;\n }  // namespace tvm\n #endif  // TVM_FFI_MEMORY_H_\ndiff --git a/include/tvm/ffi/optional.h b/include/tvm/ffi/optional.h\nindex 7b3f69e..9c73d6a 100644\n--- a/include/tvm/ffi/optional.h\n+++ b/include/tvm/ffi/optional.h\n@@ -295,5 +295,8 @@ class Optional<T, std::enable_if_t<use_ptr_based_optional_v<T>>> : public Object\n   }\n };\n }  // namespace ffi\n+\n+// Expose to the tvm namespace\n+using ffi::Optional;\n }  // namespace tvm\n #endif  // TVM_FFI_OPTIONAL_H_\ndiff --git a/include/tvm/ffi/string.h b/include/tvm/ffi/string.h\nindex 1c22f10..e0fa7da 100644\n--- a/include/tvm/ffi/string.h\n+++ b/include/tvm/ffi/string.h\n@@ -641,6 +641,11 @@ inline int Bytes::memncmp(const char* lhs, const char* rhs, size_t lhs_count, si\n   }\n }\n }  // namespace ffi\n+\n+// Expose to the tvm namespace for usability\n+// Rationale: no ambiguity even in root\n+using ffi::Bytes;\n+using ffi::String;\n }  // namespace tvm\n \n namespace std {",
+  "heuristics": {
+    "tags": [],
+    "extensions": [
+      ".h"
+    ],
+    "scopes_guess": [
+      "include"
+    ]
+  }
+}

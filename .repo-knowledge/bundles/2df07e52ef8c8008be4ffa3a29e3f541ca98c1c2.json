@@ -1,0 +1,50 @@
+{
+  "sha": "2df07e52ef8c8008be4ffa3a29e3f541ca98c1c2",
+  "sha7": "2df07e5",
+  "author_name": "Yaoyao Ding",
+  "author_email": "dingyaoyao.cs@gmail.com",
+  "date_iso": "2025-09-08T06:53:30-04:00",
+  "subject": "[FFI][Bugfix] Fix bug of `ffi.cpp.load_inline` on Windows (#18281)",
+  "body": "This PR enables the load_inline on windows platform:",
+  "is_merge": false,
+  "parents": [
+    "24125d0ac466beb67965c1dd9ae23f2a71f424ad"
+  ],
+  "name_status": [
+    [
+      "M",
+      "python/tvm_ffi/cpp/load_inline.py"
+    ],
+    [
+      "M",
+      "tests/python/test_load_inline.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "python/tvm_ffi/cpp/load_inline.py",
+      "additions": 50,
+      "deletions": 16
+    },
+    {
+      "path": "tests/python/test_load_inline.py",
+      "additions": 16,
+      "deletions": 4
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/python/tvm_ffi/cpp/load_inline.py b/python/tvm_ffi/cpp/load_inline.py\nindex 61b3a74..754a9d7 100644\n--- a/python/tvm_ffi/cpp/load_inline.py\n+++ b/python/tvm_ffi/cpp/load_inline.py\n@@ -26,7 +26,7 @@ import functools\n \n from tvm_ffi.module import Module, load_module\n from tvm_ffi.utils import FileLock\n-from tvm_ffi.libinfo import find_include_path, find_dlpack_include_path\n+from tvm_ffi.libinfo import find_include_path, find_dlpack_include_path, find_libtvm_ffi\n \n IS_WINDOWS = sys.platform == \"win32\"\n \n@@ -141,9 +141,29 @@ def _generate_ninja_build(\n     default_include_paths = [find_include_path(), find_dlpack_include_path()]\n \n     if IS_WINDOWS:\n-        default_cflags = [\"/std:c++17\"]\n+        default_cflags = [\n+            \"/std:c++17\",\n+            \"/MD\",\n+            \"/wd4819\",\n+            \"/wd4251\",\n+            \"/wd4244\",\n+            \"/wd4267\",\n+            \"/wd4275\",\n+            \"/wd4018\",\n+            \"/wd4190\",\n+            \"/wd4624\",\n+            \"/wd4067\",\n+            \"/wd4068\",\n+            \"/EHsc\",\n+        ]\n         default_cuda_cflags = [\"-Xcompiler\", \"/std:c++17\", \"/O2\"]\n-        default_ldflags = [\"/DLL\"]\n+        # Find the TVM FFI library for linking\n+        tvm_ffi_lib = find_libtvm_ffi()\n+        tvm_ffi_lib_path = os.path.dirname(tvm_ffi_lib)\n+        tvm_ffi_lib_name = os.path.splitext(os.path.basename(tvm_ffi_lib))[\n+            0\n+        ]  # Remove .dll extension\n+        default_ldflags = [\"/DLL\", f\"/LIBPATH:{tvm_ffi_lib_path}\", f\"{tvm_ffi_lib_name}.lib\"]\n     else:\n         default_cflags = [\"-std=c++17\", \"-fPIC\", \"-O2\"]\n         default_cuda_cflags = [\"-Xcompiler\", \"-fPIC\", \"-std=c++17\", \"-O2\"]\n@@ -161,8 +181,8 @@ def _generate_ninja_build(\n \n     # append include paths\n     for path in include_paths:\n-        cflags.append(\"-I{}\".format(path))\n-        cuda_cflags.append(\"-I{}\".format(path))\n+        cflags.append(\"-I{}\".format(path.replace(\":\", \"$:\")))\n+        cuda_cflags.append(\"-I{}\".format(path.replace(\":\", \"$:\")))\n \n     # flags\n     ninja = []\n@@ -177,9 +197,13 @@ def _generate_ninja_build(\n     # rules\n     ninja.append(\"\")\n     ninja.append(\"rule compile\")\n-    ninja.append(\"  depfile = $out.d\")\n-    ninja.append(\"  deps = gcc\")\n-    ninja.append(\"  command = $cxx -MMD -MF $out.d $cflags -c $in -o $out\")\n+    if IS_WINDOWS:\n+        ninja.append(\"  command = $cxx /showIncludes $cflags -c $in /Fo$out\")\n+        ninja.append(\"  deps = msvc\")\n+    else:\n+        ninja.append(\"  depfile = $out.d\")\n+        ninja.append(\"  deps = gcc\")\n+        ninja.append(\"  command = $cxx -MMD -MF $out.d $cflags -c $in -o $out\")\n     ninja.append(\"\")\n \n     if with_cuda:\n@@ -192,24 +216,31 @@ def _generate_ninja_build(\n         ninja.append(\"\")\n \n     ninja.append(\"rule link\")\n-    ninja.append(\"  command = $cxx $in $ldflags -o $out\")\n+    if IS_WINDOWS:\n+        ninja.append(\"  command = $cxx $in /link $ldflags /out:$out\")\n+    else:\n+        ninja.append(\"  command = $cxx $in $ldflags -o $out\")\n     ninja.append(\"\")\n \n     # build targets\n     ninja.append(\n-        \"build main.o: compile {}\".format(os.path.abspath(os.path.join(build_dir, \"main.cpp\")))\n+        \"build main.o: compile {}\".format(\n+            os.path.abspath(os.path.join(build_dir, \"main.cpp\")).replace(\":\", \"$:\")\n+        )\n     )\n     if with_cuda:\n         ninja.append(\n             \"build cuda.o: compile_cuda {}\".format(\n-                os.path.abspath(os.path.join(build_dir, \"cuda.cu\"))\n+                os.path.abspath(os.path.join(build_dir, \"cuda.cu\")).replace(\":\", \"$:\")\n             )\n         )\n-    ninja.append(\"build {}.so: link main.o{}\".format(name, \" cuda.o\" if with_cuda else \"\"))\n+    # Use appropriate extension based on platform\n+    ext = \".dll\" if IS_WINDOWS else \".so\"\n+    ninja.append(\"build {}{}: link main.o{}\".format(name, ext, \" cuda.o\" if with_cuda else \"\"))\n     ninja.append(\"\")\n \n     # default target\n-    ninja.append(\"default {}.so\".format(name))\n+    ninja.append(\"default {}{}\".format(name, ext))\n     ninja.append(\"\")\n     return \"\\n\".join(ninja)\n \n@@ -223,10 +254,11 @@ def _build_ninja(build_dir: str) -> None:\n     status = subprocess.run(args=command, cwd=build_dir, capture_output=True)\n     if status.returncode != 0:\n         msg = [\"ninja exited with status {}\".format(status.returncode)]\n+        encoding = \"oem\" if IS_WINDOWS else \"utf-8\"\n         if status.stdout:\n-            msg.append(\"stdout:\\n{}\".format(status.stdout.decode(\"utf-8\")))\n+            msg.append(\"stdout:\\n{}\".format(status.stdout.decode(encoding)))\n         if status.stderr:\n-            msg.append(\"stderr:\\n{}\".format(status.stderr.decode(\"utf-8\")))\n+            msg.append(\"stderr:\\n{}\".format(status.stderr.decode(encoding)))\n \n         raise RuntimeError(\"\\n\".join(msg))\n \n@@ -395,4 +427,6 @@ def load_inline(\n         # build the module\n         _build_ninja(build_dir)\n \n-        return load_module(os.path.join(build_dir, \"{}.so\".format(name)))\n+        # Use appropriate extension based on platform\n+        ext = \".dll\" if IS_WINDOWS else \".so\"\n+        return load_module(os.path.abspath(os.path.join(build_dir, \"{}{}\".format(name, ext))))\ndiff --git a/tests/python/test_load_inline.py b/tests/python/test_load_inline.py\nindex c35ebd3..dbaf439 100644\n--- a/tests/python/test_load_inline.py\n+++ b/tests/python/test_load_inline.py\n@@ -28,7 +28,10 @@ import tvm_ffi.cpp\n from tvm_ffi.module import Module\n \n \n-@pytest.mark.xfail(not sys.platform.startswith(\"linux\"), reason=\"need to support non-linux\")\n+@pytest.mark.xfail(\n+    not sys.platform.startswith(\"linux\") and not sys.platform.startswith(\"win32\"),\n+    reason=\"need to support other platforms\",\n+)\n def test_load_inline_cpp():\n     mod: Module = tvm_ffi.cpp.load_inline(\n         name=\"hello\",\n@@ -55,7 +58,10 @@ def test_load_inline_cpp():\n     numpy.testing.assert_equal(x + 1, y)\n \n \n-@pytest.mark.xfail(not sys.platform.startswith(\"linux\"), reason=\"need to support non-linux\")\n+@pytest.mark.xfail(\n+    not sys.platform.startswith(\"linux\") and not sys.platform.startswith(\"win32\"),\n+    reason=\"need to support other platforms\",\n+)\n def test_load_inline_cpp_with_docstrings():\n     mod: Module = tvm_ffi.cpp.load_inline(\n         name=\"hello\",\n@@ -82,7 +88,10 @@ def test_load_inline_cpp_with_docstrings():\n     numpy.testing.assert_equal(x + 1, y)\n \n \n-@pytest.mark.xfail(not sys.platform.startswith(\"linux\"), reason=\"need to support non-linux\")\n+@pytest.mark.xfail(\n+    not sys.platform.startswith(\"linux\") and not sys.platform.startswith(\"win32\"),\n+    reason=\"need to support other platforms\",\n+)\n def test_load_inline_cpp_multiple_sources():\n     mod: Module = tvm_ffi.cpp.load_inline(\n         name=\"hello\",\n@@ -125,7 +134,10 @@ def test_load_inline_cpp_multiple_sources():\n     numpy.testing.assert_equal(x + 1, y)\n \n \n-@pytest.mark.xfail(not sys.platform.startswith(\"linux\"), reason=\"need to support non-linux\")\n+@pytest.mark.xfail(\n+    not sys.platform.startswith(\"linux\") and not sys.platform.startswith(\"win32\"),\n+    reason=\"need to support other platforms\",\n+)\n def test_load_inline_cpp_build_dir():\n     mod: Module = tvm_ffi.cpp.load_inline(\n         name=\"hello\",",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".py"
+    ],
+    "scopes_guess": [
+      "python",
+      "tests"
+    ]
+  }
+}

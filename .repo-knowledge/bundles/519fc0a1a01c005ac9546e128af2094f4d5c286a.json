@@ -1,0 +1,40 @@
+{
+  "sha": "519fc0a1a01c005ac9546e128af2094f4d5c286a",
+  "sha7": "519fc0a",
+  "author_name": "Junru Shao",
+  "author_email": "junrushao@apache.org",
+  "date_iso": "2025-10-12T12:33:29-07:00",
+  "subject": "doc: Add TensorView in C++ doc (#103)",
+  "body": "",
+  "is_merge": false,
+  "parents": [
+    "2e2e14d7c6af9ccbab9a34a7ee56dafee7982946"
+  ],
+  "name_status": [
+    [
+      "M",
+      "docs/reference/cpp/index.rst"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "docs/reference/cpp/index.rst",
+      "additions": 2,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/docs/reference/cpp/index.rst b/docs/reference/cpp/index.rst\nindex d35bbfc..e715482 100644\n--- a/docs/reference/cpp/index.rst\n+++ b/docs/reference/cpp/index.rst\n@@ -75,6 +75,8 @@ Key Classes\n      - Reference class for objects.\n    * - :cpp:class:`tvm::ffi::Tensor`\n      - Multi-dimensional tensor with DLPack support.\n+   * - :cpp:class:`tvm::ffi::TensorView`\n+     - Multi-dimensional tensor view with DLPack support. It does not own the underlying data.\n    * - :cpp:class:`tvm::ffi::Shape`\n      - Tensor shape container.\n    * - :cpp:class:`tvm::ffi::Module`",
+  "heuristics": {
+    "tags": [
+      "docs"
+    ],
+    "extensions": [
+      ".rst"
+    ],
+    "scopes_guess": [
+      "docs"
+    ]
+  }
+}

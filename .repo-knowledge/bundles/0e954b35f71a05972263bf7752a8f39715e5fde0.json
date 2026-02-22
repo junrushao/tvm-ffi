@@ -1,0 +1,29 @@
+{
+  "sha": "0e954b35f71a05972263bf7752a8f39715e5fde0",
+  "sha7": "0e954b3",
+  "author_name": "Yaxing Cai",
+  "author_email": "caiyaxing666@gmail.com",
+  "date_iso": "2025-09-13T17:52:20-07:00",
+  "subject": "Merge pull request #1 from tqchen/docs-status",
+  "body": "[DOCS] Add CI status badge",
+  "is_merge": true,
+  "parents": [
+    "306c8d0d2c591954d41ccffabfd4b7fb22d315b1",
+    "6f21a88afbc1e9a670bb8ed428e3d9be75099945"
+  ],
+  "name_status": [],
+  "numstat": [
+    {
+      "path": "README.md",
+      "additions": 2,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff": "",
+  "heuristics": {
+    "tags": [],
+    "extensions": [],
+    "scopes_guess": []
+  }
+}

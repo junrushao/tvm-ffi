@@ -1,0 +1,81 @@
+{
+  "sha": "3197cd0949ae9bb9a41eb5a429a4b1519d061db4",
+  "sha7": "3197cd0",
+  "author_name": "Yaxing Cai",
+  "author_email": "caiyaxing666@gmail.com",
+  "date_iso": "2025-09-15T04:32:19-07:00",
+  "subject": "Add stream context (#5)",
+  "body":
+      "This PR adds the stream context into ffi, so that ffi env stream can be updated. The `tvm_ffi.use_torch_stream` is for wrapping the torch stream/graph context. And lower-level `tvm_ffi.use_raw_stream` is for creating context with existing stream handle.\n\nExample for `tvm_ffi.use_torch_stream`:\n\ncase with torch stream:\n```python\nstream = torch.cuda.Stream()\nstream_context = torch.cuda.stream(stream)\nwith tvm_ffi.use_torch_stream(stream_context):\n  ...\n```\n\ncase with torch cuda graph\n```python\ngraph = torch.cuda.CUDAGraph()\ngraph_context = torch.cuda.graph(graph)\nwith tvm_ffi.use_torch_stream(graph_context):\n  ...\n```\n\ncase with current stream by default\n```python\nstream = torch.cuda.Stream()\nstream_context = torch.cuda.stream(stream)\nwith torch.cuda.stream(stream):\n  with tvm_ffi.use_torch_stream():\n    ...\n```\n\nEaxmple for `tvm_ffi.use_raw_stream`:\n\n```python\ndevice = tvm_ffi.device(...)\nstream_handle = ...\nwith tvm_ffi.use_raw_stream(device, stream_handle):\n  ...\n```",
+  "is_merge": false,
+  "parents": [
+    "d6845f7d94c522d19fb13025a6ae86acc7860c7c"
+  ],
+  "name_status": [
+    [
+      "M",
+      "docs/reference/python/index.rst"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/__init__.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/cython/base.pxi"
+    ],
+    [
+      "A",
+      "python/tvm_ffi/stream.py"
+    ],
+    [
+      "A",
+      "tests/python/test_stream.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "docs/reference/python/index.rst",
+      "additions": 10,
+      "deletions": 0
+    },
+    {
+      "path": "python/tvm_ffi/__init__.py",
+      "additions": 1,
+      "deletions": 0
+    },
+    {
+      "path": "python/tvm_ffi/cython/base.pxi",
+      "additions": 9,
+      "deletions": 0
+    },
+    {
+      "path": "python/tvm_ffi/stream.py",
+      "additions": 148,
+      "deletions": 0
+    },
+    {
+      "path": "tests/python/test_stream.py",
+      "additions": 115,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/docs/reference/python/index.rst b/docs/reference/python/index.rst\nindex 482c19d..756af4c 100644\n--- a/docs/reference/python/index.rst\n+++ b/docs/reference/python/index.rst\n@@ -68,6 +68,16 @@ Containers\n   Map\n \n \n+Stream Context\n+--------------\n+.. autosummary::\n+  :toctree: generated/\n+\n+  StreamContext\n+  use_torch_stream\n+  use_raw_stream\n+\n+\n Utility\n -------\n \ndiff --git a/python/tvm_ffi/__init__.py b/python/tvm_ffi/__init__.py\nindex 16f035e..9bafe2b 100644\n--- a/python/tvm_ffi/__init__.py\n+++ b/python/tvm_ffi/__init__.py\n@@ -37,6 +37,7 @@ from ._tensor import Device, device, DLDeviceType\n from ._tensor import from_dlpack, Tensor, Shape\n from .container import Array, Map\n from .module import Module, system_lib, load_module\n+from .stream import StreamContext, use_raw_stream, use_torch_stream\n from . import serialization\n from . import access_path\n from . import testing\ndiff --git a/python/tvm_ffi/cython/base.pxi b/python/tvm_ffi/cython/base.pxi\nindex 08f7df2..77c9c7e 100644\n--- a/python/tvm_ffi/cython/base.pxi\n+++ b/python/tvm_ffi/cython/base.pxi\n@@ -245,6 +245,15 @@ cdef extern from \"tvm/ffi/extra/c_env_api.h\":\n                                   TVMFFIStreamHandle stream,\n                                   TVMFFIStreamHandle* opt_out_original_stream) nogil\n \n+def _env_set_current_stream(int device_type, int device_id, uint64_t stream):\n+    cdef TVMFFIStreamHandle prev_stream = NULL\n+    CHECK_CALL(TVMFFIEnvSetStream(\n+        device_type,\n+        device_id,\n+        <void*>stream,\n+        &prev_stream))\n+    return <uint64_t>prev_stream\n+\n \n cdef extern from \"tvm_ffi_python_helpers.h\":\n     # no need to expose fields of the call context\ndiff --git a/python/tvm_ffi/stream.py b/python/tvm_ffi/stream.py\nnew file mode 100644\nindex 0000000..598afca\n--- /dev/null\n+++ b/python/tvm_ffi/stream.py\n@@ -0,0 +1,148 @@\n+# Licensed to the Apache Software Foundation (ASF) under one\n+# or more contributor license agreements.  See the NOTICE file\n+# distributed with this work for additional information\n+# regarding copyright ownership.  The ASF licenses this file\n+# to you under the Apache License, Version 2.0 (the\n+# \"License\"); you may not use this file except in compliance\n+# with the License.  You may obtain a copy of the License at\n+#\n+#   http://www.apache.org/licenses/LICENSE-2.0\n+#\n+# Unless required by applicable law or agreed to in writing,\n+# software distributed under the License is distributed on an\n+# \"AS IS\" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY\n+# KIND, either express or implied.  See the License for the\n+# specific language governing permissions and limitations\n+# under the License.\n+# pylint: disable=invalid-name\n+\"\"\"Stream context.\"\"\"\n+from ctypes import c_void_p\n+from typing import Any, Optional, Union\n+\n+from . import core\n+from ._tensor import device\n+\n+\n+class StreamContext:\n+    \"\"\"StreamContext represents a stream context in the ffi system.\n+    StreamContext helps setup ffi environment stream by python `with` statement.\n+    When entering `with` scope, it caches the current environment stream and\n+    setup the given new stream.\n+    When exiting `with` scope, it recovers the stream to the cached environment stream.\n+\n+    Parameters\n+    ----------\n+    device : Device\n+        The device to which the stream belongs.\n+\n+    stream : Union[int, c_void_p]\n+        The stream handle.\n+\n+    See Also\n+    --------\n+    :py:func:`tvm_ffi.use_raw_stream`, :py:func:`tvm_ffi.use_torch_stream`\n+    \"\"\"\n+\n+    def __init__(self, device: core.Device, stream: Union[int, c_void_p]):\n+        self.device_type = device.dlpack_device_type()\n+        self.device_id = device.index\n+        self.stream = stream\n+\n+    def __enter__(self):\n+        self.prev_stream = core._env_set_current_stream(\n+            self.device_type, self.device_id, self.stream\n+        )\n+\n+    def __exit__(self, *args):\n+        self.prev_stream = core._env_set_current_stream(\n+            self.device_type, self.device_id, self.prev_stream\n+        )\n+\n+\n+try:\n+    import torch\n+\n+    class TorchStreamContext:\n+        def __init__(self, context: Optional[Any]):\n+            self.torch_context = context\n+\n+        def __enter__(self):\n+            if self.torch_context:\n+                self.torch_context.__enter__()\n+            current_stream = torch.cuda.current_stream()\n+            self.ffi_context = StreamContext(\n+                device(str(current_stream.device)), current_stream.cuda_stream\n+            )\n+            self.ffi_context.__enter__()\n+\n+        def __exit__(self, *args):\n+            if self.torch_context:\n+                self.torch_context.__exit__(*args)\n+            self.ffi_context.__exit__(*args)\n+\n+    def use_torch_stream(context: Optional[Any] = None):\n+        \"\"\"\n+        Create a ffi stream context with given torch stream,\n+        cuda graph or current stream if `None` provided.\n+\n+        Parameters\n+        ----------\n+        context : Optional[Any]\n+            The wrapped torch stream or cuda graph.\n+\n+        Returns\n+        -------\n+        context : tvm_ffi.TorchStreamContext\n+            The ffi stream context wrapping torch stream context.\n+\n+        Examples\n+        --------\n+        .. code-block:: python\n+\n+            s = torch.cuda.Stream()\n+            with tvm_ffi.use_torch_stream(torch.cuda.stream(s)):\n+                ...\n+\n+            g = torch.cuda.CUDAGraph()\n+            with tvm_ffi.use_torch_stream(torch.cuda.graph(g)):\n+                ...\n+\n+        Note\n+        ----\n+        When working with raw cudaStream_t handle, using :py:func:`tvm_ffi.use_raw_stream` instead.\n+        \"\"\"\n+        return TorchStreamContext(context)\n+\n+except ImportError:\n+\n+    def use_torch_stream(context: Optional[Any] = None):\n+        raise ImportError(\"Cannot import torch\")\n+\n+\n+def use_raw_stream(device: core.Device, stream: Union[int, c_void_p]):\n+    \"\"\"\n+    Create a ffi stream context with given device and stream handle.\n+\n+    Parameters\n+    ----------\n+    device : tvm_ffi.Device\n+        The device to which the stream belongs.\n+\n+    stream : Union[int, c_void_p]\n+        The stream handle.\n+\n+    Returns\n+    -------\n+    context : tvm_ffi.StreamContext\n+        The ffi stream context.\n+\n+    Note\n+    ----\n+    When working with torch stram or cuda graph, using :py:func:`tvm_ffi.use_torch_stream` instead.\n+    \"\"\"\n+    if not isinstance(stream, (int, c_void_p)):\n+        raise ValueError(\n+            \"use_raw_stream only accepts int or c_void_p as stram input, \"\n+            \"try use_torch_stream when using torch.cuda.Stream or torch.cuda.graph\"\n+        )\n+    return StreamContext(device, stream)\ndiff --git a/tests/python/test_stream.py b/tests/python/test_stream.py\nnew file mode 100644\nindex 0000000..c7b81a8\n--- /dev/null\n+++ b/tests/python/test_stream.py\n@@ -0,0 +1,115 @@\n+# Licensed to the Apache Software Foundation (ASF) under one\n+# or more contributor license agreements.  See the NOTICE file\n+# distributed with this work for additional information\n+# regarding copyright ownership.  The ASF licenses this file\n+# to you under the Apache License, Version 2.0 (the\n+# \"License\"); you may not use this file except in compliance\n+# with the License.  You may obtain a copy of the License at\n+#\n+#   http://www.apache.org/licenses/LICENSE-2.0\n+#\n+# Unless required by applicable law or agreed to in writing,\n+# software distributed under the License is distributed on an\n+# \"AS IS\" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY\n+# KIND, either express or implied.  See the License for the\n+# specific language governing permissions and limitations\n+# under the License.\n+\n+import pytest\n+\n+import tvm_ffi\n+import tvm_ffi.cpp\n+\n+try:\n+    import torch\n+except ImportError:\n+    torch = None\n+\n+\n+def gen_check_stream_mod():\n+    return tvm_ffi.cpp.load_inline(\n+        name=\"check_stream\",\n+        cpp_sources=\"\"\"\n+        void check_stream(int device_type, int device_id, uint64_t stream) {\n+            uint64_t cur_stream = reinterpret_cast<uint64_t>(TVMFFIEnvGetStream(device_type, device_id));\n+            TVM_FFI_ICHECK_EQ(cur_stream, stream);\n+        }\n+    \"\"\",\n+        functions=[\"check_stream\"],\n+    )\n+\n+\n+def test_raw_stream():\n+    mod = gen_check_stream_mod()\n+    device = tvm_ffi.device(\"cuda:0\")\n+    stream_1 = 123456789\n+    stream_2 = 987654321\n+    with tvm_ffi.use_raw_stream(device, stream_1):\n+        mod.check_stream(device.dlpack_device_type(), device.index, stream_1)\n+\n+        with tvm_ffi.use_raw_stream(device, stream_2):\n+            mod.check_stream(device.dlpack_device_type(), device.index, stream_2)\n+\n+        mod.check_stream(device.dlpack_device_type(), device.index, stream_1)\n+\n+\n+@pytest.mark.skipif(\n+    torch is None or not torch.cuda.is_available(), reason=\"Requires torch and CUDA\"\n+)\n+def test_torch_stream():\n+    mod = gen_check_stream_mod()\n+    device_id = torch.cuda.current_device()\n+    device = tvm_ffi.device(\"cuda\", device_id)\n+    device_type = device.dlpack_device_type()\n+    stream_1 = torch.cuda.Stream(device_id)\n+    stream_2 = torch.cuda.Stream(device_id)\n+    with tvm_ffi.use_torch_stream(torch.cuda.stream(stream_1)):\n+        assert torch.cuda.current_stream() == stream_1\n+        mod.check_stream(device_type, device_id, stream_1.cuda_stream)\n+\n+        with tvm_ffi.use_torch_stream(torch.cuda.stream(stream_2)):\n+            assert torch.cuda.current_stream() == stream_2\n+            mod.check_stream(device_type, device_id, stream_2.cuda_stream)\n+\n+        assert torch.cuda.current_stream() == stream_1\n+        mod.check_stream(device_type, device_id, stream_1.cuda_stream)\n+\n+\n+@pytest.mark.skipif(\n+    torch is None or not torch.cuda.is_available(), reason=\"Requires torch and CUDA\"\n+)\n+def test_torch_current_stream():\n+    mod = gen_check_stream_mod()\n+    device_id = torch.cuda.current_device()\n+    device = tvm_ffi.device(\"cuda\", device_id)\n+    device_type = device.dlpack_device_type()\n+    stream_1 = torch.cuda.Stream(device_id)\n+    stream_2 = torch.cuda.Stream(device_id)\n+    with torch.cuda.stream(stream_1):\n+        assert torch.cuda.current_stream() == stream_1\n+        with tvm_ffi.use_torch_stream():\n+            mod.check_stream(device_type, device_id, stream_1.cuda_stream)\n+\n+        with torch.cuda.stream(stream_2):\n+            assert torch.cuda.current_stream() == stream_2\n+            with tvm_ffi.use_torch_stream():\n+                mod.check_stream(device_type, device_id, stream_2.cuda_stream)\n+\n+        assert torch.cuda.current_stream() == stream_1\n+        with tvm_ffi.use_torch_stream():\n+            mod.check_stream(device_type, device_id, stream_1.cuda_stream)\n+\n+\n+@pytest.mark.skipif(\n+    torch is None or not torch.cuda.is_available(), reason=\"Requires torch and CUDA\"\n+)\n+def test_torch_graph():\n+    mod = gen_check_stream_mod()\n+    device_id = torch.cuda.current_device()\n+    device = tvm_ffi.device(\"cuda\", device_id)\n+    device_type = device.dlpack_device_type()\n+    graph = torch.cuda.CUDAGraph()\n+    stream = torch.cuda.Stream(device_id)\n+    with tvm_ffi.use_torch_stream(torch.cuda.graph(graph, stream=stream)):\n+        assert torch.cuda.current_stream() == stream\n+        mod.check_stream(device_type, device_id, stream.cuda_stream)",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".pxi",
+      ".py",
+      ".rst"
+    ],
+    "scopes_guess": [
+      "docs",
+      "python",
+      "tests"
+    ]
+  }
+}

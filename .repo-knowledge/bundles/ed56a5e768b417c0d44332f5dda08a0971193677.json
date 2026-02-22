@@ -1,0 +1,38 @@
+{
+  "sha": "ed56a5e768b417c0d44332f5dda08a0971193677",
+  "sha7": "ed56a5e",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-08-06T23:33:31-04:00",
+  "subject": "[FFI] Phase out ObjectPath in favor of AccessPath (#18192)",
+  "body": "This PR phases out ObjectPath in favor of AccessPath",
+  "is_merge": false,
+  "parents": [
+    "f4ede982f00257881d9ba7fe82dd8abc07e14690"
+  ],
+  "name_status": [
+    [
+      "M",
+      "include/tvm/ffi/container/tuple.h"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "include/tvm/ffi/container/tuple.h",
+      "additions": 0,
+      "deletions": 4
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/include/tvm/ffi/container/tuple.h b/include/tvm/ffi/container/tuple.h\nindex 620b7e7..332f78a 100644\n--- a/include/tvm/ffi/container/tuple.h\n+++ b/include/tvm/ffi/container/tuple.h\n@@ -269,9 +269,5 @@ inline constexpr bool type_contains_v<Tuple<T...>, Tuple<U...>> = (type_contains\n }  // namespace details\n \n }  // namespace ffi\n-\n-// Expose to the tvm namespace\n-// Rationale: convinience and no ambiguity\n-using ffi::Tuple;\n }  // namespace tvm\n #endif  // TVM_FFI_CONTAINER_TUPLE_H_",
+  "heuristics": {
+    "tags": [],
+    "extensions": [
+      ".h"
+    ],
+    "scopes_guess": [
+      "include"
+    ]
+  }
+}

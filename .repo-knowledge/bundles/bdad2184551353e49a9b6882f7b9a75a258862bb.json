@@ -1,0 +1,82 @@
+{
+  "sha": "bdad2184551353e49a9b6882f7b9a75a258862bb",
+  "sha7": "bdad218",
+  "author_name": "Junru Shao",
+  "author_email": "junrushao@apache.org",
+  "date_iso": "2025-09-25T12:38:37-07:00",
+  "subject": "fix: Type mismatch aborts on OpaquePyObject (#56)",
+  "body":
+      "In\n[#49](https://github.com/apache/tvm-ffi/pull/49#issuecomment-3331042097),\nWe noticed an issue with `OpaquePyObject`:\n\n```\nException caught during TVMFFIGetTypeInfo:\nTraceback (most recent call last):\n  File \"include/tvm/ffi/type_traits.h\", line 92, in tvm::ffi::TypeTraitsBase::GetMismatchTypeInfo[abi:cxx11](TVMFFIAny const*)\n  File \"include/tvm/ffi/object.h\", line 121, in tvm::ffi::TypeIndexToTypeKey[abi:cxx11](int)\n  File \"src/ffi/object.cc\", line 493, in TVMFFIGetTypeInfo\n  File \"src/ffi/object.cc\", line 193, in tvm::ffi::TypeTable::Entry* tvm::ffi::TypeTable::GetTypeEntry(int32_t)\nInternalError: Check failed: (entry != nullptr) is false: Cannot find type info for type_index=74\n```\n\nwhere when an `OpaquePyObject` is fed into a TVM-FFI function, which\nexpects a different type (e.g. `int`), the entire program aborts without\nproper error message inside `TVMFFIGetTypeInfo`, which uses `exit(1)`\ninstead of C error code.\n\nThis PR fixes this issue by registering\n`TypeIndex::kTVMFFIOpaquePyObject` as a builtin type index.",
+  "is_merge": false,
+  "parents": [
+    "98cb8af49ff599c217fce96c3d4f57c0f52b8ec4"
+  ],
+  "name_status": [
+    [
+      "M",
+      "include/tvm/ffi/object.h"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/testing.py"
+    ],
+    [
+      "M",
+      "src/ffi/extra/testing.cc"
+    ],
+    [
+      "M",
+      "src/ffi/object.cc"
+    ],
+    [
+      "M",
+      "tests/python/test_object.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "include/tvm/ffi/object.h",
+      "additions": 2,
+      "deletions": 0
+    },
+    {
+      "path": "python/tvm_ffi/testing.py",
+      "additions": 5,
+      "deletions": 0
+    },
+    {
+      "path": "src/ffi/extra/testing.cc",
+      "additions": 1,
+      "deletions": 0
+    },
+    {
+      "path": "src/ffi/object.cc",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "tests/python/test_object.py",
+      "additions": 10,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/include/tvm/ffi/object.h b/include/tvm/ffi/object.h\nindex 93ef6d8..64db8d7 100644\n--- a/include/tvm/ffi/object.h\n+++ b/include/tvm/ffi/object.h\n@@ -110,6 +110,8 @@ struct StaticTypeKey {\n   static constexpr const char* kTVMFFIMap = \"ffi.Map\";\n   /*! \\brief The type key for Module */\n   static constexpr const char* kTVMFFIModule = \"ffi.Module\";\n+  /*! \\brief The type key for OpaquePyObject */\n+  static constexpr const char* kTVMFFIOpaquePyObject = \"ffi.OpaquePyObject\";\n };\n \n /*!\ndiff --git a/python/tvm_ffi/testing.py b/python/tvm_ffi/testing.py\nindex 155030b..dbf8636 100644\n--- a/python/tvm_ffi/testing.py\n+++ b/python/tvm_ffi/testing.py\n@@ -89,6 +89,11 @@ def make_unregistered_object() -> Object:\n     return get_global_func(\"testing.make_unregistered_object\")()\n \n \n+def add_one(x: int) -> int:\n+    \"\"\"Add one to the input integer.\"\"\"\n+    return get_global_func(\"testing.add_one\")(x)\n+\n+\n @c_class(\"testing.TestCxxClassBase\")\n class _TestCxxClassBase:\n     v_i64: int\ndiff --git a/src/ffi/extra/testing.cc b/src/ffi/extra/testing.cc\nindex f67752f..5d7ef58 100644\n--- a/src/ffi/extra/testing.cc\n+++ b/src/ffi/extra/testing.cc\n@@ -217,6 +217,7 @@ TVM_FFI_STATIC_INIT_BLOCK() {\n \n   refl::GlobalDef()\n       .def(\"testing.test_raise_error\", TestRaiseError)\n+      .def(\"testing.add_one\", [](int x) { return x + 1; })\n       .def_packed(\"testing.nop\", [](PackedArgs args, Any* ret) {})\n       .def_packed(\"testing.echo\", [](PackedArgs args, Any* ret) { *ret = args[0]; })\n       .def_packed(\"testing.apply\", TestApply)\ndiff --git a/src/ffi/object.cc b/src/ffi/object.cc\nindex d9c6698..aa7edbb 100644\n--- a/src/ffi/object.cc\n+++ b/src/ffi/object.cc\n@@ -29,7 +29,6 @@\n #include <tvm/ffi/string.h>\n \n #include <memory>\n-#include <string>\n #include <utility>\n #include <vector>\n \n@@ -340,6 +339,7 @@ class TypeTable {\n                             TypeIndex::kTVMFFIObjectRValueRef);\n     ReserveBuiltinTypeIndex(StaticTypeKey::kTVMFFISmallStr, TypeIndex::kTVMFFISmallStr);\n     ReserveBuiltinTypeIndex(StaticTypeKey::kTVMFFISmallBytes, TypeIndex::kTVMFFISmallBytes);\n+    ReserveBuiltinTypeIndex(StaticTypeKey::kTVMFFIOpaquePyObject, TypeIndex::kTVMFFIOpaquePyObject);\n     // no need to reserve for object types as they will be registered\n   }\n \ndiff --git a/tests/python/test_object.py b/tests/python/test_object.py\nindex 0c64e46..d23aa10 100644\n--- a/tests/python/test_object.py\n+++ b/tests/python/test_object.py\n@@ -103,6 +103,16 @@ def test_opaque_object() -> None:\n     assert sys.getrefcount(obj0) == 2\n \n \n+def test_opaque_type_error() -> None:\n+    obj0 = MyObject(\"hello\")\n+    with pytest.raises(TypeError) as e:\n+        tvm_ffi.testing.add_one(obj0)  # type: ignore[arg-type]\n+    assert (\n+        \"Mismatched type on argument #0 when calling: `testing.add_one(0: int) -> int`. Expected `int` but got `ffi.OpaquePyObject`\"\n+        in str(e.value)\n+    )\n+\n+\n def test_unregistered_object_fallback() -> None:\n     def _check_type(x: Any) -> None:\n         type_info: TypeInfo = type(x).__tvm_ffi_type_info__  # type: ignore[attr-defined]",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".cc",
+      ".h",
+      ".py"
+    ],
+    "scopes_guess": [
+      "include",
+      "python",
+      "src",
+      "tests"
+    ]
+  }
+}

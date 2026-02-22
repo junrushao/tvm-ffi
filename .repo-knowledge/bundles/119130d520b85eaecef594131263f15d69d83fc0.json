@@ -1,0 +1,40 @@
+{
+  "sha": "119130d520b85eaecef594131263f15d69d83fc0",
+  "sha7": "119130d",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-10-01T18:57:22-04:00",
+  "subject": "Bring a new beta version (#83)",
+  "body": "",
+  "is_merge": false,
+  "parents": [
+    "4fefeb0f5913fc41cf860f517b9320f1bf1d0e98"
+  ],
+  "name_status": [
+    [
+      "M",
+      "pyproject.toml"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "pyproject.toml",
+      "additions": 1,
+      "deletions": 1
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/pyproject.toml b/pyproject.toml\nindex b655e88..f63e89e 100644\n--- a/pyproject.toml\n+++ b/pyproject.toml\n@@ -17,7 +17,7 @@\n \n [project]\n name = \"apache-tvm-ffi\"\n-version = \"0.1.0b13\"\n+version = \"0.1.0b14\"\n description = \"tvm ffi\"\n \n authors = [{ name = \"TVM FFI team\" }]",
+  "heuristics": {
+    "tags": [
+      "build"
+    ],
+    "extensions": [
+      ".toml"
+    ],
+    "scopes_guess": [
+      "pyproject.toml"
+    ]
+  }
+}

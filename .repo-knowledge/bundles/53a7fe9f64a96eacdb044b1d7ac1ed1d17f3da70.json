@@ -1,0 +1,38 @@
+{
+  "sha": "53a7fe9f64a96eacdb044b1d7ac1ed1d17f3da70",
+  "sha7": "53a7fe9",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-10-21T11:33:41-07:00",
+  "subject": "[PYTHON] Robustify libinfo finding (#185)",
+  "body": "This PR robustifies libinfo finding via resolve",
+  "is_merge": false,
+  "parents": [
+    "d6f922a6c3799fb659318b2f0129bfeac73df711"
+  ],
+  "name_status": [
+    [
+      "M",
+      "python/tvm_ffi/libinfo.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "python/tvm_ffi/libinfo.py",
+      "additions": 11,
+      "deletions": 1
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/python/tvm_ffi/libinfo.py b/python/tvm_ffi/libinfo.py\nindex a16d5fc..dcbfda4 100644\n--- a/python/tvm_ffi/libinfo.py\n+++ b/python/tvm_ffi/libinfo.py\n@@ -64,7 +64,17 @@ def get_dll_directories() -> list[str]:\n         dll_path.extend(Path(p) for p in split_env_var(\"PATH\", \":\"))\n     elif sys.platform.startswith(\"win32\"):\n         dll_path.extend(Path(p) for p in split_env_var(\"PATH\", \";\"))\n-    return [str(path.resolve()) for path in dll_path if path.is_dir()]\n+\n+    valid_paths = []\n+    for path in dll_path:\n+        try:\n+            if path.is_dir():\n+                valid_paths.append(str(path.resolve()))\n+        except OSError:\n+            # need to ignore as resolve may fail if\n+            # we don't have permission to access it\n+            pass\n+    return valid_paths\n \n \n def find_libtvm_ffi() -> str:",
+  "heuristics": {
+    "tags": [],
+    "extensions": [
+      ".py"
+    ],
+    "scopes_guess": [
+      "python"
+    ]
+  }
+}

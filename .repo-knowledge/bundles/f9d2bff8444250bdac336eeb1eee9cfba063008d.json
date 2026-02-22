@@ -1,0 +1,68 @@
+{
+  "sha": "f9d2bff8444250bdac336eeb1eee9cfba063008d",
+  "sha7": "f9d2bff",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-08-01T21:42:55-04:00",
+  "subject": "[FFI][REFACTOR] Hide StringObj/BytesObj into details (#18184)",
+  "body":
+      "This PR hides StringObj/BytesObj into details and bring\nimplementations to directly focus on the String/Bytes.\n\nThis change will prepare us for future changes such as SmallStr support.\nAlso moves more ObjectRef into Any in RPC.",
+  "is_merge": false,
+  "parents": [
+    "0342d85f15fa2563ce502c6adb20497e0bf02c5e"
+  ],
+  "name_status": [
+    [
+      "M",
+      "include/tvm/ffi/any.h"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/string.h"
+    ],
+    [
+      "M",
+      "src/ffi/extra/structural_equal.cc"
+    ],
+    [
+      "M",
+      "src/ffi/extra/structural_hash.cc"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "include/tvm/ffi/any.h",
+      "additions": 6,
+      "deletions": 6
+    },
+    {
+      "path": "include/tvm/ffi/string.h",
+      "additions": 12,
+      "deletions": 14
+    },
+    {
+      "path": "src/ffi/extra/structural_equal.cc",
+      "additions": 4,
+      "deletions": 4
+    },
+    {
+      "path": "src/ffi/extra/structural_hash.cc",
+      "additions": 4,
+      "deletions": 4
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/include/tvm/ffi/any.h b/include/tvm/ffi/any.h\nindex c570a61..d94185c 100644\n--- a/include/tvm/ffi/any.h\n+++ b/include/tvm/ffi/any.h\n@@ -546,8 +546,8 @@ struct AnyHash {\n     uint64_t val_hash = [&]() -> uint64_t {\n       if (src.data_.type_index == TypeIndex::kTVMFFIStr ||\n           src.data_.type_index == TypeIndex::kTVMFFIBytes) {\n-        const BytesObjBase* src_str =\n-            details::AnyUnsafe::CopyFromAnyViewAfterCheck<const BytesObjBase*>(src);\n+        const details::BytesObjBase* src_str =\n+            details::AnyUnsafe::CopyFromAnyViewAfterCheck<const details::BytesObjBase*>(src);\n         return details::StableHashBytes(src_str->data, src_str->size);\n       } else {\n         return src.data_.v_uint64;\n@@ -572,10 +572,10 @@ struct AnyEqual {\n     // specialy handle string hash\n     if (lhs.data_.type_index == TypeIndex::kTVMFFIStr ||\n         lhs.data_.type_index == TypeIndex::kTVMFFIBytes) {\n-      const BytesObjBase* lhs_str =\n-          details::AnyUnsafe::CopyFromAnyViewAfterCheck<const BytesObjBase*>(lhs);\n-      const BytesObjBase* rhs_str =\n-          details::AnyUnsafe::CopyFromAnyViewAfterCheck<const BytesObjBase*>(rhs);\n+      const details::BytesObjBase* lhs_str =\n+          details::AnyUnsafe::CopyFromAnyViewAfterCheck<const details::BytesObjBase*>(lhs);\n+      const details::BytesObjBase* rhs_str =\n+          details::AnyUnsafe::CopyFromAnyViewAfterCheck<const details::BytesObjBase*>(rhs);\n       return Bytes::memequal(lhs_str->data, rhs_str->data, lhs_str->size, rhs_str->size);\n     }\n     return false;\ndiff --git a/include/tvm/ffi/string.h b/include/tvm/ffi/string.h\nindex e77b27b..481b704 100644\n--- a/include/tvm/ffi/string.h\n+++ b/include/tvm/ffi/string.h\n@@ -46,7 +46,7 @@\n \n namespace tvm {\n namespace ffi {\n-\n+namespace details {\n /*! \\brief Base class for bytes and string. */\n class BytesObjBase : public Object, public TVMFFIByteArray {};\n \n@@ -73,8 +73,6 @@ class StringObj : public BytesObjBase {\n   TVM_FFI_DECLARE_STATIC_OBJECT_INFO(StringObj, Object);\n };\n \n-namespace details {\n-\n // String moved from std::string\n // without having to trigger a copy\n template <typename Base>\n@@ -115,21 +113,21 @@ class Bytes : public ObjectRef {\n    * \\param other a char array.\n    */\n   Bytes(const char* data, size_t size)  // NOLINT(*)\n-      : ObjectRef(details::MakeInplaceBytes<BytesObj>(data, size)) {}\n+      : ObjectRef(details::MakeInplaceBytes<details::BytesObj>(data, size)) {}\n   /*!\n    * \\brief constructor from char [N]\n    *\n    * \\param other a char array.\n    */\n   Bytes(TVMFFIByteArray bytes)  // NOLINT(*)\n-      : ObjectRef(details::MakeInplaceBytes<BytesObj>(bytes.data, bytes.size)) {}\n+      : ObjectRef(details::MakeInplaceBytes<details::BytesObj>(bytes.data, bytes.size)) {}\n   /*!\n    * \\brief constructor from char [N]\n    *\n    * \\param other a char array.\n    */\n   Bytes(std::string other)  // NOLINT(*)\n-      : ObjectRef(make_object<details::BytesObjStdImpl<BytesObj>>(std::move(other))) {}\n+      : ObjectRef(make_object<details::BytesObjStdImpl<details::BytesObj>>(std::move(other))) {}\n   /*!\n    * \\brief Swap this String with another string\n    * \\param other The other string\n@@ -163,7 +161,7 @@ class Bytes : public ObjectRef {\n    */\n   operator std::string() const { return std::string{get()->data, size()}; }\n \n-  TVM_FFI_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(Bytes, ObjectRef, BytesObj);\n+  TVM_FFI_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(Bytes, ObjectRef, details::BytesObj);\n \n   /*!\n    * \\brief Compare two char sequence\n@@ -245,7 +243,7 @@ class String : public ObjectRef {\n    */\n   template <size_t N>\n   String(const char other[N])  // NOLINT(*)\n-      : ObjectRef(details::MakeInplaceBytes<StringObj>(other, N)) {}\n+      : ObjectRef(details::MakeInplaceBytes<details::StringObj>(other, N)) {}\n \n   /*!\n    * \\brief constructor\n@@ -258,7 +256,7 @@ class String : public ObjectRef {\n    * \\param other a char array.\n    */\n   String(const char* other)  // NOLINT(*)\n-      : ObjectRef(details::MakeInplaceBytes<StringObj>(other, std::strlen(other))) {}\n+      : ObjectRef(details::MakeInplaceBytes<details::StringObj>(other, std::strlen(other))) {}\n \n   /*!\n    * \\brief constructor from raw string\n@@ -266,21 +264,21 @@ class String : public ObjectRef {\n    * \\param other a char array.\n    */\n   String(const char* other, size_t size)  // NOLINT(*)\n-      : ObjectRef(details::MakeInplaceBytes<StringObj>(other, size)) {}\n+      : ObjectRef(details::MakeInplaceBytes<details::StringObj>(other, size)) {}\n \n   /*!\n    * \\brief Construct a new string object\n    * \\param other The std::string object to be copied\n    */\n   String(const std::string& other)  // NOLINT(*)\n-      : ObjectRef(details::MakeInplaceBytes<StringObj>(other.data(), other.size())) {}\n+      : ObjectRef(details::MakeInplaceBytes<details::StringObj>(other.data(), other.size())) {}\n \n   /*!\n    * \\brief Construct a new string object\n    * \\param other The std::string object to be moved\n    */\n   String(std::string&& other)  // NOLINT(*)\n-      : ObjectRef(make_object<details::BytesObjStdImpl<StringObj>>(std::move(other))) {}\n+      : ObjectRef(make_object<details::BytesObjStdImpl<details::StringObj>>(std::move(other))) {}\n \n   /*!\n    * \\brief constructor from TVMFFIByteArray\n@@ -288,7 +286,7 @@ class String : public ObjectRef {\n    * \\param other a TVMFFIByteArray.\n    */\n   explicit String(TVMFFIByteArray other)\n-      : ObjectRef(details::MakeInplaceBytes<StringObj>(other.data, other.size)) {}\n+      : ObjectRef(details::MakeInplaceBytes<details::StringObj>(other.data, other.size)) {}\n \n   /*!\n    * \\brief Swap this String with another string\n@@ -423,7 +421,7 @@ class String : public ObjectRef {\n    */\n   operator std::string() const { return std::string{get()->data, size()}; }\n \n-  TVM_FFI_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(String, ObjectRef, StringObj);\n+  TVM_FFI_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(String, ObjectRef, details::StringObj);\n \n  private:\n   /*!\ndiff --git a/src/ffi/extra/structural_equal.cc b/src/ffi/extra/structural_equal.cc\nindex a73c077..3d70e52 100644\n--- a/src/ffi/extra/structural_equal.cc\n+++ b/src/ffi/extra/structural_equal.cc\n@@ -62,10 +62,10 @@ class StructEqualHandler {\n       case TypeIndex::kTVMFFIStr:\n       case TypeIndex::kTVMFFIBytes: {\n         // compare bytes\n-        const BytesObjBase* lhs_str =\n-            AnyUnsafe::CopyFromAnyViewAfterCheck<const BytesObjBase*>(lhs);\n-        const BytesObjBase* rhs_str =\n-            AnyUnsafe::CopyFromAnyViewAfterCheck<const BytesObjBase*>(rhs);\n+        const details::BytesObjBase* lhs_str =\n+            AnyUnsafe::CopyFromAnyViewAfterCheck<const details::BytesObjBase*>(lhs);\n+        const details::BytesObjBase* rhs_str =\n+            AnyUnsafe::CopyFromAnyViewAfterCheck<const details::BytesObjBase*>(rhs);\n         return Bytes::memncmp(lhs_str->data, rhs_str->data, lhs_str->size, rhs_str->size) == 0;\n       }\n       case TypeIndex::kTVMFFIArray: {\ndiff --git a/src/ffi/extra/structural_hash.cc b/src/ffi/extra/structural_hash.cc\nindex e47fbba..1d90c5a 100644\n--- a/src/ffi/extra/structural_hash.cc\n+++ b/src/ffi/extra/structural_hash.cc\n@@ -64,8 +64,8 @@ class StructuralHashHandler {\n       case TypeIndex::kTVMFFIStr:\n       case TypeIndex::kTVMFFIBytes: {\n         // return same hash as AnyHash\n-        const BytesObjBase* src_str =\n-            AnyUnsafe::CopyFromAnyViewAfterCheck<const BytesObjBase*>(src);\n+        const details::BytesObjBase* src_str =\n+            AnyUnsafe::CopyFromAnyViewAfterCheck<const details::BytesObjBase*>(src);\n         return details::StableHashCombine(src_data->type_index,\n                                           details::StableHashBytes(src_str->data, src_str->size));\n       }\n@@ -196,8 +196,8 @@ class StructuralHashHandler {\n     } else {\n       if (src_data->type_index == TypeIndex::kTVMFFIStr ||\n           src_data->type_index == TypeIndex::kTVMFFIBytes) {\n-        const BytesObjBase* src_str =\n-            AnyUnsafe::CopyFromAnyViewAfterCheck<const BytesObjBase*>(src);\n+        const details::BytesObjBase* src_str =\n+            AnyUnsafe::CopyFromAnyViewAfterCheck<const details::BytesObjBase*>(src);\n         // return same hash as AnyHash\n         return details::StableHashCombine(src_data->type_index,\n                                           details::StableHashBytes(src_str->data, src_str->size));",
+  "heuristics": {
+    "tags": [],
+    "extensions": [
+      ".cc",
+      ".h"
+    ],
+    "scopes_guess": [
+      "include",
+      "src"
+    ]
+  }
+}

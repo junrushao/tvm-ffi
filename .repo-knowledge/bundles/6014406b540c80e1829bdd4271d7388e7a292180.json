@@ -1,0 +1,39 @@
+{
+  "sha": "6014406b540c80e1829bdd4271d7388e7a292180",
+  "sha7": "6014406",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-08-19T20:57:41-04:00",
+  "subject": "[FFI] AudoDLPack compatible with torch stream context (#18217)",
+  "body":
+      "This PR updates the autodlpack path to automatically update\nthe env stream to be consistent with torch stream context.\n\nThe change would help to make FFI functions to be\ncompatible in stream based executions.\n\nWe leverage torch cpp_extension load_inline to create\nan efficient query function, the first time loading\nmight take more time to build the jit module and\nthings should be fast after the torch jit module is cached.",
+  "is_merge": false,
+  "parents": [
+    "0daaffedd23982ea09f8c38fec4eef1cca1d8cac"
+  ],
+  "name_status": [
+    [
+      "M",
+      "scripts/benchmark_dlpack.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "scripts/benchmark_dlpack.py",
+      "additions": 68,
+      "deletions": 2
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/scripts/benchmark_dlpack.py b/scripts/benchmark_dlpack.py\nindex b19f566..1453aa9 100644\n--- a/scripts/benchmark_dlpack.py\n+++ b/scripts/benchmark_dlpack.py\n@@ -36,6 +36,7 @@ Summary of some takeaways:\n -\n \n \"\"\"\n+import os\n import torch\n import numpy as np\n from tvm import ffi as tvm_ffi\n@@ -244,7 +245,7 @@ def bench_tvm_ffi_nop_autodlpack(name, x, y, z, repeat):\n     print_speed(name, speed)\n \n \n-def tvm_ffi_nop_autodlpack_from_torch(repeat, device=\"cpu\"):\n+def tvm_ffi_nop_autodlpack_from_torch(repeat, device=\"cpu\", stream=False):\n     \"\"\"\n     Measures overhead of running dlpack via auto convert by directly\n     take torch.Tensor as inputs.\n@@ -253,7 +254,13 @@ def tvm_ffi_nop_autodlpack_from_torch(repeat, device=\"cpu\"):\n     x = torch.arange(1, device=device)\n     y = torch.arange(1, device=device)\n     z = torch.arange(1, device=device)\n-    bench_tvm_ffi_nop_autodlpack(f\"tvm.ffi.nop.autodlpack(torch[{device}])\", x, y, z, repeat)\n+    if stream:\n+        with torch.cuda.stream(torch.cuda.Stream()):\n+            bench_tvm_ffi_nop_autodlpack(\n+                f\"tvm.ffi.nop.autodlpack(torch[{device}][stream])\", x, y, z, repeat\n+            )\n+    else:\n+        bench_tvm_ffi_nop_autodlpack(f\"tvm.ffi.nop.autodlpack(torch[{device}])\", x, y, z, repeat)\n \n \n def tvm_ffi_nop_autodlpack_from_numpy(repeat):\n@@ -308,6 +315,50 @@ def bench_torch_utils_to_dlpack(repeat):\n     print_speed(\"torch.utils.dlpack.to_dlpack\", speed)\n \n \n+def torch_get_cuda_stream_native(device_id):\n+    return torch.cuda.current_stream(device_id).cuda_stream\n+\n+\n+def load_torch_get_current_cuda_stream():\n+    \"\"\"Create a faster get_current_cuda_stream for torch through cpp extension.\"\"\"\n+    from torch.utils import cpp_extension\n+\n+    source = \"\"\"\n+    #include <c10/cuda/CUDAStream.h>\n+\n+    int64_t get_current_cuda_stream(int device_id) {\n+        at::cuda::CUDAStream stream = at::cuda::getCurrentCUDAStream(device_id);\n+        // fast invariant, default stream is always 0\n+        if (stream.id() == 0) return 0;\n+        // convert to cudaStream_t\n+        return reinterpret_cast<int64_t>(static_cast<cudaStream_t>(stream));\n+    }\n+    \"\"\"\n+    result = cpp_extension.load_inline(\n+        name=\"get_current_cuda_stream\",\n+        cpp_sources=[source],\n+        cuda_sources=[],\n+        extra_cflags=[\"-O3\"],\n+        extra_include_paths=cpp_extension.include_paths(\"cuda\"),\n+        functions=[\"get_current_cuda_stream\"],\n+    )\n+    return result.get_current_cuda_stream\n+\n+\n+def bench_torch_get_current_stream(repeat, name, func):\n+    \"\"\"\n+    Measures overhead of running torch.cuda.current_stream\n+    \"\"\"\n+    x = torch.arange(1, device=\"cuda\")\n+    func(0)\n+    start = time.time()\n+    for i in range(repeat):\n+        func(0)\n+    end = time.time()\n+    speed = (end - start) / repeat\n+    print_speed(f\"torch.cuda.current_stream[{name}]\", speed)\n+\n+\n def main():\n     repeat = 10000\n     print(\"-----------------------------\")\n@@ -323,6 +374,8 @@ def main():\n     tvm_ffi_nop_from_torch_utils_to_dlpack(repeat)\n     tvm_ffi_nop_autodlpack_from_torch(repeat, \"cpu\")\n     tvm_ffi_nop_autodlpack_from_torch(repeat, \"cuda\")\n+    tvm_ffi_nop_autodlpack_from_torch(repeat, \"cuda\", stream=True)\n+\n     tvm_ffi_nop_autodlpack_from_numpy(repeat)\n     print(\"-------------------------------\")\n     print(\"Benchmark x.__dlpack__ overhead\")\n@@ -339,6 +392,19 @@ def main():\n     bench_to_dlpack_versioned(\n         tvm_ffi.from_dlpack(torch.arange(1)), \"tvm.__dlpack__(max_version=(1,1))\", repeat\n     )\n+    print(\"---------------------------------------------------\")\n+    print(\"Benchmark torch.get_cuda_stream[default stream]\")\n+    print(\"---------------------------------------------------\")\n+    bench_torch_get_current_stream(repeat, \"cpp-extension\", load_torch_get_current_cuda_stream())\n+    bench_torch_get_current_stream(repeat, \"python\", torch_get_cuda_stream_native)\n+    print(\"---------------------------------------------------\")\n+    print(\"Benchmark torch.get_cuda_stream[non-default stream]\")\n+    print(\"---------------------------------------------------\")\n+    with torch.cuda.stream(torch.cuda.Stream()):\n+        bench_torch_get_current_stream(\n+            repeat, \"cpp-extension\", load_torch_get_current_cuda_stream()\n+        )\n+        bench_torch_get_current_stream(repeat, \"python\", torch_get_cuda_stream_native)\n \n \n if __name__ == \"__main__\":",
+  "heuristics": {
+    "tags": [],
+    "extensions": [
+      ".py"
+    ],
+    "scopes_guess": [
+      "scripts"
+    ]
+  }
+}

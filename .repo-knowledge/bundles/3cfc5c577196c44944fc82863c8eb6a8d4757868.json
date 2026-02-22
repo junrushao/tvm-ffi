@@ -1,0 +1,39 @@
+{
+  "sha": "3cfc5c577196c44944fc82863c8eb6a8d4757868",
+  "sha7": "3cfc5c5",
+  "author_name": "Junru Shao",
+  "author_email": "junrushao@apache.org",
+  "date_iso": "2025-12-07T11:29:40-08:00",
+  "subject": "fix(config): `tvm-ffi-config --sourcedir` broken in wheels (#319)",
+  "body":
+      "Bug detected in:\nhttps://github.com/apache/tvm-ffi/actions/runs/20001883512/workflow\n\nIn fact, checking `${guess}/cmake` is not a reliable way to locate\nsource directory of apache-tvm-ffi wheel, because the cmake directory\nactually lives under `${guess}/share/cmake` in the wheel.\n\nThis PR switches to `${guess}/src`, which always reliably locates in the\nsame relative path.",
+  "is_merge": false,
+  "parents": [
+    "82efbbb7cf617e2deb83a7fa0d16e3bbf02d511d"
+  ],
+  "name_status": [
+    [
+      "M",
+      "python/tvm_ffi/libinfo.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "python/tvm_ffi/libinfo.py",
+      "additions": 1,
+      "deletions": 1
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/python/tvm_ffi/libinfo.py b/python/tvm_ffi/libinfo.py\nindex 35abd2c..32295ce 100644\n--- a/python/tvm_ffi/libinfo.py\n+++ b/python/tvm_ffi/libinfo.py\n@@ -62,7 +62,7 @@ def find_source_path() -> str:\n             _rel_top_directory(),\n             _dev_top_directory(),\n         ],\n-        cond=lambda p: (p / \"cmake\").is_dir(),\n+        cond=lambda p: (p / \"src\").is_dir(),\n     ):\n         return ret\n     raise RuntimeError(\"Cannot find home path.\")",
+  "heuristics": {
+    "tags": [],
+    "extensions": [
+      ".py"
+    ],
+    "scopes_guess": [
+      "python"
+    ]
+  }
+}

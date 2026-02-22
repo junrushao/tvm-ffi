@@ -1,0 +1,336 @@
+{
+  "sha": "5304752c05e7db3c24d9b029835145533be13ee3",
+  "sha7": "5304752",
+  "author_name": "tqchen",
+  "author_email": "tianqi.tchen@gmail.com",
+  "date_iso": "2025-09-13T17:05:56-04:00",
+  "subject": "[LINT] Run lint to be complaint with the new CI",
+  "body": "Run the lint script in the current config",
+  "is_merge": false,
+  "parents": [
+    "ef6d57b8debeb6630da726444efa85058062be74"
+  ],
+  "name_status": [
+    [
+      "M",
+      "docs/conf.py"
+    ],
+    [
+      "M",
+      "examples/inline_module/main.py"
+    ],
+    [
+      "M",
+      "examples/packaging/python/my_ffi_extension/base.py"
+    ],
+    [
+      "M",
+      "examples/packaging/run_example.py"
+    ],
+    [
+      "M",
+      "examples/quick_start/run_example.py"
+    ],
+    [
+      "M",
+      "pyproject.toml"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/_convert.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/_optional_torch_c_dlpack.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/_tensor.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/access_path.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/base.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/config.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/container.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/cpp/load_inline.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/error.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/libinfo.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/module.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/registry.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/serialization.py"
+    ],
+    [
+      "M",
+      "scripts/benchmark_dlpack.py"
+    ],
+    [
+      "M",
+      "tests/lint/check_asf_header.py"
+    ],
+    [
+      "M",
+      "tests/lint/check_file_type.py"
+    ],
+    [
+      "M",
+      "tests/python/test_access_path.py"
+    ],
+    [
+      "M",
+      "tests/python/test_container.py"
+    ],
+    [
+      "M",
+      "tests/python/test_device.py"
+    ],
+    [
+      "M",
+      "tests/python/test_dtype.py"
+    ],
+    [
+      "M",
+      "tests/python/test_error.py"
+    ],
+    [
+      "M",
+      "tests/python/test_function.py"
+    ],
+    [
+      "M",
+      "tests/python/test_load_inline.py"
+    ],
+    [
+      "M",
+      "tests/python/test_object.py"
+    ],
+    [
+      "M",
+      "tests/python/test_string.py"
+    ],
+    [
+      "M",
+      "tests/python/test_tensor.py"
+    ],
+    [
+      "M",
+      "tests/scripts/task_lint.sh"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "docs/conf.py",
+      "additions": 0,
+      "deletions": 1
+    },
+    {
+      "path": "examples/inline_module/main.py",
+      "additions": 1,
+      "deletions": 0
+    },
+    {
+      "path": "examples/packaging/python/my_ffi_extension/base.py",
+      "additions": 2,
+      "deletions": 1
+    },
+    {
+      "path": "examples/packaging/run_example.py",
+      "additions": 2,
+      "deletions": 1
+    },
+    {
+      "path": "examples/quick_start/run_example.py",
+      "additions": 2,
+      "deletions": 1
+    },
+    {
+      "path": "pyproject.toml",
+      "additions": 12,
+      "deletions": 0
+    },
+    {
+      "path": "python/tvm_ffi/_convert.py",
+      "additions": 2,
+      "deletions": 2
+    },
+    {
+      "path": "python/tvm_ffi/_optional_torch_c_dlpack.py",
+      "additions": 1,
+      "deletions": 0
+    },
+    {
+      "path": "python/tvm_ffi/_tensor.py",
+      "additions": 3,
+      "deletions": 10
+    },
+    {
+      "path": "python/tvm_ffi/access_path.py",
+      "additions": 2,
+      "deletions": 1
+    },
+    {
+      "path": "python/tvm_ffi/base.py",
+      "additions": 2,
+      "deletions": 2
+    },
+    {
+      "path": "python/tvm_ffi/config.py",
+      "additions": 3,
+      "deletions": 2
+    },
+    {
+      "path": "python/tvm_ffi/container.py",
+      "additions": 2,
+      "deletions": 3
+    },
+    {
+      "path": "python/tvm_ffi/cpp/load_inline.py",
+      "additions": 5,
+      "deletions": 5
+    },
+    {
+      "path": "python/tvm_ffi/error.py",
+      "additions": 3,
+      "deletions": 2
+    },
+    {
+      "path": "python/tvm_ffi/libinfo.py",
+      "additions": 2,
+      "deletions": 2
+    },
+    {
+      "path": "python/tvm_ffi/module.py",
+      "additions": 1,
+      "deletions": 2
+    },
+    {
+      "path": "python/tvm_ffi/registry.py",
+      "additions": 1,
+      "deletions": 0
+    },
+    {
+      "path": "python/tvm_ffi/serialization.py",
+      "additions": 2,
+      "deletions": 1
+    },
+    {
+      "path": "scripts/benchmark_dlpack.py",
+      "additions": 4,
+      "deletions": 2
+    },
+    {
+      "path": "tests/lint/check_asf_header.py",
+      "additions": 4,
+      "deletions": 6
+    },
+    {
+      "path": "tests/lint/check_file_type.py",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "tests/python/test_access_path.py",
+      "additions": 2,
+      "deletions": 2
+    },
+    {
+      "path": "tests/python/test_container.py",
+      "additions": 3,
+      "deletions": 1
+    },
+    {
+      "path": "tests/python/test_device.py",
+      "additions": 8,
+      "deletions": 13
+    },
+    {
+      "path": "tests/python/test_dtype.py",
+      "additions": 3,
+      "deletions": 5
+    },
+    {
+      "path": "tests/python/test_error.py",
+      "additions": 2,
+      "deletions": 1
+    },
+    {
+      "path": "tests/python/test_function.py",
+      "additions": 7,
+      "deletions": 5
+    },
+    {
+      "path": "tests/python/test_load_inline.py",
+      "additions": 4,
+      "deletions": 3
+    },
+    {
+      "path": "tests/python/test_object.py",
+      "additions": 2,
+      "deletions": 1
+    },
+    {
+      "path": "tests/python/test_string.py",
+      "additions": 1,
+      "deletions": 0
+    },
+    {
+      "path": "tests/python/test_tensor.py",
+      "additions": 2,
+      "deletions": 1
+    },
+    {
+      "path": "tests/scripts/task_lint.sh",
+      "additions": 7,
+      "deletions": 1
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/docs/conf.py b/docs/conf.py\nindex 139254f..1477fc8 100644\n--- a/docs/conf.py\n+++ b/docs/conf.py\n@@ -20,7 +20,6 @@ import sys\n \n import tomli\n \n-\n os.environ[\"TVM_FFI_BUILD_DOCS\"] = \"1\"\n \n build_exhale = os.environ.get(\"BUILD_CPP_DOCS\", \"0\") == \"1\"\ndiff --git a/examples/inline_module/main.py b/examples/inline_module/main.py\nindex 5cfcd41..da94fb5 100644\n--- a/examples/inline_module/main.py\n+++ b/examples/inline_module/main.py\n@@ -16,6 +16,7 @@\n # under the License.\n \n import torch\n+\n import tvm_ffi.cpp\n from tvm_ffi.module import Module\n \ndiff --git a/examples/packaging/python/my_ffi_extension/base.py b/examples/packaging/python/my_ffi_extension/base.py\nindex d65264e..fa17252 100644\n--- a/examples/packaging/python/my_ffi_extension/base.py\n+++ b/examples/packaging/python/my_ffi_extension/base.py\n@@ -14,10 +14,11 @@\n # KIND, either express or implied.  See the License for the\n # specific language governing permissions and limitations.\n # Base logic to load library for extension package\n-import tvm_ffi\n import os\n import sys\n \n+import tvm_ffi\n+\n \n def _load_lib():\n     # first look at the directory of the current file\ndiff --git a/examples/packaging/run_example.py b/examples/packaging/run_example.py\nindex 1164225..5304409 100644\n--- a/examples/packaging/run_example.py\n+++ b/examples/packaging/run_example.py\n@@ -14,9 +14,10 @@\n # KIND, either express or implied.  See the License for the\n # specific language governing permissions and limitations.\n # Base logic to load library for extension package\n-import torch\n import sys\n+\n import my_ffi_extension\n+import torch\n \n \n def run_add_one():\ndiff --git a/examples/quick_start/run_example.py b/examples/quick_start/run_example.py\nindex a8f4fc0..c7a2fcb 100644\n--- a/examples/quick_start/run_example.py\n+++ b/examples/quick_start/run_example.py\n@@ -21,9 +21,10 @@ try:\n except ImportError:\n     torch = None\n \n-import numpy\n import ctypes\n \n+import numpy\n+\n \n def run_add_one_cpu():\n     \"\"\"Load the add_one_cpu module and call the add_one_cpu function.\"\"\"\ndiff --git a/pyproject.toml b/pyproject.toml\nindex 0f9a0b9..98c4aba 100644\n--- a/pyproject.toml\n+++ b/pyproject.toml\n@@ -132,6 +132,18 @@ extend_skip = [\"3rdparty\"]\n line_length = 100\n skip_gitignore = true\n \n+[tool.ruff]\n+include = [\"python/**/*.py\", \"tests/**/*.py\"]\n+\n+[tool.ruff.lint]\n+\n+[tool.ruff.lint.per-file-ignores]\n+\"__init__.py\" = [\"F401\"]\n+\"tests/*\" = [\"E741\"]\n+\n+[tool.ruff.lint.pylint]\n+max-args = 10\n+\n [tool.cibuildwheel]\n build-verbosity = 1\n \ndiff --git a/python/tvm_ffi/_convert.py b/python/tvm_ffi/_convert.py\nindex a0b6c1b..7c7b515 100644\n--- a/python/tvm_ffi/_convert.py\n+++ b/python/tvm_ffi/_convert.py\n@@ -17,8 +17,8 @@\n \"\"\"Conversion utilities to bring python objects into ffi values.\"\"\"\n from numbers import Number\n from typing import Any\n-from . import core\n-from . import container\n+\n+from . import container, core\n \n \n def convert(value: Any) -> Any:\ndiff --git a/python/tvm_ffi/_optional_torch_c_dlpack.py b/python/tvm_ffi/_optional_torch_c_dlpack.py\nindex f448552..d14ccfb 100644\n--- a/python/tvm_ffi/_optional_torch_c_dlpack.py\n+++ b/python/tvm_ffi/_optional_torch_c_dlpack.py\n@@ -30,6 +30,7 @@ This module will load slowly at first time due to JITing,\n subsequent calls will be much faster.\n \"\"\"\n import warnings\n+\n from . import libinfo\n \n \ndiff --git a/python/tvm_ffi/_tensor.py b/python/tvm_ffi/_tensor.py\nindex c0c9a20..a9212b4 100644\n--- a/python/tvm_ffi/_tensor.py\n+++ b/python/tvm_ffi/_tensor.py\n@@ -19,10 +19,9 @@\n # if we also want to expose a tensor function in the root namespace\n \n from numbers import Integral\n-from . import core\n+\n+from . import _ffi_api, core, registry\n from .core import Device, DLDeviceType, Tensor, from_dlpack\n-from . import registry\n-from . import _ffi_api\n \n \n @registry.register_object(\"ffi.Shape\")\n@@ -79,10 +78,4 @@ def device(device_type, index=None):\n     return core._CLASS_DEVICE(device_type, index)\n \n \n-__all__ = [\n-    \"from_dlpack\",\n-    \"Tensor\",\n-    \"device\",\n-    \"Device\",\n-    \"DLDeviceType\",\n-]\n+__all__ = [\"from_dlpack\", \"Tensor\", \"device\", \"Device\", \"DLDeviceType\"]\ndiff --git a/python/tvm_ffi/access_path.py b/python/tvm_ffi/access_path.py\nindex fb8ab1b..91a426b 100644\n--- a/python/tvm_ffi/access_path.py\n+++ b/python/tvm_ffi/access_path.py\n@@ -18,7 +18,8 @@\n \"\"\"Access path classes.\"\"\"\n \n from enum import IntEnum\n-from typing import List, Any\n+from typing import Any, List\n+\n from . import core\n from .registry import register_object\n \ndiff --git a/python/tvm_ffi/base.py b/python/tvm_ffi/base.py\nindex 2fcd70b..fbcc01c 100644\n--- a/python/tvm_ffi/base.py\n+++ b/python/tvm_ffi/base.py\n@@ -17,10 +17,10 @@\n # coding: utf-8\n \"\"\"Base library for TVM FFI.\"\"\"\n import ctypes\n+import logging\n import os\n import sys\n-import subprocess\n-import logging\n+\n from . import libinfo\n \n logger = logging.getLogger(__name__)\ndiff --git a/python/tvm_ffi/config.py b/python/tvm_ffi/config.py\nindex b81ecde..dcd85c2 100644\n--- a/python/tvm_ffi/config.py\n+++ b/python/tvm_ffi/config.py\n@@ -17,8 +17,9 @@\n \"\"\"Config utilities for finding paths to lib and headers\"\"\"\n \n import argparse\n-import sys\n import os\n+import sys\n+\n from . import libinfo\n \n \n@@ -33,7 +34,7 @@ def find_windows_implib():\n def __main__():\n     \"\"\"Main function\"\"\"\n     parser = argparse.ArgumentParser(\n-        description=\"Get various configuration information needed to compile with tvm-ffi\",\n+        description=\"Get various configuration information needed to compile with tvm-ffi\"\n     )\n \n     parser.add_argument(\"--includedir\", action=\"store_true\", help=\"Print include directory\")\ndiff --git a/python/tvm_ffi/container.py b/python/tvm_ffi/container.py\nindex fedc0a2..e28b995 100644\n--- a/python/tvm_ffi/container.py\n+++ b/python/tvm_ffi/container.py\n@@ -16,10 +16,9 @@\n # under the License.\n \"\"\"Container classes.\"\"\"\n import collections.abc\n-\n from typing import Any, Mapping, Sequence\n-from . import core\n-from . import _ffi_api\n+\n+from . import _ffi_api, core\n from .registry import register_object\n \n __all__ = [\"Array\", \"Map\"]\ndiff --git a/python/tvm_ffi/cpp/load_inline.py b/python/tvm_ffi/cpp/load_inline.py\nindex 3bc0fc4..c836205 100644\n--- a/python/tvm_ffi/cpp/load_inline.py\n+++ b/python/tvm_ffi/cpp/load_inline.py\n@@ -15,18 +15,18 @@\n # specific language governing permissions and limitations\n # under the License.\n \n-from typing import Sequence, Optional, Mapping\n-import os\n-import sys\n+import functools\n import glob\n import hashlib\n+import os\n import shutil\n import subprocess\n-import functools\n+import sys\n+from typing import Mapping, Optional, Sequence\n \n+from tvm_ffi.libinfo import find_dlpack_include_path, find_include_path, find_libtvm_ffi\n from tvm_ffi.module import Module, load_module\n from tvm_ffi.utils import FileLock\n-from tvm_ffi.libinfo import find_include_path, find_dlpack_include_path, find_libtvm_ffi\n \n IS_WINDOWS = sys.platform == \"win32\"\n \ndiff --git a/python/tvm_ffi/error.py b/python/tvm_ffi/error.py\nindex a7714cb..b09200d 100644\n--- a/python/tvm_ffi/error.py\n+++ b/python/tvm_ffi/error.py\n@@ -16,10 +16,11 @@\n # under the License.\n # pylint: disable=invalid-name\n \"\"\"Error handling.\"\"\"\n+import ast\n import re\n-import types\n import sys\n-import ast\n+import types\n+\n from . import core\n \n \ndiff --git a/python/tvm_ffi/libinfo.py b/python/tvm_ffi/libinfo.py\nindex b02897f..55c5140 100644\n--- a/python/tvm_ffi/libinfo.py\n+++ b/python/tvm_ffi/libinfo.py\n@@ -15,9 +15,9 @@\n # specific language governing permissions and limitations\n # under the License.\n \n-import sys\n-import os\n import glob\n+import os\n+import sys\n \n \n def split_env_var(env_var, split):\ndiff --git a/python/tvm_ffi/module.py b/python/tvm_ffi/module.py\nindex 56c2a93..103956e 100644\n--- a/python/tvm_ffi/module.py\n+++ b/python/tvm_ffi/module.py\n@@ -18,9 +18,8 @@\n # pylint: disable=invalid-name\n \n from enum import IntEnum\n-from . import _ffi_api\n \n-from . import core\n+from . import _ffi_api, core\n from .registry import register_object\n \n __all__ = [\"Module\", \"ModulePropertyMask\", \"system_lib\", \"load_module\"]\ndiff --git a/python/tvm_ffi/registry.py b/python/tvm_ffi/registry.py\nindex b43e0dc..2cd1ba1 100644\n--- a/python/tvm_ffi/registry.py\n+++ b/python/tvm_ffi/registry.py\n@@ -16,6 +16,7 @@\n # under the License.\n \"\"\"FFI registry to register function and objects.\"\"\"\n import sys\n+\n from . import core\n \n # whether we simplify skip unknown objects regtistration\ndiff --git a/python/tvm_ffi/serialization.py b/python/tvm_ffi/serialization.py\nindex 25d9bce..e5367d9 100644\n--- a/python/tvm_ffi/serialization.py\n+++ b/python/tvm_ffi/serialization.py\n@@ -16,7 +16,8 @@\n # under the License.\n \"\"\"Serialization related utilities to enable some object can be pickled\"\"\"\n \n-from typing import Optional, Any\n+from typing import Any, Optional\n+\n from . import _ffi_api\n \n \ndiff --git a/scripts/benchmark_dlpack.py b/scripts/benchmark_dlpack.py\nindex 2ab85bf..6052a6c 100644\n--- a/scripts/benchmark_dlpack.py\n+++ b/scripts/benchmark_dlpack.py\n@@ -37,10 +37,12 @@ Summary of some takeaways:\n \n \"\"\"\n import os\n-import torch\n+import time\n+\n import numpy as np\n+import torch\n+\n import tvm_ffi\n-import time\n \n \n def print_speed(name, speed):\ndiff --git a/tests/lint/check_asf_header.py b/tests/lint/check_asf_header.py\nindex 43fb221..156f206 100644\n--- a/tests/lint/check_asf_header.py\n+++ b/tests/lint/check_asf_header.py\n@@ -15,11 +15,11 @@\n # specific language governing permissions and limitations\n # under the License.\n \"\"\"Helper tool to add ASF header to files that cannot be handled by Rat.\"\"\"\n-import os\n-import sys\n import argparse\n-import subprocess\n import fnmatch\n+import os\n+import subprocess\n+import sys\n \n header_cstyle = \"\"\"\n /*\n@@ -229,7 +229,7 @@ def check_header(fname, header):\n \n     if not has_asf_header:\n         print(f\"ERROR: Missing ASF header in {fname}\")\n-        print(f\"Run `python check_asf_header.py --fix` to add the header\")\n+        print(\"Run `python check_asf_header.py --fix` to add the header\")\n         return False\n \n     if has_copyright:\n@@ -294,8 +294,6 @@ def add_header(fname, header):\n \n     with open(fname, \"w\") as outfile:\n         skipline = False\n-        ext = os.path.splitext(fname)[1][1:]\n-\n         if not lines:\n             skipline = False  # File is enpty\n         elif lines[0][:2] == \"#!\":\ndiff --git a/tests/lint/check_file_type.py b/tests/lint/check_file_type.py\nindex 3fa68db..f5ab2b9 100644\n--- a/tests/lint/check_file_type.py\n+++ b/tests/lint/check_file_type.py\n@@ -16,8 +16,8 @@\n # under the License.\n \"\"\"Helper tool to check file types that are allowed to checkin.\"\"\"\n import os\n-import sys\n import subprocess\n+import sys\n \n # List of file types we allow\n ALLOW_EXTENSION = {\ndiff --git a/tests/python/test_access_path.py b/tests/python/test_access_path.py\nindex 7d9e7af..d3f59fb 100644\n--- a/tests/python/test_access_path.py\n+++ b/tests/python/test_access_path.py\n@@ -15,8 +15,8 @@\n # specific language governing permissions and limitations\n # under the License.\n \n-import pytest\n-from tvm_ffi.access_path import AccessPath, AccessKind\n+\n+from tvm_ffi.access_path import AccessKind, AccessPath\n \n \n def test_root_path():\ndiff --git a/tests/python/test_container.py b/tests/python/test_container.py\nindex 9f2fb09..ae7e52c 100644\n--- a/tests/python/test_container.py\n+++ b/tests/python/test_container.py\n@@ -14,8 +14,10 @@\n # KIND, either express or implied.  See the License for the\n # specific language governing permissions and limitations\n # under the License.\n-import pytest\n import pickle\n+\n+import pytest\n+\n import tvm_ffi\n \n \ndiff --git a/tests/python/test_device.py b/tests/python/test_device.py\nindex 849f45b..0ac4043 100644\n--- a/tests/python/test_device.py\n+++ b/tests/python/test_device.py\n@@ -15,10 +15,12 @@\n # specific language governing permissions and limitations\n # under the License.\n \n-import pytest\n import pickle\n-from tvm_ffi import Device, DLDeviceType\n+\n+import pytest\n+\n import tvm_ffi\n+from tvm_ffi import DLDeviceType\n \n \n def test_device():\n@@ -47,7 +49,7 @@ def test_device_from_str():\n         (\"metal:2\", DLDeviceType.kDLMetal, 2),\n     ],\n )\n-def test_device(dev_str, expected_device_type, expect_device_id):\n+def test_device_dlpack_device_type(dev_str, expected_device_type, expect_device_id):\n     dev = tvm_ffi.device(dev_str)\n     assert dev.dlpack_device_type() == expected_device_type\n     assert dev.index == expect_device_id\n@@ -69,22 +71,15 @@ def test_device_with_dev_id(dev_type, dev_id, expected_device_type, expect_devic\n     assert dev.index == expect_device_id\n \n \n-@pytest.mark.parametrize(\n-    \"dev_type, dev_id\",\n-    [\n-        (\"cpu:0:0\", None),\n-        (\"cpu:?\", None),\n-        (\"cpu:\", None),\n-    ],\n-)\n+@pytest.mark.parametrize(\"dev_type, dev_id\", [(\"cpu:0:0\", None), (\"cpu:?\", None), (\"cpu:\", None)])\n def test_deive_type_error(dev_type, dev_id):\n     with pytest.raises(ValueError):\n-        dev = tvm_ffi.device(dev_type, dev_id)\n+        tvm_ffi.device(dev_type, dev_id)\n \n \n def test_deive_id_error():\n     with pytest.raises(TypeError):\n-        dev = tvm_ffi.device(\"cpu\", \"?\")\n+        tvm_ffi.device(\"cpu\", \"?\")\n \n \n def test_device_pickle():\ndiff --git a/tests/python/test_dtype.py b/tests/python/test_dtype.py\nindex 7d09d3d..39694d1 100644\n--- a/tests/python/test_dtype.py\n+++ b/tests/python/test_dtype.py\n@@ -15,9 +15,11 @@\n # specific language governing permissions and limitations\n # under the License.\n \n-import pytest\n import pickle\n+\n import numpy as np\n+import pytest\n+\n import tvm_ffi\n \n \n@@ -79,7 +81,3 @@ def test_dtype_with_lanes(dtype_str):\n     assert dtype_with_lanes.type_code == dtype.type_code\n     assert dtype_with_lanes.bits == dtype.bits\n     assert dtype_with_lanes.lanes == 4\n-\n-\n-if __name__ == \"__main__\":\n-    tvm.testing.main()\ndiff --git a/tests/python/test_error.py b/tests/python/test_error.py\nindex ad6da64..0b3b96a 100644\n--- a/tests/python/test_error.py\n+++ b/tests/python/test_error.py\n@@ -15,8 +15,9 @@\n # specific language governing permissions and limitations\n # under the License.\n \n+\n import pytest\n-import platform\n+\n import tvm_ffi\n \n \ndiff --git a/tests/python/test_function.py b/tests/python/test_function.py\nindex b5a1da4..c5f4428 100644\n--- a/tests/python/test_function.py\n+++ b/tests/python/test_function.py\n@@ -15,10 +15,12 @@\n # specific language governing permissions and limitations\n # under the License.\n \n-import gc\n import ctypes\n+import gc\n import sys\n+\n import numpy as np\n+\n import tvm_ffi\n \n \n@@ -182,15 +184,15 @@ def test_rvalue_ref():\n         x = tvm_ffi.convert([1, 2])\n         assert use_count(x) == 1\n         f(x, 2)\n-        y = f(x._move(), 1)\n-        assert x.__ctypes_handle__().value == None\n+        f(x._move(), 1)\n+        assert x.__ctypes_handle__().value is None\n \n     def check1():\n         x = tvm_ffi.convert([1, 2])\n         assert use_count(x) == 1\n         y = f(x, 2)\n-        z = f(x._move(), 2)\n-        assert x.__ctypes_handle__().value == None\n+        f(x._move(), 2)\n+        assert x.__ctypes_handle__().value is None\n         assert y.__ctypes_handle__().value is not None\n \n     check0()\ndiff --git a/tests/python/test_load_inline.py b/tests/python/test_load_inline.py\nindex 0277803..fbb8f0c 100644\n--- a/tests/python/test_load_inline.py\n+++ b/tests/python/test_load_inline.py\n@@ -15,10 +15,11 @@\n # specific language governing permissions and limitations\n # under the License.\n \n-import pytest\n-import numpy\n import sys\n \n+import numpy\n+import pytest\n+\n try:\n     import torch\n except ImportError:\n@@ -144,7 +145,7 @@ def test_load_inline_cpp_build_dir():\n             }\n         \"\"\",\n         functions=[\"add_one_cpu\"],\n-        build_directory=\"./build_add_one\",\n+        build_directory=\"./build/build_add_one\",\n     )\n \n     x = numpy.array([1, 2, 3, 4, 5], dtype=numpy.float32)\ndiff --git a/tests/python/test_object.py b/tests/python/test_object.py\nindex 1b07de8..bab7c3e 100644\n--- a/tests/python/test_object.py\n+++ b/tests/python/test_object.py\n@@ -14,9 +14,10 @@\n # KIND, either express or implied.  See the License for the\n # specific language governing permissions and limitations\n # under the License.\n-import pytest\n import sys\n \n+import pytest\n+\n import tvm_ffi\n \n \ndiff --git a/tests/python/test_string.py b/tests/python/test_string.py\nindex feaa958..36b8db8 100644\n--- a/tests/python/test_string.py\n+++ b/tests/python/test_string.py\n@@ -16,6 +16,7 @@\n # under the License.\n \n import pickle\n+\n import tvm_ffi\n \n \ndiff --git a/tests/python/test_tensor.py b/tests/python/test_tensor.py\nindex 5c70512..5d919a3 100644\n--- a/tests/python/test_tensor.py\n+++ b/tests/python/test_tensor.py\n@@ -21,9 +21,10 @@ try:\n except ImportError:\n     torch = None\n \n-import tvm_ffi\n import numpy as np\n \n+import tvm_ffi\n+\n \n def test_tensor_attributes():\n     data = np.zeros((10, 8, 4, 2), dtype=\"int16\")\ndiff --git a/tests/scripts/task_lint.sh b/tests/scripts/task_lint.sh\nindex 4f7a080..0d8aa4f 100755\n--- a/tests/scripts/task_lint.sh\n+++ b/tests/scripts/task_lint.sh\n@@ -31,8 +31,14 @@ function run_lint {\n   echo \"Checking ASF headers...\"\n   python tests/lint/check_asf_header.py --check\n \n+  echo \"isort check...\"\n+  isort --check --diff .\n+\n   echo \"black check...\"\n-  black . --check --diff\n+  black --check --diff .\n+\n+  echo \"ruff check...\"\n+  ruff check --diff .\n \n   echo \"clang-format check...\"\n   tests/lint/git-clang-format.sh",
+  "heuristics": {
+    "tags": [
+      "build",
+      "test"
+    ],
+    "extensions": [
+      ".py",
+      ".sh",
+      ".toml"
+    ],
+    "scopes_guess": [
+      "docs",
+      "examples",
+      "pyproject.toml",
+      "python",
+      "scripts",
+      "tests"
+    ]
+  }
+}

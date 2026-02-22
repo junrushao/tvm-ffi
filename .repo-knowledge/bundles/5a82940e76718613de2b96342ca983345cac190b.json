@@ -1,0 +1,40 @@
+{
+  "sha": "5a82940e76718613de2b96342ca983345cac190b",
+  "sha7": "5a82940",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-12-01T12:08:11-05:00",
+  "subject": "[TEST] Further fix potential use after free issue (#298)",
+  "body": "This PR further fixes the potential use after free issue in the test",
+  "is_merge": false,
+  "parents": [
+    "4076ef57773310a9cf3d1053085517efff51a7b4"
+  ],
+  "name_status": [
+    [
+      "M",
+      "tests/python/test_stl.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "tests/python/test_stl.py",
+      "additions": 22,
+      "deletions": 18
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/tests/python/test_stl.py b/tests/python/test_stl.py\nindex cedc47e..de7b982 100644\n--- a/tests/python/test_stl.py\n+++ b/tests/python/test_stl.py\n@@ -14,7 +14,6 @@\n # KIND, either express or implied.  See the License for the\n # specific language governing permissions and limitations\n # under the License.\n-import gc\n import pathlib\n \n import pytest\n@@ -31,23 +30,28 @@ def test_stl() -> None:\n \n     mod: Module = tvm_ffi.load_module(output_lib_path)\n \n-    assert list(mod.test_tuple([1, 2.5])) == [2.5, 1]\n-    assert mod.test_vector(None) == None\n-    assert list(mod.test_vector([[1, 2], [3, 4]])) == [3, 7]\n-    assert mod.test_variant(1) == \"int\"\n-    assert mod.test_variant(1.0) == \"float\"\n-    assert list(mod.test_variant([1, 1.0])) == [\"int\", \"float\"]\n-    assert dict(mod.test_map({\"a\": 1, \"b\": 2})) == {1: \"a\", 2: \"b\"}\n-    assert dict(mod.test_map_2({\"a\": 1, \"b\": 2})) == {1: \"a\", 2: \"b\"}\n-    assert mod.test_function(lambda: 0)() == 1\n-    assert mod.test_function(lambda: 10)() == 11\n-\n-    with pytest.raises(TypeError):\n-        mod.test_tuple([1.5, 2.5])\n-    with pytest.raises(TypeError):\n-        mod.test_function(lambda: 0)(100)\n-    gc.collect()\n-    del mod\n+    def run_check(mod: Module) -> None:\n+        # This sub function is needed to make sure all temp variables deallocated\n+        # before module unload since some of these objects contains deleters in the library\n+        # code. If the module is unloaded before the object is deleted, the deleter\n+        # may call an invalid address.\n+        assert list(mod.test_tuple([1, 2.5])) == [2.5, 1]\n+        assert mod.test_vector(None) is None\n+        assert list(mod.test_vector([[1, 2], [3, 4]])) == [3, 7]\n+        assert mod.test_variant(1) == \"int\"\n+        assert mod.test_variant(1.0) == \"float\"\n+        assert list(mod.test_variant([1, 1.0])) == [\"int\", \"float\"]\n+        assert dict(mod.test_map({\"a\": 1, \"b\": 2})) == {1: \"a\", 2: \"b\"}\n+        assert dict(mod.test_map_2({\"a\": 1, \"b\": 2})) == {1: \"a\", 2: \"b\"}\n+        assert mod.test_function(lambda: 0)() == 1\n+        assert mod.test_function(lambda: 10)() == 11\n+\n+        with pytest.raises(TypeError):\n+            mod.test_tuple([1.5, 2.5])\n+        with pytest.raises(TypeError):\n+            mod.test_function(lambda: 0)(100)\n+\n+    run_check(mod)\n \n \n if __name__ == \"__main__\":",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".py"
+    ],
+    "scopes_guess": [
+      "tests"
+    ]
+  }
+}

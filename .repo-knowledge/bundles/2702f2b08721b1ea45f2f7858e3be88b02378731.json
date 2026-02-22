@@ -1,0 +1,98 @@
+{
+  "sha": "2702f2b08721b1ea45f2f7858e3be88b02378731",
+  "sha7": "2702f2b",
+  "author_name": "Nyakku Shigure",
+  "author_email": "sigure.qaq@gmail.com",
+  "date_iso": "2026-01-18T12:08:11+08:00",
+  "subject": "docs: add PaddlePaddle quickstart and load example (#415)",
+  "body":
+      "PaddlePaddle's recently released version 3.3.0 includes full TVM FFI\nsupport:\n\n- DLPack 1.2 support (or 1.3) and many DLPack implementation fixes\n- C DLPack exchange API (`__c_dlpack_exchange_api__` for tvm_ffi\n0.1.0-0.1.4 / `__dlpack_c_exchange_api__` for tvm_ffi 0.1.5+)\n- DataType exchange protocol (`__dlpack_data_type__`) and Device\nexchange protocol (`__dlpack_device__`)\n\nThis PR documents and demonstrates PaddlePaddle's TVM FFI\ninteroperability introduced in PaddlePaddle 3.3.0.\n\nThe new example runs as expected:\n\n<img width=\"1043\" height=\"273\" alt=\"image\"\nsrc=\"https://github.com/user-attachments/assets/80fe3239-3a7f-4de0-a725-cae0e27567b4\"\n/>",
+  "is_merge": false,
+  "parents": [
+    "360648f30ccb14523ab6fbb81f37eb085b801f98"
+  ],
+  "name_status": [
+    [
+      "M",
+      "README.md"
+    ],
+    [
+      "M",
+      "docs/concepts/tensor.rst"
+    ],
+    [
+      "M",
+      "docs/get_started/quickstart.rst"
+    ],
+    [
+      "M",
+      "docs/get_started/stable_c_abi.rst"
+    ],
+    [
+      "M",
+      "examples/quickstart/README.md"
+    ],
+    [
+      "A",
+      "examples/quickstart/load/load_paddle.py"
+    ],
+    [
+      "M",
+      "examples/quickstart/run_all_cuda.sh"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "README.md",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "docs/concepts/tensor.rst",
+      "additions": 2,
+      "deletions": 2
+    },
+    {
+      "path": "docs/get_started/quickstart.rst",
+      "additions": 16,
+      "deletions": 4
+    },
+    {
+      "path": "docs/get_started/stable_c_abi.rst",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "examples/quickstart/README.md",
+      "additions": 1,
+      "deletions": 0
+    },
+    {
+      "path": "examples/quickstart/load/load_paddle.py",
+      "additions": 30,
+      "deletions": 0
+    },
+    {
+      "path": "examples/quickstart/run_all_cuda.sh",
+      "additions": 3,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/README.md b/README.md\nindex 3fbd2cc..0f2f22b 100644\n--- a/README.md\n+++ b/README.md\n@@ -24,7 +24,7 @@ yet flexible open convention with the following systems in mind:\n \n - **Kernel libraries** - ship one wheel to support multiple frameworks, Python versions, and different languages. [[FlashInfer](https://docs.flashinfer.ai/)]\n - **Kernel DSLs** - reusable open ABI for JIT and AOT kernel exposure frameworks and runtimes. [[TileLang](https://tilelang.com/)][[cuteDSL](https://docs.nvidia.com/cutlass/latest/media/docs/pythonDSL/cute_dsl_general/compile_with_tvm_ffi.html)]\n-- **Frameworks and runtimes** - a uniform extension point for ABI-compliant libraries and DSLs. [[PyTorch](https://tvm.apache.org/ffi/get_started/quickstart.html#ship-to-pytorch)][[JAX](https://tvm.apache.org/ffi/get_started/quickstart.html#ship-to-jax)][[NumPy/CuPy](https://tvm.apache.org/ffi/get_started/quickstart.html#ship-to-numpy)]\n+- **Frameworks and runtimes** - a uniform extension point for ABI-compliant libraries and DSLs. [[PyTorch](https://tvm.apache.org/ffi/get_started/quickstart.html#ship-to-pytorch)][[JAX](https://tvm.apache.org/ffi/get_started/quickstart.html#ship-to-jax)][[PaddlePaddle](https://tvm.apache.org/ffi/get_started/quickstart.html#ship-to-paddle)][[NumPy/CuPy](https://tvm.apache.org/ffi/get_started/quickstart.html#ship-to-numpy)]\n - **ML infrastructure** - out-of-box bindings and interop across languages. [[Python](https://tvm.apache.org/ffi/get_started/quickstart.html#ship-to-python)][[C++](https://tvm.apache.org/ffi/get_started/quickstart.html#ship-to-cpp)][[Rust](https://tvm.apache.org/ffi/get_started/quickstart.html#ship-to-rust)]\n - **Coding agents** - a unified mechanism for shipping generated code in production.\n \ndiff --git a/docs/concepts/tensor.rst b/docs/concepts/tensor.rst\nindex d7f9343..2669f71 100644\n--- a/docs/concepts/tensor.rst\n+++ b/docs/concepts/tensor.rst\n@@ -20,7 +20,7 @@ Tensor and DLPack\n \n At runtime, TVM-FFI often needs to accept tensors from many sources:\n \n-* Frameworks (e.g. PyTorch, JAX) via :py:meth:`array_api.array.__dlpack__`;\n+* Frameworks (e.g. PyTorch, JAX, PaddlePaddle) via :py:meth:`array_api.array.__dlpack__`;\n * C/C++ callers passing :c:struct:`DLTensor* <DLTensor>`;\n * Tensors allocated by a library but managed by TVM-FFI itself.\n \n@@ -115,7 +115,7 @@ PyTorch Interop\n \n On the Python side, :py:class:`tvm_ffi.Tensor` is a managed n-dimensional array that:\n \n-* can be created via :py:func:`tvm_ffi.from_dlpack(ext_tensor, ...) <tvm_ffi.from_dlpack>` to import tensors from external frameworks, e.g., :ref:`PyTorch <ship-to-pytorch>`, :ref:`JAX <ship-to-jax>`, :ref:`NumPy/CuPy <ship-to-numpy>`;\n+* can be created via :py:func:`tvm_ffi.from_dlpack(ext_tensor, ...) <tvm_ffi.from_dlpack>` to import tensors from external frameworks, e.g., :ref:`PyTorch <ship-to-pytorch>`, :ref:`JAX <ship-to-jax>`, :ref:`PaddlePaddle <ship-to-paddle>`, :ref:`NumPy/CuPy <ship-to-numpy>`;\n * implements the DLPack protocol so it can be passed back to frameworks without copying, e.g., :py:func:`torch.from_dlpack`.\n \n The following example demonstrates a typical round-trip pattern:\ndiff --git a/docs/get_started/quickstart.rst b/docs/get_started/quickstart.rst\nindex 6d608e7..f4ded6a 100644\n--- a/docs/get_started/quickstart.rst\n+++ b/docs/get_started/quickstart.rst\n@@ -27,7 +27,7 @@ This guide walks through shipping a minimal ``add_one`` function that computes\n TVM-FFI's Open ABI and FFI make it possible to **ship one library** for multiple frameworks and languages.\n We can build a single shared library that works across:\n \n-- **ML frameworks**, e.g. PyTorch, JAX, NumPy, CuPy, and others;\n+- **ML frameworks**, e.g. PyTorch, JAX, PaddlePaddle, NumPy, CuPy, and others;\n - **Languages**, e.g. C++, Python, Rust, and others;\n - **Python ABI versions**, e.g. one wheel that supports all Python versions, including free-threaded ones.\n \n@@ -37,7 +37,7 @@ We can build a single shared library that works across:\n \n    - Python: 3.9 or newer\n    - Compiler: C++17-capable toolchain (GCC/Clang/MSVC)\n-   - Optional ML frameworks for testing: NumPy, PyTorch, JAX, CuPy\n+   - Optional ML frameworks for testing: NumPy, PyTorch, JAX, CuPy, PaddlePaddle\n    - CUDA: Any modern version (if you want to try the CUDA part)\n    - TVM-FFI installed via:\n \n@@ -90,7 +90,7 @@ it also exports the function's metadata as a symbol ``__tvm_ffi__metadata_add_on\n The class :cpp:class:`tvm::ffi::TensorView` enables zero-copy interop with tensors from different ML frameworks:\n \n - NumPy, CuPy,\n-- PyTorch, JAX, or\n+- PyTorch, JAX, PaddlePaddle, or\n - any array type that supports the standard :external+data-api:doc:`DLPack protocol <design_topics/data_interchange>`.\n \n Finally, :cpp:func:`TVMFFIEnvGetStream` can be used in the CUDA code to launch kernels on the caller's stream.\n@@ -162,7 +162,7 @@ TVM-FFI integrates with CMake via ``find_package`` as demonstrated below:\n \n - Python version/ABI. They are not compiled or linked with Python and depend only on TVM-FFI's stable C ABI;\n - Languages, including C++, Python, Rust, or any other language that can interop with the C ABI;\n-- ML frameworks, such as PyTorch, JAX, NumPy, CuPy, or any array library that implements the standard :external+data-api:doc:`DLPack protocol <design_topics/data_interchange>`.\n+- ML frameworks, such as PyTorch, JAX, PaddlePaddle, NumPy, CuPy, or any array library that implements the standard :external+data-api:doc:`DLPack protocol <design_topics/data_interchange>`.\n \n .. _sec-use-across-framework:\n \n@@ -228,6 +228,18 @@ After installation, ``add_one_cuda`` can be registered as a target for JAX's ``f\n   )(x)\n   print(y)\n \n+.. _ship-to-paddle:\n+\n+PaddlePaddle\n+~~~~~~~~~~~~\n+\n+Since PaddlePaddle 3.3.0, full TVM FFI support is provided.\n+\n+.. literalinclude:: ../../examples/quickstart/load/load_paddle.py\n+  :language: python\n+  :start-after: [example.begin]\n+  :end-before: [example.end]\n+\n .. _ship-to-numpy:\n \n NumPy/CuPy\ndiff --git a/docs/get_started/stable_c_abi.rst b/docs/get_started/stable_c_abi.rst\nindex b8d8195..0f6dbd5 100644\n--- a/docs/get_started/stable_c_abi.rst\n+++ b/docs/get_started/stable_c_abi.rst\n@@ -125,7 +125,7 @@ Stability and Interoperability\n \n **Cross-language.** TVM-FFI implements this calling convention in multiple languages (C, C++, Python, Rust, ...), enabling code written in one language - or generated by a DSL targeting the ABI - to be called from another language.\n \n-**Cross-framework.** TVM-FFI uses standard data structures such as :external+data-api:doc:`DLPack tensors <design_topics/data_interchange>` to represent arrays, so compiled functions can be used from any array framework that implements the DLPack protocol (NumPy, PyTorch, TensorFlow, CuPy, JAX, and others).\n+**Cross-framework.** TVM-FFI uses standard data structures such as :external+data-api:doc:`DLPack tensors <design_topics/data_interchange>` to represent arrays, so compiled functions can be used from any array framework that implements the DLPack protocol (NumPy, PyTorch, TensorFlow, CuPy, JAX, PaddlePaddle, and others).\n \n \n Stable ABI in C Code\ndiff --git a/examples/quickstart/README.md b/examples/quickstart/README.md\nindex 1c23eca..093ebb6 100644\n--- a/examples/quickstart/README.md\n+++ b/examples/quickstart/README.md\n@@ -57,6 +57,7 @@ To run library loading examples across ML frameworks (requires CUDA for the CUDA\n \n ```bash\n python load/load_pytorch.py\n+python load/load_paddle.py\n python load/load_numpy.py\n python load/load_cupy.py\n ```\ndiff --git a/examples/quickstart/load/load_paddle.py b/examples/quickstart/load/load_paddle.py\nnew file mode 100644\nindex 0000000..1162e15\n--- /dev/null\n+++ b/examples/quickstart/load/load_paddle.py\n@@ -0,0 +1,30 @@\n+# Licensed to the Apache Software Foundation (ASF) under one\n+# or more contributor license agreements.  See the NOTICE file\n+# distributed with this work for additional information\n+# regarding copyright ownership.  The ASF licenses this file\n+# to you under the Apache License, Version 2.0 (the\n+# \"License\"); you may not use this file except in compliance\n+# with the License.  You may obtain a copy of the License at\n+#\n+#   http://www.apache.org/licenses/LICENSE-2.0\n+#\n+# Unless required by applicable law or agreed to in writing,\n+# software distributed under the License is distributed on an\n+# \"AS IS\" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY\n+# KIND, either express or implied.  See the License for the\n+# specific language governing permissions and limitations\n+# under the License.\n+# fmt: off\n+# ruff: noqa\n+# mypy: ignore-errors\n+# [example.begin]\n+# File: load/load_paddle.py\n+import tvm_ffi\n+mod = tvm_ffi.load_module(\"build/add_one_cuda.so\")\n+\n+import paddle\n+x = paddle.tensor([1, 2, 3, 4, 5], dtype=paddle.float32, device=\"cuda\")\n+y = paddle.empty_like(x)\n+mod.add_one_cuda(x, y)\n+print(y)\n+# [example.end]\ndiff --git a/examples/quickstart/run_all_cuda.sh b/examples/quickstart/run_all_cuda.sh\nindex d27bf0b..d8807a5 100755\n--- a/examples/quickstart/run_all_cuda.sh\n+++ b/examples/quickstart/run_all_cuda.sh\n@@ -26,3 +26,6 @@ python load/load_pytorch.py\n \n # To load and run `add_one_cuda.so` in CuPy\n python load/load_cupy.py\n+\n+# To load and run `add_one_cuda.so` in PaddlePaddle\n+python load/load_paddle.py",
+  "heuristics": {
+    "tags": [],
+    "extensions": [
+      ".md",
+      ".py",
+      ".rst",
+      ".sh"
+    ],
+    "scopes_guess": [
+      "README.md",
+      "docs",
+      "examples"
+    ]
+  }
+}

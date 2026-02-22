@@ -1,0 +1,39 @@
+{
+  "sha": "69f2484f915d95886502a1f620ea69aeed623c49",
+  "sha7": "69f2484",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-06-25T09:51:46-04:00",
+  "subject": "[FFI] Provide Field Visit bridge so we can do gradual transition (#18091)",
+  "body":
+      "This PR provides functions that adapts old VisitAttrs reflection utilities\nto use new reflection mechanism when available.\n\nThese adapter would allow us to gradually transition the object\ndef from old VisitAttrs based mechanism to new mechanism.\n\n- For all objects\n  - Replace VisitAttrs with static void RegisterReflection() that registers the fields\n  - Call T::ReflectionDef() in TVM_STATIC_INIT_BLOCK in cc file\n- For subclass of AttrsNode<T>: subclass AttrsNodeReflAdapter<T> instead\n  - Do the same steps as above and replace TVM_ATTRS\n  - Provide explicit declaration of _type_key and TVM_FFI_DEFINE_FINAL_OBJECT_INFO\n\nWe will send followup PRs to do the gradual transition. Once all transition\nis completed, we will remove AttrsVisitor and only go through the new mechanism.",
+  "is_merge": false,
+  "parents": [
+    "837800e772d8c1dfa3a00a9f23f096487c96bd37"
+  ],
+  "name_status": [
+    [
+      "M",
+      "include/tvm/ffi/reflection/reflection.h"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "include/tvm/ffi/reflection/reflection.h",
+      "additions": 30,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/include/tvm/ffi/reflection/reflection.h b/include/tvm/ffi/reflection/reflection.h\nindex d53a481..04d9685 100644\n--- a/include/tvm/ffi/reflection/reflection.h\n+++ b/include/tvm/ffi/reflection/reflection.h\n@@ -404,6 +404,8 @@ inline Function GetMethod(std::string_view type_key, const char* method_name) {\n  */\n template <typename Callback>\n inline void ForEachFieldInfo(const TypeInfo* type_info, Callback callback) {\n+  using ResultType = decltype(callback(type_info->fields));\n+  static_assert(std::is_same_v<ResultType, void>, \"Callback must return void\");\n   // iterate through acenstors in parent to child order\n   // skip the first one since it is always the root object\n   for (int i = 1; i < type_info->type_depth; ++i) {\n@@ -417,6 +419,34 @@ inline void ForEachFieldInfo(const TypeInfo* type_info, Callback callback) {\n   }\n }\n \n+/*!\n+ * \\brief Visit each field info of the type info and run callback which returns bool for early stop.\n+ *\n+ * \\tparam Callback The callback function type, which returns bool for early stop.\n+ *\n+ * \\param type_info The type info.\n+ * \\param callback_with_early_stop The callback function.\n+ * \\return true if any of early stop is triggered.\n+ *\n+ * \\note This function calls both the child and parent type info and can be used for searching.\n+ */\n+template <typename Callback>\n+inline bool ForEachFieldInfoWithEarlyStop(const TypeInfo* type_info,\n+                                          Callback callback_with_early_stop) {\n+  // iterate through acenstors in parent to child order\n+  // skip the first one since it is always the root object\n+  for (int i = 1; i < type_info->type_depth; ++i) {\n+    const TVMFFITypeInfo* parent_info = type_info->type_acenstors[i];\n+    for (int j = 0; j < parent_info->num_fields; ++j) {\n+      if (callback_with_early_stop(parent_info->fields + j)) return true;\n+    }\n+  }\n+  for (int i = 0; i < type_info->num_fields; ++i) {\n+    if (callback_with_early_stop(type_info->fields + i)) return true;\n+  }\n+  return false;\n+}\n+\n }  // namespace reflection\n }  // namespace ffi\n }  // namespace tvm",
+  "heuristics": {
+    "tags": [],
+    "extensions": [
+      ".h"
+    ],
+    "scopes_guess": [
+      "include"
+    ]
+  }
+}

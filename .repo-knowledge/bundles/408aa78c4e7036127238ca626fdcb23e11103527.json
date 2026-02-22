@@ -1,0 +1,68 @@
+{
+  "sha": "408aa78c4e7036127238ca626fdcb23e11103527",
+  "sha7": "408aa78",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-11-14T19:24:42-05:00",
+  "subject": "[DTYPE] Include dtype literals (#263)",
+  "body": "This PR enhances the codebase to include dtype literals.",
+  "is_merge": false,
+  "parents": [
+    "ae346ec92a3c386f1376064ae086aae72947c329"
+  ],
+  "name_status": [
+    [
+      "M",
+      "python/tvm_ffi/__init__.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/_convert.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/_dtype.py"
+    ],
+    [
+      "M",
+      "tests/python/test_dtype.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "python/tvm_ffi/__init__.py",
+      "additions": 22,
+      "deletions": 0
+    },
+    {
+      "path": "python/tvm_ffi/_convert.py",
+      "additions": 3,
+      "deletions": 1
+    },
+    {
+      "path": "python/tvm_ffi/_dtype.py",
+      "additions": 28,
+      "deletions": 0
+    },
+    {
+      "path": "tests/python/test_dtype.py",
+      "additions": 22,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/python/tvm_ffi/__init__.py b/python/tvm_ffi/__init__.py\nindex 22bdd52..95ca145 100644\n--- a/python/tvm_ffi/__init__.py\n+++ b/python/tvm_ffi/__init__.py\n@@ -60,6 +60,28 @@ from . import cpp\n # optional module to speedup dlpack conversion\n from . import _optional_torch_c_dlpack\n \n+# import the dtype literals\n+from ._dtype import (\n+    bool,\n+    int8,\n+    int16,\n+    int32,\n+    int64,\n+    uint8,\n+    uint16,\n+    uint32,\n+    uint64,\n+    float64,\n+    float32,\n+    float16,\n+    bfloat16,\n+    float8_e4m3fn,\n+    float8_e4m3fnuz,\n+    float8_e5m2,\n+    float8_e5m2fnuz,\n+    float8_e8m0fnu,\n+    float4_e2m1fnx2,\n+)\n \n try:\n     from ._version import __version__, __version_tuple__  # type: ignore[import-not-found]\ndiff --git a/python/tvm_ffi/_convert.py b/python/tvm_ffi/_convert.py\nindex f090d28..59783f6 100644\n--- a/python/tvm_ffi/_convert.py\n+++ b/python/tvm_ffi/_convert.py\n@@ -91,7 +91,9 @@ def convert(value: Any) -> Any:  # noqa: PLR0911,PLR0912\n     only used in internal or testing scenarios.\n \n     \"\"\"\n-    if isinstance(value, (core.Object, core.PyNativeObject, bool, Number, ctypes.c_void_p)):\n+    if isinstance(\n+        value, (core.Object, core.PyNativeObject, bool, Number, ctypes.c_void_p, _dtype.dtype)\n+    ):\n         return value\n     elif isinstance(value, (tuple, list)):\n         return container.Array(value)\ndiff --git a/python/tvm_ffi/_dtype.py b/python/tvm_ffi/_dtype.py\nindex 216af55..65ecad2 100644\n--- a/python/tvm_ffi/_dtype.py\n+++ b/python/tvm_ffi/_dtype.py\n@@ -321,3 +321,31 @@ except ImportError:\n     pass\n \n core._set_class_dtype(dtype)\n+\n+# list of common dtype literals in machine learning systems apps\n+# note that we can always cover more dtypes via explicit construction\n+# from dlpack data type tuple\n+# align with choice of numpy 2.0, which moved away from bool_ to bool\n+bool = dtype(\"bool\")\n+int8 = dtype(\"int8\")\n+int16 = dtype(\"int16\")\n+int32 = dtype(\"int32\")\n+int64 = dtype(\"int64\")\n+uint8 = dtype(\"uint8\")\n+uint16 = dtype(\"uint16\")\n+uint32 = dtype(\"uint32\")\n+uint64 = dtype(\"uint64\")\n+float64 = dtype(\"float64\")\n+float32 = dtype(\"float32\")\n+float16 = dtype(\"float16\")\n+bfloat16 = dtype(\"bfloat16\")\n+# float8 dtypes\n+float8_e4m3fn = dtype(\"float8_e4m3fn\")\n+float8_e4m3fnuz = dtype(\"float8_e4m3fnuz\")\n+float8_e5m2 = dtype(\"float8_e5m2\")\n+float8_e5m2fnuz = dtype(\"float8_e5m2fnuz\")\n+float8_e8m0fnu = dtype(\"float8_e8m0fnu\")\n+# float4x2 dtypes\n+float4_e2m1fnx2 = dtype(\"float4_e2m1fnx2\")\n+# alias for torch naming pattern for f4x2\n+float4_e2m1fn_x2 = float4_e2m1fnx2\ndiff --git a/tests/python/test_dtype.py b/tests/python/test_dtype.py\nindex 2897faa..6817717 100644\n--- a/tests/python/test_dtype.py\n+++ b/tests/python/test_dtype.py\n@@ -164,6 +164,28 @@ def test_ml_dtypes_dtype_conversion() -> None:\n     _check_dtype(np.dtype(ml_dtypes.float4_e2m1fn), 17, 4, 1)\n \n \n+def test_builtin_dtype_conversion() -> None:\n+    _check_dtype(tvm_ffi.bool, 6, 8, 1)\n+    _check_dtype(tvm_ffi.int8, 0, 8, 1)\n+    _check_dtype(tvm_ffi.int16, 0, 16, 1)\n+    _check_dtype(tvm_ffi.int32, 0, 32, 1)\n+    _check_dtype(tvm_ffi.int64, 0, 64, 1)\n+    _check_dtype(tvm_ffi.uint8, 1, 8, 1)\n+    _check_dtype(tvm_ffi.uint16, 1, 16, 1)\n+    _check_dtype(tvm_ffi.uint32, 1, 32, 1)\n+    _check_dtype(tvm_ffi.uint64, 1, 64, 1)\n+    _check_dtype(tvm_ffi.float16, 2, 16, 1)\n+    _check_dtype(tvm_ffi.float32, 2, 32, 1)\n+    _check_dtype(tvm_ffi.float64, 2, 64, 1)\n+    _check_dtype(tvm_ffi.bfloat16, 4, 16, 1)\n+    _check_dtype(tvm_ffi.float8_e4m3fn, 10, 8, 1)\n+    _check_dtype(tvm_ffi.float8_e4m3fnuz, 11, 8, 1)\n+    _check_dtype(tvm_ffi.float8_e5m2, 12, 8, 1)\n+    _check_dtype(tvm_ffi.float8_e5m2fnuz, 13, 8, 1)\n+    _check_dtype(tvm_ffi.float8_e8m0fnu, 14, 8, 1)\n+    _check_dtype(tvm_ffi.float4_e2m1fnx2, 17, 4, 2)\n+\n+\n def test_dtype_from_dlpack_data_type() -> None:\n     dtype = tvm_ffi.dtype.from_dlpack_data_type((0, 8, 1))\n     assert dtype.type_code == 0",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".py"
+    ],
+    "scopes_guess": [
+      "python",
+      "tests"
+    ]
+  }
+}

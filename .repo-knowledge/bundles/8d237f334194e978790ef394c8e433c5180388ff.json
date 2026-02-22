@@ -1,0 +1,38 @@
+{
+  "sha": "8d237f334194e978790ef394c8e433c5180388ff",
+  "sha7": "8d237f3",
+  "author_name": "Lianmin Zheng",
+  "author_email": "lianminzheng@gmail.com",
+  "date_iso": "2025-12-02T13:00:14-08:00",
+  "subject": "Change log level from info to debug for JIT initialization (#303)",
+  "body": "Otherwise, it prints some annoying messages during server startup",
+  "is_merge": false,
+  "parents": [
+    "4147ba7db7500c19f0c78a2b85cf0a9bc4be4ac3"
+  ],
+  "name_status": [
+    [
+      "M",
+      "python/tvm_ffi/_optional_torch_c_dlpack.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "python/tvm_ffi/_optional_torch_c_dlpack.py",
+      "additions": 1,
+      "deletions": 1
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/python/tvm_ffi/_optional_torch_c_dlpack.py b/python/tvm_ffi/_optional_torch_c_dlpack.py\nindex 7756926..f3d0119 100644\n--- a/python/tvm_ffi/_optional_torch_c_dlpack.py\n+++ b/python/tvm_ffi/_optional_torch_c_dlpack.py\n@@ -116,7 +116,7 @@ def load_torch_c_dlpack_extension() -> Any:  # noqa: PLR0912, PLR0915\n         libname = f\"libtorch_c_dlpack_addon_torch{major}{minor}-{device}{suffix}\"\n         lib_path = addon_output_dir / libname\n         if not lib_path.exists():\n-            logger.info(\"JIT-compiling torch-c-dlpack-ext to cache...\")\n+            logger.debug(\"JIT-compiling torch-c-dlpack-ext to cache...\")\n             build_script_path = (\n                 Path(__file__).parent / \"utils\" / \"_build_optional_torch_c_dlpack.py\"\n             )",
+  "heuristics": {
+    "tags": [],
+    "extensions": [
+      ".py"
+    ],
+    "scopes_guess": [
+      "python"
+    ]
+  }
+}

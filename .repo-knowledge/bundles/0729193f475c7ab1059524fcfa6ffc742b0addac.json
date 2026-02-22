@@ -1,0 +1,70 @@
+{
+  "sha": "0729193f475c7ab1059524fcfa6ffc742b0addac",
+  "sha7": "0729193",
+  "author_name": "Junru Shao",
+  "author_email": "junrushao@apache.org",
+  "date_iso": "2025-10-19T12:28:15-07:00",
+  "subject": "feat: Automatically add `__init__` method if available (#174)",
+  "body":
+      "Previously, when `SomeObject.__init__` is not defined,\n`SomeObject(anything, ...)` will silently do nothing but returns a\n`SomeObject` with `chandle=None`, which triggers further segfault when\ntrying to access its fields.\n\nThis PR fixes this issue by auto-generating `__init__` when it's not\navailable:\n- if `__ffi_init__` method is defined, generate a method that calls\n`__ffi_init__`;\n- if not, generate an `__init__` method that explicitly errors out\nsaying it's undefined",
+  "is_merge": false,
+  "parents": [
+    "86261005000c8a3a912d953582ea654dfbcc3a38"
+  ],
+  "name_status": [
+    [
+      "M",
+      "python/tvm_ffi/cython/object.pxi"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/registry.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/testing.py"
+    ],
+    [
+      "M",
+      "tests/python/test_object.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "python/tvm_ffi/cython/object.pxi",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "python/tvm_ffi/registry.py",
+      "additions": 11,
+      "deletions": 0
+    },
+    {
+      "path": "python/tvm_ffi/testing.py",
+      "additions": 0,
+      "deletions": 4
+    },
+    {
+      "path": "tests/python/test_object.py",
+      "additions": 2,
+      "deletions": 2
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/python/tvm_ffi/cython/object.pxi b/python/tvm_ffi/cython/object.pxi\nindex a8a73b0..499a032 100644\n--- a/python/tvm_ffi/cython/object.pxi\n+++ b/python/tvm_ffi/cython/object.pxi\n@@ -278,7 +278,7 @@ cdef inline object make_fallback_cls_for_type_index(int32_t type_index):\n     # Create `type_info.type_cls` now\n     class cls(parent_type_info.type_cls):\n         pass\n-    attrs = dict(cls.__dict__)\n+    attrs = cls.__dict__.copy()\n     attrs.pop(\"__dict__\", None)\n     attrs.pop(\"__weakref__\", None)\n     attrs.update({\ndiff --git a/python/tvm_ffi/registry.py b/python/tvm_ffi/registry.py\nindex 3080cce..bd37ebd 100644\n--- a/python/tvm_ffi/registry.py\n+++ b/python/tvm_ffi/registry.py\n@@ -273,15 +273,26 @@ def _add_class_attrs(type_cls: type, type_info: TypeInfo) -> type:\n         name = field.name\n         if not hasattr(type_cls, name):  # skip already defined attributes\n             setattr(type_cls, name, field.as_property(type_cls))\n+    has_c_init = False\n     for method in type_info.methods:\n         name = method.name\n         if name == \"__ffi_init__\":\n             name = \"__c_ffi_init__\"\n+            has_c_init = True\n         if not hasattr(type_cls, name):\n             setattr(type_cls, name, method.as_callable(type_cls))\n+    if \"__init__\" not in type_cls.__dict__:\n+        if has_c_init:\n+            setattr(type_cls, \"__init__\", getattr(type_cls, \"__ffi_init__\"))\n+        elif not issubclass(type_cls, core.PyNativeObject):\n+            setattr(type_cls, \"__init__\", __init__invalid)\n     return type_cls\n \n \n+def __init__invalid(self: Any, *args: Any, **kwargs: Any) -> None:\n+    raise RuntimeError(\"The __init__ method of this class is not implemented.\")\n+\n+\n __all__ = [\n     \"get_global_func\",\n     \"get_global_func_metadata\",\ndiff --git a/python/tvm_ffi/testing.py b/python/tvm_ffi/testing.py\nindex 820fd60..ce9205f 100644\n--- a/python/tvm_ffi/testing.py\n+++ b/python/tvm_ffi/testing.py\n@@ -61,10 +61,6 @@ class TestIntPair(Object):\n         # fmt: on\n     # tvm-ffi-stubgen(end)\n \n-    def __init__(self, a: int, b: int) -> None:\n-        \"\"\"Construct the object.\"\"\"\n-        self.__ffi_init__(a, b)\n-\n \n @register_object(\"testing.TestObjectDerived\")\n class TestObjectDerived(TestObjectBase):\ndiff --git a/tests/python/test_object.py b/tests/python/test_object.py\nindex ebe8043..4701a74 100644\n--- a/tests/python/test_object.py\n+++ b/tests/python/test_object.py\n@@ -32,7 +32,7 @@ def test_make_object() -> None:\n \n \n def test_make_object_via_init() -> None:\n-    obj0 = tvm_ffi.testing.TestIntPair(1, 2)\n+    obj0 = tvm_ffi.testing.TestIntPair(1, 2)  # type: ignore[call-arg]\n     assert obj0.a == 1\n     assert obj0.b == 2\n \n@@ -46,7 +46,7 @@ def test_method() -> None:\n \n \n def test_attribute() -> None:\n-    obj = tvm_ffi.testing.TestIntPair(3, 4)\n+    obj = tvm_ffi.testing.TestIntPair(3, 4)  # type: ignore[call-arg]\n     assert obj.a == 3\n     assert obj.b == 4\n     assert type(obj).a.__doc__ == \"Field `a`\"",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".pxi",
+      ".py"
+    ],
+    "scopes_guess": [
+      "python",
+      "tests"
+    ]
+  }
+}

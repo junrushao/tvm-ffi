@@ -1,0 +1,79 @@
+{
+  "sha": "f703a0cf9358fa30d8faee719f905c58d8ca6ee3",
+  "sha7": "f703a0c",
+  "author_name": "Zihao Ye",
+  "author_email": "expye@outlook.com",
+  "date_iso": "2025-10-31T16:11:39-07:00",
+  "subject": "feat: Build PyTorch DLPack extension ahead of time (#189)",
+  "body":
+      "This PR adds option to build PyTorch DLPack extension ahead of time.\n\nBackward compatible: Default behavior unchanged, opt-in only.\n\nRemaining work includes adding the release workflow and @cyx-6 could\ntake over, you can refer to\nhttps://github.com/flashinfer-ai/flashinfer/blob/main/.github/workflows/release.yml\n\n---------\n\nSigned-off-by: Yaoyao Ding <dingyaoyao.cs@gmail.com>\nCo-authored-by: Yaxing Cai <caiyaxing666@gmail.com>\nCo-authored-by: Yaoyao Ding <dingyaoyao.cs@gmail.com>",
+  "is_merge": false,
+  "parents": [
+    "997f61c9a88b1afcd2fff719f28d3418485409fd"
+  ],
+  "name_status": [
+    [
+      "A",
+      "addons/torch_c_dlpack_ext/build_backend.py"
+    ],
+    [
+      "A",
+      "addons/torch_c_dlpack_ext/pyproject.toml"
+    ],
+    [
+      "A",
+      "addons/torch_c_dlpack_ext/torch_c_dlpack_ext/__init__.py"
+    ],
+    [
+      "A",
+      "addons/torch_c_dlpack_ext/torch_c_dlpack_ext/core.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/_optional_torch_c_dlpack.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "addons/torch_c_dlpack_ext/build_backend.py",
+      "additions": 87,
+      "deletions": 0
+    },
+    {
+      "path": "addons/torch_c_dlpack_ext/pyproject.toml",
+      "additions": 38,
+      "deletions": 0
+    },
+    {
+      "path": "addons/torch_c_dlpack_ext/torch_c_dlpack_ext/__init__.py",
+      "additions": 19,
+      "deletions": 0
+    },
+    {
+      "path": "addons/torch_c_dlpack_ext/torch_c_dlpack_ext/core.py",
+      "additions": 53,
+      "deletions": 0
+    },
+    {
+      "path": "python/tvm_ffi/_optional_torch_c_dlpack.py",
+      "additions": 7,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/addons/torch_c_dlpack_ext/build_backend.py b/addons/torch_c_dlpack_ext/build_backend.py\nnew file mode 100644\nindex 0000000..8a14388\n--- /dev/null\n+++ b/addons/torch_c_dlpack_ext/build_backend.py\n@@ -0,0 +1,87 @@\n+# Licensed to the Apache Software Foundation (ASF) under one\n+# or more contributor license agreements.  See the NOTICE file\n+# distributed with this work for additional information\n+# regarding copyright ownership.  The ASF licenses this file\n+# to you under the Apache License, Version 2.0 (the\n+# \"License\"); you may not use this file except in compliance\n+# with the License.  You may obtain a copy of the License at\n+#\n+#   http://www.apache.org/licenses/LICENSE-2.0\n+#\n+# Unless required by applicable law or agreed to in writing,\n+# software distributed under the License is distributed on an\n+# \"AS IS\" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY\n+# KIND, either express or implied.  See the License for the\n+# specific language governing permissions and limitations\n+# under the License.\n+\"\"\"build backend for torch c dlpack ext.\"\"\"\n+\n+from __future__ import annotations\n+\n+import subprocess\n+import sys\n+from pathlib import Path\n+\n+from setuptools import build_meta as orig\n+\n+_root = Path(__file__).parent.resolve()\n+_package_path = _root / \"torch_c_dlpack_ext\"\n+\n+\n+get_requires_for_build_sdist = orig.get_requires_for_build_sdist\n+get_requires_for_build_editable = orig.get_requires_for_build_editable\n+prepare_metadata_for_build_wheel = orig.prepare_metadata_for_build_wheel\n+prepare_metadata_for_build_editable = orig.prepare_metadata_for_build_editable\n+build_sdist = orig.build_sdist\n+build_editable = orig.build_editable\n+\n+\n+def _is_lib_prebuilt() -> bool:\n+    if sys.platform.startswith(\"win32\"):\n+        extension = \"dll\"\n+    elif sys.platform.startswith(\"darwin\"):\n+        extension = \"dylib\"\n+    else:\n+        extension = \"so\"\n+    return next(_package_path.rglob(f\"*.{extension}\"), None) is not None\n+\n+\n+def get_requires_for_build_wheel(\n+    config_settings: orig._ConfigSettings = None,\n+) -> list[str]:\n+    \"\"\"Get build requirements for wheel, conditionally including torch and apache-tvm-ffi.\"\"\"\n+    requires = orig.get_requires_for_build_wheel(config_settings)\n+    if not _is_lib_prebuilt():\n+        # build wheel from sdist package, requires apache-tvm-ffi>=0.1.1 to build lib\n+        requires.append(\"apache-tvm-ffi>=0.1.1\")\n+    return requires\n+\n+\n+def build_wheel(\n+    wheel_directory: orig.StrPath,\n+    config_settings: orig._ConfigSettings = None,\n+    metadata_directory: orig.StrPath | None = None,\n+) -> str:\n+    \"\"\"Build wheel.\"\"\"\n+    if not _is_lib_prebuilt():\n+        # build wheel from sdist package, compile the torch c dlpack ext library locally.\n+        import torch  # noqa: PLC0415\n+\n+        if hasattr(torch.Tensor, \"__c_dlpack_exchange_api__\"):\n+            print(\n+                \"torch.Tensor already has attribute __c_dlpack_exchange_api__. \"\n+                \"No need to build any torch c dlpackc libs.\"\n+            )\n+        else:\n+            subprocess.run(\n+                [\n+                    sys.executable,\n+                    \"-m\",\n+                    \"tvm_ffi.utils._build_optional_torch_c_dlpack\",\n+                    \"--output-dir\",\n+                    str(_package_path),\n+                    \"--build-with-cuda\" if torch.cuda.is_available() else \"\",\n+                ],\n+                check=True,\n+            )\n+    return orig.build_wheel(wheel_directory, config_settings, metadata_directory)\ndiff --git a/addons/torch_c_dlpack_ext/pyproject.toml b/addons/torch_c_dlpack_ext/pyproject.toml\nnew file mode 100644\nindex 0000000..549dc85\n--- /dev/null\n+++ b/addons/torch_c_dlpack_ext/pyproject.toml\n@@ -0,0 +1,38 @@\n+# Licensed to the Apache Software Foundation (ASF) under one\n+# or more contributor license agreements.  See the NOTICE file\n+# distributed with this work for additional information\n+# regarding copyright ownership.  The ASF licenses this file\n+# to you under the Apache License, Version 2.0 (the\n+# \"License\"); you may not use this file except in compliance\n+# with the License.  You may obtain a copy of the License at\n+#\n+#   http://www.apache.org/licenses/LICENSE-2.0\n+#\n+# Unless required by applicable law or agreed to in writing,\n+# software distributed under the License is distributed on an\n+# \"AS IS\" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY\n+# KIND, either express or implied.  See the License for the\n+# specific language governing permissions and limitations\n+# under the License.\n+\n+[project]\n+name = \"torch_c_dlpack_ext\"\n+version = \"0.1.0\"\n+requires-python = \">=3.9\"\n+description = \"torch c dlpack ext\"\n+dependencies = [\"torch\"]\n+\n+[build-system]\n+requires = [\"setuptools>=61.0\", \"torch\"]\n+build-backend = \"build_backend\"\n+backend-path = [\".\"]\n+\n+[tool.setuptools]\n+include-package-data = true\n+py-modules = [\"build_backend\"]\n+\n+[tool.setuptools.packages.find]\n+include = [\"torch_c_dlpack_ext*\"]\n+\n+[tool.setuptools.package-data]\n+torch_c_dlpack_ext = [\"*.so\", \"*.dll\", \"*.dylib\"]\ndiff --git a/addons/torch_c_dlpack_ext/torch_c_dlpack_ext/__init__.py b/addons/torch_c_dlpack_ext/torch_c_dlpack_ext/__init__.py\nnew file mode 100644\nindex 0000000..cbde1de\n--- /dev/null\n+++ b/addons/torch_c_dlpack_ext/torch_c_dlpack_ext/__init__.py\n@@ -0,0 +1,19 @@\n+# Licensed to the Apache Software Foundation (ASF) under one\n+# or more contributor license agreements.  See the NOTICE file\n+# distributed with this work for additional information\n+# regarding copyright ownership.  The ASF licenses this file\n+# to you under the Apache License, Version 2.0 (the\n+# \"License\"); you may not use this file except in compliance\n+# with the License.  You may obtain a copy of the License at\n+#\n+#   http://www.apache.org/licenses/LICENSE-2.0\n+#\n+# Unless required by applicable law or agreed to in writing,\n+# software distributed under the License is distributed on an\n+# \"AS IS\" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY\n+# KIND, either express or implied.  See the License for the\n+# specific language governing permissions and limitations\n+# under the License.\n+\"\"\"torch c dlpack ext pakcage.\"\"\"\n+\n+import core\ndiff --git a/addons/torch_c_dlpack_ext/torch_c_dlpack_ext/core.py b/addons/torch_c_dlpack_ext/torch_c_dlpack_ext/core.py\nnew file mode 100644\nindex 0000000..a2030ea\n--- /dev/null\n+++ b/addons/torch_c_dlpack_ext/torch_c_dlpack_ext/core.py\n@@ -0,0 +1,53 @@\n+# Licensed to the Apache Software Foundation (ASF) under one\n+# or more contributor license agreements.  See the NOTICE file\n+# distributed with this work for additional information\n+# regarding copyright ownership.  The ASF licenses this file\n+# to you under the Apache License, Version 2.0 (the\n+# \"License\"); you may not use this file except in compliance\n+# with the License.  You may obtain a copy of the License at\n+#\n+#   http://www.apache.org/licenses/LICENSE-2.0\n+#\n+# Unless required by applicable law or agreed to in writing,\n+# software distributed under the License is distributed on an\n+# \"AS IS\" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY\n+# KIND, either express or implied.  See the License for the\n+# specific language governing permissions and limitations\n+# under the License.\n+\"\"\"torch c dlpack ext core methods.\"\"\"\n+\n+import ctypes\n+import sys\n+from pathlib import Path\n+\n+import torch\n+from packaging.version import Version\n+\n+\n+def load_torch_c_dlpack_extension() -> None:\n+    \"\"\"Load the torch c dlpack extension based on torch version.\"\"\"\n+    if hasattr(torch.Tensor, \"__c_dlpack_exchange_api__\"):\n+        return None\n+    version = Version(torch.__version__)\n+    if sys.platform.startswith(\"win32\"):\n+        extension = \"dll\"\n+    elif sys.platform.startswith(\"darwin\"):\n+        extension = \"dylib\"\n+    else:\n+        extension = \"so\"\n+    suffix = \"cuda\" if torch.cuda.is_available() else \"cpu\"\n+    lib_path = (\n+        Path(__file__).parent\n+        / f\"libtorch_c_dlpack_addon_torch{version.major}{version.minor}-{suffix}.{extension}\"\n+    )\n+    if not lib_path.exists() or not lib_path.is_file():\n+        raise ImportError(\"No matching prebuilt torch c dlpack extension\")\n+    lib = ctypes.CDLL(str(lib_path))\n+    func = lib.TorchDLPackExchangeAPIPtr\n+    func.restype = ctypes.c_uint64\n+    func.argtypes = []\n+    setattr(torch.Tensor, \"__c_dlpack_exchange_api__\", func())\n+    return lib\n+\n+\n+_lib = load_torch_c_dlpack_extension()\ndiff --git a/python/tvm_ffi/_optional_torch_c_dlpack.py b/python/tvm_ffi/_optional_torch_c_dlpack.py\nindex 2be2301..4c5e024 100644\n--- a/python/tvm_ffi/_optional_torch_c_dlpack.py\n+++ b/python/tvm_ffi/_optional_torch_c_dlpack.py\n@@ -54,6 +54,13 @@ def load_torch_c_dlpack_extension() -> Any:\n         return None\n \n     \"\"\"Load the torch c dlpack extension.\"\"\"\n+    try:\n+        import torch_c_dlpack_ext  # type: ignore  # noqa: PLC0415, F401\n+\n+        return None\n+    except ImportError:\n+        pass\n+\n     try:\n         # todo: check whether a prebuilt package is installed, if so, use it.\n         ...",
+  "heuristics": {
+    "tags": [
+      "build"
+    ],
+    "extensions": [
+      ".py",
+      ".toml"
+    ],
+    "scopes_guess": [
+      "addons",
+      "python"
+    ]
+  }
+}

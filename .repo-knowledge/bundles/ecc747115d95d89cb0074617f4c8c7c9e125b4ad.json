@@ -1,0 +1,62 @@
+{
+  "sha": "ecc747115d95d89cb0074617f4c8c7c9e125b4ad",
+  "sha7": "ecc7471",
+  "author_name": "Junru Shao",
+  "author_email": "junrushao1994@gmail.com",
+  "date_iso": "2026-02-21T21:40:59-08:00",
+  "subject": "feat: Add `tvm_ffi.Function.__init__` (#28)",
+  "body":
+      "Enable creating `tvm_ffi.Function` directly from a Python callable or\nan existing Function instance via its constructor, e.g.\n`tvm_ffi.Function(add)`.",
+  "is_merge": false,
+  "parents": [
+    "83daf69ac85aeb8d0e4fb76f1df2bd77dca07470"
+  ],
+  "name_status": [
+    [
+      "M",
+      "python/tvm_ffi/core.pyi"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/cython/function.pxi"
+    ],
+    [
+      "M",
+      "tests/python/test_function.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "python/tvm_ffi/core.pyi",
+      "additions": 1,
+      "deletions": 0
+    },
+    {
+      "path": "python/tvm_ffi/cython/function.pxi",
+      "additions": 23,
+      "deletions": 0
+    },
+    {
+      "path": "tests/python/test_function.py",
+      "additions": 27,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/python/tvm_ffi/core.pyi b/python/tvm_ffi/core.pyi\nindex 4718f10..4b548d6 100644\n--- a/python/tvm_ffi/core.pyi\n+++ b/python/tvm_ffi/core.pyi\n@@ -187,6 +187,7 @@ class DLTensorTestWrapper:\n def _dltensor_test_wrapper_c_dlpack_from_pyobject_as_intptr() -> int: ...\n \n class Function(Object):\n+    def __init__(self, func: Callable[..., Any]) -> None: ...\n     @property\n     def release_gil(self) -> bool: ...\n     @release_gil.setter\ndiff --git a/python/tvm_ffi/cython/function.pxi b/python/tvm_ffi/cython/function.pxi\nindex f66d7df..7e8f644 100644\n--- a/python/tvm_ffi/cython/function.pxi\n+++ b/python/tvm_ffi/cython/function.pxi\n@@ -889,6 +889,29 @@ cdef class Function(CObject):\n     def __cinit__(self) -> None:\n         self.c_release_gil = _RELEASE_GIL_BY_DEFAULT\n \n+    def __init__(self, func: Callable[..., Any]) -> None:\n+        \"\"\"Initialize a Function from a Python callable.\n+\n+        This constructor allows creating a `tvm_ffi.Function` directly\n+        from a Python function or another `tvm_ffi.Function` instance.\n+\n+        Parameters\n+        ----------\n+        func : Callable[..., Any]\n+            The Python callable to wrap.\n+        \"\"\"\n+        cdef TVMFFIObjectHandle chandle = NULL\n+        if isinstance(func, Function):\n+            chandle = (<CObject>func).chandle\n+            if chandle == NULL:\n+                raise ValueError(\"Cannot initialize from a moved-from Function object.\")\n+            TVMFFIObjectIncRef(chandle)\n+        elif callable(func):\n+            _convert_to_ffi_func_handle(func, &chandle)\n+        else:\n+            raise TypeError(f\"func must be callable, got {type(func)}\")\n+        self.chandle = chandle\n+\n     property release_gil:\n         \"\"\"Whether calls release the Python GIL while executing.\"\"\"\n \ndiff --git a/tests/python/test_function.py b/tests/python/test_function.py\nindex 686fc08..26c2ea2 100644\n--- a/tests/python/test_function.py\n+++ b/tests/python/test_function.py\n@@ -153,6 +153,33 @@ def test_pyfunc_convert() -> None:\n     assert fapply(add, 1, 3.3) == 4.3\n \n \n+def test_pyfunc_init() -> None:\n+    def add(a: int, b: int) -> int:\n+        return a + b\n+\n+    # Test creating from a Python callable\n+    fadd = tvm_ffi.Function(add)\n+    assert isinstance(fadd, tvm_ffi.Function)\n+    assert fadd(1, 2) == 3\n+\n+    # Test creating from an existing tvm_ffi.Function\n+    fadd2 = tvm_ffi.Function(fadd)\n+    assert isinstance(fadd2, tvm_ffi.Function)\n+    assert fadd2(3, 4) == 7\n+    assert fadd.same_as(fadd2)\n+\n+    # Test creating from a moved-from function raises ValueError\n+    f_source = tvm_ffi.Function(add)\n+    f_dest = tvm_ffi.Function(add)\n+    f_dest.__move_handle_from__(f_source)\n+    with pytest.raises(ValueError, match=\"Cannot initialize from a moved-from Function object\"):\n+        tvm_ffi.Function(f_source)\n+\n+    # Test creating from a non-callable raises TypeError\n+    with pytest.raises(TypeError):\n+        tvm_ffi.Function(123)  # ty: ignore[invalid-argument-type]\n+\n+\n def test_global_func() -> None:\n     @tvm_ffi.register_global_func(\"mytest.echo\")\n     def echo(x: Any) -> Any:",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".pxi",
+      ".py",
+      ".pyi"
+    ],
+    "scopes_guess": [
+      "python",
+      "tests"
+    ]
+  }
+}

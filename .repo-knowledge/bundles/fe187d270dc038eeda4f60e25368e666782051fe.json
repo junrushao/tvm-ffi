@@ -1,0 +1,41 @@
+{
+  "sha": "fe187d270dc038eeda4f60e25368e666782051fe",
+  "sha7": "fe187d2",
+  "author_name": "Junru Shao",
+  "author_email": "junrushao@apache.org",
+  "date_iso": "2025-12-06T13:25:28-08:00",
+  "subject": "bugfix: Fix clang-tidy warnings in `test_c_env_api.cc` (#318)",
+  "body":
+      "clang-tidy warnings:\nhttps://github.com/apache/tvm-ffi/actions/runs/19977310812/job/57296510889",
+  "is_merge": false,
+  "parents": [
+    "25c25aec22acadcf1aeb839297fe156bc0cf7183"
+  ],
+  "name_status": [
+    [
+      "M",
+      "tests/cpp/extra/test_c_env_api.cc"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "tests/cpp/extra/test_c_env_api.cc",
+      "additions": 13,
+      "deletions": 11
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/tests/cpp/extra/test_c_env_api.cc b/tests/cpp/extra/test_c_env_api.cc\nindex f4b37ad..8a38d75 100644\n--- a/tests/cpp/extra/test_c_env_api.cc\n+++ b/tests/cpp/extra/test_c_env_api.cc\n@@ -109,7 +109,7 @@ static int InitShouldNotBeCalled(void** handle_addr) {\n }\n \n static int DeinitSuccess(void* h) {\n-  delete (int*)h;\n+  delete static_cast<int*>(h);\n   return 0;\n }\n \n@@ -134,7 +134,7 @@ static int InitForDeinitError(void** handle_addr) {\n }\n \n static int DeinitWithError(void* h) {\n-  delete (int*)h;\n+  delete static_cast<int*>(h);\n   TVMFFIErrorSetRaisedFromCStr(\"RuntimeError\", \"Deinitialization failed\");\n   return -1;\n }\n@@ -155,14 +155,14 @@ TEST(CEnvAPI, TVMFFIHandleInitDeinitOnce) {\n   int ret = TVMFFIHandleInitOnce(&handle, InitSuccess);\n   EXPECT_EQ(ret, 0);\n   EXPECT_NE(handle, nullptr);\n-  EXPECT_EQ(*(int*)handle, 42);\n+  EXPECT_EQ(*static_cast<int*>(handle), 42);\n \n   // Test 2: Multiple init calls should not re-initialize (idempotent)\n   void* original_handle = handle;\n   ret = TVMFFIHandleInitOnce(&handle, InitShouldNotBeCalled);\n   EXPECT_EQ(ret, 0);\n-  EXPECT_EQ(handle, original_handle);  // Handle should remain unchanged\n-  EXPECT_EQ(*(int*)handle, 42);        // Value should still be 42\n+  EXPECT_EQ(handle, original_handle);         // Handle should remain unchanged\n+  EXPECT_EQ(*static_cast<int*>(handle), 42);  // Value should still be 42\n \n   // Test 3: Successful deinitialization\n   ret = TVMFFIHandleDeinitOnce(&handle, DeinitSuccess);\n@@ -201,7 +201,7 @@ TEST(CEnvAPI, TVMFFIHandleInitDeinitOnce) {\n   ret = TVMFFIHandleInitOnce(&handle5, InitValue123);\n   EXPECT_EQ(ret, 0);\n   EXPECT_NE(handle5, nullptr);\n-  EXPECT_EQ(*(int*)handle5, 123);\n+  EXPECT_EQ(*static_cast<int*>(handle5), 123);\n \n   ret = TVMFFIHandleDeinitOnce(&handle5, DeinitSuccess);\n   EXPECT_EQ(ret, 0);\n@@ -211,7 +211,7 @@ TEST(CEnvAPI, TVMFFIHandleInitDeinitOnce) {\n   ret = TVMFFIHandleInitOnce(&handle5, InitValue456);\n   EXPECT_EQ(ret, 0);\n   EXPECT_NE(handle5, nullptr);\n-  EXPECT_EQ(*(int*)handle5, 456);\n+  EXPECT_EQ(*static_cast<int*>(handle5), 456);\n \n   // Clean up\n   ret = TVMFFIHandleDeinitOnce(&handle5, DeinitSuccess);\n@@ -244,7 +244,7 @@ static int InitWithCounter(void** handle_addr) {\n }\n \n static int DeinitWithCounter(void* h) {\n-  auto* counter = (ThreadSafeCounter*)h;\n+  auto* counter = static_cast<ThreadSafeCounter*>(h);\n   if (counter->deinit_count_ptr) {\n     counter->deinit_count_ptr->fetch_add(1, std::memory_order_relaxed);\n   }\n@@ -260,6 +260,7 @@ TEST(CEnvAPI, TVMFFIHandleInitDeinitOnceMultithreaded) {\n     void* handle = nullptr;\n     const int num_threads = 4;\n     std::vector<std::thread> threads;\n+    threads.reserve(num_threads);\n     std::vector<int> results(num_threads);\n     std::mutex mtx;\n     std::condition_variable cv;\n@@ -284,7 +285,7 @@ TEST(CEnvAPI, TVMFFIHandleInitDeinitOnceMultithreaded) {\n \n     // Signal all threads to start\n     {\n-      std::lock_guard<std::mutex> lock(mtx);\n+      std::scoped_lock<std::mutex> lock(mtx);\n       ready = true;\n     }\n     cv.notify_all();\n@@ -301,7 +302,7 @@ TEST(CEnvAPI, TVMFFIHandleInitDeinitOnceMultithreaded) {\n \n     // Handle should be initialized\n     EXPECT_NE(handle, nullptr);\n-    auto* counter = (ThreadSafeCounter*)handle;\n+    auto* counter = static_cast<ThreadSafeCounter*>(handle);\n     EXPECT_EQ(counter->value, 42);\n \n     // Init should have been called exactly once\n@@ -332,6 +333,7 @@ TEST(CEnvAPI, TVMFFIHandleInitDeinitOnceMultithreaded) {\n \n     const int num_threads = 4;\n     std::vector<std::thread> threads;\n+    threads.reserve(num_threads);\n     std::vector<int> results(num_threads);\n     std::mutex mtx;\n     std::condition_variable cv;\n@@ -351,7 +353,7 @@ TEST(CEnvAPI, TVMFFIHandleInitDeinitOnceMultithreaded) {\n \n     // Signal all threads to start\n     {\n-      std::lock_guard<std::mutex> lock(mtx);\n+      std::scoped_lock<std::mutex> lock(mtx);\n       ready = true;\n     }\n     cv.notify_all();",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".cc"
+    ],
+    "scopes_guess": [
+      "tests"
+    ]
+  }
+}

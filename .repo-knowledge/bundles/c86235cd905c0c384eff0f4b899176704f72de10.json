@@ -1,0 +1,38 @@
+{
+  "sha": "c86235cd905c0c384eff0f4b899176704f72de10",
+  "sha7": "c86235c",
+  "author_name": "Junru Shao",
+  "author_email": "junrushao@apache.org",
+  "date_iso": "2025-09-18T20:05:40-07:00",
+  "subject": "refactor: Remove Unused `OBJECT_INDEX` from Cython (#28)",
+  "body": "",
+  "is_merge": false,
+  "parents": [
+    "785e8ca1366b718cb95ae5521fbd39a06a36b778"
+  ],
+  "name_status": [
+    [
+      "M",
+      "python/tvm_ffi/cython/object.pxi"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "python/tvm_ffi/cython/object.pxi",
+      "additions": 0,
+      "deletions": 3
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/python/tvm_ffi/cython/object.pxi b/python/tvm_ffi/cython/object.pxi\nindex f47018c..08cfd54 100644\n--- a/python/tvm_ffi/cython/object.pxi\n+++ b/python/tvm_ffi/cython/object.pxi\n@@ -229,8 +229,6 @@ class PyNativeObject:\n \n \"\"\"Maps object type index to its constructor\"\"\"\n cdef list OBJECT_TYPE = []\n-\"\"\"Maps object type to its type index\"\"\"\n-cdef dict OBJECT_INDEX = {}\n \n \n def _register_object_by_index(int index, object cls):\n@@ -239,7 +237,6 @@ def _register_object_by_index(int index, object cls):\n     while len(OBJECT_TYPE) <= index:\n         OBJECT_TYPE.append(None)\n     OBJECT_TYPE[index] = cls\n-    OBJECT_INDEX[cls] = index\n \n \n def _object_type_key_to_index(str type_key):",
+  "heuristics": {
+    "tags": [],
+    "extensions": [
+      ".pxi"
+    ],
+    "scopes_guess": [
+      "python"
+    ]
+  }
+}

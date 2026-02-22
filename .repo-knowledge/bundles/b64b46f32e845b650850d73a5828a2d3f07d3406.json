@@ -1,0 +1,126 @@
+{
+  "sha": "b64b46f32e845b650850d73a5828a2d3f07d3406",
+  "sha7": "b64b46f",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-10-10T13:52:13-04:00",
+  "subject": "[BUILD] Enable free threaded python build (#98)",
+  "body":
+      "This PR makes the cmake and tests to be compatible with free threaded\npython.\nAlso fixes an issue where OpaqueObject is not recognized as Object type,\nwhich is covered by the ffi ref count test.",
+  "is_merge": false,
+  "parents": [
+    "22c049b8f3b64e7e2f17b28df044b065ae3fba83"
+  ],
+  "name_status": [
+    [
+      "M",
+      ".github/workflows/ci_test.yml"
+    ],
+    [
+      "M",
+      "CMakeLists.txt"
+    ],
+    [
+      "M",
+      "pyproject.toml"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/cython/base.pxi"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/cython/core.pyx"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/cython/function.pxi"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/cython/tvm_ffi_python_helpers.h"
+    ],
+    [
+      "M",
+      "src/ffi/object.cc"
+    ],
+    [
+      "M",
+      "tests/python/test_object.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": ".github/workflows/ci_test.yml",
+      "additions": 2,
+      "deletions": 2
+    },
+    {
+      "path": "CMakeLists.txt",
+      "additions": 13,
+      "deletions": 3
+    },
+    {
+      "path": "pyproject.toml",
+      "additions": 4,
+      "deletions": 2
+    },
+    {
+      "path": "python/tvm_ffi/cython/base.pxi",
+      "additions": 2,
+      "deletions": 0
+    },
+    {
+      "path": "python/tvm_ffi/cython/core.pyx",
+      "additions": 2,
+      "deletions": 0
+    },
+    {
+      "path": "python/tvm_ffi/cython/function.pxi",
+      "additions": 5,
+      "deletions": 14
+    },
+    {
+      "path": "python/tvm_ffi/cython/tvm_ffi_python_helpers.h",
+      "additions": 31,
+      "deletions": 0
+    },
+    {
+      "path": "src/ffi/object.cc",
+      "additions": 7,
+      "deletions": 1
+    },
+    {
+      "path": "tests/python/test_object.py",
+      "additions": 8,
+      "deletions": 5
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/.github/workflows/ci_test.yml b/.github/workflows/ci_test.yml\nindex 2ea884c..e5361f3 100644\n--- a/.github/workflows/ci_test.yml\n+++ b/.github/workflows/ci_test.yml\n@@ -79,10 +79,10 @@ jobs:\n       fail-fast: true\n       matrix:\n         include:\n-          - {os: ubuntu-latest, arch: x86_64, python_version: '3.13'}\n+          - {os: ubuntu-latest, arch: x86_64, python_version: '3.14t'}\n           - {os: ubuntu-24.04-arm, arch: aarch64, python_version: '3.9'}\n           - {os: windows-latest, arch: AMD64, python_version: '3.12'}\n-          - {os: macos-14, arch: arm64, python_version: '3.10'}\n+          - {os: macos-14, arch: arm64, python_version: '3.13'}\n \n     steps:\n       - uses: actions/checkout@v4\ndiff --git a/CMakeLists.txt b/CMakeLists.txt\nindex 618588d..be2a84f 100644\n--- a/CMakeLists.txt\n+++ b/CMakeLists.txt\n@@ -192,8 +192,17 @@ if (TVM_FFI_BUILD_PYTHON_MODULE)\n       ${CMAKE_CURRENT_SOURCE_DIR}/python/tvm_ffi/cython/object.pxi\n       ${CMAKE_CURRENT_SOURCE_DIR}/python/tvm_ffi/cython/string.pxi\n   )\n-  # set working directory to source so we can see the exact file name in backtrace relatived to the\n-  # project source root\n+  # Run a Python script to check for free-threaded build\n+  execute_process(\n+    COMMAND ${Python_EXECUTABLE} -c\n+            \"import sysconfig; print(sysconfig.get_config_var('Py_GIL_DISABLED') == 1)\"\n+    OUTPUT_VARIABLE PYTHON_IS_FREE_THREADED\n+    OUTPUT_STRIP_TRAILING_WHITESPACE\n+  )\n+  if (PYTHON_IS_FREE_THREADED)\n+    message(STATUS \"Free-threaded Python detected.\")\n+  endif ()\n+\n   add_custom_command(\n     OUTPUT ${_core_cpp}\n     COMMAND ${Python_EXECUTABLE} -m cython --cplus ${_core_pyx} -o ${_core_cpp}\n@@ -202,7 +211,8 @@ if (TVM_FFI_BUILD_PYTHON_MODULE)\n     DEPENDS ${_cython_sources}\n     VERBATIM\n   )\n-  if (Python_VERSION VERSION_GREATER_EQUAL \"3.12\")\n+\n+  if (Python_VERSION VERSION_GREATER_EQUAL \"3.12\" AND NOT PYTHON_IS_FREE_THREADED)\n     # >= Python3.12, use Use_SABI version\n     python_add_library(tvm_ffi_cython MODULE \"${_core_cpp}\" USE_SABI 3.12)\n     set_target_properties(tvm_ffi_cython PROPERTIES OUTPUT_NAME \"core\")\ndiff --git a/pyproject.toml b/pyproject.toml\nindex acf62e2..25a8137 100644\n--- a/pyproject.toml\n+++ b/pyproject.toml\n@@ -42,7 +42,8 @@ GitHub = \"https://github.com/apache/tvm-ffi\"\n # setup tools is needed by torch jit for best perf\n torch = [\"torch\", \"setuptools\", \"ninja\"]\n cpp = [\"ninja\"]\n-test = [\"pytest\", \"numpy\", \"torch\", \"ninja\"]\n+# note pytorch does not yet ship with 3.14t\n+test = [\"pytest\", \"numpy\", \"ninja\", \"torch; python_version < '3.14'\"]\n \n [dependency-groups]\n docs = [\n@@ -197,7 +198,8 @@ build-verbosity = 1\n \n # only build up to cp312, cp312\n # will be abi3 and can be used in future versions\n-build = [\"cp39-*\", \"cp310-*\", \"cp311-*\", \"cp312-*\"]\n+# ship 314t threaded nogil version\n+build = [\"cp39-*\", \"cp310-*\", \"cp311-*\", \"cp312-*\", \"cp314t-*\"]\n skip = [\"*musllinux*\"]\n # we only need to test on cp312\n test-skip = [\"cp39-*\", \"cp310-*\", \"cp311-*\"]\ndiff --git a/python/tvm_ffi/cython/base.pxi b/python/tvm_ffi/cython/base.pxi\nindex a8b4212..221bb04 100644\n--- a/python/tvm_ffi/cython/base.pxi\n+++ b/python/tvm_ffi/cython/base.pxi\n@@ -339,6 +339,8 @@ cdef extern from \"tvm_ffi_python_helpers.h\":\n     int TVMFFIPyArgSetterInt_(TVMFFIPyArgSetter*, TVMFFIPyCallContext*, PyObject* arg, TVMFFIAny* out) except -1\n     int TVMFFIPyArgSetterBool_(TVMFFIPyArgSetter*, TVMFFIPyCallContext*, PyObject* arg, TVMFFIAny* out) except -1\n     int TVMFFIPyArgSetterNone_(TVMFFIPyArgSetter*, TVMFFIPyCallContext*, PyObject* arg, TVMFFIAny* out) except -1\n+    # deleter for python objects\n+    void TVMFFIPyObjectDeleter(void* py_obj) noexcept nogil\n \n \n cdef class ByteArrayArg:\ndiff --git a/python/tvm_ffi/cython/core.pyx b/python/tvm_ffi/cython/core.pyx\nindex ca3a0ce..b11a27c 100644\n--- a/python/tvm_ffi/cython/core.pyx\n+++ b/python/tvm_ffi/cython/core.pyx\n@@ -1,3 +1,5 @@\n+# cython: freethreading_compatible = True\n+# cython: language_level=3\n # Licensed to the Apache Software Foundation (ASF) under one\n # or more contributor license agreements.  See the NOTICE file\n # distributed with this work for additional information\ndiff --git a/python/tvm_ffi/cython/function.pxi b/python/tvm_ffi/cython/function.pxi\nindex 2fa75fb..4c7461c 100644\n--- a/python/tvm_ffi/cython/function.pxi\n+++ b/python/tvm_ffi/cython/function.pxi\n@@ -709,12 +709,6 @@ def _get_global_func(name, allow_missing):\n     raise ValueError(\"Cannot find global function %s\" % name)\n \n \n-# handle callbacks\n-cdef void tvm_ffi_pyobject_deleter(void* fhandle) noexcept with gil:\n-    local_pyobject = <object>(fhandle)\n-    Py_DECREF(local_pyobject)\n-\n-\n cdef int tvm_ffi_callback(void* context,\n                           const TVMFFIAny* packed_args,\n                           int32_t num_args,\n@@ -722,8 +716,9 @@ cdef int tvm_ffi_callback(void* context,\n     cdef list pyargs\n     cdef TVMFFIAny temp_result\n     cdef int c_api_ret_code\n-    local_pyfunc = <object>(context)\n+    cdef object local_pyfunc = <object>(context)\n     pyargs = []\n+\n     for i in range(num_args):\n         CHECK_CALL(TVMFFIAnyViewToOwnedAny(&packed_args[i], &temp_result))\n         pyargs.append(make_ret(temp_result))\n@@ -736,11 +731,7 @@ cdef int tvm_ffi_callback(void* context,\n             result,\n             &c_api_ret_code\n         )\n-        if c_api_ret_code == 0:\n-            return 0\n-        elif c_api_ret_code == -2:\n-            raise_existing_error()\n-        return -1\n+        return c_api_ret_code\n     except Exception as err:\n         set_last_ffi_error(err)\n         return -1\n@@ -754,7 +745,7 @@ cdef inline int _convert_to_ffi_func_handle(\n     CHECK_CALL(TVMFFIFunctionCreate(\n         <void*>(pyfunc),\n         tvm_ffi_callback,\n-        tvm_ffi_pyobject_deleter,\n+        TVMFFIPyObjectDeleter,\n         out_handle))\n     return 0\n \n@@ -776,7 +767,7 @@ cdef inline int _convert_to_opaque_object_handle(\n     CHECK_CALL(TVMFFIObjectCreateOpaque(\n         <void*>(pyobject),\n         kTVMFFIOpaquePyObject,\n-        tvm_ffi_pyobject_deleter,\n+        TVMFFIPyObjectDeleter,\n         out_handle))\n     return 0\n \ndiff --git a/python/tvm_ffi/cython/tvm_ffi_python_helpers.h b/python/tvm_ffi/cython/tvm_ffi_python_helpers.h\nindex 3e204bc..e507f03 100644\n--- a/python/tvm_ffi/cython/tvm_ffi_python_helpers.h\n+++ b/python/tvm_ffi/cython/tvm_ffi_python_helpers.h\n@@ -591,4 +591,35 @@ TVM_FFI_INLINE void TVMFFIPyPushTempPyObject(TVMFFIPyCallContext* ctx, PyObject*\n   Py_IncRef(arg);\n   ctx->temp_py_objects[ctx->num_temp_py_objects++] = arg;\n }\n+\n+//------------------------------------------------------------------------------------\n+// Helpers for free-threaded python\n+//------------------------------------------------------------------------------------\n+#if defined(Py_GIL_DISABLED)\n+// NOGIL case\n+class TVMFFIPyWithGILIfNotFreeThreaded {\n+ public:\n+  TVMFFIPyWithGILIfNotFreeThreaded() = default;\n+};\n+#else\n+// GIL case, need to ensure/release the GIL\n+class TVMFFIPyWithGILIfNotFreeThreaded {\n+ public:\n+  TVMFFIPyWithGILIfNotFreeThreaded() noexcept { gstate_ = PyGILState_Ensure(); }\n+  ~TVMFFIPyWithGILIfNotFreeThreaded() { PyGILState_Release(gstate_); }\n+\n+ private:\n+  PyGILState_STATE gstate_;\n+};\n+#endif\n+\n+/*!\n+ * \\brief Deleter for Python objects\n+ * \\param py_obj The Python object to delete\n+ */\n+extern \"C\" void TVMFFIPyObjectDeleter(void* py_obj) noexcept {\n+  TVMFFIPyWithGILIfNotFreeThreaded gil_state;\n+  Py_DecRef(static_cast<PyObject*>(py_obj));\n+}\n+\n #endif  // TVM_FFI_PYTHON_HELPERS_H_\ndiff --git a/src/ffi/object.cc b/src/ffi/object.cc\nindex 3e7e294..b3927fe 100644\n--- a/src/ffi/object.cc\n+++ b/src/ffi/object.cc\n@@ -339,7 +339,13 @@ class TypeTable {\n                             TypeIndex::kTVMFFIObjectRValueRef);\n     ReserveBuiltinTypeIndex(StaticTypeKey::kTVMFFISmallStr, TypeIndex::kTVMFFISmallStr);\n     ReserveBuiltinTypeIndex(StaticTypeKey::kTVMFFISmallBytes, TypeIndex::kTVMFFISmallBytes);\n-    ReserveBuiltinTypeIndex(StaticTypeKey::kTVMFFIOpaquePyObject, TypeIndex::kTVMFFIOpaquePyObject);\n+    // register opaque py whose type depth is 1\n+    this->GetOrAllocTypeIndex(StaticTypeKey::kTVMFFIOpaquePyObject,\n+                              TypeIndex::kTVMFFIOpaquePyObject,\n+                              /*type_depth=*/1,\n+                              /*num_child_slots=*/0,\n+                              /*child_slots_can_overflow=*/false,\n+                              /*parent_type_index=*/TypeIndex::kTVMFFIObject);\n     // no need to reserve for object types as they will be registered\n   }\n \ndiff --git a/tests/python/test_object.py b/tests/python/test_object.py\nindex f679469..12dcf3f 100644\n--- a/tests/python/test_object.py\n+++ b/tests/python/test_object.py\n@@ -107,17 +107,20 @@ class MyObject:\n \n def test_opaque_object() -> None:\n     obj0 = MyObject(\"hello\")\n-    assert sys.getrefcount(obj0) == 2\n+    base_count = sys.getrefcount(obj0)\n+    ref_count = tvm_ffi.get_global_func(\"testing.object_use_count\")\n+    assert sys.getrefcount(obj0) == base_count\n     obj0_converted = tvm_ffi.convert(obj0)\n-    assert sys.getrefcount(obj0) == 3\n+    assert ref_count(obj0_converted) == 1\n+    assert sys.getrefcount(obj0) == base_count + 1\n     assert isinstance(obj0_converted, tvm_ffi.core.OpaquePyObject)\n     obj0_cpy = obj0_converted.pyobject()\n     assert obj0_cpy is obj0\n-    assert sys.getrefcount(obj0) == 4\n+    assert sys.getrefcount(obj0) == base_count + 2\n     obj0_converted = None\n-    assert sys.getrefcount(obj0) == 3\n+    assert sys.getrefcount(obj0) == base_count + 1\n     obj0_cpy = None\n-    assert sys.getrefcount(obj0) == 2\n+    assert sys.getrefcount(obj0) == base_count\n \n \n def test_opaque_type_error() -> None:",
+  "heuristics": {
+    "tags": [
+      "build",
+      "ci",
+      "test"
+    ],
+    "extensions": [
+      ".cc",
+      ".h",
+      ".pxi",
+      ".py",
+      ".pyx",
+      ".toml",
+      ".txt",
+      ".yml"
+    ],
+    "scopes_guess": [
+      "CMakeLists.txt",
+      "pyproject.toml",
+      "python",
+      "src",
+      "tests"
+    ]
+  }
+}

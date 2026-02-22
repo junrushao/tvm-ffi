@@ -1,0 +1,42 @@
+{
+  "sha": "ed067c17b259774f4ddc23ba7de937a90642bbb1",
+  "sha7": "ed067c1",
+  "author_name": "Yichen Yan",
+  "author_email": "oraluben@outlook.com",
+  "date_iso": "2026-01-27T11:08:24+08:00",
+  "subject": "Update the logic of checking `#embed` (#418)",
+  "body":
+      "This PR slightly update the example to use cubin launcher with c++'s\n`#embed`, make it fail earlier if compiler do not support the feature.",
+  "is_merge": false,
+  "parents": [
+    "668ce835939ff60a99c7d982266cf4bdc90ca35b"
+  ],
+  "name_status": [
+    [
+      "M",
+      "examples/cubin_launcher/embedded_cubin/cpp_embed/CMakeLists.txt"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "examples/cubin_launcher/embedded_cubin/cpp_embed/CMakeLists.txt",
+      "additions": 10,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/examples/cubin_launcher/embedded_cubin/cpp_embed/CMakeLists.txt b/examples/cubin_launcher/embedded_cubin/cpp_embed/CMakeLists.txt\nindex 084648e..efe8cb9 100644\n--- a/examples/cubin_launcher/embedded_cubin/cpp_embed/CMakeLists.txt\n+++ b/examples/cubin_launcher/embedded_cubin/cpp_embed/CMakeLists.txt\n@@ -20,6 +20,16 @@ project(embedded_cubin_example LANGUAGES CXX CUDA)\n \n set(CMAKE_CXX_STANDARD 26)\n \n+# Check for `#embed` after setting C++ standard, otherwise compilers (e.g. GCC) won't define the\n+# macro.\n+include(CheckCXXSymbolExists)\n+check_cxx_symbol_exists(__cpp_pp_embed \"\" HAVE_EMBED)\n+if (NOT HAVE_EMBED)\n+  message(FATAL_ERROR \"Compiler does not support `#embed`.\"\n+                      \"Please use a newer compiler (e.g. GCC 15+, Clang 19+)\"\n+  )\n+endif ()\n+\n set(CMAKE_TVM_FFI_CUBIN_LAUNCHER_USE_DRIVER_API\n     OFF\n     CACHE BOOL \"Use driver API in cubin launcher\"",
+  "heuristics": {
+    "tags": [
+      "build",
+      "docs"
+    ],
+    "extensions": [
+      ".txt"
+    ],
+    "scopes_guess": [
+      "examples"
+    ]
+  }
+}

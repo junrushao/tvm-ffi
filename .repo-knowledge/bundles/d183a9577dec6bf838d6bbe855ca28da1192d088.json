@@ -1,0 +1,73 @@
+{
+  "sha": "d183a9577dec6bf838d6bbe855ca28da1192d088",
+  "sha7": "d183a95",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-10-15T13:55:46-04:00",
+  "subject": "[DLL] Explicit link libtvm_ffi_testing from cython (#132)",
+  "body":
+      "This PR changes the linking of libtvm_ffi_testing to explicit linking.\nThis helps to simplify the unloading order, to ensure cython always get\nunloaded before libtvm_ffi_testing in case we need to de-allocate global\nobjects there. While it introduces one testing dep, the behavior is\nsimilar as before and on python such extra dep is ok for testing.",
+  "is_merge": false,
+  "parents": [
+    "f679fe54cf2e78ac175d4644a19b8713a9576c62"
+  ],
+  "name_status": [
+    [
+      "M",
+      "CMakeLists.txt"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/cython/base.pxi"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/cython/tvm_ffi_python_helpers.h"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/testing.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "CMakeLists.txt",
+      "additions": 2,
+      "deletions": 0
+    },
+    {
+      "path": "python/tvm_ffi/cython/base.pxi",
+      "additions": 6,
+      "deletions": 0
+    },
+    {
+      "path": "python/tvm_ffi/cython/tvm_ffi_python_helpers.h",
+      "additions": 5,
+      "deletions": 0
+    },
+    {
+      "path": "python/tvm_ffi/testing.py",
+      "additions": 0,
+      "deletions": 6
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/CMakeLists.txt b/CMakeLists.txt\nindex b4ea1ea..3c4c69a 100644\n--- a/CMakeLists.txt\n+++ b/CMakeLists.txt\n@@ -255,6 +255,8 @@ if (TVM_FFI_BUILD_PYTHON_MODULE)\n   target_compile_features(tvm_ffi_cython PRIVATE cxx_std_17)\n   target_link_libraries(tvm_ffi_cython PRIVATE tvm_ffi_header)\n   target_link_libraries(tvm_ffi_cython PRIVATE tvm_ffi_shared)\n+  # link against testing to ensure right unloading order (cython first then testing)\n+  target_link_libraries(tvm_ffi_cython PRIVATE tvm_ffi_testing)\n   # Set RPATH for tvm_ffi_cython to find tvm_ffi_shared.so relatively\n   if (APPLE)\n     # macOS uses @loader_path\ndiff --git a/python/tvm_ffi/cython/base.pxi b/python/tvm_ffi/cython/base.pxi\nindex 1106901..0e3aa72 100644\n--- a/python/tvm_ffi/cython/base.pxi\n+++ b/python/tvm_ffi/cython/base.pxi\n@@ -374,6 +374,8 @@ cdef extern from \"tvm_ffi_python_helpers.h\":\n     void TVMFFIPyMLIRPackedSafeCallDeleter(void* self)\n     # deleter for python objects\n     void TVMFFIPyObjectDeleter(void* py_obj) noexcept nogil\n+    # dummy target for testing\n+    int TVMFFITestingDummyTarget() nogil\n \n \n cdef class ByteArrayArg:\n@@ -449,4 +451,8 @@ cdef _init_env_api():\n     CHECK_CALL(TVMFFIEnvRegisterCAPI(c_str(\"PyGILState_Ensure\"), <void*>PyGILState_Ensure))\n     CHECK_CALL(TVMFFIEnvRegisterCAPI(c_str(\"PyGILState_Release\"), <void*>PyGILState_Release))\n \n+\n _init_env_api()\n+\n+# ensure testing is linked and we can run testcases\n+TVMFFITestingDummyTarget()\ndiff --git a/python/tvm_ffi/cython/tvm_ffi_python_helpers.h b/python/tvm_ffi/cython/tvm_ffi_python_helpers.h\nindex 3ab8665..dc970d3 100644\n--- a/python/tvm_ffi/cython/tvm_ffi_python_helpers.h\n+++ b/python/tvm_ffi/cython/tvm_ffi_python_helpers.h\n@@ -674,4 +674,9 @@ extern \"C\" void TVMFFIPyObjectDeleter(void* py_obj) noexcept {\n   Py_DecRef(static_cast<PyObject*>(py_obj));\n }\n \n+/*\n+ * \\brief Dummy target to ensure testing is linked and we can run testcases\n+ */\n+extern \"C\" TVM_FFI_DLL int TVMFFITestingDummyTarget();\n+\n #endif  // TVM_FFI_PYTHON_HELPERS_H_\ndiff --git a/python/tvm_ffi/testing.py b/python/tvm_ffi/testing.py\nindex 04b6387..820fd60 100644\n--- a/python/tvm_ffi/testing.py\n+++ b/python/tvm_ffi/testing.py\n@@ -19,12 +19,6 @@\n \n from __future__ import annotations\n \n-from . import libinfo\n-from .module import load_module\n-\n-_LIBTVM_FFI_TESTING = load_module(libinfo.find_library_by_basename(\"tvm_ffi_testing\"))\n-\n-\n from collections.abc import Mapping, Sequence\n from typing import TYPE_CHECKING, Any, ClassVar\n ",
+  "heuristics": {
+    "tags": [
+      "build",
+      "test"
+    ],
+    "extensions": [
+      ".h",
+      ".pxi",
+      ".py",
+      ".txt"
+    ],
+    "scopes_guess": [
+      "CMakeLists.txt",
+      "python"
+    ]
+  }
+}

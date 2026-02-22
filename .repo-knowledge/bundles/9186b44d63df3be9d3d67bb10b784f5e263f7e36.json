@@ -1,0 +1,52 @@
+{
+  "sha": "9186b44d63df3be9d3d67bb10b784f5e263f7e36",
+  "sha7": "9186b44",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-10-14T12:15:35-04:00",
+  "subject": "[CPP] Introduce InvokeExternC (#117)",
+  "body":
+      "This PR introduces a static method InvokeExternC to directly invoke an\nalready exported symbol in SafeCall convention without having to\nconstruct an ffi::Function object",
+  "is_merge": false,
+  "parents": [
+    "9ac312164e75c18e7b26214bba1f142de94913b4"
+  ],
+  "name_status": [
+    [
+      "M",
+      "include/tvm/ffi/function.h"
+    ],
+    [
+      "M",
+      "tests/cpp/test_function.cc"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "include/tvm/ffi/function.h",
+      "additions": 38,
+      "deletions": 0
+    },
+    {
+      "path": "tests/cpp/test_function.cc",
+      "additions": 6,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/include/tvm/ffi/function.h b/include/tvm/ffi/function.h\nindex d665070..24155e3 100644\n--- a/include/tvm/ffi/function.h\n+++ b/include/tvm/ffi/function.h\n@@ -512,6 +512,44 @@ class Function : public ObjectRef {\n     };\n     return FromPackedInternal(std::move(call_packed));\n   }\n+\n+  /*!\n+   * \\brief Directly invoke an extern \"C\" function that follows the TVM FFI SafeCall convention.\n+   *\n+   * This function can be useful to turn an existing exported symbol into a typed function.\n+   *\n+   * \\code\n+   *\n+   * // An extern \"C\" function, matching TVMFFISafeCallType\n+   * extern \"C\" int __tvm_ffi_add(\n+   *   void* handle, const TVMFFIAny* args, int32_t num_args, TVMFFIAny*result\n+   * );\n+   *\n+   * // redirect an existing symbol into a typed function\n+   * inline int add(int a, int b) {\n+   *   return tvm::ffi::Function::InvokeExternC(nullptr, __tvm_ffi_add, a, b).cast<int>();\n+   * }\n+   *\n+   * \\endcode\n+   *\n+   * \\tparam Args The types of the arguments to the extern function.\n+   * \\param handle The handle argument, for exported symbols this is usually nullptr.\n+   * \\param safe_call The function pointer to the extern \"C\" function.\n+   * \\param args The arguments to pass to the function.\n+   * \\return The return value, wrapped in a tvm::ffi::Any.\n+   */\n+  template <typename... Args>\n+  TVM_FFI_INLINE static Any InvokeExternC(void* handle, TVMFFISafeCallType safe_call,\n+                                          Args&&... args) {\n+    const int kNumArgs = sizeof...(Args);\n+    const int kArraySize = kNumArgs > 0 ? kNumArgs : 1;\n+    AnyView args_pack[kArraySize];\n+    PackedArgs::Fill(args_pack, std::forward<Args>(args)...);\n+    Any result;\n+    TVM_FFI_CHECK_SAFE_CALL(safe_call(handle, reinterpret_cast<const TVMFFIAny*>(args_pack),\n+                                      kNumArgs, reinterpret_cast<TVMFFIAny*>(&result)));\n+    return result;\n+  }\n   /*!\n    * \\brief Call function by directly passing in unpacked arguments.\n    *\ndiff --git a/tests/cpp/test_function.cc b/tests/cpp/test_function.cc\nindex f075f7f..b8ff769 100644\n--- a/tests/cpp/test_function.cc\n+++ b/tests/cpp/test_function.cc\n@@ -263,4 +263,10 @@ TEST(Func, FromExternC) {\n   EXPECT_EQ(fadd1(1).cast<int>(), 2);\n }\n \n+int invoke_testing_add1(int x) {\n+  return Function::InvokeExternC(nullptr, __tvm_ffi_testing_add1, x).cast<int>();\n+}\n+\n+TEST(Func, InvokeExternC) { EXPECT_EQ(invoke_testing_add1(1), 2); }\n+\n }  // namespace",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".cc",
+      ".h"
+    ],
+    "scopes_guess": [
+      "include",
+      "tests"
+    ]
+  }
+}

@@ -1,0 +1,84 @@
+{
+  "sha": "5cfd705e62e8ecd16e07fb9b3062eecee489eda9",
+  "sha7": "5cfd705",
+  "author_name": "Junru Shao",
+  "author_email": "junrushao@apache.org",
+  "date_iso": "2025-09-23T16:02:25-07:00",
+  "subject": "chore: Revamp mypy config and publish typing metadata (#51)",
+  "body":
+      "- move mypy settings into pyproject.toml with project-wide targets,\nnamespace support, and overrides for tests/examples/optional deps\n- replace per-path mypy hooks with a single project hook pinned to mypy\nv1.18.2 and reuse shared stub deps\n- add py.typed and bundle it in both wheels and sdists for PEP 561\nconsumers\n\nAfter this PR is merged, developers could use vanilla argument-free\n\n```\n>>> mypy\n```\n\nto run repo-wide type checking.\n\n---------\n\nCo-authored-by: gemini-code-assist[bot] <176961590+gemini-code-assist[bot]@users.noreply.github.com>",
+  "is_merge": false,
+  "parents": [
+    "90dba57cf810e7fb6a5ad8316bcf4c53c699d51c"
+  ],
+  "name_status": [
+    [
+      "M",
+      ".pre-commit-config.yaml"
+    ],
+    [
+      "M",
+      "pyproject.toml"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/dataclasses/c_class.py"
+    ],
+    [
+      "A",
+      "python/tvm_ffi/py.typed"
+    ],
+    [
+      "M",
+      "tests/lint/check_file_type.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": ".pre-commit-config.yaml",
+      "additions": 9,
+      "deletions": 24
+    },
+    {
+      "path": "pyproject.toml",
+      "additions": 17,
+      "deletions": 1
+    },
+    {
+      "path": "python/tvm_ffi/dataclasses/c_class.py",
+      "additions": 2,
+      "deletions": 8
+    },
+    {
+      "path": "python/tvm_ffi/py.typed",
+      "additions": 1,
+      "deletions": 0
+    },
+    {
+      "path": "tests/lint/check_file_type.py",
+      "additions": 1,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/.pre-commit-config.yaml b/.pre-commit-config.yaml\nindex 41cabcc..db2d35f 100644\n--- a/.pre-commit-config.yaml\n+++ b/.pre-commit-config.yaml\n@@ -104,29 +104,14 @@ repos:\n           - --config\n           - docs/.rstcheck.cfg\n   - repo: https://github.com/pre-commit/mirrors-mypy\n-    rev: \"v1.17.0\"\n+    rev: \"v1.18.2\"\n     hooks:\n       - id: mypy\n-        name: mypy for `python/` and `tests/`\n-        additional_dependencies: ['numpy >= 1.22', \"ml-dtypes >= 0.1\", \"pytest\", \"typing-extensions>=4.5\"]\n-        args: [--show-error-codes, --python-version=3.9]\n-        exclude: ^.*/_ffi_api\\.py$\n-        files: ^(python/|tests/).*\\.py$\n-      - id: mypy\n-        name: mypy for `examples/inline_module`\n-        additional_dependencies: ['numpy >= 1.22', \"ml-dtypes >= 0.1\", \"pytest\", \"typing-extensions>=4.5\"]\n-        args: [--show-error-codes, --python-version=3.9]\n-        exclude: ^.*/_ffi_api\\.py$\n-        files: ^examples/inline_module/.*\\.py$\n-      - id: mypy\n-        name: mypy for `examples/packaging`\n-        additional_dependencies: ['numpy >= 1.22', \"ml-dtypes >= 0.1\", \"pytest\", \"typing-extensions>=4.5\"]\n-        args: [--show-error-codes, --python-version=3.9]\n-        exclude: ^.*/_ffi_api\\.py$\n-        files: ^examples/packaging/.*\\.py$\n-      - id: mypy\n-        name: mypy for `examples/quick_start`\n-        additional_dependencies: ['numpy >= 1.22', \"ml-dtypes >= 0.1\", \"pytest\", \"typing-extensions>=4.5\"]\n-        args: [--show-error-codes, --python-version=3.9]\n-        exclude: ^.*/_ffi_api\\.py$\n-        files: ^examples/quick_start/.*\\.py$\n+        name: mypy\n+        pass_filenames: false\n+        args: []\n+        additional_dependencies:\n+          - numpy>=1.22\n+          - ml-dtypes>=0.1\n+          - pytest\n+          - typing-extensions>=4.5\ndiff --git a/pyproject.toml b/pyproject.toml\nindex d51698f..e3ebf1c 100644\n--- a/pyproject.toml\n+++ b/pyproject.toml\n@@ -32,7 +32,7 @@ classifiers = [\n ]\n keywords = [\"machine learning\", \"inference\"]\n requires-python = \">=3.9\"\n-dependencies = [\"typing-extensions\"]\n+dependencies = [\"typing-extensions>=4.5\"]\n \n [project.urls]\n Homepage = \"https://github.com/apache/tvm-ffi\"\n@@ -115,6 +115,7 @@ sdist.include = [\n   \"/python/tvm_ffi/**/*.py\",\n   \"/python/tvm_ffi/**/*.pyx\",\n   \"/python/tvm_ffi/**/*.pyi\",\n+  \"/python/tvm_ffi/py.typed\",\n \n   # Third party files\n   \"/3rdparty/libbacktrace/**/*\",\n@@ -216,5 +217,20 @@ environment = { MACOSX_DEPLOYMENT_TARGET = \"10.14\" }\n archs = [\"AMD64\"]\n \n [tool.mypy]\n+python_version = \"3.9\"\n+show_error_codes = true\n+mypy_path = [\"python\", \"examples\", \"tests/python\"]\n+files = [\"python/tvm_ffi\", \"examples\", \"tests/python\"]\n+namespace_packages = true\n+explicit_package_bases = true\n allow_redefinition = true\n+exclude = '''(?x)(\n+  ^\\.venv/|\n+  ^build/|\n+  ^dist/|\n+  ^\\.mypy_cache/\n+)'''\n+\n+[[tool.mypy.overrides]]\n+module = [\"torch\", \"torch.*\", \"my_ffi_extension\", \"my_ffi_extension.*\"]\n ignore_missing_imports = true\ndiff --git a/python/tvm_ffi/dataclasses/c_class.py b/python/tvm_ffi/dataclasses/c_class.py\nindex 700f287..dc6aeed 100644\n--- a/python/tvm_ffi/dataclasses/c_class.py\n+++ b/python/tvm_ffi/dataclasses/c_class.py\n@@ -27,18 +27,12 @@ from collections.abc import Callable\n from dataclasses import InitVar\n from typing import ClassVar, TypeVar, get_origin, get_type_hints\n \n+from typing_extensions import dataclass_transform  # type: ignore[attr-defined]\n+\n from ..core import TypeField, TypeInfo\n from . import _utils\n from .field import Field, field\n \n-try:\n-    from typing_extensions import dataclass_transform  # type: ignore[attr-defined]\n-except ImportError:\n-    from typing import dataclass_transform  # type: ignore[no-redef,attr-defined]\n-except ImportError:\n-    pass\n-\n-\n _InputClsType = TypeVar(\"_InputClsType\")\n \n \ndiff --git a/python/tvm_ffi/py.typed b/python/tvm_ffi/py.typed\nnew file mode 100644\nindex 0000000..cbee111\n--- /dev/null\n+++ b/python/tvm_ffi/py.typed\n@@ -0,0 +1 @@\n+# Marker file for PEP 561. Keep this file empty.\ndiff --git a/tests/lint/check_file_type.py b/tests/lint/check_file_type.py\nindex bedc542..b62e326 100644\n--- a/tests/lint/check_file_type.py\n+++ b/tests/lint/check_file_type.py\n@@ -112,6 +112,7 @@ ALLOW_FILE_NAME = {\n     \".gitmodules\",\n     \"CODEOWNERSHIP\",\n     \"Dockerfile\",\n+    \"py.typed\",\n }\n \n # List of specific files allowed in relpath to <proj_root>",
+  "heuristics": {
+    "tags": [
+      "build",
+      "test"
+    ],
+    "extensions": [
+      ".py",
+      ".toml",
+      ".typed",
+      ".yaml"
+    ],
+    "scopes_guess": [
+      ".pre-commit-config.yaml",
+      "pyproject.toml",
+      "python",
+      "tests"
+    ]
+  }
+}

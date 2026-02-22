@@ -1,0 +1,39 @@
+{
+  "sha": "cfff30bd59e401e426ed6f3a3de5f7280ce5aed0",
+  "sha7": "cfff30b",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-09-26T21:35:49-04:00",
+  "subject": "[CYTHON] Fix potential flaky issue in dispatcher (#63)",
+  "body":
+      "The C++ dispatcher dispatches the argument passing by TYPE(obj) pointer\nwhich\nis non-owning. This means that there is the following edge case:\n- type A is registered through dispatcher\n- type A gets garbage collected (because it is a local type)\n- type B is created and uses the same memory address as type A\n\nThen when we pass in type B, it will mistakenly use the dispatch\nfunction for type A\n\nTo prevent this, we keep alive the types that are registered through\ndispatcher\nby appending them to _DISPATCH_TYPE_KEEP_ALIVE\n\nNOTE that the total number of types that are registered through\ndispatcher is expected\nto be limited in practice so we can afford to keep them alive",
+  "is_merge": false,
+  "parents": [
+    "ebea4dc8bd023187a7549321e2360af4f7d684b2"
+  ],
+  "name_status": [
+    [
+      "M",
+      "python/tvm_ffi/cython/function.pxi"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "python/tvm_ffi/cython/function.pxi",
+      "additions": 23,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/python/tvm_ffi/cython/function.pxi b/python/tvm_ffi/cython/function.pxi\nindex ff79cff..095e3d6 100644\n--- a/python/tvm_ffi/cython/function.pxi\n+++ b/python/tvm_ffi/cython/function.pxi\n@@ -15,6 +15,7 @@\n # specific language governing permissions and limitations\n # under the License.\n import ctypes\n+import threading\n import os\n from numbers import Real, Integral\n \n@@ -501,6 +502,10 @@ cdef int TVMFFIPyArgSetterDTypeFromNumpy_(\n     out.v_dtype = NUMPY_DTYPE_TO_DTYPE[py_obj]\n     return 0\n \n+\n+cdef _DISPATCH_TYPE_KEEP_ALIVE = set()\n+cdef _DISPATCH_TYPE_KEEP_ALIVE_LOCK = threading.Lock()\n+\n cdef int TVMFFIPyArgSetterFactory_(PyObject* value, TVMFFIPyArgSetter* out) except -1:\n     \"\"\"\n     Factory function that creates an argument setter for a given Python argument type.\n@@ -510,6 +515,24 @@ cdef int TVMFFIPyArgSetterFactory_(PyObject* value, TVMFFIPyArgSetter* out) exce\n     # priortize native types over external types\n     cdef object arg = <object>value\n     cdef long long temp_ptr\n+\n+    # The C++ dispatcher dispatches the argument passing by TYPE(obj) pointer which\n+    # is non-owning. This means that there is the following edge case:\n+    # - type A is registered through dispatcher\n+    # - type A gets garbage collected (because it is a local type)\n+    # - type B is created and uses the same memory address as type A\n+    #\n+    # Then when we pass in type B, it will mistakenly use the dispatch function for type A\n+    #\n+    # To prevent this, we keep alive the types that are registered through dispatcher\n+    # by adding them to _DISPATCH_TYPE_KEEP_ALIVE\n+    #\n+    # NOTE that the total number of types that are registered through dispatcher is expected\n+    # to be limited in practice so we can afford to keep them alive\n+    # Lock is used to ensure thread-safety for future thread-free python case\n+    with _DISPATCH_TYPE_KEEP_ALIVE_LOCK:\n+        _DISPATCH_TYPE_KEEP_ALIVE.add(type(arg))\n+\n     if arg is None:\n         out.func = TVMFFIPyArgSetterNone_\n         return 0",
+  "heuristics": {
+    "tags": [],
+    "extensions": [
+      ".pxi"
+    ],
+    "scopes_guess": [
+      "python"
+    ]
+  }
+}

@@ -1,0 +1,73 @@
+{
+  "sha": "f0058a9e52e0348cd9dfe33fc8e7b4e424ea81a2",
+  "sha7": "f0058a9",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-10-18T13:47:35-04:00",
+  "subject": "[VERSION] Add Version Query API (#171)",
+  "body":
+      "This PR adds version query API so libraries can query the API from\nlibtvm_ffi. While we do not see immediate needs as we aim to ensure ABI\nstability. This API will help future compatibility in case of ABI\nevolution.",
+  "is_merge": false,
+  "parents": [
+    "729f971f272c7a098d032ed80ffcea1aaf580d66"
+  ],
+  "name_status": [
+    [
+      "M",
+      "README.md"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/c_api.h"
+    ],
+    [
+      "M",
+      "src/ffi/object.cc"
+    ],
+    [
+      "A",
+      "tests/cpp/test_base.cc"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "README.md",
+      "additions": 15,
+      "deletions": 0
+    },
+    {
+      "path": "include/tvm/ffi/c_api.h",
+      "additions": 31,
+      "deletions": 0
+    },
+    {
+      "path": "src/ffi/object.cc",
+      "additions": 6,
+      "deletions": 0
+    },
+    {
+      "path": "tests/cpp/test_base.cc",
+      "additions": 32,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/README.md b/README.md\nindex afea5ec..48cfefa 100644\n--- a/README.md\n+++ b/README.md\n@@ -38,3 +38,18 @@ It has the following technical features:\n With these technical solutions, we can enable better **interoperability** across machine learning frameworks,\n libraries, kernel DSLs, and coding agents, **ship one wheel** to support multiple frameworks and Python versions (including free-threaded python),\n and build infrastructure solutions across environments.\n+\n+## Status and Release Versioning\n+\n+C ABI stability is the top priority of this effort. We also prioritize minimalism and\n+efficiency in the core so it is portable and can be used broadly.\n+We are current in the RFC stage, which means the main features are complete and ABI stable.\n+We also recognize potential needs for evolution to ensure it works best for the machine\n+learning systems community, and would like to work together collectively with the community for such evolution.\n+The RFC stage is a period where we are working with the open source communities\n+to ensure we evolve the ABI to meet the potential needs of frameworks.\n+\n+Releases during the RFC stage will be `0.X.Y`, where bumps in `X` indicate C ABI-breaking changes\n+and `Y` indicates other changes. We anticipate the RFC stage will last for a few months, then we will start to follow\n+[Semantic Versioning](https://packaging.python.org/en/latest/discussions/versioning/)\n+(`major.minor.patch`) going forward.\ndiff --git a/include/tvm/ffi/c_api.h b/include/tvm/ffi/c_api.h\nindex ef2f70e..5e16ed1 100644\n--- a/include/tvm/ffi/c_api.h\n+++ b/include/tvm/ffi/c_api.h\n@@ -56,10 +56,29 @@\n #define TVM_FFI_DLL_EXPORT __attribute__((visibility(\"default\")))\n #endif\n \n+/*! \\brief TVM FFI major version. */\n+#define TVM_FFI_VERSION_MAJOR 0\n+/*! \\brief TVM FFI minor version. */\n+#define TVM_FFI_VERSION_MINOR 1\n+/*! \\brief TVM FFI patch version. */\n+#define TVM_FFI_VERSION_PATCH 0\n+\n #ifdef __cplusplus\n extern \"C\" {\n #endif\n \n+/*!\n+ * \\brief TVM FFI version.\n+ */\n+typedef struct {\n+  /*! \\brief TVM FFI major version. */\n+  uint32_t major;\n+  /*! \\brief TVM FFI minor version. */\n+  uint32_t minor;\n+  /*! \\brief TVM FFI patch version. */\n+  uint32_t patch;\n+} TVMFFIVersion;\n+\n #ifdef __cplusplus\n enum TVMFFITypeIndex : int32_t {\n #else\n@@ -440,6 +459,18 @@ typedef struct {\n   void* handle;\n } TVMFFIOpaqueObjectCell;\n \n+//-----------------------------------------------------------------------\n+// Section: Version API\n+//-----------------------------------------------------------------------\n+/*!\n+ * \\brief Get the TVM FFI version from the current C ABI.\n+ *\n+ * This function is always stable across all versions of the C ABI.\n+ *\n+ * \\param out_version The output version.\n+ */\n+TVM_FFI_DLL void TVMFFIGetVersion(TVMFFIVersion* out_version);\n+\n //------------------------------------------------------------\n // Section: Basic object API\n //------------------------------------------------------------\ndiff --git a/src/ffi/object.cc b/src/ffi/object.cc\nindex df668d2..4c04bf4 100644\n--- a/src/ffi/object.cc\n+++ b/src/ffi/object.cc\n@@ -431,6 +431,12 @@ class OpaqueObjectImpl : public Object, public TVMFFIOpaqueObjectCell {\n }  // namespace ffi\n }  // namespace tvm\n \n+void TVMFFIGetVersion(TVMFFIVersion* out_version) {\n+  out_version->major = TVM_FFI_VERSION_MAJOR;\n+  out_version->minor = TVM_FFI_VERSION_MINOR;\n+  out_version->patch = TVM_FFI_VERSION_PATCH;\n+}\n+\n int TVMFFIObjectDecRef(TVMFFIObjectHandle handle) {\n   TVM_FFI_SAFE_CALL_BEGIN();\n   tvm::ffi::details::ObjectUnsafe::DecRefObjectHandle(handle);\ndiff --git a/tests/cpp/test_base.cc b/tests/cpp/test_base.cc\nnew file mode 100644\nindex 0000000..540a38e\n--- /dev/null\n+++ b/tests/cpp/test_base.cc\n@@ -0,0 +1,32 @@\n+/*\n+ * Licensed to the Apache Software Foundation (ASF) under one\n+ * or more contributor license agreements.  See the NOTICE file\n+ * distributed with this work for additional information\n+ * regarding copyright ownership.  The ASF licenses this file\n+ * to you under the Apache License, Version 2.0 (the\n+ * \"License\"); you may not use this file except in compliance\n+ * with the License.  You may obtain a copy of the License at\n+ *\n+ *   http://www.apache.org/licenses/LICENSE-2.0\n+ *\n+ * Unless required by applicable law or agreed to in writing,\n+ * software distributed under the License is distributed on an\n+ * \"AS IS\" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY\n+ * KIND, either express or implied.  See the License for the\n+ * specific language governing permissions and limitations\n+ * under the License.\n+ */\n+#include <gtest/gtest.h>\n+#include <tvm/ffi/c_api.h>\n+\n+namespace {\n+\n+TEST(Base, Version) {\n+  TVMFFIVersion version;\n+  TVMFFIGetVersion(&version);\n+  EXPECT_EQ(version.major, TVM_FFI_VERSION_MAJOR);\n+  EXPECT_EQ(version.minor, TVM_FFI_VERSION_MINOR);\n+  EXPECT_EQ(version.patch, TVM_FFI_VERSION_PATCH);\n+}\n+\n+}  // namespace",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".cc",
+      ".h",
+      ".md"
+    ],
+    "scopes_guess": [
+      "README.md",
+      "include",
+      "src",
+      "tests"
+    ]
+  }
+}

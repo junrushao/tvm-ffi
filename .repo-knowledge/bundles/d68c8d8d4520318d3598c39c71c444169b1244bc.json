@@ -1,0 +1,72 @@
+{
+  "sha": "d68c8d8d4520318d3598c39c71c444169b1244bc",
+  "sha7": "d68c8d8",
+  "author_name": "Junru Shao",
+  "author_email": "junrushao@apache.org",
+  "date_iso": "2025-09-22T17:53:53-07:00",
+  "subject": "fix: Fallback for unregistered object types (#44)",
+  "body":
+      "- guard the FFI return path so unregistered object types fall back to\n`Object` without throwing\n- add an unregistered testing object plus a helper to obtain it through\nthe testing API\n- cover the fallback behavior with a new Python unit test",
+  "is_merge": false,
+  "parents": [
+    "df58a05ec400dc5e91ac86146aedaf3a8273b7bd"
+  ],
+  "name_status": [
+    [
+      "M",
+      "python/tvm_ffi/cython/object.pxi"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/testing.py"
+    ],
+    [
+      "M",
+      "src/ffi/extra/testing.cc"
+    ],
+    [
+      "M",
+      "tests/python/test_object.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "python/tvm_ffi/cython/object.pxi",
+      "additions": 10,
+      "deletions": 8
+    },
+    {
+      "path": "python/tvm_ffi/testing.py",
+      "additions": 6,
+      "deletions": 1
+    },
+    {
+      "path": "src/ffi/extra/testing.cc",
+      "additions": 12,
+      "deletions": 1
+    },
+    {
+      "path": "tests/python/test_object.py",
+      "additions": 12,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/python/tvm_ffi/cython/object.pxi b/python/tvm_ffi/cython/object.pxi\nindex 326a98b..4cc737a 100644\n--- a/python/tvm_ffi/cython/object.pxi\n+++ b/python/tvm_ffi/cython/object.pxi\n@@ -269,15 +269,17 @@ cdef inline object make_ret_object(TVMFFIAny result):\n     tindex = result.type_index\n \n     if tindex < len(TYPE_INDEX_TO_INFO):\n-        cls = TYPE_INDEX_TO_INFO[tindex].type_cls\n-        if cls is not None:\n-            if issubclass(cls, PyNativeObject):\n-                obj = Object.__new__(Object)\n+        type_info = TYPE_INDEX_TO_INFO[tindex]\n+        if type_info is not None:\n+            cls = type_info.type_cls\n+            if cls is not None:\n+                if issubclass(cls, PyNativeObject):\n+                    obj = Object.__new__(Object)\n+                    (<Object>obj).chandle = result.v_obj\n+                    return cls.__from_tvm_ffi_object__(cls, obj)\n+                obj = cls.__new__(cls)\n                 (<Object>obj).chandle = result.v_obj\n-                return cls.__from_tvm_ffi_object__(cls, obj)\n-            obj = cls.__new__(cls)\n-            (<Object>obj).chandle = result.v_obj\n-            return obj\n+                return obj\n \n     # object is not found in registered entry\n     # in this case we need to report an warning\ndiff --git a/python/tvm_ffi/testing.py b/python/tvm_ffi/testing.py\nindex 6d302bc..0053564 100644\n--- a/python/tvm_ffi/testing.py\n+++ b/python/tvm_ffi/testing.py\n@@ -24,7 +24,7 @@ from . import _ffi_api\n from .container import Array, Map\n from .core import Object\n from .dataclasses import c_class, field\n-from .registry import register_object\n+from .registry import get_global_func, register_object\n \n \n @register_object(\"testing.TestObjectBase\")\n@@ -84,6 +84,11 @@ def create_object(type_key: str, **kwargs: Any) -> Object:\n     return _ffi_api.MakeObjectFromPackedArgs(*args)\n \n \n+def make_unregistered_object() -> Object:\n+    \"\"\"Return an object whose type is not registered on the Python side.\"\"\"\n+    return get_global_func(\"testing.make_unregistered_object\")()\n+\n+\n @c_class(\"testing.TestCxxClassBase\")\n class _TestCxxClassBase:\n     v_i64: int\ndiff --git a/src/ffi/extra/testing.cc b/src/ffi/extra/testing.cc\nindex 79b6164..afd952b 100644\n--- a/src/ffi/extra/testing.cc\n+++ b/src/ffi/extra/testing.cc\n@@ -121,6 +121,15 @@ class TestCxxClassDerivedDerived : public TestCxxClassDerived {\n                               TestCxxClassDerived);\n };\n \n+class TestUnregisteredObject : public Object {\n+ public:\n+  int64_t value;\n+\n+  explicit TestUnregisteredObject(int64_t value) : value(value) {}\n+\n+  TVM_FFI_DECLARE_OBJECT_INFO(\"testing.TestUnregisteredObject\", TestUnregisteredObject, Object);\n+};\n+\n TVM_FFI_NO_INLINE void TestRaiseError(String kind, String msg) {\n   // keep name and no liner for testing backtrace\n   throw ffi::Error(kind, msg, TVMFFIBacktrace(__FILE__, __LINE__, TVM_FFI_FUNC_SIG, 0));\n@@ -176,7 +185,9 @@ TVM_FFI_STATIC_INIT_BLOCK() {\n              }\n              std::cout << \"Function finished without catching signal\" << std::endl;\n            })\n-      .def(\"testing.object_use_count\", [](const Object* obj) { return obj->use_count(); });\n+      .def(\"testing.object_use_count\", [](const Object* obj) { return obj->use_count(); })\n+      .def(\"testing.make_unregistered_object\",\n+           []() { return ObjectRef(make_object<TestUnregisteredObject>(42)); });\n }\n \n }  // namespace ffi\ndiff --git a/tests/python/test_object.py b/tests/python/test_object.py\nindex aa1a791..3b36f5b 100644\n--- a/tests/python/test_object.py\n+++ b/tests/python/test_object.py\n@@ -100,3 +100,15 @@ def test_opaque_object() -> None:\n     assert sys.getrefcount(obj0) == 3\n     obj0_cpy = None\n     assert sys.getrefcount(obj0) == 2\n+\n+\n+def test_unregistered_object_fallback() -> None:\n+    with pytest.warns(\n+        UserWarning,\n+        match=(\n+            r\"Returning type `testing\\.TestUnregisteredObject` \"\n+            r\"which is not registered via register_object, fallback to Object\"\n+        ),\n+    ):\n+        obj = tvm_ffi.testing.make_unregistered_object()\n+    assert type(obj) is tvm_ffi.Object",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".cc",
+      ".pxi",
+      ".py"
+    ],
+    "scopes_guess": [
+      "python",
+      "src",
+      "tests"
+    ]
+  }
+}

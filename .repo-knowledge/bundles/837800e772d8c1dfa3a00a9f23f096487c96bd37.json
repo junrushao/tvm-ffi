@@ -1,0 +1,116 @@
+{
+  "sha": "837800e772d8c1dfa3a00a9f23f096487c96bd37",
+  "sha7": "837800e",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-06-19T13:52:14-04:00",
+  "subject": "[FFI] Update typeinfo to speedup parent reflection (#18083)",
+  "body":
+      "This PR updates the typeinfo to speedup parent reflection\nAlso optimizes a few if constexpr branches to explicitly\nplace else to eliminate branch early in compilation.",
+  "is_merge": false,
+  "parents": [
+    "7e0a4b35df078675af32624b9cd02d1b8da1353e"
+  ],
+  "name_status": [
+    [
+      "M",
+      "include/tvm/ffi/c_api.h"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/container/tuple.h"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/object.h"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/reflection/reflection.h"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/string.h"
+    ],
+    [
+      "M",
+      "src/ffi/object.cc"
+    ],
+    [
+      "M",
+      "tests/cpp/test_object.cc"
+    ],
+    [
+      "M",
+      "tests/cpp/test_reflection.cc"
+    ],
+    [
+      "M",
+      "tests/cpp/testing_object.h"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "include/tvm/ffi/c_api.h",
+      "additions": 2,
+      "deletions": 2
+    },
+    {
+      "path": "include/tvm/ffi/container/tuple.h",
+      "additions": 2,
+      "deletions": 1
+    },
+    {
+      "path": "include/tvm/ffi/object.h",
+      "additions": 28,
+      "deletions": 24
+    },
+    {
+      "path": "include/tvm/ffi/reflection/reflection.h",
+      "additions": 25,
+      "deletions": 0
+    },
+    {
+      "path": "include/tvm/ffi/string.h",
+      "additions": 9,
+      "deletions": 0
+    },
+    {
+      "path": "src/ffi/object.cc",
+      "additions": 5,
+      "deletions": 6
+    },
+    {
+      "path": "tests/cpp/test_object.cc",
+      "additions": 2,
+      "deletions": 2
+    },
+    {
+      "path": "tests/cpp/test_reflection.cc",
+      "additions": 26,
+      "deletions": 4
+    },
+    {
+      "path": "tests/cpp/testing_object.h",
+      "additions": 10,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/include/tvm/ffi/c_api.h b/include/tvm/ffi/c_api.h\nindex 668d239..545604a 100644\n--- a/include/tvm/ffi/c_api.h\n+++ b/include/tvm/ffi/c_api.h\n@@ -437,7 +437,7 @@ typedef struct {\n /*!\n  * \\brief Runtime type information for object type checking.\n  */\n-typedef struct {\n+typedef struct TVMFFITypeInfo {\n   /*!\n    *\\brief The runtime type index,\n    * It can be allocated during runtime if the type is dynamic.\n@@ -452,7 +452,7 @@ typedef struct {\n    * \\note To keep things simple, we do not allow multiple inheritance so the\n    *       hieracy stays as a tree\n    */\n-  const int32_t* type_acenstors;\n+  const struct TVMFFITypeInfo** type_acenstors;\n   // The following fields are used for reflection\n   /*! \\brief Cached hash value of the type key, used for consistent structural hashing. */\n   uint64_t type_key_hash;\ndiff --git a/include/tvm/ffi/container/tuple.h b/include/tvm/ffi/container/tuple.h\nindex 27f08e7..e88768d 100644\n--- a/include/tvm/ffi/container/tuple.h\n+++ b/include/tvm/ffi/container/tuple.h\n@@ -253,8 +253,9 @@ struct TypeTraits<Tuple<Types...>> : public ObjectRefTypeTraitsBase<Tuple<Types.\n     }\n     if constexpr (sizeof...(Rest) > 0) {\n       return TryConvertElements<I + 1, Rest...>(std::move(arr));\n+    } else {\n+      return true;\n     }\n-    return true;\n   }\n \n   static TVM_FFI_INLINE std::string TypeStr() {\ndiff --git a/include/tvm/ffi/object.h b/include/tvm/ffi/object.h\nindex 21dd8f3..d032cc1 100644\n--- a/include/tvm/ffi/object.h\n+++ b/include/tvm/ffi/object.h\n@@ -693,34 +693,38 @@ template <typename TargetType>\n TVM_FFI_INLINE bool IsObjectInstance(int32_t object_type_index) {\n   static_assert(std::is_base_of_v<Object, TargetType>);\n   // Everything is a subclass of object.\n-  if constexpr (std::is_same<TargetType, Object>::value) return true;\n-\n-  if constexpr (TargetType::_type_final) {\n+  if constexpr (std::is_same<TargetType, Object>::value) {\n+    return true;\n+  } else if constexpr (TargetType::_type_final) {\n     // if the target type is a final type\n     // then we only need to check the equivalence.\n     return object_type_index == TargetType::RuntimeTypeIndex();\n-  }\n-\n-  // if target type is a non-leaf type\n-  // Check if type index falls into the range of reserved slots.\n-  int32_t target_type_index = TargetType::RuntimeTypeIndex();\n-  int32_t begin = target_type_index;\n-  // The condition will be optimized by constant-folding.\n-  if constexpr (TargetType::_type_child_slots != 0) {\n-    // total_slots = child_slots + 1 (including self)\n-    int32_t end = begin + TargetType::_type_child_slots + 1;\n-    if (object_type_index >= begin && object_type_index < end) return true;\n   } else {\n-    if (object_type_index == begin) return true;\n-  }\n-  if (!TargetType::_type_child_slots_can_overflow) return false;\n-  // Invariance: parent index is always smaller than the child.\n-  if (object_type_index < target_type_index) return false;\n-  // Do a runtime lookup of type information\n-  // the function checks that the info exists\n-  const TypeInfo* type_info = TVMFFIGetTypeInfo(object_type_index);\n-  return (type_info->type_depth > TargetType::_type_depth &&\n-          type_info->type_acenstors[TargetType::_type_depth] == target_type_index);\n+    // Explicitly enclose in else to eliminate this branch early in compilation.\n+    // if target type is a non-leaf type\n+    // Check if type index falls into the range of reserved slots.\n+    int32_t target_type_index = TargetType::RuntimeTypeIndex();\n+    int32_t begin = target_type_index;\n+    // The condition will be optimized by constant-folding.\n+    if constexpr (TargetType::_type_child_slots != 0) {\n+      // total_slots = child_slots + 1 (including self)\n+      int32_t end = begin + TargetType::_type_child_slots + 1;\n+      if (object_type_index >= begin && object_type_index < end) return true;\n+    } else {\n+      if (object_type_index == begin) return true;\n+    }\n+    if constexpr (TargetType::_type_child_slots_can_overflow) {\n+      // Invariance: parent index is always smaller than the child.\n+      if (object_type_index < target_type_index) return false;\n+      // Do a runtime lookup of type information\n+      // the function checks that the info exists\n+      const TypeInfo* type_info = TVMFFIGetTypeInfo(object_type_index);\n+      return (type_info->type_depth > TargetType::_type_depth &&\n+              type_info->type_acenstors[TargetType::_type_depth]->type_index == target_type_index);\n+    } else {\n+      return false;\n+    }\n+  }\n }\n \n /*!\ndiff --git a/include/tvm/ffi/reflection/reflection.h b/include/tvm/ffi/reflection/reflection.h\nindex 6187a74..d53a481 100644\n--- a/include/tvm/ffi/reflection/reflection.h\n+++ b/include/tvm/ffi/reflection/reflection.h\n@@ -392,6 +392,31 @@ inline Function GetMethod(std::string_view type_key, const char* method_name) {\n   return AnyView::CopyFromTVMFFIAny(info->method).cast<Function>();\n }\n \n+/*!\n+ * \\brief Visit each field info of the type info and run callback.\n+ *\n+ * \\tparam Callback The callback function type.\n+ *\n+ * \\param type_info The type info.\n+ * \\param callback The callback function.\n+ *\n+ * \\note This function calls both the child and parent type info.\n+ */\n+template <typename Callback>\n+inline void ForEachFieldInfo(const TypeInfo* type_info, Callback callback) {\n+  // iterate through acenstors in parent to child order\n+  // skip the first one since it is always the root object\n+  for (int i = 1; i < type_info->type_depth; ++i) {\n+    const TVMFFITypeInfo* parent_info = type_info->type_acenstors[i];\n+    for (int j = 0; j < parent_info->num_fields; ++j) {\n+      callback(parent_info->fields + j);\n+    }\n+  }\n+  for (int i = 0; i < type_info->num_fields; ++i) {\n+    callback(type_info->fields + i);\n+  }\n+}\n+\n }  // namespace reflection\n }  // namespace ffi\n }  // namespace tvm\ndiff --git a/include/tvm/ffi/string.h b/include/tvm/ffi/string.h\nindex dee2d89..734483e 100644\n--- a/include/tvm/ffi/string.h\n+++ b/include/tvm/ffi/string.h\n@@ -255,6 +255,15 @@ class String : public ObjectRef {\n    */\n   String(std::string&& other)  // NOLINT(*)\n       : ObjectRef(make_object<details::BytesObjStdImpl<StringObj>>(std::move(other))) {}\n+\n+  /*!\n+   * \\brief constructor from TVMFFIByteArray\n+   *\n+   * \\param other a TVMFFIByteArray.\n+   */\n+  explicit String(TVMFFIByteArray other)\n+      : ObjectRef(details::MakeInplaceBytes<StringObj>(other.data, other.size)) {}\n+\n   /*!\n    * \\brief Swap this String with another string\n    * \\param other The other string\ndiff --git a/src/ffi/object.cc b/src/ffi/object.cc\nindex fa77e2b..5becd89 100644\n--- a/src/ffi/object.cc\n+++ b/src/ffi/object.cc\n@@ -52,7 +52,7 @@ class TypeTable {\n     /*! \\brief stored type key */\n     String type_key_data;\n     /*! \\brief acenstor information */\n-    std::vector<int32_t> type_acenstors_data;\n+    std::vector<const TVMFFITypeInfo*> type_acenstors_data;\n     /*! \\brief type fields informaton */\n     std::vector<TVMFFIFieldInfo> type_fields_data;\n     /*! \\brief type methods informaton */\n@@ -85,7 +85,7 @@ class TypeTable {\n           type_acenstors_data[i] = parent->type_acenstors[i];\n         }\n         // set last type information to be parent\n-        type_acenstors_data[parent->type_depth] = parent->type_index;\n+        type_acenstors_data[parent->type_depth] = parent;\n       }\n       // initialize type info: no change to type_key and type_acenstors fields\n       // after this line\n@@ -234,7 +234,7 @@ class TypeTable {\n     for (auto it = type_table_.rbegin(); it != type_table_.rend(); ++it) {\n       const Entry* ptr = it->get();\n       if (ptr != nullptr && ptr->type_depth != 0) {\n-        int parent_index = ptr->type_acenstors[ptr->type_depth - 1];\n+        int parent_index = ptr->type_acenstors[ptr->type_depth - 1]->type_index;\n         num_children[parent_index] += num_children[ptr->type_index] + 1;\n         if (expected_child_slots[ptr->type_index] + 1 < ptr->num_slots) {\n           expected_child_slots[ptr->type_index] = ptr->num_slots - 1;\n@@ -247,7 +247,7 @@ class TypeTable {\n       if (ptr != nullptr && num_children[ptr->type_index] >= min_children_count) {\n         std::cerr << '[' << ptr->type_index << \"]\\t\" << ToStringView(ptr->type_key);\n         if (ptr->type_depth != 0) {\n-          int32_t parent_index = ptr->type_acenstors[ptr->type_depth - 1];\n+          int32_t parent_index = ptr->type_acenstors[ptr->type_depth - 1]->type_index;\n           std::cerr << \"\\tparent=\" << ToStringView(type_table_[parent_index]->type_key);\n         } else {\n           std::cerr << \"\\tparent=root\";\n@@ -375,9 +375,8 @@ void MakeObjectFromPackedArgs(ffi::PackedArgs args, Any* ret) {\n \n   // iterate through acenstors in parent to child order\n   // skip the first one since it is always the root object\n-  TVM_FFI_ICHECK(type_info->type_acenstors[0] == TypeIndex::kTVMFFIObject);\n   for (int i = 1; i < type_info->type_depth; ++i) {\n-    update_fields(TVMFFIGetTypeInfo(type_info->type_acenstors[i]));\n+    update_fields(type_info->type_acenstors[i]);\n   }\n   update_fields(type_info);\n \ndiff --git a/tests/cpp/test_object.cc b/tests/cpp/test_object.cc\nindex c370ff5..4b53a70 100644\n--- a/tests/cpp/test_object.cc\n+++ b/tests/cpp/test_object.cc\n@@ -55,8 +55,8 @@ TEST(Object, TypeInfo) {\n   EXPECT_TRUE(info != nullptr);\n   EXPECT_EQ(info->type_index, TIntObj::RuntimeTypeIndex());\n   EXPECT_EQ(info->type_depth, 2);\n-  EXPECT_EQ(info->type_acenstors[0], Object::_type_index);\n-  EXPECT_EQ(info->type_acenstors[1], TNumberObj::_type_index);\n+  EXPECT_EQ(info->type_acenstors[0]->type_index, Object::_type_index);\n+  EXPECT_EQ(info->type_acenstors[1]->type_index, TNumberObj::_type_index);\n   EXPECT_GE(info->type_index, TypeIndex::kTVMFFIDynObjectBegin);\n }\n \ndiff --git a/tests/cpp/test_reflection.cc b/tests/cpp/test_reflection.cc\nindex 450cb9d..1749474 100644\n--- a/tests/cpp/test_reflection.cc\n+++ b/tests/cpp/test_reflection.cc\n@@ -18,6 +18,7 @@\n  * under the License.\n  */\n #include <gtest/gtest.h>\n+#include <tvm/ffi/container/map.h>\n #include <tvm/ffi/object.h>\n #include <tvm/ffi/reflection/reflection.h>\n #include <tvm/ffi/string.h>\n@@ -29,11 +30,20 @@ namespace {\n using namespace tvm::ffi;\n using namespace tvm::ffi::testing;\n \n-struct A : public Object {\n+struct TestObjA : public Object {\n   int64_t x;\n   int64_t y;\n \n+  static constexpr const char* _type_key = \"test.TestObjA\";\n   static constexpr bool _type_mutable = true;\n+  TVM_FFI_DECLARE_BASE_OBJECT_INFO(TestObjA, Object);\n+};\n+\n+struct TestObjADerived : public TestObjA {\n+  int64_t z;\n+\n+  static constexpr const char* _type_key = \"test.TestObjADerived\";\n+  TVM_FFI_DECLARE_FINAL_OBJECT_INFO(TestObjADerived, TestObjA);\n };\n \n TVM_FFI_STATIC_INIT_BLOCK({\n@@ -56,12 +66,13 @@ TVM_FFI_STATIC_INIT_BLOCK({\n         return self->value - other;\n       });\n \n-  refl::ObjectDef<A>().def_ro(\"x\", &A::x).def_rw(\"y\", &A::y);\n+  refl::ObjectDef<TestObjA>().def_ro(\"x\", &TestObjA::x).def_rw(\"y\", &TestObjA::y);\n+  refl::ObjectDef<TestObjADerived>().def_ro(\"z\", &TestObjADerived::z);\n });\n \n TEST(Reflection, GetFieldByteOffset) {\n-  EXPECT_EQ(reflection::GetFieldByteOffsetToObject(&A::x), sizeof(TVMFFIObject));\n-  EXPECT_EQ(reflection::GetFieldByteOffsetToObject(&A::y), 8 + sizeof(TVMFFIObject));\n+  EXPECT_EQ(reflection::GetFieldByteOffsetToObject(&TestObjA::x), sizeof(TVMFFIObject));\n+  EXPECT_EQ(reflection::GetFieldByteOffsetToObject(&TestObjA::y), 8 + sizeof(TVMFFIObject));\n   EXPECT_EQ(reflection::GetFieldByteOffsetToObject(&TIntObj::value), sizeof(TVMFFIObject));\n }\n \n@@ -131,4 +142,15 @@ TEST(Reflection, CallMethod) {\n   EXPECT_EQ(prim_expr_sub(TPrimExpr(\"float\", 1), 2.0).cast<double>(), -1.0);\n }\n \n+TEST(Reflection, ForEachFieldInfo) {\n+  const TypeInfo* info = TVMFFIGetTypeInfo(TestObjADerived::RuntimeTypeIndex());\n+  Map<String, int> field_name_to_offset;\n+  reflection::ForEachFieldInfo(info, [&](const TVMFFIFieldInfo* field_info) {\n+    field_name_to_offset.Set(String(field_info->name), field_info->offset);\n+  });\n+  EXPECT_EQ(field_name_to_offset[\"x\"], sizeof(TVMFFIObject));\n+  EXPECT_EQ(field_name_to_offset[\"y\"], 8 + sizeof(TVMFFIObject));\n+  EXPECT_EQ(field_name_to_offset[\"z\"], 16 + sizeof(TVMFFIObject));\n+}\n+\n }  // namespace\ndiff --git a/tests/cpp/testing_object.h b/tests/cpp/testing_object.h\nindex 8a91848..9c14f55 100644\n--- a/tests/cpp/testing_object.h\n+++ b/tests/cpp/testing_object.h\n@@ -22,6 +22,7 @@\n \n #include <tvm/ffi/memory.h>\n #include <tvm/ffi/object.h>\n+#include <tvm/ffi/reflection/reflection.h>\n #include <tvm/ffi/string.h>\n \n namespace tvm {\n@@ -81,6 +82,15 @@ class TFloatObj : public TNumberObj {\n \n   double Add(double other) const { return value + other; }\n \n+  static void RegisterReflection() {\n+    namespace refl = tvm::ffi::reflection;\n+    refl::ObjectDef<TFloatObj>()\n+        .def_ro(\"value\", &TFloatObj::value, \"float value field\", refl::DefaultValue(10.0))\n+        .def(\"sub\",\n+             [](const TFloatObj* self, double other) -> double { return self->value - other; })\n+        .def(\"add\", &TFloatObj::Add, \"add method\");\n+  }\n+\n   static constexpr const char* _type_key = \"test.Float\";\n   TVM_FFI_DECLARE_FINAL_OBJECT_INFO(TFloatObj, TNumberObj);\n };",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".cc",
+      ".h"
+    ],
+    "scopes_guess": [
+      "include",
+      "src",
+      "tests"
+    ]
+  }
+}

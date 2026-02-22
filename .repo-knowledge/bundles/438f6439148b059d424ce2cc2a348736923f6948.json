@@ -1,0 +1,58 @@
+{
+  "sha": "438f6439148b059d424ce2cc2a348736923f6948",
+  "sha7": "438f643",
+  "author_name": "Junru Shao",
+  "author_email": "junrushao@apache.org",
+  "date_iso": "2025-12-12T13:08:38-08:00",
+  "subject": "feat: Fix perf issue in `Map.get` (#341)",
+  "body": "Should fix #326",
+  "is_merge": false,
+  "parents": [
+    "639cc63dee4321d0a01e0f1009e952bc0355daa2"
+  ],
+  "name_status": [
+    [
+      "M",
+      "python/tvm_ffi/_ffi_api.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/container.py"
+    ],
+    [
+      "M",
+      "src/ffi/container.cc"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "python/tvm_ffi/_ffi_api.py",
+      "additions": 5,
+      "deletions": 1
+    },
+    {
+      "path": "python/tvm_ffi/container.py",
+      "additions": 9,
+      "deletions": 8
+    },
+    {
+      "path": "src/ffi/container.cc",
+      "additions": 16,
+      "deletions": 2
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/python/tvm_ffi/_ffi_api.py b/python/tvm_ffi/_ffi_api.py\nindex 4b49716..f9850a5 100644\n--- a/python/tvm_ffi/_ffi_api.py\n+++ b/python/tvm_ffi/_ffi_api.py\n@@ -23,7 +23,7 @@ from __future__ import annotations\n from typing import Any, Callable, TYPE_CHECKING\n if TYPE_CHECKING:\n     from collections.abc import Mapping, Sequence\n-    from tvm_ffi import Module\n+    from tvm_ffi import Module, Object\n     from tvm_ffi.access_path import AccessPath\n # isort: on\n # fmt: on\n@@ -50,6 +50,8 @@ if TYPE_CHECKING:\n     def MapCount(_0: Mapping[Any, Any], _1: Any, /) -> int: ...\n     def MapForwardIterFunctor(_0: Mapping[Any, Any], /) -> Callable[..., Any]: ...\n     def MapGetItem(_0: Mapping[Any, Any], _1: Any, /) -> Any: ...\n+    def MapGetItemOrMissing(_0: Mapping[Any, Any], _1: Any, /) -> Any: ...\n+    def MapGetMissingObject() -> Object: ...\n     def MapSize(_0: Mapping[Any, Any], /) -> int: ...\n     def ModuleClearImports(_0: Module, /) -> None: ...\n     def ModuleGetFunction(_0: Module, _1: str, _2: bool, /) -> Callable[..., Any] | None: ...\n@@ -95,6 +97,8 @@ __all__ = [\n     \"MapCount\",\n     \"MapForwardIterFunctor\",\n     \"MapGetItem\",\n+    \"MapGetItemOrMissing\",\n+    \"MapGetMissingObject\",\n     \"MapSize\",\n     \"ModuleClearImports\",\n     \"ModuleGetFunction\",\ndiff --git a/python/tvm_ffi/container.py b/python/tvm_ffi/container.py\nindex 06fb92e..dfa0d22 100644\n--- a/python/tvm_ffi/container.py\n+++ b/python/tvm_ffi/container.py\n@@ -77,6 +77,8 @@ K = TypeVar(\"K\")\n V = TypeVar(\"V\")\n _DefaultT = TypeVar(\"_DefaultT\")\n \n+MISSING = _ffi_api.MapGetMissingObject()\n+\n \n def getitem_helper(\n     obj: Any,\n@@ -254,12 +256,11 @@ class ItemsView(ItemsViewBase[K, V]):\n         if not isinstance(item, tuple) or len(item) != 2:\n             return False\n         key, value = item\n-        try:\n-            existing_value = self._backend_map[key]\n-        except KeyError:\n+        actual_value = self._backend_map.get(key, MISSING)\n+        if actual_value is MISSING:\n             return False\n-        else:\n-            return existing_value == value\n+        # TODO(@junrus): Is `__eq__` the right method to use here?\n+        return actual_value == value\n \n \n @register_object(\"ffi.Map\")\n@@ -349,10 +350,10 @@ class Map(core.Object, Mapping[K, V]):\n             The result value.\n \n         \"\"\"\n-        try:\n-            return self[key]\n-        except KeyError:\n+        ret = _ffi_api.MapGetItemOrMissing(self, key)\n+        if MISSING.same_as(ret):\n             return default\n+        return ret\n \n     def __repr__(self) -> str:\n         \"\"\"Return a string representation of the map.\"\"\"\ndiff --git a/src/ffi/container.cc b/src/ffi/container.cc\nindex b777dc0..57eda37 100644\n--- a/src/ffi/container.cc\n+++ b/src/ffi/container.cc\n@@ -55,6 +55,11 @@ class MapForwardIterFunctor {\n   ffi::MapObj::iterator end_;\n };\n \n+ObjectRef GetMissingObject() {\n+  static ObjectRef missing_obj(make_object<Object>());\n+  return missing_obj;\n+}\n+\n TVM_FFI_STATIC_INIT_BLOCK() {\n   namespace refl = tvm::ffi::reflection;\n   refl::GlobalDef()\n@@ -81,8 +86,17 @@ TVM_FFI_STATIC_INIT_BLOCK() {\n            [](const ffi::MapObj* n, const Any& k) -> int64_t {\n              return static_cast<int64_t>(n->count(k));\n            })\n-      .def(\"ffi.MapForwardIterFunctor\", [](const ffi::MapObj* n) -> ffi::Function {\n-        return ffi::Function::FromTyped(MapForwardIterFunctor(n->begin(), n->end()));\n+      .def(\"ffi.MapForwardIterFunctor\",\n+           [](const ffi::MapObj* n) -> ffi::Function {\n+             return ffi::Function::FromTyped(MapForwardIterFunctor(n->begin(), n->end()));\n+           })\n+      .def(\"ffi.MapGetMissingObject\", GetMissingObject)\n+      .def(\"ffi.MapGetItemOrMissing\", [](const ffi::MapObj* n, const Any& k) -> Any {\n+        try {\n+          return n->at(k);\n+        } catch (const tvm::ffi::Error& e) {\n+          return GetMissingObject();\n+        }\n       });\n }\n }  // namespace ffi",
+  "heuristics": {
+    "tags": [],
+    "extensions": [
+      ".cc",
+      ".py"
+    ],
+    "scopes_guess": [
+      "python",
+      "src"
+    ]
+  }
+}

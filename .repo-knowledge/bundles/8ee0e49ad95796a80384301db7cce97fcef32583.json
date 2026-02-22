@@ -1,0 +1,52 @@
+{
+  "sha": "8ee0e49ad95796a80384301db7cce97fcef32583",
+  "sha7": "8ee0e49",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-11-08T09:23:16-05:00",
+  "subject": "[TORCH] Update the extension build to o3 (#243)",
+  "body":
+      "This PR updates the extension build to O3 to make sure the overall build\ncan be more optimized. Based on evals do not bring noticable\nimprovement, but good to switch on in this case given we also use it for\nAOT build.",
+  "is_merge": false,
+  "parents": [
+    "5a8774943a668f4344b0afbffa28ec5f826c8b15"
+  ],
+  "name_status": [
+    [
+      "M",
+      "addons/torch_c_dlpack_ext/pyproject.toml"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/utils/_build_optional_torch_c_dlpack.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "addons/torch_c_dlpack_ext/pyproject.toml",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "python/tvm_ffi/utils/_build_optional_torch_c_dlpack.py",
+      "additions": 19,
+      "deletions": 19
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/addons/torch_c_dlpack_ext/pyproject.toml b/addons/torch_c_dlpack_ext/pyproject.toml\nindex 343a26c..3b160b8 100644\n--- a/addons/torch_c_dlpack_ext/pyproject.toml\n+++ b/addons/torch_c_dlpack_ext/pyproject.toml\n@@ -17,7 +17,7 @@\n \n [project]\n name = \"torch_c_dlpack_ext\"\n-version = \"0.1.1\"\n+version = \"0.1.2\"\n requires-python = \">=3.9\"\n description = \"torch c dlpack ext\"\n dependencies = [\"torch\"]\ndiff --git a/python/tvm_ffi/utils/_build_optional_torch_c_dlpack.py b/python/tvm_ffi/utils/_build_optional_torch_c_dlpack.py\nindex eb7f897..5f73d63 100644\n--- a/python/tvm_ffi/utils/_build_optional_torch_c_dlpack.py\n+++ b/python/tvm_ffi/utils/_build_optional_torch_c_dlpack.py\n@@ -505,6 +505,24 @@ struct TorchDLPackExchangeAPI : public DLPackExchangeAPI {\n     }\n   }\n \n+  // Get current CUDA/ROCm work stream\n+  static int CurrentWorkStream(DLDeviceType device_type, int32_t device_id, void** out_stream) {\n+    try {\n+#ifdef BUILD_WITH_CUDA\n+      if (device_type == kDLCUDA || device_type == kDLROCM) {\n+        *out_stream = at::cuda::getCurrentCUDAStream(device_id).stream();\n+        return 0;\n+      }\n+#endif\n+      // For CPU and other devices, return NULL (no stream concept)\n+      *out_stream = nullptr;\n+      return 0;\n+    } catch (const std::exception& e) {\n+      PyErr_SetString(PyExc_RuntimeError, e.what());\n+      return -1;\n+    }\n+  }\n+\n   static int ManagedTensorToPyObjectNoSync(DLManagedTensorVersioned* src, void** py_obj_out) {\n     try {\n       at::Tensor tensor = at::fromDLPackImpl<DLManagedTensorVersioned>(src, nullptr);\n@@ -535,24 +553,6 @@ struct TorchDLPackExchangeAPI : public DLPackExchangeAPI {\n       return -1;\n     }\n   }\n-\n-  // Get current CUDA/ROCm work stream\n-  static int CurrentWorkStream(DLDeviceType device_type, int32_t device_id, void** out_stream) {\n-    try {\n-#ifdef BUILD_WITH_CUDA\n-      if (device_type == kDLCUDA || device_type == kDLROCM) {\n-        *out_stream = at::cuda::getCurrentCUDAStream(device_id).stream();\n-        return 0;\n-      }\n-#endif\n-      // For CPU and other devices, return NULL (no stream concept)\n-      *out_stream = nullptr;\n-      return 0;\n-    } catch (const std::exception& e) {\n-      PyErr_SetString(PyExc_RuntimeError, e.what());\n-      return -1;\n-    }\n-  }\n };\n \n // defien a cross-platgorm macro to export the symbol\n@@ -613,7 +613,7 @@ def _generate_ninja_build(\n         ]\n         default_ldflags = [\"/DLL\"]\n     else:\n-        default_cflags = [\"-std=c++17\", \"-fPIC\", \"-O2\"]\n+        default_cflags = [\"-std=c++17\", \"-fPIC\", \"-O3\"]\n         default_ldflags = [\"-shared\", \"-Wl,-rpath,$ORIGIN\", \"-Wl,--no-as-needed\"]\n \n     cflags = default_cflags + [flag.strip() for flag in extra_cflags]",
+  "heuristics": {
+    "tags": [
+      "build"
+    ],
+    "extensions": [
+      ".py",
+      ".toml"
+    ],
+    "scopes_guess": [
+      "addons",
+      "python"
+    ]
+  }
+}

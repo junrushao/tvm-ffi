@@ -1,0 +1,61 @@
+{
+  "sha": "38914fa7a13fce9eb32462d649b0d2f1d11553d1",
+  "sha7": "38914fa",
+  "author_name": "Guan-Ming (Wesley) Chiu",
+  "author_email": "105915352+guan404ming@users.noreply.github.com",
+  "date_iso": "2026-01-10T16:59:01+08:00",
+  "subject": "fix: TypeStr support for Any type in reflection Init (#393)",
+  "body":
+      "## Why\n- Using refl::init<Any>() to define a constructor that takes Any fails\nto compile\n- The reflection system converts Any to Any&& internally\n- No Type2Str<Any&&> specialization existed to handle this case\n\n## How\n- Added Type2Str<Any&&> specialization in any.h\n- Added forward declaration of Any in type_traits.h",
+  "is_merge": false,
+  "parents": [
+    "6643e2c0579c8a4ea80cc59948fcbc2a76743a57"
+  ],
+  "name_status": [
+    [
+      "M",
+      "include/tvm/ffi/any.h"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/type_traits.h"
+    ],
+    [
+      "M",
+      "tests/cpp/test_reflection.cc"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "include/tvm/ffi/any.h",
+      "additions": 10,
+      "deletions": 0
+    },
+    {
+      "path": "include/tvm/ffi/type_traits.h",
+      "additions": 2,
+      "deletions": 0
+    },
+    {
+      "path": "tests/cpp/test_reflection.cc",
+      "additions": 56,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/include/tvm/ffi/any.h b/include/tvm/ffi/any.h\nindex 4ff5db0..9adbd84 100644\n--- a/include/tvm/ffi/any.h\n+++ b/include/tvm/ffi/any.h\n@@ -516,6 +516,11 @@ struct Type2Str<const Any&> {\n   static std::string v() { return \"Any\"; }\n };\n \n+template <>\n+struct Type2Str<Any&&> {\n+  static std::string v() { return \"Any\"; }\n+};\n+\n template <>\n struct Type2Str<AnyView> {\n   static std::string v() { return \"AnyView\"; }\n@@ -526,6 +531,11 @@ struct Type2Str<const AnyView&> {\n   static std::string v() { return \"AnyView\"; }\n };\n \n+template <>\n+struct Type2Str<AnyView&&> {\n+  static std::string v() { return \"AnyView\"; }\n+};\n+\n template <>\n struct Type2Str<void> {\n   static std::string v() { return \"void\"; }\ndiff --git a/include/tvm/ffi/type_traits.h b/include/tvm/ffi/type_traits.h\nindex 1fd1304..dc7f982 100644\n--- a/include/tvm/ffi/type_traits.h\n+++ b/include/tvm/ffi/type_traits.h\n@@ -36,6 +36,8 @@\n namespace tvm {\n namespace ffi {\n \n+class Any;\n+\n /*!\n  * \\brief TypeTraits that specifies the conversion behavior from/to FFI Any.\n  *\ndiff --git a/tests/cpp/test_reflection.cc b/tests/cpp/test_reflection.cc\nindex 8fe6a18..82d73a2 100644\n--- a/tests/cpp/test_reflection.cc\n+++ b/tests/cpp/test_reflection.cc\n@@ -294,4 +294,60 @@ TEST(Reflection, AccessPath) {\n   auto root_parent = root->GetParent();\n   EXPECT_FALSE(root_parent.has_value());\n }\n+\n+struct TestObjWithAny : public Object {\n+  Any value;\n+  explicit TestObjWithAny(Any value) : value(std::move(value)) {}\n+  [[maybe_unused]] static constexpr bool _type_mutable = true;\n+  TVM_FFI_DECLARE_OBJECT_INFO_FINAL(\"test.TestObjWithAny\", TestObjWithAny, Object);\n+};\n+\n+TVM_FFI_STATIC_INIT_BLOCK() {\n+  namespace refl = tvm::ffi::reflection;\n+  refl::ObjectDef<TestObjWithAny>().def(refl::init<Any>()).def_ro(\"value\", &TestObjWithAny::value);\n+}\n+\n+struct TestObjWithAnyView : public Object {\n+  Any value;\n+  explicit TestObjWithAnyView(AnyView value) : value(value) {}\n+  [[maybe_unused]] static constexpr bool _type_mutable = true;\n+  TVM_FFI_DECLARE_OBJECT_INFO_FINAL(\"test.TestObjWithAnyView\", TestObjWithAnyView, Object);\n+};\n+\n+TVM_FFI_STATIC_INIT_BLOCK() {\n+  namespace refl = tvm::ffi::reflection;\n+  refl::ObjectDef<TestObjWithAnyView>()\n+      .def(refl::init<AnyView>())\n+      .def_ro(\"value\", &TestObjWithAnyView::value);\n+}\n+\n+TEST(Reflection, InitWithAny) {\n+  Function init = reflection::GetMethod(\"test.TestObjWithAny\", \"__ffi_init__\");\n+  Any obj1 = init(42);\n+  ASSERT_TRUE(obj1.as<TestObjWithAny>() != nullptr);\n+  EXPECT_EQ(obj1.as<TestObjWithAny>()->value.cast<int>(), 42);\n+\n+  Any obj2 = init(3.14);\n+  ASSERT_TRUE(obj2.as<TestObjWithAny>() != nullptr);\n+  EXPECT_EQ(obj2.as<TestObjWithAny>()->value.cast<double>(), 3.14);\n+\n+  Any obj3 = init(String(\"hello\"));\n+  ASSERT_TRUE(obj3.as<TestObjWithAny>() != nullptr);\n+  EXPECT_EQ(obj3.as<TestObjWithAny>()->value.cast<String>(), \"hello\");\n+}\n+\n+TEST(Reflection, InitWithAnyView) {\n+  Function init = reflection::GetMethod(\"test.TestObjWithAnyView\", \"__ffi_init__\");\n+  Any obj1 = init(42);\n+  ASSERT_TRUE(obj1.as<TestObjWithAnyView>() != nullptr);\n+  EXPECT_EQ(obj1.as<TestObjWithAnyView>()->value.cast<int>(), 42);\n+\n+  Any obj2 = init(3.14);\n+  ASSERT_TRUE(obj2.as<TestObjWithAnyView>() != nullptr);\n+  EXPECT_EQ(obj2.as<TestObjWithAnyView>()->value.cast<double>(), 3.14);\n+\n+  Any obj3 = init(String(\"hello\"));\n+  ASSERT_TRUE(obj3.as<TestObjWithAnyView>() != nullptr);\n+  EXPECT_EQ(obj3.as<TestObjWithAnyView>()->value.cast<String>(), \"hello\");\n+}\n }  // namespace",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".cc",
+      ".h"
+    ],
+    "scopes_guess": [
+      "include",
+      "tests"
+    ]
+  }
+}

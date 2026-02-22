@@ -1,0 +1,90 @@
+{
+  "sha": "db987299f74aadcb4d8003cc6009cb67a75662c8",
+  "sha7": "db98729",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-09-09T14:00:24-04:00",
+  "subject": "[FFI][ABI] Introduce generic stream exchange protocol (#18295)",
+  "body":
+      "This PR adds a __tvm_ffi_env_stream__ protocol for generic\ntensors to exchange env stream to tvm ffi.\n\nAlso renames TVMFFIEnvSetStream to TVMFFIEnvSetCurrentStream.",
+  "is_merge": false,
+  "parents": [
+    "a08fa6eb0d7a67de9f5a4354d9a1fe41c0dfa806"
+  ],
+  "name_status": [
+    [
+      "M",
+      "include/tvm/ffi/extra/c_env_api.h"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/cython/base.pxi"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/cython/function.pxi"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/cython/tensor.pxi"
+    ],
+    [
+      "M",
+      "scripts/benchmark_dlpack.py"
+    ],
+    [
+      "M",
+      "src/ffi/extra/stream_context.cc"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "include/tvm/ffi/extra/c_env_api.h",
+      "additions": 3,
+      "deletions": 3
+    },
+    {
+      "path": "python/tvm_ffi/cython/base.pxi",
+      "additions": 55,
+      "deletions": 36
+    },
+    {
+      "path": "python/tvm_ffi/cython/function.pxi",
+      "additions": 22,
+      "deletions": 7
+    },
+    {
+      "path": "python/tvm_ffi/cython/tensor.pxi",
+      "additions": 24,
+      "deletions": 0
+    },
+    {
+      "path": "scripts/benchmark_dlpack.py",
+      "additions": 22,
+      "deletions": 4
+    },
+    {
+      "path": "src/ffi/extra/stream_context.cc",
+      "additions": 2,
+      "deletions": 2
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/include/tvm/ffi/extra/c_env_api.h b/include/tvm/ffi/extra/c_env_api.h\nindex 6f8e44b..bd0d188 100644\n--- a/include/tvm/ffi/extra/c_env_api.h\n+++ b/include/tvm/ffi/extra/c_env_api.h\n@@ -49,9 +49,9 @@ typedef void* TVMFFIStreamHandle;\n  * \\note The stream is a weak reference that is cached/owned by the module.\n  * \\return 0 when success, nonzero when failure happens\n  */\n-TVM_FFI_DLL int TVMFFIEnvSetStream(int32_t device_type, int32_t device_id,\n-                                   TVMFFIStreamHandle stream,\n-                                   TVMFFIStreamHandle* opt_out_original_stream);\n+TVM_FFI_DLL int TVMFFIEnvSetCurrentStream(int32_t device_type, int32_t device_id,\n+                                          TVMFFIStreamHandle stream,\n+                                          TVMFFIStreamHandle* opt_out_original_stream);\n \n /*!\n  * \\brief FFI function to get the current stream for a device\ndiff --git a/python/tvm_ffi/cython/base.pxi b/python/tvm_ffi/cython/base.pxi\nindex f1cd77b..efb2225 100644\n--- a/python/tvm_ffi/cython/base.pxi\n+++ b/python/tvm_ffi/cython/base.pxi\n@@ -24,39 +24,24 @@ from cpython cimport PyErr_CheckSignals, PyGILState_Ensure, PyGILState_Release,\n from cpython cimport pycapsule, PyCapsule_Destructor\n from cpython cimport PyErr_SetNone\n \n-\n-# Cython binding for TVM FFI C API\n-cdef extern from \"tvm/ffi/c_api.h\":\n-    cdef enum TVMFFITypeIndex:\n-        kTVMFFIAny = -1\n-        kTVMFFINone = 0\n-        kTVMFFIInt = 1\n-        kTVMFFIBool = 2\n-        kTVMFFIFloat = 3\n-        kTVMFFIOpaquePtr = 4\n-        kTVMFFIDataType = 5\n-        kTVMFFIDevice = 6\n-        kTVMFFIDLTensorPtr = 7\n-        kTVMFFIRawStr = 8\n-        kTVMFFIByteArrayPtr = 9\n-        kTVMFFIObjectRValueRef = 10\n-        kTVMFFISmallStr = 11\n-        kTVMFFISmallBytes = 12\n-        kTVMFFIStaticObjectBegin = 64\n-        kTVMFFIObject = 64\n-        kTVMFFIStr = 65\n-        kTVMFFIBytes = 66\n-        kTVMFFIError = 67\n-        kTVMFFIFunction = 68\n-        kTVMFFIShape = 69\n-        kTVMFFITensor = 70\n-        kTVMFFIArray = 71\n-        kTVMFFIMap = 72\n-        kTVMFFIModule = 73\n-        kTVMFFIOpaquePyObject = 74\n-\n-\n-    ctypedef void* TVMFFIObjectHandle\n+cdef extern from \"dlpack/dlpack.h\":\n+    cdef enum:\n+        kDLCPU = 1,\n+        kDLCUDA = 2,\n+        kDLCUDAHost = 3,\n+        kDLOpenCL = 4,\n+        kDLVulkan = 7,\n+        kDLMetal = 8,\n+        kDLVPI = 9,\n+        kDLROCM = 10,\n+        kDLROCMHost = 11,\n+        kDLExtDev = 12,\n+        kDLCUDAManaged = 13,\n+        kDLOneAPI = 14,\n+        kDLWebGPU = 15,\n+        kDLHexagon = 16,\n+        kDLMAIA = 17\n+        kDLTrn = 18\n \n     ctypedef struct DLDataType:\n         uint8_t code\n@@ -92,6 +77,40 @@ cdef extern from \"tvm/ffi/c_api.h\":\n         void (*deleter)(DLManagedTensorVersioned* self)\n         uint64_t flags\n \n+\n+# Cython binding for TVM FFI C API\n+cdef extern from \"tvm/ffi/c_api.h\":\n+    cdef enum TVMFFITypeIndex:\n+        kTVMFFIAny = -1\n+        kTVMFFINone = 0\n+        kTVMFFIInt = 1\n+        kTVMFFIBool = 2\n+        kTVMFFIFloat = 3\n+        kTVMFFIOpaquePtr = 4\n+        kTVMFFIDataType = 5\n+        kTVMFFIDevice = 6\n+        kTVMFFIDLTensorPtr = 7\n+        kTVMFFIRawStr = 8\n+        kTVMFFIByteArrayPtr = 9\n+        kTVMFFIObjectRValueRef = 10\n+        kTVMFFISmallStr = 11\n+        kTVMFFISmallBytes = 12\n+        kTVMFFIStaticObjectBegin = 64\n+        kTVMFFIObject = 64\n+        kTVMFFIStr = 65\n+        kTVMFFIBytes = 66\n+        kTVMFFIError = 67\n+        kTVMFFIFunction = 68\n+        kTVMFFIShape = 69\n+        kTVMFFITensor = 70\n+        kTVMFFIArray = 71\n+        kTVMFFIMap = 72\n+        kTVMFFIModule = 73\n+        kTVMFFIOpaquePyObject = 74\n+\n+\n+    ctypedef void* TVMFFIObjectHandle\n+\n     ctypedef struct TVMFFIObject:\n         int32_t type_index\n         int32_t ref_counter\n@@ -219,9 +238,9 @@ cdef extern from \"tvm/ffi/extra/c_env_api.h\":\n \n     int TVMFFIEnvRegisterCAPI(const char* name, void* ptr) nogil\n     void* TVMFFIEnvGetCurrentStream(int32_t device_type, int32_t device_id) nogil\n-    int TVMFFIEnvSetStream(int32_t device_type, int32_t device_id,\n-                           TVMFFIStreamHandle stream,\n-                           TVMFFIStreamHandle* opt_out_original_stream) nogil\n+    int TVMFFIEnvSetCurrentStream(int32_t device_type, int32_t device_id,\n+                                  TVMFFIStreamHandle stream,\n+                                  TVMFFIStreamHandle* opt_out_original_stream) nogil\n \n \n cdef class ByteArrayArg:\ndiff --git a/python/tvm_ffi/cython/function.pxi b/python/tvm_ffi/cython/function.pxi\nindex 28d4ba5..71591d9 100644\n--- a/python/tvm_ffi/cython/function.pxi\n+++ b/python/tvm_ffi/cython/function.pxi\n@@ -122,10 +122,25 @@ cdef inline int make_args(tuple py_args, TVMFFIAny* out, list temp_args,\n                 ctx_stream[0] = <TVMFFIStreamHandle>temp_ptr\n             temp_args.append(arg)\n         elif hasattr(arg, \"__dlpack__\"):\n-            arg = from_dlpack(arg)\n+            ffi_arg = from_dlpack(arg)\n             out[i].type_index = kTVMFFITensor\n-            out[i].v_ptr = (<Tensor>arg).chandle\n-            temp_args.append(arg)\n+            out[i].v_ptr = (<Tensor>ffi_arg).chandle\n+            # record the stream from the source framework context when possible\n+            temp_dltensor = TVMFFITensorGetDLTensorPtr((<Tensor>ffi_arg).chandle)\n+            if (temp_dltensor.device.device_type != kDLCPU and\n+                ctx_dev_type != NULL and\n+                ctx_dev_type[0] == -1):\n+                # __tvm_ffi_env_stream__ returns the expected stream that should be set\n+                # through TVMFFIEnvSetCurrentStream when calling a TVM FFI function\n+                if hasattr(arg, \"__tvm_ffi_env_stream__\"):\n+                    # Ideally projects should directly setup their stream context API\n+                    # write through by also calling TVMFFIEnvSetCurrentStream\n+                    # so we do not need this protocol to do exchange\n+                    ctx_dev_type[0] = temp_dltensor.device.device_type\n+                    ctx_dev_id[0] = temp_dltensor.device.device_id\n+                    temp_ptr= arg.__tvm_ffi_env_stream__()\n+                    ctx_stream[0] = <TVMFFIStreamHandle>temp_ptr\n+            temp_args.append(ffi_arg)\n         elif isinstance(arg, PyNativeObject) and arg.__tvm_ffi_object__ is not None:\n             arg = arg.__tvm_ffi_object__\n             out[i].type_index = TVMFFIObjectGetTypeIndex((<Object>arg).chandle)\n@@ -210,7 +225,7 @@ cdef inline int FuncCall3(void* chandle,\n     with nogil:\n         if ctx_dev_type != -1:\n             # set the stream based on ctx stream\n-            c_api_ret_code[0] = TVMFFIEnvSetStream(ctx_dev_type, ctx_dev_id, ctx_stream, &prev_stream)\n+            c_api_ret_code[0] = TVMFFIEnvSetCurrentStream(ctx_dev_type, ctx_dev_id, ctx_stream, &prev_stream)\n             if c_api_ret_code[0] != 0:\n                 return 0\n         c_api_ret_code[0] = TVMFFIFunctionCall(\n@@ -219,7 +234,7 @@ cdef inline int FuncCall3(void* chandle,\n         # restore the original stream if it is not the same as the context stream\n         if ctx_dev_type != -1 and prev_stream != ctx_stream:\n             # restore the original stream\n-            c_api_ret_code[0] = TVMFFIEnvSetStream(ctx_dev_type, ctx_dev_id, prev_stream, NULL)\n+            c_api_ret_code[0] = TVMFFIEnvSetCurrentStream(ctx_dev_type, ctx_dev_id, prev_stream, NULL)\n             if c_api_ret_code[0] != 0:\n                 return 0\n     return 0\n@@ -247,13 +262,13 @@ cdef inline int FuncCall(void* chandle,\n \n     with nogil:\n         if ctx_dev_type != -1:\n-            c_api_ret_code[0] = TVMFFIEnvSetStream(ctx_dev_type, ctx_dev_id, ctx_stream, &prev_stream)\n+            c_api_ret_code[0] = TVMFFIEnvSetCurrentStream(ctx_dev_type, ctx_dev_id, ctx_stream, &prev_stream)\n             if c_api_ret_code[0] != 0:\n                 return 0\n         c_api_ret_code[0] = TVMFFIFunctionCall(chandle, &packed_args[0], nargs, result)\n         # restore the original stream if it is not the same as the context stream\n         if ctx_dev_type != -1 and prev_stream != ctx_stream:\n-            c_api_ret_code[0] = TVMFFIEnvSetStream(ctx_dev_type, ctx_dev_id, prev_stream, NULL)\n+            c_api_ret_code[0] = TVMFFIEnvSetCurrentStream(ctx_dev_type, ctx_dev_id, prev_stream, NULL)\n             if c_api_ret_code[0] != 0:\n                 return 0\n \ndiff --git a/python/tvm_ffi/cython/tensor.pxi b/python/tvm_ffi/cython/tensor.pxi\nindex 4658422..2072ad0 100644\n--- a/python/tvm_ffi/cython/tensor.pxi\n+++ b/python/tvm_ffi/cython/tensor.pxi\n@@ -260,6 +260,30 @@ _set_class_tensor(Tensor)\n _register_object_by_index(kTVMFFITensor, Tensor)\n \n \n+cdef class DLTensorTestWrapper:\n+    \"\"\"Wrapper of a Tensor that exposes DLPack protocol, only for testing purpose.\n+    \"\"\"\n+    cdef Tensor tensor\n+    def __init__(self, tensor):\n+        self.tensor = tensor\n+\n+    def __tvm_ffi_env_stream__(self):\n+        cdef TVMFFIStreamHandle stream\n+        cdef long long stream_as_int\n+        cdef int c_api_ret_code\n+        with nogil:\n+            stream = TVMFFIEnvGetCurrentStream(\n+                self.tensor.cdltensor.device.device_type, self.tensor.cdltensor.device.device_id)\n+        stream_as_int = <long long>stream\n+        return stream_as_int\n+\n+    def __dlpack_device__(self):\n+        return self.tensor.__dlpack_device__()\n+\n+    def __dlpack__(self, *, **kwargs):\n+        return self.tensor.__dlpack__(**kwargs)\n+\n+\n cdef inline object make_ret_dltensor(TVMFFIAny result):\n     cdef DLTensor* dltensor\n     dltensor = <DLTensor*>result.v_ptr\ndiff --git a/scripts/benchmark_dlpack.py b/scripts/benchmark_dlpack.py\nindex 73fbe0f..00581eb 100644\n--- a/scripts/benchmark_dlpack.py\n+++ b/scripts/benchmark_dlpack.py\n@@ -44,11 +44,11 @@ import time\n \n \n def print_speed(name, speed):\n-    print(f\"{name:<40} {speed} sec/call\")\n+    print(f\"{name:<60} {speed} sec/call\")\n \n \n def print_error(name, error):\n-    print(f\"{name:<40} {error}\")\n+    print(f\"{name:<60} {error}\")\n \n \n def baseline_torch_add(repeat):\n@@ -122,7 +122,7 @@ def tvm_ffi_nop(repeat):\n     nop(x, y, z)\n     start = time.time()\n     for i in range(repeat):\n-        y = tvm_ffi.from_dlpack(x)\n+        nop(x, y, z)\n     end = time.time()\n     print_speed(\"tvm_ffi.nop\", (end - start) / repeat)\n \n@@ -275,6 +275,22 @@ def tvm_ffi_nop_autodlpack_from_numpy(repeat):\n     bench_tvm_ffi_nop_autodlpack(\"tvm_ffi.nop.autodlpack(numpy)\", x, y, z, repeat)\n \n \n+def tvm_ffi_nop_autodlpack_from_dltensor_test_wrapper(repeat, device):\n+    \"\"\"\n+    Measures overhead of running dlpack via auto convert by directly\n+    take test wrapper as inputs. This effectively measure DLPack exchange in tvm ffi.\n+    \"\"\"\n+    x = tvm_ffi.from_dlpack(torch.arange(1, device=device))\n+    y = tvm_ffi.from_dlpack(torch.arange(1, device=device))\n+    z = tvm_ffi.from_dlpack(torch.arange(1, device=device))\n+    x = tvm_ffi.core.DLTensorTestWrapper(x)\n+    y = tvm_ffi.core.DLTensorTestWrapper(y)\n+    z = tvm_ffi.core.DLTensorTestWrapper(z)\n+    bench_tvm_ffi_nop_autodlpack(\n+        f\"tvm_ffi.nop.autodlpack(DLTensorTestWrapper[{device}])\", x, y, z, repeat\n+    )\n+\n+\n def bench_to_dlpack(x, name, repeat):\n     x.__dlpack__()\n     start = time.time()\n@@ -367,7 +383,6 @@ def main():\n     baseline_numpy_add(repeat)\n     baseline_torch_add(repeat)\n     baseline_cupy_add(repeat)\n-    tvm_ffi_nop(repeat)\n     tvm_ffi_nop_from_torch_dlpack(repeat)\n     tvm_ffi_nop_from_numpy_dlpack(repeat)\n     tvm_ffi_self_dlpack_nop(repeat)\n@@ -377,6 +392,9 @@ def main():\n     tvm_ffi_nop_autodlpack_from_torch(repeat, \"cuda\", stream=True)\n \n     tvm_ffi_nop_autodlpack_from_numpy(repeat)\n+    tvm_ffi_nop_autodlpack_from_dltensor_test_wrapper(repeat, \"cpu\")\n+    tvm_ffi_nop_autodlpack_from_dltensor_test_wrapper(repeat, \"cuda\")\n+    tvm_ffi_nop(repeat)\n     print(\"-------------------------------\")\n     print(\"Benchmark x.__dlpack__ overhead\")\n     print(\"-------------------------------\")\ndiff --git a/src/ffi/extra/stream_context.cc b/src/ffi/extra/stream_context.cc\nindex d063efd..5a6afad 100644\n--- a/src/ffi/extra/stream_context.cc\n+++ b/src/ffi/extra/stream_context.cc\n@@ -66,8 +66,8 @@ class StreamContext {\n }  // namespace ffi\n }  // namespace tvm\n \n-int TVMFFIEnvSetStream(int32_t device_type, int32_t device_id, TVMFFIStreamHandle stream,\n-                       TVMFFIStreamHandle* out_original_stream) {\n+int TVMFFIEnvSetCurrentStream(int32_t device_type, int32_t device_id, TVMFFIStreamHandle stream,\n+                              TVMFFIStreamHandle* out_original_stream) {\n   TVM_FFI_SAFE_CALL_BEGIN();\n   tvm::ffi::StreamContext::ThreadLocal()->SetStream(device_type, device_id, stream,\n                                                     out_original_stream);",
+  "heuristics": {
+    "tags": [],
+    "extensions": [
+      ".cc",
+      ".h",
+      ".pxi",
+      ".py"
+    ],
+    "scopes_guess": [
+      "include",
+      "python",
+      "scripts",
+      "src"
+    ]
+  }
+}

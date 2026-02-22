@@ -1,0 +1,38 @@
+{
+  "sha": "da47623098927c5b7e6380b1481b4002facdd6cd",
+  "sha7": "da47623",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-07-03T08:18:19-04:00",
+  "subject": "[REFACTOR][FFI] Phase out old VisitAttrs mechanism (#18106)",
+  "body": "",
+  "is_merge": false,
+  "parents": [
+    "0966c368b097ec1b89e459a550716674198ac1d4"
+  ],
+  "name_status": [
+    [
+      "M",
+      "include/tvm/ffi/object.h"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "include/tvm/ffi/object.h",
+      "additions": 0,
+      "deletions": 1
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/include/tvm/ffi/object.h b/include/tvm/ffi/object.h\nindex 164c4e2..ce667d6 100644\n--- a/include/tvm/ffi/object.h\n+++ b/include/tvm/ffi/object.h\n@@ -214,7 +214,6 @@ class Object {\n   static constexpr int32_t _type_depth = 0;\n   // extra fields used by plug-ins for attribute visiting\n   // and structural information\n-  static constexpr const bool _type_has_method_visit_attrs = true;\n   static constexpr const bool _type_has_method_sequal_reduce = false;\n   static constexpr const bool _type_has_method_shash_reduce = false;\n   // The following functions are provided by macro",
+  "heuristics": {
+    "tags": [],
+    "extensions": [
+      ".h"
+    ],
+    "scopes_guess": [
+      "include"
+    ]
+  }
+}

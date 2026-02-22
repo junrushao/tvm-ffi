@@ -1,0 +1,79 @@
+{
+  "sha": "22c049b8f3b64e7e2f17b28df044b065ae3fba83",
+  "sha7": "22c049b",
+  "author_name": "Yaxing Cai",
+  "author_email": "caiyaxing666@gmail.com",
+  "date_iso": "2025-10-08T17:48:13-07:00",
+  "subject": "Expose get stream method (#97)",
+  "body": "This PR exposes the get env stream method as followup of #5.",
+  "is_merge": false,
+  "parents": [
+    "dd4fb0ae92ab69b1cc0280e812a18a58273d4ae6"
+  ],
+  "name_status": [
+    [
+      "M",
+      "python/tvm_ffi/__init__.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/core.pyi"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/cython/base.pxi"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/stream.py"
+    ],
+    [
+      "M",
+      "tests/python/test_stream.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "python/tvm_ffi/__init__.py",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "python/tvm_ffi/core.pyi",
+      "additions": 1,
+      "deletions": 0
+    },
+    {
+      "path": "python/tvm_ffi/cython/base.pxi",
+      "additions": 6,
+      "deletions": 0
+    },
+    {
+      "path": "python/tvm_ffi/stream.py",
+      "additions": 17,
+      "deletions": 0
+    },
+    {
+      "path": "tests/python/test_stream.py",
+      "additions": 3,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/python/tvm_ffi/__init__.py b/python/tvm_ffi/__init__.py\nindex 720968d..e46a7aa 100644\n--- a/python/tvm_ffi/__init__.py\n+++ b/python/tvm_ffi/__init__.py\n@@ -42,7 +42,7 @@ from ._tensor import Device, device, DLDeviceType\n from ._tensor import from_dlpack, Tensor, Shape\n from .container import Array, Map\n from .module import Module, system_lib, load_module\n-from .stream import StreamContext, use_raw_stream, use_torch_stream\n+from .stream import StreamContext, get_raw_stream, use_raw_stream, use_torch_stream\n from . import serialization\n from . import access_path\n from . import testing\ndiff --git a/python/tvm_ffi/core.pyi b/python/tvm_ffi/core.pyi\nindex 54b44cf..45a7d28 100644\n--- a/python/tvm_ffi/core.pyi\n+++ b/python/tvm_ffi/core.pyi\n@@ -259,6 +259,7 @@ def _convert_to_ffi_error(error: BaseException) -> Error: ...\n def _env_set_current_stream(\n     device_type: int, device_id: int, stream: int | c_void_p\n ) -> int | c_void_p: ...\n+def _env_get_current_stream(device_type: int, device_id: int) -> int: ...\n \n class DataType:\n     \"\"\"Internal wrapper around ``DLDataType``.\ndiff --git a/python/tvm_ffi/cython/base.pxi b/python/tvm_ffi/cython/base.pxi\nindex 633ace4..a8b4212 100644\n--- a/python/tvm_ffi/cython/base.pxi\n+++ b/python/tvm_ffi/cython/base.pxi\n@@ -261,6 +261,12 @@ def _env_set_current_stream(int device_type, int device_id, uint64_t stream):\n     return <uint64_t>prev_stream\n \n \n+def _env_get_current_stream(int device_type, int device_id):\n+    cdef void* current_stream\n+    current_stream = TVMFFIEnvGetStream(device_type, device_id)\n+    return <uint64_t>current_stream\n+\n+\n cdef extern from \"tvm_ffi_python_helpers.h\":\n     # no need to expose fields of the call context setter data structure\n     ctypedef int (*DLPackFromPyObject)(\ndiff --git a/python/tvm_ffi/stream.py b/python/tvm_ffi/stream.py\nindex 7f2dde5..e00d422 100644\n--- a/python/tvm_ffi/stream.py\n+++ b/python/tvm_ffi/stream.py\n@@ -161,3 +161,20 @@ def use_raw_stream(device: core.Device, stream: Union[int, c_void_p]) -> StreamC\n             \"try use_torch_stream when using torch.cuda.Stream or torch.cuda.graph\"\n         )\n     return StreamContext(device, stream)\n+\n+\n+def get_raw_stream(device: core.Device) -> int:\n+    \"\"\"Get the current ffi stream of given device.\n+\n+    Parameters\n+    ----------\n+    device : tvm_ffi.Device\n+        The device to which the stream belongs.\n+\n+    Returns\n+    -------\n+    stream : int\n+        The current ffi stream.\n+\n+    \"\"\"\n+    return core._env_get_current_stream(device.dlpack_device_type(), device.index)\ndiff --git a/tests/python/test_stream.py b/tests/python/test_stream.py\nindex 9280aab..fbe1a0a 100644\n--- a/tests/python/test_stream.py\n+++ b/tests/python/test_stream.py\n@@ -50,11 +50,14 @@ def test_raw_stream() -> None:\n     stream_2 = 987654321\n     with tvm_ffi.use_raw_stream(device, stream_1):\n         mod.check_stream(device.dlpack_device_type(), device.index, stream_1)\n+        assert tvm_ffi.get_raw_stream(device) == stream_1\n \n         with tvm_ffi.use_raw_stream(device, stream_2):\n             mod.check_stream(device.dlpack_device_type(), device.index, stream_2)\n+            assert tvm_ffi.get_raw_stream(device) == stream_2\n \n         mod.check_stream(device.dlpack_device_type(), device.index, stream_1)\n+        assert tvm_ffi.get_raw_stream(device) == stream_1\n \n \n @pytest.mark.skipif(",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".pxi",
+      ".py",
+      ".pyi"
+    ],
+    "scopes_guess": [
+      "python",
+      "tests"
+    ]
+  }
+}

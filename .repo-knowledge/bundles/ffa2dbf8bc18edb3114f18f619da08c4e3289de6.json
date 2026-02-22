@@ -1,0 +1,48 @@
+{
+  "sha": "ffa2dbf8bc18edb3114f18f619da08c4e3289de6",
+  "sha7": "ffa2dbf",
+  "author_name": "Bohan Hou",
+  "author_email": "spectrometerh@gmail.com",
+  "date_iso": "2025-10-01T08:52:27-04:00",
+  "subject": "feat: add trainium device (#76)",
+  "body": "",
+  "is_merge": false,
+  "parents": [
+    "f9179ec21ed277c8964c7f2282f8bcc013ac286e"
+  ],
+  "name_status": [
+    [
+      "M",
+      "python/tvm_ffi/core.pyi"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/cython/device.pxi"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "python/tvm_ffi/core.pyi",
+      "additions": 1,
+      "deletions": 0
+    },
+    {
+      "path": "python/tvm_ffi/cython/device.pxi",
+      "additions": 3,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/python/tvm_ffi/core.pyi b/python/tvm_ffi/core.pyi\nindex ac04114..0c90ebf 100644\n--- a/python/tvm_ffi/core.pyi\n+++ b/python/tvm_ffi/core.pyi\n@@ -143,6 +143,7 @@ class DLDeviceType(IntEnum):\n     kDLOneAPI = 14\n     kDLWebGPU = 15\n     kDLHexagon = 16\n+    kDLTrn = 17\n \n class Device:\n     \"\"\"Device represents a device in the ffi system.\"\"\"\ndiff --git a/python/tvm_ffi/cython/device.pxi b/python/tvm_ffi/cython/device.pxi\nindex 84c047f..f25ee94 100644\n--- a/python/tvm_ffi/cython/device.pxi\n+++ b/python/tvm_ffi/cython/device.pxi\n@@ -49,6 +49,7 @@ class DLDeviceType(IntEnum):\n     kDLOneAPI = 14\n     kDLWebGPU = 15\n     kDLHexagon = 16\n+    kDLTrn = 17\n \n \n cdef class Device:\n@@ -90,6 +91,7 @@ cdef class Device:\n       DLDeviceType.kDLOneAPI: \"oneapi\",\n       DLDeviceType.kDLWebGPU: \"webgpu\",\n       DLDeviceType.kDLHexagon: \"hexagon\",\n+      DLDeviceType.kDLTrn: \"trn\",\n     }\n \n     _DEVICE_NAME_TO_TYPE = {\n@@ -108,6 +110,7 @@ cdef class Device:\n         \"ext_dev\": DLDeviceType.kDLExtDev,\n         \"hexagon\": DLDeviceType.kDLHexagon,\n         \"webgpu\": DLDeviceType.kDLWebGPU,\n+        \"trn\": DLDeviceType.kDLTrn,\n     }\n \n     def __init__(self, device_type, index = None):",
+  "heuristics": {
+    "tags": [],
+    "extensions": [
+      ".pxi",
+      ".pyi"
+    ],
+    "scopes_guess": [
+      "python"
+    ]
+  }
+}

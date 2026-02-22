@@ -1,0 +1,195 @@
+{
+  "sha": "e08dd6839a10d77d05ddef649840bcea99659d2f",
+  "sha7": "e08dd68",
+  "author_name": "Junru Shao",
+  "author_email": "junrushao@apache.org",
+  "date_iso": "2026-02-11T16:35:16-08:00",
+  "subject": "chore: Run ty in dev environment (#441)",
+  "body": "",
+  "is_merge": false,
+  "parents": [
+    "731955b304d0f4445b981e4bb9417e49209c6c37"
+  ],
+  "name_status": [
+    [
+      "M",
+      ".github/workflows/ci_mainline_only.yml"
+    ],
+    [
+      "M",
+      ".github/workflows/ci_test.yml"
+    ],
+    [
+      "M",
+      ".pre-commit-config.yaml"
+    ],
+    [
+      "M",
+      "docs/dev/ci_cd.rst"
+    ],
+    [
+      "M",
+      "examples/cubin_launcher/benchmark_overhead.py"
+    ],
+    [
+      "M",
+      "examples/cubin_launcher/example_triton_cubin.py"
+    ],
+    [
+      "M",
+      "pyproject.toml"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/_convert.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/utils/_build_optional_torch_c_dlpack.py"
+    ],
+    [
+      "M",
+      "tests/python/test_cubin_launcher.py"
+    ],
+    [
+      "M",
+      "tests/python/test_dlpack_exchange_api.py"
+    ],
+    [
+      "M",
+      "tests/python/test_dtype.py"
+    ],
+    [
+      "M",
+      "tests/python/test_load_inline.py"
+    ],
+    [
+      "M",
+      "tests/python/test_optional_torch_c_dlpack.py"
+    ],
+    [
+      "M",
+      "tests/python/test_stream.py"
+    ],
+    [
+      "M",
+      "tests/python/test_tensor.py"
+    ],
+    [
+      "M",
+      "tests/python/utils/test_embed_cubin.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": ".github/workflows/ci_mainline_only.yml",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": ".github/workflows/ci_test.yml",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": ".pre-commit-config.yaml",
+      "additions": 19,
+      "deletions": 19
+    },
+    {
+      "path": "docs/dev/ci_cd.rst",
+      "additions": 2,
+      "deletions": 2
+    },
+    {
+      "path": "examples/cubin_launcher/benchmark_overhead.py",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "examples/cubin_launcher/example_triton_cubin.py",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "pyproject.toml",
+      "additions": 14,
+      "deletions": 17
+    },
+    {
+      "path": "python/tvm_ffi/_convert.py",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "python/tvm_ffi/utils/_build_optional_torch_c_dlpack.py",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "tests/python/test_cubin_launcher.py",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "tests/python/test_dlpack_exchange_api.py",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "tests/python/test_dtype.py",
+      "additions": 4,
+      "deletions": 0
+    },
+    {
+      "path": "tests/python/test_load_inline.py",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "tests/python/test_optional_torch_c_dlpack.py",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "tests/python/test_stream.py",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "tests/python/test_tensor.py",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "tests/python/utils/test_embed_cubin.py",
+      "additions": 1,
+      "deletions": 1
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/.github/workflows/ci_mainline_only.yml b/.github/workflows/ci_mainline_only.yml\nindex dbf170b..c1dff1e 100644\n--- a/.github/workflows/ci_mainline_only.yml\n+++ b/.github/workflows/ci_mainline_only.yml\n@@ -122,7 +122,7 @@ jobs:\n         env:\n           CMAKE_BUILD_PARALLEL_LEVEL: ${{ steps.env_vars.outputs.cpu_count }}\n         run: |\n-          uv pip install --reinstall --verbose -e \".[torch]\"\n+          uv pip install --reinstall --verbose --group torch -e .\n           uv pip install --reinstall --verbose numpy scikit-build-core torch-c-dlpack-ext\n \n       - name: Run example/quickstart (CPU) [posix]\ndiff --git a/.github/workflows/ci_test.yml b/.github/workflows/ci_test.yml\nindex 440fa40..2bb8e36 100644\n--- a/.github/workflows/ci_test.yml\n+++ b/.github/workflows/ci_test.yml\n@@ -182,7 +182,7 @@ jobs:\n         env:\n           CMAKE_BUILD_PARALLEL_LEVEL: ${{ steps.env_vars.outputs.cpu_count }}\n         run: |\n-          uv pip install --reinstall --verbose -e \".[test]\"\n+          uv pip install --reinstall --verbose --group test -e .\n       - name: Run python tests\n         if: ${{ matrix.os != 'windows-latest' }}\n         run: |\ndiff --git a/.pre-commit-config.yaml b/.pre-commit-config.yaml\nindex d0e7aa8..a2cabf2 100644\n--- a/.pre-commit-config.yaml\n+++ b/.pre-commit-config.yaml\n@@ -62,17 +62,6 @@ repos:\n       - id: trailing-whitespace\n       - id: check-yaml\n       - id: check-toml\n-  - repo: https://github.com/adrienverge/yamllint\n-    rev: v1.37.1\n-    hooks:\n-      - id: yamllint\n-        args:\n-          - --config-file\n-          - .yamllint.yaml\n-  - repo: https://github.com/ComPWA/taplo-pre-commit\n-    rev: v0.9.3\n-    hooks:\n-      - id: taplo-format\n   - repo: https://github.com/astral-sh/ruff-pre-commit\n     rev: v0.14.9\n     hooks:\n@@ -81,10 +70,29 @@ repos:\n         args: [--fix]\n       - id: ruff-format\n         types_or: [python, pyi, jupyter]\n+  - repo: local\n+    hooks:\n+      - id: ty\n+        name: ty check\n+        entry: uvx ty@0.0.15 check --error-on-warning\n+        language: system\n+        pass_filenames: false\n+        types: [python]\n   - repo: https://github.com/pre-commit/mirrors-clang-format\n     rev: \"v21.1.7\"\n     hooks:\n       - id: clang-format\n+  - repo: https://github.com/adrienverge/yamllint\n+    rev: v1.37.1\n+    hooks:\n+      - id: yamllint\n+        args:\n+          - --config-file\n+          - .yamllint.yaml\n+  - repo: https://github.com/ComPWA/taplo-pre-commit\n+    rev: v0.9.3\n+    hooks:\n+      - id: taplo-format\n   - repo: https://github.com/MarcoGorelli/cython-lint\n     rev: v0.18.1\n     hooks:\n@@ -113,14 +121,6 @@ repos:\n         args:\n           - --config\n           - docs/.rstcheck.cfg\n-  - repo: local\n-    hooks:\n-      - id: ty\n-        name: ty check\n-        entry: uvx ty check\n-        language: system\n-        pass_filenames: false\n-        types: [python]\n   - repo: https://github.com/cheshirekow/cmake-format-precommit\n     rev: v0.6.13\n     hooks:\ndiff --git a/docs/dev/ci_cd.rst b/docs/dev/ci_cd.rst\nindex 68d2a11..37a5dfa 100644\n--- a/docs/dev/ci_cd.rst\n+++ b/docs/dev/ci_cd.rst\n@@ -135,7 +135,7 @@ Reproduce locally with:\n .. code-block:: bash\n \n    # Install the project in editable mode with test dependencies\n-   uv pip install --reinstall --verbose -e \".[test]\"\n+   uv pip install --reinstall --verbose --group test -e .\n \n    # Run the full test suite\n    uv run pytest -vvs tests/python\n@@ -156,7 +156,7 @@ This tests all workspace members (``tvm-ffi``, ``tvm-ffi-sys``,\n .. note::\n \n    CI runs Rust tests only after the Python package is installed (\n-   ``uv pip install -e \".[test]\"``), because the Rust FFI bindings link\n+   ``uv pip install --group test -e .``), because the Rust FFI bindings link\n    against the built shared library. Make sure the Python package is\n    installed before running ``cargo test``.\n \ndiff --git a/examples/cubin_launcher/benchmark_overhead.py b/examples/cubin_launcher/benchmark_overhead.py\nindex 230c013..3eacb31 100644\n--- a/examples/cubin_launcher/benchmark_overhead.py\n+++ b/examples/cubin_launcher/benchmark_overhead.py\n@@ -63,7 +63,7 @@ def get_cpu_name() -> str:\n \n # Define empty kernel at global scope\n @triton.jit\n-def empty_kernel(A_ptr, B_ptr, C_ptr, n, BLOCK: tl.constexpr = 128):  # noqa\n+def empty_kernel(A_ptr, B_ptr, C_ptr, n, BLOCK: tl.constexpr = 128):  # noqa  # ty: ignore[invalid-parameter-default]\n     \"\"\"Empty kernel that does nothing - for measuring pure launch overhead.\"\"\"\n     pass\n \ndiff --git a/examples/cubin_launcher/example_triton_cubin.py b/examples/cubin_launcher/example_triton_cubin.py\nindex 90243b7..215c01c 100644\n--- a/examples/cubin_launcher/example_triton_cubin.py\n+++ b/examples/cubin_launcher/example_triton_cubin.py\n@@ -55,7 +55,7 @@ def generate_cubin() -> bytes:\n     # [triton_kernel.begin]\n     # Define the kernel dynamically\n     @triton.jit\n-    def square_kernel(X_ptr, Y_ptr, n, BLOCK: tl.constexpr = 1024):  # noqa\n+    def square_kernel(X_ptr, Y_ptr, n, BLOCK: tl.constexpr = 1024):  # noqa  # ty: ignore[invalid-parameter-default]\n         pid = tl.program_id(0)\n         start = pid * BLOCK\n         offsets = start + tl.arange(0, BLOCK)\ndiff --git a/pyproject.toml b/pyproject.toml\nindex 0a096f8..0a5b0c8 100644\n--- a/pyproject.toml\n+++ b/pyproject.toml\n@@ -39,31 +39,26 @@ Homepage = \"https://github.com/apache/tvm-ffi\"\n GitHub = \"https://github.com/apache/tvm-ffi\"\n \n [project.optional-dependencies]\n-# setup tools is needed by torch jit for best perf\n-torch = [\"torch\", \"setuptools\", \"ninja\"]\n cpp = [\"ninja\"]\n-# note pytorch does not yet ship with 3.14t\n-test = [\n-  \"pytest\",\n-  \"numpy\",\n-  \"ninja\",\n-  \"torch; python_version < '3.14'\",\n-  \"setuptools\",\n-]\n \n [dependency-groups]\n+torch = [\n+  \"torch; python_version < '3.14'\", # pytorch does not yet ship with 3.14t\n+  \"setuptools\",                     # setuptools is needed by torch jit for best perf\n+  \"ninja\",\n+  \"numpy\",\n+  \"ml_dtypes\",\n+]\n+test = [{ include-group = \"torch\" }, \"pytest\"]\n dev = [\n+  { include-group = \"test\" },\n+  \"pre-commit\",\n   \"ruff\",\n-  \"ty\",\n+  \"ty==0.0.15\",\n   \"clang-format\",\n   \"clang-tidy\",\n   \"ipdb\",\n   \"ipython\",\n-  \"ninja\",\n-  \"pre-commit\",\n-  \"pytest\",\n-  \"numpy\",\n-  \"ml_dtypes\",\n   \"cython>=3.0\",\n   \"cmake\",\n   \"scikit-build-core\",\n@@ -257,13 +252,15 @@ archs = [\"AMD64\"]\n \n [tool.ty.environment]\n python-version = \"3.9\"\n-python = \".venv\"\n extra-paths = [\"python\", \"examples\", \"tests/python\"]\n \n [tool.ty.src]\n include = [\"python/tvm_ffi/**\", \"examples/**\", \"tests/python/**\"]\n exclude = [\".venv/**\", \"build/**\", \"dist/**\"]\n \n+[tool.ty.rules]\n+unused-ignore-comment = \"ignore\"\n+\n [tool.ty.analysis]\n allowed-unresolved-imports = [\n   \"torch\",\ndiff --git a/python/tvm_ffi/_convert.py b/python/tvm_ffi/_convert.py\nindex 27f4e98..49e7931 100644\n--- a/python/tvm_ffi/_convert.py\n+++ b/python/tvm_ffi/_convert.py\n@@ -28,7 +28,7 @@ from . import _dtype, container, core\n try:\n     import torch\n except ImportError:\n-    torch = None\n+    torch = None  # ty: ignore[invalid-assignment]\n \n numpy: ModuleType | None = None\n try:\ndiff --git a/python/tvm_ffi/utils/_build_optional_torch_c_dlpack.py b/python/tvm_ffi/utils/_build_optional_torch_c_dlpack.py\nindex 985f191..8f38530 100644\n--- a/python/tvm_ffi/utils/_build_optional_torch_c_dlpack.py\n+++ b/python/tvm_ffi/utils/_build_optional_torch_c_dlpack.py\n@@ -716,7 +716,7 @@ def get_torch_include_paths(build_with_cuda: bool) -> Sequence[str]:\n             device_type=\"cuda\" if build_with_cuda else \"cpu\"\n         )\n     else:\n-        return torch.utils.cpp_extension.include_paths(cuda=build_with_cuda)\n+        return torch.utils.cpp_extension.include_paths(cuda=build_with_cuda)  # ty: ignore[unknown-argument]\n \n \n def main() -> None:  # noqa: PLR0912, PLR0915\ndiff --git a/tests/python/test_cubin_launcher.py b/tests/python/test_cubin_launcher.py\nindex 6190670..5409777 100644\n--- a/tests/python/test_cubin_launcher.py\n+++ b/tests/python/test_cubin_launcher.py\n@@ -28,7 +28,7 @@ import pytest\n try:\n     import torch\n except ImportError:\n-    torch = None\n+    torch = None  # ty: ignore[invalid-assignment]\n \n import tvm_ffi.cpp\n \ndiff --git a/tests/python/test_dlpack_exchange_api.py b/tests/python/test_dlpack_exchange_api.py\nindex dda1378..0891e11 100644\n--- a/tests/python/test_dlpack_exchange_api.py\n+++ b/tests/python/test_dlpack_exchange_api.py\n@@ -32,7 +32,7 @@ try:\n     from torch.utils import cpp_extension\n     from tvm_ffi import libinfo\n except ImportError:\n-    torch = None\n+    torch = None  # ty: ignore[invalid-assignment]\n \n # Check if DLPack Exchange API is available\n _has_dlpack_api = torch is not None and hasattr(torch.Tensor, \"__dlpack_c_exchange_api__\")\ndiff --git a/tests/python/test_dtype.py b/tests/python/test_dtype.py\nindex 6817717..da8c183 100644\n--- a/tests/python/test_dtype.py\n+++ b/tests/python/test_dtype.py\n@@ -21,6 +21,7 @@ from typing import Any\n import numpy as np\n import pytest\n import tvm_ffi\n+from packaging.version import Version\n \n \n def test_dtype() -> None:\n@@ -146,6 +147,9 @@ def test_numpy_dtype_conversion() -> None:\n def test_ml_dtypes_dtype_conversion() -> None:\n     np = pytest.importorskip(\"numpy\")\n     ml_dtypes = pytest.importorskip(\"ml_dtypes\")\n+    if Version(ml_dtypes.__version__) < Version(\"0.4.0\"):\n+        pytest.skip(\"ml_dtypes < 0.4.0\")\n+        return\n     _check_dtype(np.dtype(ml_dtypes.int2), 0, 2, 1)\n     _check_dtype(np.dtype(ml_dtypes.int4), 0, 4, 1)\n     _check_dtype(np.dtype(ml_dtypes.uint2), 1, 2, 1)\ndiff --git a/tests/python/test_load_inline.py b/tests/python/test_load_inline.py\nindex fb4b582..7677a3a 100644\n--- a/tests/python/test_load_inline.py\n+++ b/tests/python/test_load_inline.py\n@@ -23,7 +23,7 @@ import pytest\n try:\n     import torch\n except ImportError:\n-    torch = None\n+    torch = None  # ty: ignore[invalid-assignment]\n \n import tvm_ffi.cpp\n from tvm_ffi.module import Module\ndiff --git a/tests/python/test_optional_torch_c_dlpack.py b/tests/python/test_optional_torch_c_dlpack.py\nindex 93d29cc..c409da2 100644\n--- a/tests/python/test_optional_torch_c_dlpack.py\n+++ b/tests/python/test_optional_torch_c_dlpack.py\n@@ -25,7 +25,7 @@ import pytest\n try:\n     import torch\n except ImportError:\n-    torch = None\n+    torch = None  # ty: ignore[invalid-assignment]\n \n \n import tvm_ffi\ndiff --git a/tests/python/test_stream.py b/tests/python/test_stream.py\nindex c1d9376..afc9139 100644\n--- a/tests/python/test_stream.py\n+++ b/tests/python/test_stream.py\n@@ -26,7 +26,7 @@ import tvm_ffi.cpp\n try:\n     import torch\n except ImportError:\n-    torch = None\n+    torch = None  # ty: ignore[invalid-assignment]\n \n \n try:\ndiff --git a/tests/python/test_tensor.py b/tests/python/test_tensor.py\nindex d2f75ec..df8023d 100644\n--- a/tests/python/test_tensor.py\n+++ b/tests/python/test_tensor.py\n@@ -25,7 +25,7 @@ import pytest\n try:\n     import torch\n except ImportError:\n-    torch = None\n+    torch = None  # ty: ignore[invalid-assignment]\n \n import numpy as np\n import tvm_ffi\ndiff --git a/tests/python/utils/test_embed_cubin.py b/tests/python/utils/test_embed_cubin.py\nindex 6a08cd7..8ef7f81 100644\n--- a/tests/python/utils/test_embed_cubin.py\n+++ b/tests/python/utils/test_embed_cubin.py\n@@ -29,7 +29,7 @@ from tvm_ffi.utils.embed_cubin import embed_cubin\n try:\n     import torch\n except ImportError:\n-    torch = None\n+    torch = None  # ty: ignore[invalid-assignment]\n \n \n def _is_cuda_available() -> bool:",
+  "heuristics": {
+    "tags": [
+      "build",
+      "ci",
+      "test"
+    ],
+    "extensions": [
+      ".py",
+      ".rst",
+      ".toml",
+      ".yaml",
+      ".yml"
+    ],
+    "scopes_guess": [
+      ".pre-commit-config.yaml",
+      "docs",
+      "examples",
+      "pyproject.toml",
+      "python",
+      "tests"
+    ]
+  }
+}

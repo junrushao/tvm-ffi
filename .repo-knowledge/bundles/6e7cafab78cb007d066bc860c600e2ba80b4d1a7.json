@@ -1,0 +1,49 @@
+{
+  "sha": "6e7cafab78cb007d066bc860c600e2ba80b4d1a7",
+  "sha7": "6e7cafa",
+  "author_name": "Junru Shao",
+  "author_email": "junrushao@apache.org",
+  "date_iso": "2025-12-29T02:02:57-08:00",
+  "subject": "doc: Add release_process.rst (#368)",
+  "body": "Based on @.Hzfengsy's initial script, I fixed some typos and improved\nformality",
+  "is_merge": false,
+  "parents": [
+    "7ed97cafb215d8ff4e29835e294ee8ae656224e5"
+  ],
+  "name_status": [
+    [
+      "A",
+      "docs/dev/release_process.rst"
+    ],
+    [
+      "M",
+      "docs/index.rst"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "docs/dev/release_process.rst",
+      "additions": 192,
+      "deletions": 0
+    },
+    {
+      "path": "docs/index.rst",
+      "additions": 1,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/docs/dev/release_process.rst b/docs/dev/release_process.rst\nnew file mode 100644\nindex 0000000..7489094\n--- /dev/null\n+++ b/docs/dev/release_process.rst\n@@ -0,0 +1,192 @@\n+..  Licensed to the Apache Software Foundation (ASF) under one\n+    or more contributor license agreements.  See the NOTICE file\n+    distributed with this work for additional information\n+    regarding copyright ownership.  The ASF licenses this file\n+    to you under the Apache License, Version 2.0 (the\n+    \"License\"); you may not use this file except in compliance\n+    with the License.  You may obtain a copy of the License at\n+\n+..    http://www.apache.org/licenses/LICENSE-2.0\n+\n+..  Unless required by applicable law or agreed to in writing,\n+    software distributed under the License is distributed on an\n+    \"AS IS\" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY\n+    KIND, either express or implied.  See the License for the\n+    specific language governing permissions and limitations\n+    under the License.\n+\n+Release Process\n+===============\n+\n+This guide describes Apache TVM-FFI release workflow for creating a release\n+candidate, staging artifacts on ASF SVN, finalizing the release tag, and\n+publishing release artifacts.\n+\n+.. admonition:: Prerequisite\n+   :class: hint\n+\n+   The following environment variables need to be set before running the\n+   release steps:\n+\n+   .. code-block:: bash\n+\n+     export FFI_VERSION=\"v0.1.7-rc0\"\n+     export FFI_RELEASE_VERSION=\"v0.1.7\"\n+     export ASF_USERNAME=\"your-apache-username\"\n+\n+   - Tools: ``git``, ``svn``, ``gpg``, ``gtar``, and ``shasum``;\n+   - A configured GPG key for signing artifacts.\n+\n+\n+.. important::\n+    This tutorial is based on macOS. Adjust commands accordingly for other\n+    operating systems.\n+\n+\n+Pre-release checklist (Step 0)\n+------------------------------\n+\n+Before running the steps below, create the release candidate tag and open the\n+release vote.\n+\n+**Step 0.1.** Tag pre-release ``$FFI_VERSION`` on `<https://github.com/apache/tvm-ffi/releases/new>`__.\n+\n+**Step 0.2.** Open a voting thread: `https://github.com/apache/tvm-ffi/issues/new <https://github.com/apache/tvm-ffi/issues/new>`__ (`Example <https://github.com/apache/tvm-ffi/issues/359>`__)\n+\n+Step 1. Create Release Candidate\n+--------------------------------\n+\n+This builds and signs the source release artifacts under\n+``tvm-ffi-$FFI_VERSION/``.\n+\n+.. code-block:: bash\n+\n+  _make_tarball() {\n+    local _ver=\"$1\"\n+    local _workdir=\"tvm-ffi-$_ver-release-files\"\n+    local _release_dir=\"tvm-ffi-$_ver\"\n+    local _tarball=\"apache-tvm-ffi-$_ver.tar.gz\"\n+\n+    mkdir -p \"$_workdir\" \"$_release_dir\"\n+    (\n+      cd \"$_workdir\"\n+\n+      git clone --recursive https://github.com/apache/tvm-ffi.git ffi-release\n+      cd ffi-release\n+\n+      git checkout \"$_ver\"\n+      rm -rf .DS_Store\n+      find . -name \".git*\" -print0 | xargs -0 rm -rf\n+\n+      cd ..\n+      gtar -czvf \"$_tarball\" -C ffi-release .\n+      gpg --armor --output \"$_tarball.asc\" --detach-sig \"$_tarball\"\n+      shasum -a 512 \"$_tarball\" > \"$_tarball.sha512\"\n+    )\n+    mv \"$_workdir/$_tarball\" \"$_release_dir/\"\n+    mv \"$_workdir/$_tarball.asc\" \"$_release_dir/\"\n+    mv \"$_workdir/$_tarball.sha512\" \"$_release_dir/\"\n+    rm -rf \"$_workdir\"\n+  }\n+\n+  _upload_to_apache_dev_svn() {\n+    local _ver=\"$1\"\n+    local _asf_username=\"$2\"\n+    local _svn_dir=\"$(pwd)/svn-tvm\"\n+    local _release_dir=\"tvm-ffi-$_ver\"\n+    (\n+      svn co --depth=files \"https://dist.apache.org/repos/dist/dev/tvm\" $_svn_dir\n+      cp -r \"${_release_dir}/\" \"$_svn_dir/$_release_dir\"\n+      cd \"$_svn_dir\"\n+      svn add \"$_release_dir\"\n+      svn ci --username \"$_asf_username\" -m \"Add TVM-FFI $_ver\"\n+    )\n+  }\n+\n+  _make_tarball \"$FFI_VERSION\"\n+  _upload_to_apache_dev_svn \"$FFI_VERSION\" \"$ASF_USERNAME\"\n+\n+\n+Step 2. Conclude Release\n+------------------------\n+\n+After the vote passes, retag the release, publish the wheel, bump versions, and\n+trigger the docs release.\n+\n+**Step 2.1.** Conclude voting results: `<https://github.com/apache/tvm-ffi/issues/new>`__. (`Example <https://github.com/apache/tvm-ffi/issues/366>`__)\n+\n+**Step 2.2.** Publish PyPI wheel: `<https://github.com/apache/tvm-ffi/actions/workflows/publish_wheel.yml>`__.\n+\n+**Step 2.3.** Update documentation to latest: `<https://github.com/apache/tvm-site/actions/workflows/publish_tvm_ffi_docs.yml>`__.\n+\n+**Step 2.4.** Re-tag the release candidate to the final release version, and bump the version in the source tree:\n+\n+.. code-block:: bash\n+\n+  _retag_and_bump_version() {\n+    local _ffi_version=\"$1\"\n+    local _ffi_release_version=\"$2\"\n+\n+    # Configuration variables\n+    local _repo_url=\"git@github.com:apache/tvm-ffi.git\"\n+    local _work_dir=\"tvm-ffi-release\"\n+    local _git_remote=\"upstream\"\n+    local _header_file=\"include/tvm/ffi/c_api.h\"\n+\n+    # 1. Git clone with remote named \"upstream\"\n+    echo \"Cloning repository...\"\n+    git clone -o \"$_git_remote\" \"$_repo_url\" \"$_work_dir\"\n+    cd \"$_work_dir\" || return 1\n+    git fetch \"$_git_remote\" --tags\n+\n+    # 2. Replace tag and push\n+    local _ffi_commit=\"$(git rev-parse \"${_ffi_version}^{commit}\")\"\n+    echo \"Creating release tag $_ffi_release_version at commit $_ffi_commit...\"\n+    git tag -a \"$_ffi_release_version\" \"$_ffi_commit\" -m \"Release $_ffi_release_version\"\n+    git push \"$_git_remote\" \"$_ffi_release_version\"\n+    git push \"$_git_remote\" --delete \"$_ffi_version\"\n+\n+    # 3. Version bump after the release\n+    local _today=$(date +%Y-%m-%d)\n+    local _branch_name=\"${_today}/ver-bump\"\n+    local _current_patch=$(grep \"#define TVM_FFI_VERSION_PATCH\" \"$_header_file\" | awk '{print $3}')\n+    local _new_patch=$((_current_patch + 1))\n+    git checkout -b \"$_branch_name\"\n+    echo \"Bumping TVM_FFI_VERSION_PATCH from $_current_patch to $_new_patch\"\n+    sed \"s/#define TVM_FFI_VERSION_PATCH $_current_patch/#define TVM_FFI_VERSION_PATCH $_new_patch/\" \"$_header_file\" > \"${_header_file}.tmp\" && mv \"${_header_file}.tmp\" \"$_header_file\"\n+    echo \"Committing and pushing changes...\"\n+    git add \"$_header_file\"\n+    git commit -m \"chore(release): Version bump after release $_ffi_release_version\"\n+    git push -u \"$_git_remote\" \"$_branch_name\"\n+  }\n+\n+  _retag_and_bump_version \"$FFI_VERSION\" \"$FFI_RELEASE_VERSION\"\n+\n+\n+Step 3. Upload Release Artifacts\n+--------------------------------\n+\n+After the release is final, copy the RC artifacts into ``dist/release`` with the\n+final version name.\n+\n+.. code-block:: bash\n+\n+  _upload_svn() {\n+    local _ffi_version=\"$1\"\n+    local _ffi_release_version=\"$2\"\n+    local _asf_username=\"$3\"\n+    local _release_dir=\"tvm-ffi-$_ffi_version\"\n+    local _svn_dir=\"$(pwd)/svn-tvm-release\"\n+    (\n+      svn co --depth=files \"https://dist.apache.org/repos/dist/release/tvm\" $_svn_dir\n+      mkdir -p \"$_svn_dir/tvm-ffi-$_ffi_release_version\"\n+      cp \"${_release_dir}/apache-tvm-ffi-$_ffi_version.tar.gz\" \"$_svn_dir/tvm-ffi-$_ffi_release_version/apache-tvm-ffi-src-$_ffi_release_version.tar.gz\"\n+      cp \"${_release_dir}/apache-tvm-ffi-$_ffi_version.tar.gz.asc\" \"$_svn_dir/tvm-ffi-$_ffi_release_version/apache-tvm-ffi-src-$_ffi_release_version.tar.gz.asc\"\n+      cp \"${_release_dir}/apache-tvm-ffi-$_ffi_version.tar.gz.sha512\" \"$_svn_dir/tvm-ffi-$_ffi_release_version/apache-tvm-ffi-src-$_ffi_release_version.tar.gz.sha512\"\n+      cd \"$_svn_dir\"\n+      svn add \"tvm-ffi-$_ffi_release_version\"\n+      svn ci --username \"$_asf_username\" -m \"Add TVM FFI $_ffi_release_version\"\n+    )\n+  }\n+\n+  _upload_svn $FFI_VERSION $FFI_RELEASE_VERSION $ASF_USERNAME\ndiff --git a/docs/index.rst b/docs/index.rst\nindex 53f922c..0ef3916 100644\n--- a/docs/index.rst\n+++ b/docs/index.rst\n@@ -80,3 +80,4 @@ Table of Contents\n    :caption: Developer Manual\n \n    dev/build_from_source.md\n+   dev/release_process.rst",
+  "heuristics": {
+    "tags": [
+      "docs"
+    ],
+    "extensions": [
+      ".rst"
+    ],
+    "scopes_guess": [
+      "docs"
+    ]
+  }
+}

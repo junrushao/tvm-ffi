@@ -1,0 +1,38 @@
+{
+  "sha": "af82dbb9a4cbb31f1ac9dc38195eaae747c31bcb",
+  "sha7": "af82dbb",
+  "author_name": "Junru Shao",
+  "author_email": "junrushao@apache.org",
+  "date_iso": "2025-09-14T03:59:24-07:00",
+  "subject": "fix: Always specify `method_pyfunc.__name__` (#7)",
+  "body": "",
+  "is_merge": false,
+  "parents": [
+    "011b10500c0dd789f4a453723986861fa60cb9e8"
+  ],
+  "name_status": [
+    [
+      "M",
+      "python/tvm_ffi/cython/function.pxi"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "python/tvm_ffi/cython/function.pxi",
+      "additions": 1,
+      "deletions": 1
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/python/tvm_ffi/cython/function.pxi b/python/tvm_ffi/cython/function.pxi\nindex 71c9522..ce6ea54 100644\n--- a/python/tvm_ffi/cython/function.pxi\n+++ b/python/tvm_ffi/cython/function.pxi\n@@ -721,7 +721,7 @@ def _add_class_attrs_by_reflection(int type_index, object cls):\n \n         if doc is not None:\n             method_pyfunc.__doc__ = doc\n-            method_pyfunc.__name__ = name\n+        method_pyfunc.__name__ = name\n \n         if hasattr(cls, name):\n             # skip already defined attributes",
+  "heuristics": {
+    "tags": [],
+    "extensions": [
+      ".pxi"
+    ],
+    "scopes_guess": [
+      "python"
+    ]
+  }
+}

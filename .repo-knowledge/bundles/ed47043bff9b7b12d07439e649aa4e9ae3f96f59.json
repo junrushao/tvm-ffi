@@ -1,0 +1,51 @@
+{
+  "sha": "ed47043bff9b7b12d07439e649aa4e9ae3f96f59",
+  "sha7": "ed47043",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-10-16T17:15:23-04:00",
+  "subject": "[CMAKE] Detect endian when possible (#153)",
+  "body": "This PR updates the cmake to detect endian when possible.",
+  "is_merge": false,
+  "parents": [
+    "8831e880e93621017ded57ce8639d76ecc5ab82e"
+  ],
+  "name_status": [
+    [
+      "M",
+      "CMakeLists.txt"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/endian.h"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "CMakeLists.txt",
+      "additions": 9,
+      "deletions": 0
+    },
+    {
+      "path": "include/tvm/ffi/endian.h",
+      "additions": 2,
+      "deletions": 1
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/CMakeLists.txt b/CMakeLists.txt\nindex df3acf5..e0b584a 100644\n--- a/CMakeLists.txt\n+++ b/CMakeLists.txt\n@@ -37,6 +37,15 @@ include(${CMAKE_CURRENT_LIST_DIR}/cmake/Utils/Library.cmake)\n # linking\n add_library(tvm_ffi_header INTERFACE)\n target_compile_features(tvm_ffi_header INTERFACE cxx_std_17)\n+\n+if (CMAKE_CXX_BYTE_ORDER STREQUAL \"BIG_ENDIAN\")\n+  target_compile_definitions(tvm_ffi_header INTERFACE TVM_FFI_CMAKE_LITTLE_ENDIAN=0)\n+elseif (CMAKE_CXX_BYTE_ORDER STREQUAL \"LITTLE_ENDIAN\")\n+  target_compile_definitions(tvm_ffi_header INTERFACE TVM_FFI_CMAKE_LITTLE_ENDIAN=1)\n+else ()\n+  message(STATUS \"Endianness could not be determined, skip setting\")\n+endif ()\n+\n target_include_directories(\n   tvm_ffi_header INTERFACE $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>\n                            $<INSTALL_INTERFACE:include>\ndiff --git a/include/tvm/ffi/endian.h b/include/tvm/ffi/endian.h\nindex 4a73b82..10639be 100644\n--- a/include/tvm/ffi/endian.h\n+++ b/include/tvm/ffi/endian.h\n@@ -38,7 +38,8 @@\n #else\n #if defined(__APPLE__) || defined(_WIN32)\n #define TVM_FFI_LITTLE_ENDIAN 1\n-#elif defined(__GLIBC__) || defined(__GNU_LIBRARY__) || defined(__ANDROID__) || defined(__RISCV__)\n+#elif defined(__GLIBC__) || defined(__GNU_LIBRARY__) || defined(__ANDROID__) || \\\n+    defined(__RISCV__) || defined(__MUSL__)\n #include <endian.h>\n #define TVM_FFI_LITTLE_ENDIAN (__BYTE_ORDER == __LITTLE_ENDIAN)\n #elif defined(__FreeBSD__) || defined(__OpenBSD__)",
+  "heuristics": {
+    "tags": [
+      "build"
+    ],
+    "extensions": [
+      ".h",
+      ".txt"
+    ],
+    "scopes_guess": [
+      "CMakeLists.txt",
+      "include"
+    ]
+  }
+}

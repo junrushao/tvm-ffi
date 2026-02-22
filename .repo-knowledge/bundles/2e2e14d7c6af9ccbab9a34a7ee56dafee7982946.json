@@ -1,0 +1,61 @@
+{
+  "sha": "2e2e14d7c6af9ccbab9a34a7ee56dafee7982946",
+  "sha7": "2e2e14d",
+  "author_name": "Junru Shao",
+  "author_email": "junrushao@apache.org",
+  "date_iso": "2025-10-12T12:33:14-07:00",
+  "subject": "doc: Add sphinx-design as doc dependency (#105)",
+  "body": "sphinx design brings many of modern doc features, e.g. dropdown, tabs,\nbuttons.",
+  "is_merge": false,
+  "parents": [
+    "b9b64e02e9b9d880c0a8d07337c5a65a19257957"
+  ],
+  "name_status": [
+    [
+      "M",
+      "docs/.rstcheck.cfg"
+    ],
+    [
+      "M",
+      "docs/conf.py"
+    ],
+    [
+      "M",
+      "pyproject.toml"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "docs/.rstcheck.cfg",
+      "additions": 3,
+      "deletions": 2
+    },
+    {
+      "path": "docs/conf.py",
+      "additions": 1,
+      "deletions": 0
+    },
+    {
+      "path": "pyproject.toml",
+      "additions": 1,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/docs/.rstcheck.cfg b/docs/.rstcheck.cfg\nindex 0ed2999..29a712f 100644\n--- a/docs/.rstcheck.cfg\n+++ b/docs/.rstcheck.cfg\n@@ -1,4 +1,5 @@\n [rstcheck]\n report_level = warning\n-ignore_directives = automodule, autosummary, currentmodule, toctree, ifconfig\n-ignore_roles = ref, cpp:class, cpp:func, py:func\n+ignore_directives = automodule, autosummary, currentmodule, toctree, ifconfig, tab-set, collapse, tabs\n+ignore_roles = ref, cpp:class, cpp:func, py:func, c:macro\n+ignore_languages = cpp, python\ndiff --git a/docs/conf.py b/docs/conf.py\nindex e2f0666..b380a84 100644\n--- a/docs/conf.py\n+++ b/docs/conf.py\n@@ -46,6 +46,7 @@ extensions = [\n     \"myst_parser\",\n     \"nbsphinx\",\n     \"autodocsumm\",\n+    \"sphinx_design\",\n     \"sphinx.ext.autodoc\",\n     \"sphinx.ext.autosectionlabel\",\n     \"sphinx.ext.autosummary\",\ndiff --git a/pyproject.toml b/pyproject.toml\nindex fcf842a..24444eb 100644\n--- a/pyproject.toml\n+++ b/pyproject.toml\n@@ -60,6 +60,7 @@ docs = [\n   \"sphinx-autobuild\",\n   \"sphinx-book-theme\",\n   \"sphinx-copybutton\",\n+  \"sphinx-design\",\n   \"sphinx-reredirects==0.1.2\",\n   \"sphinx-tabs==3.4.1\",\n   \"sphinx-toolbox==3.4.0\",",
+  "heuristics": {
+    "tags": [
+      "build"
+    ],
+    "extensions": [
+      ".cfg",
+      ".py",
+      ".toml"
+    ],
+    "scopes_guess": [
+      "docs",
+      "pyproject.toml"
+    ]
+  }
+}

@@ -1,0 +1,50 @@
+{
+  "sha": "49ff2aa32c407df92004bef37387822953c21496",
+  "sha7": "49ff2aa",
+  "author_name": "Junru Shao",
+  "author_email": "junrushao@apache.org",
+  "date_iso": "2026-02-21T06:08:42-08:00",
+  "subject": "feat: add CLAUDE.md and dev server launch config (#468)",
+  "body":
+      "## Summary\n- Add `CLAUDE.md` with project overview, build/test/lint instructions,\ncode conventions, and architecture notes for Claude Code\n- Add `.claude/launch.json` with Sphinx autobuild dev server\nconfiguration (port 8000)\n\n## Test plan\n- [x] Pre-commit hooks pass (ASF header, markdownlint, etc.)\n- [x] Verify `CLAUDE.md` content is accurate and useful for Claude Code\nsessions\n- [x] Verify `.claude/launch.json` correctly starts the docs dev server",
+  "is_merge": false,
+  "parents": [
+    "37d0485b2058885bf4e7a486f7d7b2174a8ac1ce"
+  ],
+  "name_status": [
+    [
+      "A",
+      ".claude/launch.json"
+    ],
+    [
+      "A",
+      "CLAUDE.md"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": ".claude/launch.json",
+      "additions": 24,
+      "deletions": 0
+    },
+    {
+      "path": "CLAUDE.md",
+      "additions": 170,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/.claude/launch.json b/.claude/launch.json\nnew file mode 100644\nindex 0000000..61c608f\n--- /dev/null\n+++ b/.claude/launch.json\n@@ -0,0 +1,24 @@\n+{\n+  \"version\": \"0.0.1\",\n+  \"configurations\": [\n+    {\n+      \"name\": \"docs\",\n+      \"runtimeExecutable\": \"uv\",\n+      \"runtimeArgs\": [\n+        \"run\",\n+        \"--group\",\n+        \"docs\",\n+        \"sphinx-autobuild\",\n+        \"docs\",\n+        \"docs/_build/html\",\n+        \"--ignore\",\n+        \"docs/reference/cpp/generated\"\n+      ],\n+      \"port\": 8000,\n+      \"env\": {\n+        \"BUILD_CPP_DOCS\": \"1\",\n+        \"BUILD_RUST_DOCS\": \"1\"\n+      }\n+    }\n+  ]\n+}\ndiff --git a/CLAUDE.md b/CLAUDE.md\nnew file mode 100644\nindex 0000000..ad41b51\n--- /dev/null\n+++ b/CLAUDE.md\n@@ -0,0 +1,170 @@\n+<!--- Licensed to the Apache Software Foundation (ASF) under one -->\n+<!--- or more contributor license agreements.  See the NOTICE file -->\n+<!--- distributed with this work for additional information -->\n+<!--- regarding copyright ownership.  The ASF licenses this file -->\n+<!--- to you under the Apache License, Version 2.0 (the -->\n+<!--- \"License\"); you may not use this file except in compliance -->\n+<!--- with the License.  You may obtain a copy of the License at -->\n+\n+<!---   http://www.apache.org/licenses/LICENSE-2.0 -->\n+\n+<!--- Unless required by applicable law or agreed to in writing, -->\n+<!--- software distributed under the License is distributed on an -->\n+<!--- \"AS IS\" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY -->\n+<!--- KIND, either express or implied.  See the License for the -->\n+<!--- specific language governing permissions and limitations -->\n+<!--- under the License. -->\n+\n+# CLAUDE.md — Apache TVM FFI\n+\n+## What is this project?\n+\n+TVM FFI is an open ABI and FFI (Foreign Function Interface) for machine learning\n+systems. It provides a stable C ABI, C++17 API, Python bindings (via Cython),\n+and Rust bindings. The core abstractions are type-erased values (`Any`/`AnyView`),\n+reference-counted objects (`Object`/`ObjectRef`), and packed functions (`Function`).\n+\n+## Repository layout\n+\n+```text\n+include/tvm/ffi/    C++ public headers (core API)\n+src/ffi/            C++ implementation\n+python/tvm_ffi/     Python package (Cython bindings in cython/)\n+rust/               Rust crate workspace (tvm-ffi, tvm-ffi-sys, tvm-ffi-macros)\n+tests/cpp/          GoogleTest C++ tests\n+tests/python/       pytest Python tests\n+tests/lint/         Lint scripts (ASF header, file type, version check)\n+docs/               Sphinx documentation (RST + Markdown)\n+examples/           Runnable examples\n+cmake/Utils/        CMake utility modules\n+3rdparty/           Vendored deps (dlpack, libbacktrace)\n+addons/             Optional addons (torch_c_dlpack_ext)\n+```\n+\n+## Building\n+\n+All Python commands use `uv`. The default virtualenv is `.venv` in the repo root.\n+\n+### Python editable install (primary workflow)\n+\n+```bash\n+uv pip install --force-reinstall --verbose -e .\n+```\n+\n+C++/Cython changes always require re-running this command. Pure Python changes\n+are reflected immediately.\n+\n+### C++-only build\n+\n+```bash\n+cmake . -B build_cpp -DCMAKE_BUILD_TYPE=RelWithDebInfo\n+cmake --build build_cpp --parallel --config RelWithDebInfo --target tvm_ffi_shared\n+```\n+\n+### Prerequisites\n+\n+- Python 3.9+, C++17 compiler, CMake 3.18+, Ninja\n+- Submodules: `git submodule update --init --recursive`\n+\n+## Testing\n+\n+### C++ tests\n+\n+```bash\n+cmake . -B build_test -DTVM_FFI_BUILD_TESTS=ON -DCMAKE_BUILD_TYPE=Debug\n+cmake --build build_test --clean-first --config Debug --target tvm_ffi_tests\n+ctest -V -C Debug --test-dir build_test --output-on-failure\n+```\n+\n+### Python tests\n+\n+```bash\n+uv pip install --force-reinstall --verbose --group test -e .\n+uv run pytest -vvs tests/python\n+```\n+\n+### Rust tests\n+\n+```bash\n+cd rust && cargo test   # requires Python package installed first\n+```\n+\n+## Linting\n+\n+### Pre-commit (primary lint workflow)\n+\n+```bash\n+pre-commit run --all-files     # all hooks\n+pre-commit run <hook-id> --all-files  # single hook (e.g. ruff-check, clang-format)\n+```\n+\n+Key linters: `ruff` (Python), `clang-format` (C++, Google style, 100-col),\n+`cython-lint`, `cmake-format`, `shfmt`/`shellcheck`, `markdownlint-cli2`.\n+\n+### clang-tidy (separate from pre-commit)\n+\n+```bash\n+uv run --no-project --with \"clang-tidy==21.1.1\" \\\n+  python tests/lint/clang_tidy_precommit.py \\\n+    --build-dir=build-pre-commit \\\n+    --jobs=$(sysctl -n hw.ncpu) \\\n+    ./src/ ./include ./tests\n+```\n+\n+## Code conventions\n+\n+### C++\n+\n+- Source files: `.cc` (not `.cpp`). Headers: `.h`.\n+- Style: Google (via clang-format), 100-col limit, pointer-left (`int* ptr`).\n+- Namespaces: `namespace tvm { namespace ffi { ... } }` (no C++17 nested form).\n+- Header guards: `#ifndef TVM_FFI_<PATH>_H_`.\n+- Object pattern: `FooObj` (data) + `Foo` (ref wrapper extending `ObjectRef`).\n+  - `TVM_FFI_DECLARE_OBJECT_INFO(\"key\", FooObj, ParentObj)` in the Obj class.\n+  - `TVM_FFI_DEFINE_OBJECT_REF_METHODS(Foo, ParentRef, FooObj)` in the Ref class.\n+- Errors: `TVM_FFI_THROW(ErrorType) << \"message\"`.\n+- Doc comments: Doxygen (`/*! \\brief ... */`).\n+- Every file needs an Apache 2.0 license header.\n+\n+### Python\n+\n+- `from __future__ import annotations` at the top of every file.\n+- Style: `ruff` (100-col, double quotes, Google docstrings).\n+- Register objects: `@register_object(\"type.Key\")`.\n+- Register functions: `register_global_func(\"name\", fn)`.\n+\n+### Commit messages\n+\n+Tag-based style: `[FEAT]`, `[FIX]`, `[ERROR]`, `[TEST]`, `[CORE]`, `[EXTRA]`, etc.\n+Conventional style (`feat:`, `fix:`, `doc:`) is also used. Include PR number.\n+\n+## Key architecture concepts\n+\n+- **Any/AnyView**: Type-erased value containers. `AnyView` is non-owning, `Any` owns.\n+- **Object system**: Ref-counted heap objects. `ObjectObj` holds data, `Object` is the\n+  ref wrapper. Created via `make_object<T>(args...)`.\n+- **Function**: Type-erased callable with packed calling convention\n+  `(const AnyView* args, int32_t num_args, Any* rv)`.\n+- **Global registry**: Functions registered by string name, accessible cross-language\n+  via `register_global_func`/`get_global_func`.\n+- **Containers**: `Array<T>` (immutable), `List<T>` (mutable), `Map<K,V>` (immutable),\n+  `Dict` (mutable), `String`, `Tensor`, `Shape`, `Tuple`, `Variant<T...>`.\n+- **Reflection**: `ObjectDef<T>` builder with `def_field`/`def_method`. Exposed to\n+  Python as `tvm_ffi.dataclasses.c_class`.\n+- **Module system**: `load_module(\"path.so\")` wraps shared libraries, exposing\n+  functions via `__tvm_ffi_<name>` symbol prefix.\n+\n+## CI\n+\n+Runs on: Linux x86_64 + aarch64, macOS arm64, Windows AMD64.\n+Jobs: lint -> clang-tidy (if C++ changed) -> doc build -> test (C++, Python, Rust).\n+\n+## Further reading\n+\n+The `docs/` directory contains the full Sphinx documentation site, including:\n+\n+- `docs/concepts/` — design docs (ABI overview, Any, Object/Class, Tensor, Function, etc.)\n+- `docs/guides/` — usage guides (exporting functions/classes, kernel libraries, C++/Python/Rust)\n+- `docs/get_started/` — quickstart and stable C ABI\n+- `docs/dev/` — developer instructions (source build, CI/CD, release process, doc build)\n+- `docs/packaging/` — Python packaging guide",
+  "heuristics": {
+    "tags": [],
+    "extensions": [
+      ".json",
+      ".md"
+    ],
+    "scopes_guess": [
+      ".claude",
+      "CLAUDE.md"
+    ]
+  }
+}

@@ -1,0 +1,50 @@
+{
+  "sha": "306c8d0d2c591954d41ccffabfd4b7fb22d315b1",
+  "sha7": "306c8d0",
+  "author_name": "tqchen",
+  "author_email": "tianqi.tchen@gmail.com",
+  "date_iso": "2025-09-13T18:27:55-04:00",
+  "subject": "[CI] Setup asf yaml",
+  "body": "This PR setup asf yaml",
+  "is_merge": false,
+  "parents": [
+    "c665fa362a2ffd4c6d5c919a2ef49d6961acdc70"
+  ],
+  "name_status": [
+    [
+      "A",
+      ".asf.yaml"
+    ],
+    [
+      "M",
+      ".github/workflows/ci_test.yml"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": ".asf.yaml",
+      "additions": 38,
+      "deletions": 0
+    },
+    {
+      "path": ".github/workflows/ci_test.yml",
+      "additions": 1,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/.asf.yaml b/.asf.yaml\nnew file mode 100644\nindex 0000000..fe05d01\n--- /dev/null\n+++ b/.asf.yaml\n@@ -0,0 +1,38 @@\n+# Licensed to the Apache Software Foundation (ASF) under one\n+# or more contributor license agreements.  See the NOTICE file\n+# distributed with this work for additional information\n+# regarding copyright ownership.  The ASF licenses this file\n+# to you under the Apache License, Version 2.0 (the\n+# \"License\"); you may not use this file except in compliance\n+# with the License.  You may obtain a copy of the License at\n+#\n+#   http://www.apache.org/licenses/LICENSE-2.0\n+#\n+# Unless required by applicable law or agreed to in writing,\n+# software distributed under the License is distributed on an\n+# \"AS IS\" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY\n+# KIND, either express or implied.  See the License for the\n+# specific language governing permissions and limitations\n+# under the License.\n+\n+github:\n+  description: \"TVM FFI\"\n+  homepage: https://tvm.apache.org/ffi\n+  labels:\n+    - ffi\n+    - gpu\n+    - machine-learning\n+\n+  protected_branches:\n+    # NOTE: when updating the config\n+    # make sure to first update the branch protection name\n+    # in a separate branch(e.g. dev), confirm things works\n+    # before changing it to main\n+    dev:\n+      # note: do not set status check for now before we setup skip ci\n+      required_pull_request_reviews:\n+        required_approving_review_count: 1\n+\n+notifications:\n+  commits: commits@tvm.apache.org\n+  issues: discuss-archive@tvm.apache.org\ndiff --git a/.github/workflows/ci_test.yml b/.github/workflows/ci_test.yml\nindex 8640b57..1bed651 100644\n--- a/.github/workflows/ci_test.yml\n+++ b/.github/workflows/ci_test.yml\n@@ -68,6 +68,7 @@ jobs:\n         run: |\n           tests/scripts/task_lint.sh\n \n+\n   test:\n     needs: [prepare]\n     if: >",
+  "heuristics": {
+    "tags": [
+      "ci"
+    ],
+    "extensions": [
+      ".yaml",
+      ".yml"
+    ],
+    "scopes_guess": [
+      ".asf.yaml"
+    ]
+  }
+}

@@ -1,0 +1,51 @@
+{
+  "sha": "4147ba7db7500c19f0c78a2b85cf0a9bc4be4ac3",
+  "sha7": "4147ba7",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-12-02T12:20:45-05:00",
+  "subject": "[FIX] Fixes from_dlpack issue fallback (#301)",
+  "body": "This PR fixes from_dlpack issue after the attribute api changes to\npycapsule",
+  "is_merge": false,
+  "parents": [
+    "f6aa584a7dbc3679a97ac81c638364ee75f7078c"
+  ],
+  "name_status": [
+    [
+      "M",
+      "python/tvm_ffi/cython/tensor.pxi"
+    ],
+    [
+      "M",
+      "tests/python/test_dlpack_exchange_api.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "python/tvm_ffi/cython/tensor.pxi",
+      "additions": 4,
+      "deletions": 2
+    },
+    {
+      "path": "tests/python/test_dlpack_exchange_api.py",
+      "additions": 10,
+      "deletions": 1
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/python/tvm_ffi/cython/tensor.pxi b/python/tvm_ffi/cython/tensor.pxi\nindex 0521dcb..844f7ef 100644\n--- a/python/tvm_ffi/cython/tensor.pxi\n+++ b/python/tvm_ffi/cython/tensor.pxi\n@@ -105,7 +105,7 @@ cdef inline int _from_dlpack_versioned(\n \n \n cdef inline int _from_dlpack_exchange_api(\n-    object ext_tensor, DLPackExchangeAPI* exchange_api, int require_alignment,\n+    object ext_tensor, const DLPackExchangeAPI* exchange_api, int require_alignment,\n     int require_contiguous, TVMFFIObjectHandle* out\n ) except -1:\n     cdef DLManagedTensorVersioned* temp_managed_tensor\n@@ -131,12 +131,14 @@ cdef inline int _from_dlpack_universal(\n     # as of most frameworks do not yet support v1.1\n     # move to false as most frameworks get upgraded.\n     cdef int favor_legacy_dlpack = True\n+    cdef const DLPackExchangeAPI* exchange_api = NULL\n \n     if hasattr(ext_tensor, \"__c_dlpack_exchange_api__\"):\n         try:\n+            _get_dlpack_exchange_api(ext_tensor.__c_dlpack_exchange_api__, &exchange_api)\n             return _from_dlpack_exchange_api(\n                 ext_tensor,\n-                <DLPackExchangeAPI*><long long>(ext_tensor.__c_dlpack_exchange_api__),\n+                exchange_api,\n                 require_alignment,\n                 require_contiguous,\n                 out\ndiff --git a/tests/python/test_dlpack_exchange_api.py b/tests/python/test_dlpack_exchange_api.py\nindex 048ade5..7df8dcf 100644\n--- a/tests/python/test_dlpack_exchange_api.py\n+++ b/tests/python/test_dlpack_exchange_api.py\n@@ -28,7 +28,7 @@ try:\n \n     # Import tvm_ffi to load the DLPack exchange API extension\n     # This sets torch.Tensor.__c_dlpack_exchange_api__\n-    import tvm_ffi  # noqa: F401\n+    import tvm_ffi\n     from torch.utils import cpp_extension  # type: ignore\n     from tvm_ffi import libinfo\n except ImportError:\n@@ -222,5 +222,14 @@ def test_dlpack_exchange_api() -> None:\n     mod.test_dlpack_api(tensor, api_ptr, torch.cuda.is_available())\n \n \n+@pytest.mark.skipif(not _has_dlpack_api, reason=\"PyTorch DLPack Exchange API not available\")\n+def test_from_dlpack_torch() -> None:\n+    # Covers from_dlpack to use fallback fastpath\n+    tensor = torch.arange(24, dtype=torch.float32).reshape(2, 3, 4)\n+    tensor_from_dlpack = tvm_ffi.from_dlpack(tensor)\n+    assert tensor_from_dlpack.shape == tensor.shape\n+    assert tensor_from_dlpack.dtype == tvm_ffi.float32\n+\n+\n if __name__ == \"__main__\":\n     pytest.main([__file__, \"-v\", \"-s\"])",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".pxi",
+      ".py"
+    ],
+    "scopes_guess": [
+      "python",
+      "tests"
+    ]
+  }
+}

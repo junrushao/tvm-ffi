@@ -1,0 +1,72 @@
+{
+  "sha": "4f0b18c8d7536fbf5c51111c2acac84bf7eeaf58",
+  "sha7": "4f0b18c",
+  "author_name": "Junru Shao",
+  "author_email": "junrushao@apache.org",
+  "date_iso": "2025-09-20T12:45:03-07:00",
+  "subject": "feat: Use uv-based workflow for doc building (#34)",
+  "body":
+      "On `main`, doc building is managed by a relatively ad-hoc\n`requirements.txt`-based workflow which could be a little bit less\nconvenient to control in CI. This PR introduces a modern uv-based flow\nthat makes the entire process one-liner:\n\n```\nuv run --group docs sphinx-autobuild docs docs/_build/html --ignore docs/reference/cpp/generated\n```\n\nLater we could introduce uv lockfiles which updates regularly, as well\nas CI options that monitor doc changes, etc.",
+  "is_merge": false,
+  "parents": [
+    "23500b56a07553b4551908c80d0445538f160494"
+  ],
+  "name_status": [
+    [
+      "D",
+      "docs/Makefile"
+    ],
+    [
+      "M",
+      "docs/README.md"
+    ],
+    [
+      "D",
+      "docs/requirements.txt"
+    ],
+    [
+      "M",
+      "pyproject.toml"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "docs/Makefile",
+      "additions": 0,
+      "deletions": 41
+    },
+    {
+      "path": "docs/README.md",
+      "additions": 40,
+      "deletions": 13
+    },
+    {
+      "path": "docs/requirements.txt",
+      "additions": 0,
+      "deletions": 21
+    },
+    {
+      "path": "pyproject.toml",
+      "additions": 25,
+      "deletions": 2
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/docs/Makefile b/docs/Makefile\ndeleted file mode 100644\nindex 51e4de2..0000000\n--- a/docs/Makefile\n+++ /dev/null\n@@ -1,41 +0,0 @@\n-# Licensed to the Apache Software Foundation (ASF) under one\n-# or more contributor license agreements.  See the NOTICE file\n-# distributed with this work for additional information\n-# regarding copyright ownership.  The ASF licenses this file\n-# to you under the Apache License, Version 2.0 (the\n-# \"License\"); you may not use this file except in compliance\n-# with the License.  You may obtain a copy of the License at\n-#\n-#   http://www.apache.org/licenses/LICENSE-2.0\n-#\n-# Unless required by applicable law or agreed to in writing,\n-# software distributed under the License is distributed on an\n-# \"AS IS\" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY\n-# KIND, either express or implied.  See the License for the\n-# specific language governing permissions and limitations\n-# under the License.\n-# You can set these variables from the command line, and also\n-# from the environment for the first two.\n-SPHINXOPTS    ?=\n-SPHINXBUILD   ?= python3 -m sphinx\n-SOURCEDIR     = .\n-BUILDDIR      = _build\n-\n-# Put it first so that \"make\" without argument is like \"make help\".\n-help:\n-\t@$(SPHINXBUILD) -M help \"$(SOURCEDIR)\" \"$(BUILDDIR)\" $(SPHINXOPTS) $(O)\n-\n-.PHONY: help Makefile livehtml clean\n-\n-livehtml:\n-\t@sphinx-autobuild \"$(SOURCEDIR)\" \"$(BUILDDIR)\" $(SPHINXOPTS) $(O) --ignore reference/cpp/generated\n-\n-clean:\n-\trm -rf $(BUILDDIR)\n-\trm -rf reference/python/generated\n-\trm -rf reference/cpp/generated\n-\n-# Catch-all target: route all unknown targets to Sphinx using the new\n-# \"make mode\" option.  $(O) is meant as a shortcut for $(SPHINXOPTS).\n-%: Makefile\n-\t@$(SPHINXBUILD) -M $@ \"$(SOURCEDIR)\" \"$(BUILDDIR)\" $(SPHINXOPTS) $(O)\ndiff --git a/docs/README.md b/docs/README.md\nindex 39fff19..f0edc73 100644\n--- a/docs/README.md\n+++ b/docs/README.md\n@@ -16,31 +16,58 @@\n <!--- under the License. -->\n # TVM FFI Documentation\n \n-To build locally\n+This guide walks through building and maintaining the TVM FFI documentation set.\n+\n+## Prerequisites\n+\n+- [`uv`](https://docs.astral.sh/uv/) manages the Python environment for all docs commands.\n+- Ensure you are in the repository root before running the commands below.\n+- Optional: Install `Doxygen` if you plan to generate the C++ API reference (see \"Build with C++ Docs\").\n+\n+## Build Workflows\n+\n+### Interactive build (auto-reload)\n+\n+Rebuilds and serves the documentation locally with live reload:\n+\n+```bash\n+uv run --group docs sphinx-autobuild docs docs/_build/html --ignore docs/reference/cpp/generated\n+```\n+\n+By default, open `http://127.0.0.1:8000` in your browser after the initial build completes.\n+\n+### One-off build\n+\n+Generates the HTML documentation once, without running a server:\n \n-First install the tvm-ffi package\n ```bash\n-pip install ..\n+uv run --group docs sphinx-build -M html docs docs/_build\n ```\n \n-Install all the requirements to build docs\n+### Build with C++ Docs\n+\n+Generating the C++ reference takes longer and requires Doxygen:\n \n ```bash\n-pip install -r requirements.txt\n+brew install doxygen        # macOS\n+sudo apt install doxygen    # Linux\n ```\n \n-Then build the doc\n+Set `BUILD_CPP_DOCS=1` on the desired build command to enable the extra step:\n+\n ```bash\n-make livehtml\n+# Interactive build\n+BUILD_CPP_DOCS=1 uv run --group docs sphinx-autobuild docs docs/_build/html --ignore docs/reference/cpp/generated\n+# One-off build\n+BUILD_CPP_DOCS=1 uv run --group docs sphinx-build -M html docs docs/_build\n ```\n \n-## Build with C++ Docs\n+## Cleanup\n \n-To build with C++ docs, we need to first install Doxygen. Then\n-set the environment variable `BUILD_CPP_DOCS=1`, to turn on c++ docs.\n+Remove generated artifacts when they are no longer needed:\n \n ```bash\n-BUILD_CPP_DOCS=1 make livehtml\n+rm -rf docs/_build/\n+rm -rf docs/reference/python/generated\n+rm -rf docs/reference/cpp/generated\n ```\n-\n-Building c++ docs can take longer, so it is not on by default.\ndiff --git a/docs/requirements.txt b/docs/requirements.txt\ndeleted file mode 100644\nindex 55a8565..0000000\n--- a/docs/requirements.txt\n+++ /dev/null\n@@ -1,21 +0,0 @@\n-autodocsumm\n-breathe\n-exhale\n-linkify-it-py\n-matplotlib\n-myst-parser\n-nbconvert\n-nbsphinx\n-nbstripout\n-sphinx\n-sphinx-autobuild\n-sphinx-book-theme\n-sphinx-copybutton\n-sphinx-reredirects==0.1.2\n-sphinx-tabs == 3.4.1\n-sphinx-toolbox == 3.4.0\n-sphinxcontrib-mermaid\n-sphinxcontrib-napoleon==0.7\n-sphinxcontrib_httpdomain==1.8.1\n-tomli\n-urllib3>=2.5.0\ndiff --git a/pyproject.toml b/pyproject.toml\nindex c7ebd39..4a6bd8e 100644\n--- a/pyproject.toml\n+++ b/pyproject.toml\n@@ -32,10 +32,8 @@ classifiers = [\n ]\n keywords = [\"machine learning\", \"inference\"]\n requires-python = \">=3.9\"\n-\n dependencies = []\n \n-\n [project.urls]\n Homepage = \"https://github.com/apache/tvm-ffi\"\n GitHub = \"https://github.com/apache/tvm-ffi\"\n@@ -46,6 +44,31 @@ torch = [\"torch\", \"setuptools\", \"ninja\"]\n cpp = [\"ninja\"]\n test = [\"pytest\", \"numpy\", \"torch\", \"ninja\"]\n \n+[dependency-groups]\n+docs = [\n+  \"autodocsumm\",\n+  \"breathe\",\n+  \"exhale\",\n+  \"linkify-it-py\",\n+  \"matplotlib\",\n+  \"myst-parser\",\n+  \"nbconvert\",\n+  \"nbsphinx\",\n+  \"nbstripout\",\n+  \"sphinx\",\n+  \"sphinx-autobuild\",\n+  \"sphinx-book-theme\",\n+  \"sphinx-copybutton\",\n+  \"sphinx-reredirects==0.1.2\",\n+  \"sphinx-tabs==3.4.1\",\n+  \"sphinx-toolbox==3.4.0\",\n+  \"sphinxcontrib-mermaid\",\n+  \"sphinxcontrib-napoleon==0.7\",\n+  \"sphinxcontrib_httpdomain==1.8.1\",\n+  \"tomli\",\n+  \"urllib3>=2.5.0\",\n+]\n+\n [project.scripts]\n tvm-ffi-config = \"tvm_ffi.config:__main__\"\n ",
+  "heuristics": {
+    "tags": [
+      "build"
+    ],
+    "extensions": [
+      "",
+      ".md",
+      ".toml",
+      ".txt"
+    ],
+    "scopes_guess": [
+      "docs",
+      "pyproject.toml"
+    ]
+  }
+}

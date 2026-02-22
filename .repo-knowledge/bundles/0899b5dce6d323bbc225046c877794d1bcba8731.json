@@ -1,0 +1,39 @@
+{
+  "sha": "0899b5dce6d323bbc225046c877794d1bcba8731",
+  "sha7": "0899b5d",
+  "author_name": "Junru Shao",
+  "author_email": "junrushao@apache.org",
+  "date_iso": "2025-10-28T12:09:49-07:00",
+  "subject": "feat: add clang-tidy to CI (#95)",
+  "body":
+      "Depends on #197. This PR adds clang-tidy to per-commit tests on branch\n`main` to detect potential breaks.",
+  "is_merge": false,
+  "parents": [
+    "d5d2d12eab1bac530abfcac06b258a6d99f5cd7b"
+  ],
+  "name_status": [
+    [
+      "A",
+      ".github/workflows/ci_mainline_only.yml"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": ".github/workflows/ci_mainline_only.yml",
+      "additions": 62,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/.github/workflows/ci_mainline_only.yml b/.github/workflows/ci_mainline_only.yml\nnew file mode 100644\nindex 0000000..e5e24fa\n--- /dev/null\n+++ b/.github/workflows/ci_mainline_only.yml\n@@ -0,0 +1,62 @@\n+# Licensed to the Apache Software Foundation (ASF) under one\n+# or more contributor license agreements.  See the NOTICE file\n+# distributed with this work for additional information\n+# regarding copyright ownership.  The ASF licenses this file\n+# to you under the Apache License, Version 2.0 (the\n+# \"License\"); you may not use this file except in compliance\n+# with the License.  You may obtain a copy of the License at\n+#\n+#   http://www.apache.org/licenses/LICENSE-2.0\n+#\n+# Unless required by applicable law or agreed to in writing,\n+# software distributed under the License is distributed on an\n+# \"AS IS\" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY\n+# KIND, either express or implied.  See the License for the\n+# specific language governing permissions and limitations\n+# under the License.\n+\n+name: mainline-only\n+\n+on:\n+  workflow_dispatch:\n+  push:\n+    branches:\n+      - main\n+\n+jobs:\n+  prepare:\n+    name: Prepare\n+    runs-on: ubuntu-latest\n+    steps:\n+      - uses: actions/checkout@v5\n+        with:\n+          fetch-depth: 0\n+          fetch-tags: true\n+      - name: Detect skip ci and docs changes\n+        id: detect\n+        uses: ./.github/actions/detect-skip-ci\n+        with:\n+          github_event_name: ${{ github.event_name }}\n+          pr_base_ref: ${{ github.event.pull_request.base.ref || '' }}\n+          pr_head_sha: ${{ github.event.pull_request.head.sha || '' }}\n+\n+  clang-tidy:\n+    needs: [prepare]\n+    runs-on: ubuntu-latest\n+    steps:\n+      - uses: actions/checkout@v5\n+        with:\n+          submodules: recursive\n+          fetch-depth: 0\n+          fetch-tags: true\n+      - name: Set up uv\n+        uses: astral-sh/setup-uv@b75a909f75acd358c2196fb9a5f1299a9a8868a4  # v6.7.0\n+      - uses: ./.github/actions/detect-env-vars\n+        id: env_vars\n+      - name: Run clang-tidy\n+        run: |\n+          uv run --no-project --with \"clang-tidy==21.1.1\"     \\\n+            python tests/lint/clang_tidy_precommit.py         \\\n+              --build-dir=build-pre-commit                    \\\n+              --jobs=${{ steps.env_vars.outputs.cpu_count }}  \\\n+              ./src/ ./include ./tests",
+  "heuristics": {
+    "tags": [
+      "ci"
+    ],
+    "extensions": [
+      ".yml"
+    ],
+    "scopes_guess": []
+  }
+}

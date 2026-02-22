@@ -1,0 +1,51 @@
+{
+  "sha": "d3b5532fe68ad0d76dd8e8636a000629a7ec4716",
+  "sha7": "d3b5532",
+  "author_name": "Ruihang Lai",
+  "author_email": "ruihangl@cs.cmu.edu",
+  "date_iso": "2026-02-11T21:07:49-05:00",
+  "subject": "fix: handle UTF-8 bytes correctly in JSON parser control character check (#442)",
+  "body":
+      "Cast `*cur_` to `unsigned char` before comparing against space (0x20).\nOn platforms where `char` is signed, bytes >= 0x80 (valid UTF-8\ncontinuation/lead bytes) were misinterpreted as negative values, causing\nall non-ASCII strings to be rejected as \"Invalid control character\".",
+  "is_merge": false,
+  "parents": [
+    "89cb6066d1d8851e61e6201ca0782d78a4ed8160"
+  ],
+  "name_status": [
+    [
+      "M",
+      "src/ffi/extra/json_parser.cc"
+    ],
+    [
+      "M",
+      "tests/cpp/extra/test_json_parser.cc"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "src/ffi/extra/json_parser.cc",
+      "additions": 6,
+      "deletions": 2
+    },
+    {
+      "path": "tests/cpp/extra/test_json_parser.cc",
+      "additions": 6,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/src/ffi/extra/json_parser.cc b/src/ffi/extra/json_parser.cc\nindex a1c9ae2..117ef54 100644\n--- a/src/ffi/extra/json_parser.cc\n+++ b/src/ffi/extra/json_parser.cc\n@@ -131,7 +131,9 @@ class JSONParserContext {\n         ++cur_;\n         return true;\n       }\n-      if (*cur_ < ' ' || *cur_ == '\\\\') {\n+      // Use uint8_t: on platforms where char is signed, raw UTF-8 bytes (>= 0x80)\n+      // would be negative and incorrectly treated as control characters.\n+      if (*reinterpret_cast<const uint8_t*>(cur_) < ' ' || *cur_ == '\\\\') {\n         // fallback to full string handling\n         return this->NextStringWithFullHandling(out, start_pos);\n       }\n@@ -341,7 +343,9 @@ class JSONParserContext {\n     // copy over the prefix that was already parsed\n     std::string out_str(start_pos + 1, cur_ - start_pos - 1);\n     while (cur_ != end_) {\n-      if (*cur_ < ' ') {\n+      // Use uint8_t: on platforms where char is signed, raw UTF-8 bytes (>= 0x80)\n+      // would be negative and incorrectly treated as control characters.\n+      if (*reinterpret_cast<const uint8_t*>(cur_) < ' ') {\n         this->SetErrorInvalidControlCharacter();\n         return false;\n       }\ndiff --git a/tests/cpp/extra/test_json_parser.cc b/tests/cpp/extra/test_json_parser.cc\nindex 4e134ff..49d2c34 100644\n--- a/tests/cpp/extra/test_json_parser.cc\n+++ b/tests/cpp/extra/test_json_parser.cc\n@@ -290,6 +290,12 @@ TEST(JSONParser, UnicodeEdgeCases) {\n             u8\"\\U0001F600\\U0001F601\");\n }\n \n+TEST(JSONParser, RawUTF8Bytes) {\n+  // Regression test: raw UTF-8 bytes (>= 0x80) must not be rejected as control characters.\n+  // This failed when the parser used signed char comparison: *cur_ < ' '\n+  EXPECT_EQ(json::Parse(\"\\\"\\xE4\\xB8\\xAD\\xE6\\x96\\x87\\\"\").cast<String>(), \"\\xE4\\xB8\\xAD\\xE6\\x96\\x87\");\n+}\n+\n TEST(JSONParser, LargeInputs) {\n   // Test large array\n   std::string large_array = \"[\";",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".cc"
+    ],
+    "scopes_guess": [
+      "src",
+      "tests"
+    ]
+  }
+}

@@ -1,0 +1,83 @@
+{
+  "sha": "4fe8b2b79dfeb469b2499acecb3e10038ddcee0f",
+  "sha7": "4fe8b2b",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-09-29T14:32:11-04:00",
+  "subject": "[ABI] Further clarify Function ABI in cpp (#71)",
+  "body": "",
+  "is_merge": false,
+  "parents": [
+    "f4a65cd1794f624b8d2a9548377a9edd956e4061"
+  ],
+  "name_status": [
+    [
+      "M",
+      "include/tvm/ffi/c_api.h"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/function.h"
+    ],
+    [
+      "M",
+      "pyproject.toml"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/__init__.py"
+    ],
+    [
+      "M",
+      "tests/cpp/test_function.cc"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "include/tvm/ffi/c_api.h",
+      "additions": 13,
+      "deletions": 0
+    },
+    {
+      "path": "include/tvm/ffi/function.h",
+      "additions": 65,
+      "deletions": 100
+    },
+    {
+      "path": "pyproject.toml",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "python/tvm_ffi/__init__.py",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "tests/cpp/test_function.cc",
+      "additions": 10,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/include/tvm/ffi/c_api.h b/include/tvm/ffi/c_api.h\nindex 0cac1f7..c688aee 100644\n--- a/include/tvm/ffi/c_api.h\n+++ b/include/tvm/ffi/c_api.h\n@@ -434,6 +434,19 @@ typedef int (*TVMFFISafeCallType)(void* handle, const TVMFFIAny* args, int32_t n\n typedef struct {\n   /*! \\brief A C API compatible call with exception catching. */\n   TVMFFISafeCallType safe_call;\n+  /*!\n+   * \\brief A function pointer to an underlying cpp call.\n+   *\n+   * The signature is the same as TVMFFISafeCallType except the return type is void,\n+   * and the function throws exception directly instead of returning error code.\n+   * We use void* here to avoid depending on c++ compiler.\n+   *\n+   * This pointer should be set to NULL for functions that are not originally created in cpp.\n+   *\n+   * \\note The caller must assume the same cpp exception catching abi when using this pointer.\n+   *       When used across FFI boundaries, always use safe_call.\n+   */\n+  void* cpp_call;\n } TVMFFIFunctionCell;\n \n /*!\ndiff --git a/include/tvm/ffi/function.h b/include/tvm/ffi/function.h\nindex 920856d..ba3ec0d 100644\n--- a/include/tvm/ffi/function.h\n+++ b/include/tvm/ffi/function.h\n@@ -102,9 +102,8 @@ class FunctionObj : public Object, public TVMFFIFunctionCell {\n  public:\n   /*! \\brief Typedef for C++ style calling signature that comes with exception propagation */\n   typedef void (*FCall)(const FunctionObj*, const AnyView*, int32_t, Any*);\n+  using TVMFFIFunctionCell::cpp_call;\n   using TVMFFIFunctionCell::safe_call;\n-  /*! \\brief A C++ style call implementation, with exception propagation in C++ style. */\n-  FCall call;\n   /*!\n    * \\brief Call the function in packed format.\n    * \\param args The arguments\n@@ -112,7 +111,11 @@ class FunctionObj : public Object, public TVMFFIFunctionCell {\n    * \\param result The return value.\n    */\n   TVM_FFI_INLINE void CallPacked(const AnyView* args, int32_t num_args, Any* result) const {\n-    this->call(this, args, num_args, result);\n+    // if cpp_call is set, use it to call the function, otherwise, redirect to safe_call\n+    // use conditional expression here so the select is branchless\n+    FCall call_ptr =\n+        this->cpp_call ? reinterpret_cast<FCall>(this->cpp_call) : CppCallDedirectToSafeCall;\n+    (*call_ptr)(this, args, num_args, result);\n   }\n   /// \\cond Doxygen_Suppress\n   static constexpr const uint32_t _type_index = TypeIndex::kTVMFFIFunction;\n@@ -122,18 +125,15 @@ class FunctionObj : public Object, public TVMFFIFunctionCell {\n  protected:\n   /*! \\brief Make default constructor protected. */\n   FunctionObj() {}\n-  /// \\cond Doxygen_Suppress\n-  // Implementing safe call style\n-  static int SafeCall(void* func, const TVMFFIAny* args, int32_t num_args, TVMFFIAny* result) {\n-    TVM_FFI_SAFE_CALL_BEGIN();\n-    TVM_FFI_ICHECK_LT(result->type_index, TypeIndex::kTVMFFIStaticObjectBegin);\n-    FunctionObj* self = static_cast<FunctionObj*>(func);\n-    self->call(self, reinterpret_cast<const AnyView*>(args), num_args,\n-               reinterpret_cast<Any*>(result));\n-    TVM_FFI_SAFE_CALL_END();\n-  }\n-  /// \\endcond\n   friend class Function;\n+\n+ private:\n+  static void CppCallDedirectToSafeCall(const FunctionObj* func, const AnyView* args,\n+                                        int32_t num_args, Any* rv) {\n+    FunctionObj* self = static_cast<FunctionObj*>(const_cast<FunctionObj*>(func));\n+    TVM_FFI_CHECK_SAFE_CALL(self->safe_call(self, reinterpret_cast<const TVMFFIAny*>(args),\n+                                            num_args, reinterpret_cast<TVMFFIAny*>(rv)));\n+  }\n };\n \n namespace details {\n@@ -154,87 +154,66 @@ class FunctionObjImpl : public FunctionObj {\n    */\n   explicit FunctionObjImpl(TCallable callable) : callable_(callable) {\n     this->safe_call = SafeCall;\n-    this->call = Call;\n+    this->cpp_call = reinterpret_cast<void*>(CppCall);\n   }\n \n  private:\n   // implementation of call\n-  static void Call(const FunctionObj* func, const AnyView* args, int32_t num_args, Any* result) {\n+  static void CppCall(const FunctionObj* func, const AnyView* args, int32_t num_args, Any* result) {\n     (static_cast<const TSelf*>(func))->callable_(args, num_args, result);\n   }\n-\n+  /// \\cond Doxygen_Suppress\n+  // Implementing safe call style\n+  static int SafeCall(void* func, const TVMFFIAny* args, int32_t num_args, TVMFFIAny* result) {\n+    TVM_FFI_SAFE_CALL_BEGIN();\n+    TVM_FFI_ICHECK_LT(result->type_index, TypeIndex::kTVMFFIStaticObjectBegin);\n+    FunctionObj* self = static_cast<FunctionObj*>(func);\n+    reinterpret_cast<FCall>(self->cpp_call)(self, reinterpret_cast<const AnyView*>(args), num_args,\n+                                            reinterpret_cast<Any*>(result));\n+    TVM_FFI_SAFE_CALL_END();\n+  }\n+  /// \\endcond\n   /*! \\brief Type-erased filed for storing callable object*/\n   mutable TStorage callable_;\n };\n \n /*!\n- * \\brief Base class to provide a common implementation to redirect call to safecall\n- * \\tparam Derived The derived class in CRTP-idiom\n+ * \\brief FunctionObj specialization for raw C style callback where handle and deleter are null.\n  */\n-template <typename Derived>\n-struct RedirectCallToSafeCall {\n-  static void Call(const FunctionObj* func, const AnyView* args, int32_t num_args, Any* rv) {\n-    Derived* self = static_cast<Derived*>(const_cast<FunctionObj*>(func));\n-    TVM_FFI_CHECK_SAFE_CALL(self->RedirectSafeCall(reinterpret_cast<const TVMFFIAny*>(args),\n-                                                   num_args, reinterpret_cast<TVMFFIAny*>(rv)));\n-  }\n-\n-  static int32_t SafeCall(void* func, const TVMFFIAny* args, int32_t num_args, TVMFFIAny* rv) {\n-    Derived* self = reinterpret_cast<Derived*>(func);\n-    return self->RedirectSafeCall(args, num_args, rv);\n+class ExternCFunctionObjNullHandleImpl : public FunctionObj {\n+ public:\n+  explicit ExternCFunctionObjNullHandleImpl(TVMFFISafeCallType safe_call) {\n+    this->safe_call = safe_call;\n+    this->cpp_call = nullptr;\n   }\n };\n \n /*!\n  * \\brief FunctionObj specialization that leverages C-style callback definitions.\n  */\n-class ExternCFunctionObjImpl : public FunctionObj,\n-                               public RedirectCallToSafeCall<ExternCFunctionObjImpl> {\n+class ExternCFunctionObjImpl : public FunctionObj {\n  public:\n-  using RedirectCallToSafeCall<ExternCFunctionObjImpl>::SafeCall;\n-\n   ExternCFunctionObjImpl(void* self, TVMFFISafeCallType safe_call, void (*deleter)(void* self))\n       : self_(self), safe_call_(safe_call), deleter_(deleter) {\n-    this->call = RedirectCallToSafeCall<ExternCFunctionObjImpl>::Call;\n-    this->safe_call = RedirectCallToSafeCall<ExternCFunctionObjImpl>::SafeCall;\n+    this->safe_call = SafeCall;\n+    this->cpp_call = nullptr;\n   }\n \n-  ~ExternCFunctionObjImpl() { deleter_(self_); }\n-\n-  TVM_FFI_INLINE int32_t RedirectSafeCall(const TVMFFIAny* args, int32_t num_args,\n-                                          TVMFFIAny* rv) const {\n-    return safe_call_(self_, args, num_args, rv);\n+  ~ExternCFunctionObjImpl() {\n+    if (deleter_) deleter_(self_);\n   }\n \n  private:\n+  static int32_t SafeCall(void* func, const TVMFFIAny* args, int32_t num_args, TVMFFIAny* rv) {\n+    ExternCFunctionObjImpl* self = reinterpret_cast<ExternCFunctionObjImpl*>(func);\n+    return self->safe_call_(self->self_, args, num_args, rv);\n+  }\n+\n   void* self_;\n   TVMFFISafeCallType safe_call_;\n   void (*deleter_)(void* self);\n };\n \n-/*!\n- * \\brief FunctionObj specialization that wraps an external function.\n- */\n-class ImportedFunctionObjImpl : public FunctionObj,\n-                                public RedirectCallToSafeCall<ImportedFunctionObjImpl> {\n- public:\n-  using RedirectCallToSafeCall<ImportedFunctionObjImpl>::SafeCall;\n-\n-  explicit ImportedFunctionObjImpl(ObjectPtr<Object> data) : data_(data) {\n-    this->call = RedirectCallToSafeCall<ImportedFunctionObjImpl>::Call;\n-    this->safe_call = RedirectCallToSafeCall<ImportedFunctionObjImpl>::SafeCall;\n-  }\n-\n-  TVM_FFI_INLINE int32_t RedirectSafeCall(const TVMFFIAny* args, int32_t num_args,\n-                                          TVMFFIAny* rv) const {\n-    FunctionObj* func = const_cast<FunctionObj*>(static_cast<const FunctionObj*>(data_.get()));\n-    return func->safe_call(func, args, num_args, rv);\n-  }\n-\n- private:\n-  ObjectPtr<Object> data_;\n-};\n-\n // Helper class to set packed arguments\n class PackedArgsSetter {\n  public:\n@@ -353,31 +332,13 @@ class Function : public ObjectRef {\n       return FromPackedInternal(packed_call);\n     }\n   }\n+\n   /*!\n-   * \\brief Import a possibly externally defined function to this dll\n-   * \\param other Function defined in another dynamic library.\n+   * \\brief Create ffi::Function from a C style callbacks.\n    *\n-   * \\note This function will redirect the call to safe_call in other.\n-   *  It will try to detect if the function is already from the same DLL\n-   *  and directly return the original function if so.\n+   * self and deleter can be nullptr if the function do not need closure support\n+   * and corresponds to a raw function pointer.\n    *\n-   * \\return The imported function.\n-   */\n-  static Function ImportFromExternDLL(Function other) {\n-    const FunctionObj* other_func = static_cast<const FunctionObj*>(other.get());\n-    // the other function comes from the same dll, no action needed\n-    if (other_func->safe_call == &(FunctionObj::SafeCall) ||\n-        other_func->safe_call == &(details::ImportedFunctionObjImpl::SafeCall) ||\n-        other_func->safe_call == &(details::ExternCFunctionObjImpl::SafeCall)) {\n-      return other;\n-    }\n-    // the other function coems from a different library\n-    Function func;\n-    func.data_ = make_object<details::ImportedFunctionObjImpl>(std::move(other.data_));\n-    return func;\n-  }\n-  /*!\n-   * \\brief Create ffi::Function from a C style callbacks.\n    * \\param self Resource handle to the function\n    * \\param safe_call The safe_call definition in C.\n    * \\param deleter The deleter to release the resource of self.\n@@ -387,7 +348,11 @@ class Function : public ObjectRef {\n                               void (*deleter)(void* self)) {\n     // the other function coems from a different library\n     Function func;\n-    func.data_ = make_object<details::ExternCFunctionObjImpl>(self, safe_call, deleter);\n+    if (self == nullptr && deleter == nullptr) {\n+      func.data_ = make_object<details::ExternCFunctionObjNullHandleImpl>(safe_call);\n+    } else {\n+      func.data_ = make_object<details::ExternCFunctionObjImpl>(self, safe_call, deleter);\n+    }\n     return func;\n   }\n   /*!\n@@ -854,19 +819,19 @@ inline int32_t TypeKeyToIndex(std::string_view type_key) {\n  *\n  * \\note The final symbol name is `__tvm_ffi_<ExportName>`.\n  */\n-#define TVM_FFI_DLL_EXPORT_TYPED_FUNC(ExportName, Function)                                    \\\n-  extern \"C\" {                                                                                 \\\n-  TVM_FFI_DLL_EXPORT int __tvm_ffi_##ExportName(void* self, TVMFFIAny* args, int32_t num_args, \\\n-                                                TVMFFIAny* result) {                           \\\n-    TVM_FFI_SAFE_CALL_BEGIN();                                                                 \\\n-    using FuncInfo = ::tvm::ffi::details::FunctionInfo<decltype(Function)>;                    \\\n-    static std::string name = #ExportName;                                                     \\\n-    ::tvm::ffi::details::unpack_call<typename FuncInfo::RetType>(                              \\\n-        std::make_index_sequence<FuncInfo::num_args>{}, &name, Function,                       \\\n-        reinterpret_cast<const ::tvm::ffi::AnyView*>(args), num_args,                          \\\n-        reinterpret_cast<::tvm::ffi::Any*>(result));                                           \\\n-    TVM_FFI_SAFE_CALL_END();                                                                   \\\n-  }                                                                                            \\\n+#define TVM_FFI_DLL_EXPORT_TYPED_FUNC(ExportName, Function)                            \\\n+  extern \"C\" {                                                                         \\\n+  TVM_FFI_DLL_EXPORT int __tvm_ffi_##ExportName(void* self, const TVMFFIAny* args,     \\\n+                                                int32_t num_args, TVMFFIAny* result) { \\\n+    TVM_FFI_SAFE_CALL_BEGIN();                                                         \\\n+    using FuncInfo = ::tvm::ffi::details::FunctionInfo<decltype(Function)>;            \\\n+    static std::string name = #ExportName;                                             \\\n+    ::tvm::ffi::details::unpack_call<typename FuncInfo::RetType>(                      \\\n+        std::make_index_sequence<FuncInfo::num_args>{}, &name, Function,               \\\n+        reinterpret_cast<const ::tvm::ffi::AnyView*>(args), num_args,                  \\\n+        reinterpret_cast<::tvm::ffi::Any*>(result));                                   \\\n+    TVM_FFI_SAFE_CALL_END();                                                           \\\n+  }                                                                                    \\\n   }\n }  // namespace ffi\n }  // namespace tvm\ndiff --git a/pyproject.toml b/pyproject.toml\nindex 4a6a734..ff52507 100644\n--- a/pyproject.toml\n+++ b/pyproject.toml\n@@ -17,7 +17,7 @@\n \n [project]\n name = \"apache-tvm-ffi\"\n-version = \"0.1.0b11\"\n+version = \"0.1.0b12\"\n description = \"tvm ffi\"\n \n authors = [{ name = \"TVM FFI team\" }]\ndiff --git a/python/tvm_ffi/__init__.py b/python/tvm_ffi/__init__.py\nindex d88a35e..9a9ed83 100644\n--- a/python/tvm_ffi/__init__.py\n+++ b/python/tvm_ffi/__init__.py\n@@ -17,7 +17,7 @@\n \"\"\"TVM FFI Python package.\"\"\"\n \n # version\n-__version__ = \"0.1.0b11\"\n+__version__ = \"0.1.0b12\"\n \n # order matters here so we need to skip isort here\n # isort: skip_file\ndiff --git a/tests/cpp/test_function.cc b/tests/cpp/test_function.cc\nindex c3c484f..674bb75 100644\n--- a/tests/cpp/test_function.cc\n+++ b/tests/cpp/test_function.cc\n@@ -236,4 +236,14 @@ TEST(Func, ObjectRefWithFallbackTraits) {\n       ::tvm::ffi::Error);\n }\n \n+int testing_add1(int x) { return x + 1; }\n+\n+TVM_FFI_DLL_EXPORT_TYPED_FUNC(testing_add1, testing_add1);\n+\n+TEST(Func, FromExternC) {\n+  // this is the function abi convention\n+  Function fadd1 = Function::FromExternC(nullptr, __tvm_ffi_testing_add1, nullptr);\n+  EXPECT_EQ(fadd1(1).cast<int>(), 2);\n+}\n+\n }  // namespace",
+  "heuristics": {
+    "tags": [
+      "build",
+      "test"
+    ],
+    "extensions": [
+      ".cc",
+      ".h",
+      ".py",
+      ".toml"
+    ],
+    "scopes_guess": [
+      "include",
+      "pyproject.toml",
+      "python",
+      "tests"
+    ]
+  }
+}

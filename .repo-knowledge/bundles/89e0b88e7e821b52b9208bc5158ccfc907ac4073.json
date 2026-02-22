@@ -1,0 +1,38 @@
+{
+  "sha": "89e0b88e7e821b52b9208bc5158ccfc907ac4073",
+  "sha7": "89e0b88",
+  "author_name": "tqchen",
+  "author_email": "tqchenml@gmail.com",
+  "date_iso": "2025-09-16T13:17:42-04:00",
+  "subject": "[CI] setup asf yaml to protect main",
+  "body": "",
+  "is_merge": false,
+  "parents": [
+    "46f73580780f2973e6ea3afb6d3a9d6f6ffd02cc"
+  ],
+  "name_status": [
+    [
+      "M",
+      ".asf.yaml"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": ".asf.yaml",
+      "additions": 1,
+      "deletions": 1
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/.asf.yaml b/.asf.yaml\nindex 2abcf8f..1163ad3 100644\n--- a/.asf.yaml\n+++ b/.asf.yaml\n@@ -28,7 +28,7 @@ github:\n     # make sure to first update the branch protection name\n     # in a separate branch(e.g. dev), confirm things works\n     # before changing it to main\n-    dev:\n+    main:\n       # note: do not set status check for now\n       # committer will check ci status before merging\n       required_pull_request_reviews:",
+  "heuristics": {
+    "tags": [],
+    "extensions": [
+      ".yaml"
+    ],
+    "scopes_guess": [
+      ".asf.yaml"
+    ]
+  }
+}

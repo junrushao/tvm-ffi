@@ -1,0 +1,53 @@
+{
+  "sha": "236e9e9e7378f9f9b7de0e01acbc48c3dd57c323",
+  "sha7": "236e9e9",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-09-07T13:45:59-04:00",
+  "subject": "[FFI] Temp skip load_inline tests nonlinux (#18278)",
+  "body":
+      "This PR temp skip load_inline tests on nonlinux before we\nenhance and improve for other platforms.",
+  "is_merge": false,
+  "parents": [
+    "40f4d9dc38e3794d5a5ec617002eba90311f86f4"
+  ],
+  "name_status": [
+    [
+      "M",
+      "pyproject.toml"
+    ],
+    [
+      "M",
+      "tests/python/test_load_inline.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "pyproject.toml",
+      "additions": 3,
+      "deletions": 2
+    },
+    {
+      "path": "tests/python/test_load_inline.py",
+      "additions": 5,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/pyproject.toml b/pyproject.toml\nindex 430b47c..79cd958 100644\n--- a/pyproject.toml\n+++ b/pyproject.toml\n@@ -42,8 +42,9 @@ GitHub = \"https://github.com/apache/tvm/ffi\"\n \n [project.optional-dependencies]\n # setup tools is needed by torch jit for best perf\n-torch = [\"torch\", \"setuptools\"]\n-test = [\"pytest\", \"numpy\", \"torch\"]\n+torch = [\"torch\", \"setuptools\", \"ninja\"]\n+cpp = [\"ninja\"]\n+test = [\"pytest\", \"numpy\", \"torch\", \"ninja\"]\n \n [project.scripts]\n tvm-ffi-config = \"tvm_ffi.config:__main__\"\ndiff --git a/tests/python/test_load_inline.py b/tests/python/test_load_inline.py\nindex f809ced..c35ebd3 100644\n--- a/tests/python/test_load_inline.py\n+++ b/tests/python/test_load_inline.py\n@@ -17,6 +17,7 @@\n \n import pytest\n import numpy\n+import sys\n \n try:\n     import torch\n@@ -27,6 +28,7 @@ import tvm_ffi.cpp\n from tvm_ffi.module import Module\n \n \n+@pytest.mark.xfail(not sys.platform.startswith(\"linux\"), reason=\"need to support non-linux\")\n def test_load_inline_cpp():\n     mod: Module = tvm_ffi.cpp.load_inline(\n         name=\"hello\",\n@@ -53,6 +55,7 @@ def test_load_inline_cpp():\n     numpy.testing.assert_equal(x + 1, y)\n \n \n+@pytest.mark.xfail(not sys.platform.startswith(\"linux\"), reason=\"need to support non-linux\")\n def test_load_inline_cpp_with_docstrings():\n     mod: Module = tvm_ffi.cpp.load_inline(\n         name=\"hello\",\n@@ -79,6 +82,7 @@ def test_load_inline_cpp_with_docstrings():\n     numpy.testing.assert_equal(x + 1, y)\n \n \n+@pytest.mark.xfail(not sys.platform.startswith(\"linux\"), reason=\"need to support non-linux\")\n def test_load_inline_cpp_multiple_sources():\n     mod: Module = tvm_ffi.cpp.load_inline(\n         name=\"hello\",\n@@ -121,6 +125,7 @@ def test_load_inline_cpp_multiple_sources():\n     numpy.testing.assert_equal(x + 1, y)\n \n \n+@pytest.mark.xfail(not sys.platform.startswith(\"linux\"), reason=\"need to support non-linux\")\n def test_load_inline_cpp_build_dir():\n     mod: Module = tvm_ffi.cpp.load_inline(\n         name=\"hello\",",
+  "heuristics": {
+    "tags": [
+      "build",
+      "test"
+    ],
+    "extensions": [
+      ".py",
+      ".toml"
+    ],
+    "scopes_guess": [
+      "pyproject.toml",
+      "tests"
+    ]
+  }
+}

@@ -1,0 +1,42 @@
+{
+  "sha": "8b9f28d484d568f4d5d410cb860759e0a6d87657",
+  "sha7": "8b9f28d",
+  "author_name": "Junru Shao",
+  "author_email": "junrushao@apache.org",
+  "date_iso": "2025-12-24T13:57:00-08:00",
+  "subject": "fix(build): Link dl and pthread dependencies for tvm_ffi (#360)",
+  "body":
+      "Should fix https://github.com/apache/tvm-ffi/issues/344.\n\nThere are two linking issues:\n- `std::mutex` is used in `src/ffi/backtrace.cc`, which means\n`libtvm_ffi.so` in theory should link with pthread.\n- `dlsym`, `dlopen`, etc are used in\n`src/ffi/extra/library_module_dynamic_lib.cc`, which means it has to be\nlinked with dl.\n\nThis PR adds those two dependencies.",
+  "is_merge": false,
+  "parents": [
+    "b16f11f60156cf07c6e5d3f9ddfa9e2273bdea03"
+  ],
+  "name_status": [
+    [
+      "M",
+      "CMakeLists.txt"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "CMakeLists.txt",
+      "additions": 10,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/CMakeLists.txt b/CMakeLists.txt\nindex 5e2fb4e..8181138 100644\n--- a/CMakeLists.txt\n+++ b/CMakeLists.txt\n@@ -23,6 +23,8 @@ option(TVM_FFI_USE_LIBBACKTRACE \"Enable libbacktrace\" ON)\n option(TVM_FFI_USE_EXTRA_CXX_API \"Enable extra CXX API in shared lib\" ON)\n option(TVM_FFI_BACKTRACE_ON_SEGFAULT \"Set signal handler to print backtrace on segfault\" ON)\n \n+find_package(Threads REQUIRED)\n+\n include(${CMAKE_CURRENT_LIST_DIR}/cmake/Utils/DetectTargetTriple.cmake)\n \n if (TVM_FFI_USE_LIBBACKTRACE)\n@@ -122,6 +124,14 @@ endif ()\n tvm_ffi_add_msvc_flags(tvm_ffi_objs)\n tvm_ffi_add_target_from_obj(tvm_ffi tvm_ffi_objs)\n \n+target_link_libraries(tvm_ffi_shared PRIVATE Threads::Threads)\n+target_link_libraries(tvm_ffi_static INTERFACE Threads::Threads)\n+\n+if (TVM_FFI_USE_EXTRA_CXX_API AND CMAKE_DL_LIBS)\n+  target_link_libraries(tvm_ffi_shared PRIVATE ${CMAKE_DL_LIBS})\n+  target_link_libraries(tvm_ffi_static INTERFACE ${CMAKE_DL_LIBS})\n+endif ()\n+\n if (TARGET libbacktrace)\n   target_link_libraries(tvm_ffi_objs PRIVATE libbacktrace)\n   target_link_libraries(tvm_ffi_shared PRIVATE libbacktrace)",
+  "heuristics": {
+    "tags": [
+      "build",
+      "docs"
+    ],
+    "extensions": [
+      ".txt"
+    ],
+    "scopes_guess": [
+      "CMakeLists.txt"
+    ]
+  }
+}

@@ -1,0 +1,39 @@
+{
+  "sha": "583e4b73c11aa3257e7be862834b98f33c39a6dd",
+  "sha7": "583e4b7",
+  "author_name": "DarkSharpness",
+  "author_email": "76582120+DarkSharpness@users.noreply.github.com",
+  "date_iso": "2025-11-10T07:03:44+08:00",
+  "subject": "[misc] support various arg types (#229)",
+  "body":
+      "Related PR #228.\n\nWe now support all kinds of argument type (T, const T, T&, const T&,\nT&&, const T&& have been tested) in C++ exported functions.",
+  "is_merge": false,
+  "parents": [
+    "8fcd9245186df3d6570e641dfc1c84239a9f9a40"
+  ],
+  "name_status": [
+    [
+      "M",
+      "include/tvm/ffi/function_details.h"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "include/tvm/ffi/function_details.h",
+      "additions": 27,
+      "deletions": 10
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/include/tvm/ffi/function_details.h b/include/tvm/ffi/function_details.h\nindex e7db063..4cd67aa 100644\n--- a/include/tvm/ffi/function_details.h\n+++ b/include/tvm/ffi/function_details.h\n@@ -53,11 +53,19 @@ struct Arg2Str {\n   }\n };\n \n+/// NOTE: We only support `T`, `const T`, `const T&` and `T&&` as argument types.\n+template <typename T>\n+static constexpr bool ArgTypeSupported =\n+    (!std::is_reference_v<T>) ||\n+    (std::is_const_v<std::remove_reference_t<T>> && std::is_lvalue_reference_v<T>) ||\n+    (!std::is_const_v<std::remove_reference_t<T>> && std::is_rvalue_reference_v<T>);\n+\n template <typename T>\n static constexpr bool ArgSupported =\n-    (std::is_same_v<std::remove_const_t<std::remove_reference_t<T>>, Any> ||\n-     std::is_same_v<std::remove_const_t<std::remove_reference_t<T>>, AnyView> ||\n-     TypeTraitsNoCR<T>::convert_enabled);\n+    (ArgTypeSupported<T> &&\n+     (std::is_same_v<std::remove_const_t<std::remove_reference_t<T>>, Any> ||\n+      std::is_same_v<std::remove_const_t<std::remove_reference_t<T>>, AnyView> ||\n+      TypeTraitsNoCR<T>::convert_enabled));\n \n // NOTE: return type can only support non-reference managed returns\n template <typename T>\n@@ -136,9 +144,19 @@ using FGetFuncSignature = std::string (*)();\n \n /*!\n  * \\brief Auxilary argument value with context for error reporting\n+ * \\tparam Type The expected type of the argument.\n+ * \\note We use a template class with non-template operator conversion\n+ * instead of a non-template class with template operator conversion.\n+ * This is because template operator conversion doesn't play well with\n+ * classes with template constructors.\n+ * In this case, it may lead to some unintended compiler errors.\n+ * An example of class can be `std::optional<T>`.\n  */\n+template <typename Type>\n class ArgValueWithContext {\n  public:\n+  using TypeWithoutCR = std::remove_const_t<std::remove_reference_t<Type>>;\n+\n   /*!\n    * \\brief move constructor from another return value.\n    * \\param args The argument list\n@@ -151,16 +169,13 @@ class ArgValueWithContext {\n                                      const std::string* optional_name, FGetFuncSignature f_sig)\n       : args_(args), arg_index_(arg_index), optional_name_(optional_name), f_sig_(f_sig) {}\n \n-  template <typename Type>\n-  TVM_FFI_INLINE operator Type() {  // NOLINT(google-explicit-constructor)\n-    using TypeWithoutCR = std::remove_const_t<std::remove_reference_t<Type>>;\n-\n+  TVM_FFI_INLINE operator TypeWithoutCR() {  // NOLINT(google-explicit-constructor)\n     if constexpr (std::is_same_v<TypeWithoutCR, AnyView>) {\n       return args_[arg_index_];\n     } else if constexpr (std::is_same_v<TypeWithoutCR, Any>) {\n       return Any(args_[arg_index_]);\n     } else {\n-      std::optional<TypeWithoutCR> opt = args_[arg_index_].try_cast<TypeWithoutCR>();\n+      std::optional<TypeWithoutCR> opt = args_[arg_index_].template try_cast<TypeWithoutCR>();\n       if (!opt.has_value()) {\n         TVMFFIAny any_data = args_[arg_index_].CopyToTVMFFIAny();\n         TVM_FFI_THROW(TypeError) << \"Mismatched type on argument #\" << arg_index_\n@@ -187,6 +202,7 @@ TVM_FFI_INLINE void unpack_call(std::index_sequence<Is...>, const std::string* o\n                                 const F& f, [[maybe_unused]] const AnyView* args,\n                                 [[maybe_unused]] int32_t num_args, [[maybe_unused]] Any* rv) {\n   using FuncInfo = FunctionInfo<F>;\n+  using PackedArgs = typename FuncInfo::ArgType;\n   FGetFuncSignature f_sig = FuncInfo::Sig;\n \n   // somehow MSVC does not support the static constexpr member in this case, function is fine\n@@ -202,9 +218,10 @@ TVM_FFI_INLINE void unpack_call(std::index_sequence<Is...>, const std::string* o\n   }\n   // use index sequence to do recursive-less unpacking\n   if constexpr (std::is_same_v<R, void>) {\n-    f(ArgValueWithContext(args, Is, optional_name, f_sig)...);\n+    f(ArgValueWithContext<std::tuple_element_t<Is, PackedArgs>>{args, Is, optional_name, f_sig}...);\n   } else {\n-    *rv = R(f(ArgValueWithContext(args, Is, optional_name, f_sig)...));\n+    *rv = R(f(ArgValueWithContext<std::tuple_element_t<Is, PackedArgs>>{args, Is, optional_name,\n+                                                                        f_sig}...));\n   }\n }\n ",
+  "heuristics": {
+    "tags": [],
+    "extensions": [
+      ".h"
+    ],
+    "scopes_guess": [
+      "include"
+    ]
+  }
+}

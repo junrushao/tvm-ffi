@@ -1,0 +1,79 @@
+{
+  "sha": "5e648f052f93a423f7ef3cb20d2675925d64bf96",
+  "sha7": "5e648f0",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-10-20T11:52:30-07:00",
+  "subject": "Introduce dtype protocol (#178)",
+  "body":
+      "This PR adds support for `__dlpack_data_type__` to enable exchange of\ndtype from arguments. Note the intention is to use DLDataType to ingest\ndtype into tvm ffi since it is the most close to metal repr.\n\nLikely we also can look into numpy dtype protocol once that\nmaterializes.",
+  "is_merge": false,
+  "parents": [
+    "e10d1ed7c2e3b69847348effd4ed9d310a300af8"
+  ],
+  "name_status": [
+    [
+      "M",
+      "python/tvm_ffi/_dtype.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/cython/dtype.pxi"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/cython/function.pxi"
+    ],
+    [
+      "M",
+      "tests/python/test_dtype.py"
+    ],
+    [
+      "M",
+      "tests/python/test_function.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "python/tvm_ffi/_dtype.py",
+      "additions": 34,
+      "deletions": 10
+    },
+    {
+      "path": "python/tvm_ffi/cython/dtype.pxi",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "python/tvm_ffi/cython/function.pxi",
+      "additions": 17,
+      "deletions": 1
+    },
+    {
+      "path": "tests/python/test_dtype.py",
+      "additions": 7,
+      "deletions": 0
+    },
+    {
+      "path": "tests/python/test_function.py",
+      "additions": 16,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/python/tvm_ffi/_dtype.py b/python/tvm_ffi/_dtype.py\nindex b712c65..de2d1f1 100644\n--- a/python/tvm_ffi/_dtype.py\n+++ b/python/tvm_ffi/_dtype.py\n@@ -60,15 +60,39 @@ class dtype(str):\n \n     \"\"\"\n \n-    __slots__ = [\"__tvm_ffi_dtype__\"]\n-    __tvm_ffi_dtype__: core.DataType\n+    __slots__ = [\"_tvm_ffi_dtype\"]\n+    _tvm_ffi_dtype: core.DataType\n \n     _NUMPY_DTYPE_TO_STR: ClassVar[dict[Any, str]] = {}\n \n     def __new__(cls, content: Any) -> dtype:\n         content = str(content)\n         val = str.__new__(cls, content)\n-        val.__tvm_ffi_dtype__ = core.DataType(content)\n+        val._tvm_ffi_dtype = core.DataType(content)\n+        return val\n+\n+    @staticmethod\n+    def from_dlpack_data_type(dltype_data_type: tuple[int, int, int]) -> dtype:\n+        \"\"\"Create a dtype from a DLPack data type tuple.\n+\n+        Parameters\n+        ----------\n+        dltype_data_type\n+            The DLPack data type tuple (type_code, bits, lanes).\n+\n+        Returns\n+        -------\n+        The created dtype.\n+\n+        \"\"\"\n+        cdtype = core._create_dtype_from_tuple(\n+            core.DataType,\n+            dltype_data_type[0],\n+            dltype_data_type[1],\n+            dltype_data_type[2],\n+        )\n+        val = str.__new__(dtype, str(cdtype))\n+        val._tvm_ffi_dtype = cdtype\n         return val\n \n     def __repr__(self) -> str:\n@@ -90,29 +114,29 @@ class dtype(str):\n         \"\"\"\n         cdtype = core._create_dtype_from_tuple(\n             core.DataType,\n-            self.__tvm_ffi_dtype__.type_code,\n-            self.__tvm_ffi_dtype__.bits,\n+            self._tvm_ffi_dtype.type_code,\n+            self._tvm_ffi_dtype.bits,\n             lanes,\n         )\n         val = str.__new__(dtype, str(cdtype))\n-        val.__tvm_ffi_dtype__ = cdtype\n+        val._tvm_ffi_dtype = cdtype\n         return val\n \n     @property\n     def itemsize(self) -> int:\n-        return self.__tvm_ffi_dtype__.itemsize\n+        return self._tvm_ffi_dtype.itemsize\n \n     @property\n     def type_code(self) -> int:\n-        return self.__tvm_ffi_dtype__.type_code\n+        return self._tvm_ffi_dtype.type_code\n \n     @property\n     def bits(self) -> int:\n-        return self.__tvm_ffi_dtype__.bits\n+        return self._tvm_ffi_dtype.bits\n \n     @property\n     def lanes(self) -> int:\n-        return self.__tvm_ffi_dtype__.lanes\n+        return self._tvm_ffi_dtype.lanes\n \n \n try:\ndiff --git a/python/tvm_ffi/cython/dtype.pxi b/python/tvm_ffi/cython/dtype.pxi\nindex be32976..3d90346 100644\n--- a/python/tvm_ffi/cython/dtype.pxi\n+++ b/python/tvm_ffi/cython/dtype.pxi\n@@ -155,7 +155,7 @@ cdef inline object make_ret_dtype(TVMFFIAny result):\n     cdtype = DataType.__new__(DataType)\n     (<DataType>cdtype).cdtype = result.v_dtype\n     val = str.__new__(_CLASS_DTYPE, cdtype.__str__())\n-    val.__tvm_ffi_dtype__ = cdtype\n+    val._tvm_ffi_dtype = cdtype\n     return val\n \n \ndiff --git a/python/tvm_ffi/cython/function.pxi b/python/tvm_ffi/cython/function.pxi\nindex 98fe027..1138476 100644\n--- a/python/tvm_ffi/cython/function.pxi\n+++ b/python/tvm_ffi/cython/function.pxi\n@@ -308,7 +308,7 @@ cdef int TVMFFIPyArgSetterDType_(\n     \"\"\"Setter for dtype\"\"\"\n     cdef object arg = <object>py_arg\n     # dtype is a subclass of str, so this check occur before str\n-    arg = arg.__tvm_ffi_dtype__\n+    arg = arg._tvm_ffi_dtype\n     out.type_index = kTVMFFIDataType\n     out.v_dtype = (<DataType>arg).cdtype\n     return 0\n@@ -573,6 +573,18 @@ cdef int TVMFFIPyArgSetterDTypeFromNumpy_(\n     out.v_dtype = NUMPY_DTYPE_TO_DTYPE[py_obj]\n     return 0\n \n+cdef int TVMFFIPyArgSetterDLPackDataTypeProtocol_(\n+    TVMFFIPyArgSetter* handle, TVMFFIPyCallContext* ctx,\n+    PyObject* py_arg, TVMFFIAny* out\n+) except -1:\n+    \"\"\"Setter for dtype protocol\"\"\"\n+    cdef object arg = <object>py_arg\n+    cdef tuple dltype_data_type = arg.__dlpack_data_type__()\n+    out.type_index = kTVMFFIDataType\n+    out.v_dtype.code = <long long>dltype_data_type[0]\n+    out.v_dtype.bits = <long long>dltype_data_type[1]\n+    out.v_dtype.lanes = <long long>dltype_data_type[2]\n+    return 0\n \n cdef _DISPATCH_TYPE_KEEP_ALIVE = set()\n cdef _DISPATCH_TYPE_KEEP_ALIVE_LOCK = threading.Lock()\n@@ -700,6 +712,10 @@ cdef int TVMFFIPyArgSetterFactory_(PyObject* value, TVMFFIPyArgSetter* out) exce\n     if numpy is not None and isinstance(arg, numpy.dtype):\n         out.func = TVMFFIPyArgSetterDTypeFromNumpy_\n         return 0\n+    if hasattr(arg_class, \"__dlpack_data_type__\"):\n+        # prefer dlpack as it covers all DLDataType struct\n+        out.func = TVMFFIPyArgSetterDLPackDataTypeProtocol_\n+        return 0\n     if isinstance(arg, Exception):\n         out.func = TVMFFIPyArgSetterException_\n         return 0\ndiff --git a/tests/python/test_dtype.py b/tests/python/test_dtype.py\nindex 38e72fb..60d53ef 100644\n--- a/tests/python/test_dtype.py\n+++ b/tests/python/test_dtype.py\n@@ -160,3 +160,10 @@ def test_ml_dtypes_dtype_conversion() -> None:\n     _check_dtype(np.dtype(ml_dtypes.float6_e2m3fn), 15, 6, 1)\n     _check_dtype(np.dtype(ml_dtypes.float6_e3m2fn), 16, 6, 1)\n     _check_dtype(np.dtype(ml_dtypes.float4_e2m1fn), 17, 4, 1)\n+\n+\n+def test_dtype_from_dlpack_data_type() -> None:\n+    dtype = tvm_ffi.dtype.from_dlpack_data_type((0, 8, 1))\n+    assert dtype.type_code == 0\n+    assert dtype.bits == 8\n+    assert dtype.lanes == 1\ndiff --git a/tests/python/test_function.py b/tests/python/test_function.py\nindex 797e1a4..6123a8e 100644\n--- a/tests/python/test_function.py\n+++ b/tests/python/test_function.py\n@@ -14,6 +14,7 @@\n # KIND, either express or implied.  See the License for the\n # specific language governing permissions and limitations\n # under the License.\n+from __future__ import annotations\n \n import ctypes\n import gc\n@@ -312,3 +313,18 @@ def test_function_with_opaque_ptr_protocol() -> None:\n     y = fecho(x)\n     assert isinstance(y, ctypes.c_void_p)\n     assert y.value == 10\n+\n+\n+def test_function_with_dlpack_data_type_protocol() -> None:\n+    class DLPackDataTypeProtocol:\n+        def __init__(self, dlpack_data_type: tuple[int, int, int]) -> None:\n+            self.dlpack_data_type = dlpack_data_type\n+\n+        def __dlpack_data_type__(self) -> tuple[int, int, int]:\n+            return self.dlpack_data_type\n+\n+    dtype = tvm_ffi.dtype(\"float32\")\n+    fecho = tvm_ffi.get_global_func(\"testing.echo\")\n+    x = DLPackDataTypeProtocol((dtype.type_code, dtype.bits, dtype.lanes))\n+    y = fecho(x)\n+    assert y == dtype",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".pxi",
+      ".py"
+    ],
+    "scopes_guess": [
+      "python",
+      "tests"
+    ]
+  }
+}

@@ -1,0 +1,138 @@
+{
+  "sha": "5e564cdfb932af63915fbeb5a5aa30671f55ae2c",
+  "sha7": "5e564cd",
+  "author_name": "Junru Shao",
+  "author_email": "junrushao@apache.org",
+  "date_iso": "2026-02-14T18:14:35-08:00",
+  "subject": "feat: add `DefaultFactory` support to field reflection (#446)",
+  "body":
+      "`DefaultValue` stores a single static default shared across all\ninstances created via reflection. For mutable defaults (Array, Map,\netc.) this causes aliasing: every object receives the same underlying\ncontainer. `DefaultFactory` fixes this by storing a callable `() -> Any`\nthat is invoked each time a default is needed, producing a fresh value\nper instance—mirroring Python dataclass `default_factory`.\n\nConcrete changes:\n\n- Rename `TVMFFIFieldInfo::default_value` → `default_value_or_factory`\nto reflect that the slot now holds either a value or a factory.\n- Add `kTVMFFIFieldFlagBitMaskDefaultFromFactory` (1 << 5) to\n`TVMFFIFieldFlagBitMask`.\n- Add `reflection::DefaultFactory` trait (registry.h), symmetric to\n`DefaultValue`.\n- Add `reflection::SetFieldToDefault` helper (accessor.h) that resolves\nthe default—calling the factory when the flag is set—so the three\nconsumption sites (creator.h, reflection_extra.cc, serialization.cc)\nshare one implementation.\n- Propagate the rename through Rust (`c_api.rs`) and Cython (`base.pxi`)\nbindings.\n- Add `TestObjWithFactory` + three tests exercising flag inspection,\nper-instance freshness, and explicit-value bypass.",
+  "is_merge": false,
+  "parents": [
+    "934f2d187c7fb51ab32b9351f8e56a865241aff4"
+  ],
+  "name_status": [
+    [
+      "M",
+      "include/tvm/ffi/c_api.h"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/reflection/accessor.h"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/reflection/creator.h"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/reflection/overload.h"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/reflection/registry.h"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/cython/base.pxi"
+    ],
+    [
+      "M",
+      "rust/tvm-ffi-sys/src/c_api.rs"
+    ],
+    [
+      "M",
+      "src/ffi/extra/reflection_extra.cc"
+    ],
+    [
+      "M",
+      "src/ffi/extra/serialization.cc"
+    ],
+    [
+      "M",
+      "src/ffi/object.cc"
+    ],
+    [
+      "M",
+      "tests/cpp/test_reflection.cc"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "include/tvm/ffi/c_api.h",
+      "additions": 17,
+      "deletions": 3
+    },
+    {
+      "path": "include/tvm/ffi/reflection/accessor.h",
+      "additions": 22,
+      "deletions": 0
+    },
+    {
+      "path": "include/tvm/ffi/reflection/creator.h",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "include/tvm/ffi/reflection/overload.h",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "include/tvm/ffi/reflection/registry.h",
+      "additions": 31,
+      "deletions": 2
+    },
+    {
+      "path": "python/tvm_ffi/cython/base.pxi",
+      "additions": 2,
+      "deletions": 1
+    },
+    {
+      "path": "rust/tvm-ffi-sys/src/c_api.rs",
+      "additions": 5,
+      "deletions": 3
+    },
+    {
+      "path": "src/ffi/extra/reflection_extra.cc",
+      "additions": 2,
+      "deletions": 1
+    },
+    {
+      "path": "src/ffi/extra/serialization.cc",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "src/ffi/object.cc",
+      "additions": 4,
+      "deletions": 3
+    },
+    {
+      "path": "tests/cpp/test_reflection.cc",
+      "additions": 70,
+      "deletions": 2
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/include/tvm/ffi/c_api.h b/include/tvm/ffi/c_api.h\nindex 5089b6e..67715ca 100644\n--- a/include/tvm/ffi/c_api.h\n+++ b/include/tvm/ffi/c_api.h\n@@ -861,6 +861,15 @@ typedef enum {\n    * This is an optional meta-data for structural eq/hash.\n    */\n   kTVMFFIFieldFlagBitMaskSEqHashDef = 1 << 4,\n+  /*!\n+   * \\brief The default_value_or_factory is a callable factory function () -> Any.\n+   *\n+   * When this flag is set along with kTVMFFIFieldFlagBitMaskHasDefault,\n+   * the default_value_or_factory field contains a Function that should be\n+   * called with no arguments to produce the default value, rather than\n+   * being used directly as the default value.\n+   */\n+  kTVMFFIFieldFlagBitMaskDefaultFromFactory = 1 << 5,\n #ifdef __cplusplus\n };\n #else\n@@ -960,10 +969,15 @@ typedef struct {\n    */\n   TVMFFIFieldSetter setter;\n   /*!\n-   * \\brief The default value of the field, this field hold AnyView,\n-   *        valid when flags set kTVMFFIFieldFlagBitMaskHasDefault\n+   * \\brief The default value or default factory of the field.\n+   *\n+   * When flags has kTVMFFIFieldFlagBitMaskHasDefault set:\n+   * - If kTVMFFIFieldFlagBitMaskDefaultFromFactory is NOT set,\n+   *   this holds the static default value as AnyView.\n+   * - If kTVMFFIFieldFlagBitMaskDefaultFromFactory IS set,\n+   *   this holds a Function (() -> Any) that produces the default.\n    */\n-  TVMFFIAny default_value;\n+  TVMFFIAny default_value_or_factory;\n   /*!\n    * \\brief Records the static type kind of the field.\n    *\ndiff --git a/include/tvm/ffi/reflection/accessor.h b/include/tvm/ffi/reflection/accessor.h\nindex b49da51..68c8b0d 100644\n--- a/include/tvm/ffi/reflection/accessor.h\n+++ b/include/tvm/ffi/reflection/accessor.h\n@@ -199,6 +199,28 @@ inline Function GetMethod(std::string_view type_key, const char* method_name) {\n   return AnyView::CopyFromTVMFFIAny(info->method).cast<Function>();\n }\n \n+/*!\n+ * \\brief Set a field to its default value, calling the factory if applicable.\n+ *\n+ * When kTVMFFIFieldFlagBitMaskDefaultFromFactory is set, extracts the\n+ * Function from default_value_or_factory, calls it with no arguments,\n+ * and uses the result. Otherwise, passes default_value_or_factory directly\n+ * to the setter.\n+ *\n+ * \\param field_info The field info (must have kTVMFFIFieldFlagBitMaskHasDefault set).\n+ * \\param field_addr The address of the field in the object.\n+ */\n+inline void SetFieldToDefault(const TVMFFIFieldInfo* field_info, void* field_addr) {\n+  if (field_info->flags & kTVMFFIFieldFlagBitMaskDefaultFromFactory) {\n+    Function factory =\n+        AnyView::CopyFromTVMFFIAny(field_info->default_value_or_factory).cast<Function>();\n+    Any default_val = factory();\n+    field_info->setter(field_addr, reinterpret_cast<const TVMFFIAny*>(&default_val));\n+  } else {\n+    field_info->setter(field_addr, &(field_info->default_value_or_factory));\n+  }\n+}\n+\n /*!\n  * \\brief Visit each field info of the type info and run callback.\n  *\ndiff --git a/include/tvm/ffi/reflection/creator.h b/include/tvm/ffi/reflection/creator.h\nindex 774eb8b..a7e860c 100644\n--- a/include/tvm/ffi/reflection/creator.h\n+++ b/include/tvm/ffi/reflection/creator.h\n@@ -79,7 +79,7 @@ class ObjectCreator {\n         field_info->setter(field_addr, reinterpret_cast<const TVMFFIAny*>(&field_value));\n         ++match_field_count;\n       } else if (field_info->flags & kTVMFFIFieldFlagBitMaskHasDefault) {\n-        field_info->setter(field_addr, &(field_info->default_value));\n+        SetFieldToDefault(field_info, field_addr);\n       } else {\n         TVM_FFI_THROW(TypeError) << \"Required field `\"\n                                  << String(field_info->name.data, field_info->name.size)\ndiff --git a/include/tvm/ffi/reflection/overload.h b/include/tvm/ffi/reflection/overload.h\nindex a85174c..81ced69 100644\n--- a/include/tvm/ffi/reflection/overload.h\n+++ b/include/tvm/ffi/reflection/overload.h\n@@ -449,7 +449,7 @@ class OverloadObjectDef : private ObjectDef<Class> {\n     info.getter = ReflectionDefBase::FieldGetter<T>;\n     info.setter = ReflectionDefBase::FieldSetter<T>;\n     // initialize default value to nullptr\n-    info.default_value = AnyView(nullptr).CopyToTVMFFIAny();\n+    info.default_value_or_factory = AnyView(nullptr).CopyToTVMFFIAny();\n     info.doc = TVMFFIByteArray{nullptr, 0};\n     info.metadata_.emplace_back(\"type_schema\", details::TypeSchema<T>::v());\n     // apply field info traits\ndiff --git a/include/tvm/ffi/reflection/registry.h b/include/tvm/ffi/reflection/registry.h\nindex cc4ec50..4cd4663 100644\n--- a/include/tvm/ffi/reflection/registry.h\n+++ b/include/tvm/ffi/reflection/registry.h\n@@ -152,7 +152,7 @@ class DefaultValue : public InfoTrait {\n    * \\param info The field info.\n    */\n   TVM_FFI_INLINE void Apply(TVMFFIFieldInfo* info) const {\n-    info->default_value = AnyView(value_).CopyToTVMFFIAny();\n+    info->default_value_or_factory = AnyView(value_).CopyToTVMFFIAny();\n     info->flags |= kTVMFFIFieldFlagBitMaskHasDefault;\n   }\n \n@@ -160,6 +160,35 @@ class DefaultValue : public InfoTrait {\n   Any value_;\n };\n \n+/*!\n+ * \\brief Trait that can be used to set field default factory.\n+ *\n+ * A default factory is a callable () -> Any that is invoked each time\n+ * a default value is needed, producing a fresh value. This is important\n+ * for mutable defaults (e.g., Array, Map) to avoid aliasing.\n+ */\n+class DefaultFactory : public InfoTrait {\n+ public:\n+  /*!\n+   * \\brief Constructor\n+   * \\param factory The factory function to be called to produce default values.\n+   */\n+  explicit DefaultFactory(Function factory) : factory_(std::move(factory)) {}\n+\n+  /*!\n+   * \\brief Apply the default factory to the field info\n+   * \\param info The field info.\n+   */\n+  TVM_FFI_INLINE void Apply(TVMFFIFieldInfo* info) const {\n+    info->default_value_or_factory = AnyView(factory_).CopyToTVMFFIAny();\n+    info->flags |= kTVMFFIFieldFlagBitMaskHasDefault;\n+    info->flags |= kTVMFFIFieldFlagBitMaskDefaultFromFactory;\n+  }\n+\n+ private:\n+  Function factory_;\n+};\n+\n /*!\n  * \\brief Trait that can be used to attach field flag\n  */\n@@ -653,7 +682,7 @@ class ObjectDef : public ReflectionDefBase {\n     info.getter = FieldGetter<T>;\n     info.setter = FieldSetter<T>;\n     // initialize default value to nullptr\n-    info.default_value = AnyView(nullptr).CopyToTVMFFIAny();\n+    info.default_value_or_factory = AnyView(nullptr).CopyToTVMFFIAny();\n     info.doc = TVMFFIByteArray{nullptr, 0};\n     info.metadata_.emplace_back(\"type_schema\", details::TypeSchema<T>::v());\n     // apply field info traits\ndiff --git a/python/tvm_ffi/cython/base.pxi b/python/tvm_ffi/cython/base.pxi\nindex a07e850..4512936 100644\n--- a/python/tvm_ffi/cython/base.pxi\n+++ b/python/tvm_ffi/cython/base.pxi\n@@ -203,6 +203,7 @@ cdef extern from \"tvm/ffi/c_api.h\":\n         kTVMFFIFieldFlagBitMaskWritable = 1 << 0\n         kTVMFFIFieldFlagBitMaskHasDefault = 1 << 1\n         kTVMFFIFieldFlagBitMaskIsStaticMethod = 1 << 2\n+        kTVMFFIFieldFlagBitMaskDefaultFromFactory = 1 << 5\n \n     ctypedef int (*TVMFFIFieldGetter)(void* field, TVMFFIAny* result) noexcept\n     ctypedef int (*TVMFFIFieldSetter)(void* field, const TVMFFIAny* value) noexcept\n@@ -218,7 +219,7 @@ cdef extern from \"tvm/ffi/c_api.h\":\n         int64_t offset\n         TVMFFIFieldGetter getter\n         TVMFFIFieldSetter setter\n-        TVMFFIAny default_value\n+        TVMFFIAny default_value_or_factory\n         int32_t field_static_type_index\n \n     ctypedef struct TVMFFIMethodInfo:\ndiff --git a/rust/tvm-ffi-sys/src/c_api.rs b/rust/tvm-ffi-sys/src/c_api.rs\nindex e0bf085..d94967b 100644\n--- a/rust/tvm-ffi-sys/src/c_api.rs\n+++ b/rust/tvm-ffi-sys/src/c_api.rs\n@@ -286,9 +286,11 @@ pub struct TVMFFIFieldInfo {\n     /// The setter to access the field\n     /// The setter is set even if the field is readonly for serialization\n     pub setter: Option<TVMFFIFieldSetter>,\n-    /// The default value of the field, this field hold AnyView,\n-    /// valid when flags set kTVMFFIFieldFlagBitMaskHasDefault\n-    pub default_value: TVMFFIAny,\n+    /// The default value or factory of the field, this field holds AnyView.\n+    /// Valid when flags set kTVMFFIFieldFlagBitMaskHasDefault.\n+    /// When kTVMFFIFieldFlagBitMaskDefaultFromFactory is also set,\n+    /// this is a callable factory function () -> Any.\n+    pub default_value_or_factory: TVMFFIAny,\n     /// Records the static type kind of the field\n     pub field_static_type_index: i32,\n }\ndiff --git a/src/ffi/extra/reflection_extra.cc b/src/ffi/extra/reflection_extra.cc\nindex 02d422d..6699416 100644\n--- a/src/ffi/extra/reflection_extra.cc\n+++ b/src/ffi/extra/reflection_extra.cc\n@@ -22,6 +22,7 @@\n  * \\brief Extra reflection registrations. *\n  */\n #include <tvm/ffi/reflection/access_path.h>\n+#include <tvm/ffi/reflection/accessor.h>\n #include <tvm/ffi/reflection/registry.h>\n \n namespace tvm {\n@@ -78,7 +79,7 @@ void MakeObjectFromPackedArgs(ffi::PackedArgs args, Any* ret) {\n         field_info->setter(field_addr, reinterpret_cast<const TVMFFIAny*>(&field_value));\n         keys_found[arg_index] = true;\n       } else if (field_info->flags & kTVMFFIFieldFlagBitMaskHasDefault) {\n-        field_info->setter(field_addr, &(field_info->default_value));\n+        reflection::SetFieldToDefault(field_info, field_addr);\n       } else {\n         TVM_FFI_THROW(TypeError) << \"Required field `\"\n                                  << String(field_info->name.data, field_info->name.size)\ndiff --git a/src/ffi/extra/serialization.cc b/src/ffi/extra/serialization.cc\nindex 1e5e98c..f639d87 100644\n--- a/src/ffi/extra/serialization.cc\n+++ b/src/ffi/extra/serialization.cc\n@@ -396,7 +396,7 @@ class ObjectGraphDeserializer {\n         Any field_value = decode_field_value(field_info, data_object[field_name]);\n         field_info->setter(field_addr, reinterpret_cast<const TVMFFIAny*>(&field_value));\n       } else if (field_info->flags & kTVMFFIFieldFlagBitMaskHasDefault) {\n-        field_info->setter(field_addr, &(field_info->default_value));\n+        reflection::SetFieldToDefault(field_info, field_addr);\n       } else {\n         TVM_FFI_THROW(TypeError) << \"Required field `\"\n                                  << String(field_info->name.data, field_info->name.size)\ndiff --git a/src/ffi/object.cc b/src/ffi/object.cc\nindex 8c5c137..7e5e00e 100644\n--- a/src/ffi/object.cc\n+++ b/src/ffi/object.cc\n@@ -211,10 +211,11 @@ class TypeTable {\n     field_data.doc = this->CopyString(info->doc);\n     field_data.metadata = this->CopyString(info->metadata);\n     if (info->flags & kTVMFFIFieldFlagBitMaskHasDefault) {\n-      field_data.default_value =\n-          this->CopyAny(AnyView::CopyFromTVMFFIAny(info->default_value)).CopyToTVMFFIAny();\n+      field_data.default_value_or_factory =\n+          this->CopyAny(AnyView::CopyFromTVMFFIAny(info->default_value_or_factory))\n+              .CopyToTVMFFIAny();\n     } else {\n-      field_data.default_value = AnyView(nullptr).CopyToTVMFFIAny();\n+      field_data.default_value_or_factory = AnyView(nullptr).CopyToTVMFFIAny();\n     }\n     entry->type_fields_data.push_back(field_data);\n     // refresh ptr as the data can change\ndiff --git a/tests/cpp/test_reflection.cc b/tests/cpp/test_reflection.cc\nindex 82d73a2..e77368c 100644\n--- a/tests/cpp/test_reflection.cc\n+++ b/tests/cpp/test_reflection.cc\n@@ -18,6 +18,7 @@\n  * under the License.\n  */\n #include <gtest/gtest.h>\n+#include <tvm/ffi/container/array.h>\n #include <tvm/ffi/container/map.h>\n #include <tvm/ffi/object.h>\n #include <tvm/ffi/reflection/access_path.h>\n@@ -101,13 +102,14 @@ TEST(Reflection, FieldInfo) {\n   EXPECT_EQ(Bytes(info_int->doc).operator std::string(), \"\");\n \n   const TVMFFIFieldInfo* info_float = reflection::GetFieldInfo(\"test.Float\", \"value\");\n-  EXPECT_EQ(info_float->default_value.v_float64, 10.0);\n+  EXPECT_EQ(info_float->default_value_or_factory.v_float64, 10.0);\n   EXPECT_TRUE(info_float->flags & kTVMFFIFieldFlagBitMaskHasDefault);\n   EXPECT_FALSE(info_float->flags & kTVMFFIFieldFlagBitMaskWritable);\n   EXPECT_EQ(Bytes(info_float->doc).operator std::string(), \"float value field\");\n \n   const TVMFFIFieldInfo* info_prim_expr_dtype = reflection::GetFieldInfo(\"test.PrimExpr\", \"dtype\");\n-  AnyView default_value = AnyView::CopyFromTVMFFIAny(info_prim_expr_dtype->default_value);\n+  AnyView default_value =\n+      AnyView::CopyFromTVMFFIAny(info_prim_expr_dtype->default_value_or_factory);\n   EXPECT_EQ(default_value.cast<String>(), \"float\");\n   EXPECT_TRUE(info_prim_expr_dtype->flags & kTVMFFIFieldFlagBitMaskHasDefault);\n   EXPECT_TRUE(info_prim_expr_dtype->flags & kTVMFFIFieldFlagBitMaskWritable);\n@@ -295,6 +297,25 @@ TEST(Reflection, AccessPath) {\n   EXPECT_FALSE(root_parent.has_value());\n }\n \n+struct TestObjWithFactory : public Object {\n+  Array<ObjectRef> items;\n+  int64_t count;\n+\n+  explicit TestObjWithFactory(UnsafeInit) {}\n+\n+  [[maybe_unused]] static constexpr bool _type_mutable = true;\n+  TVM_FFI_DECLARE_OBJECT_INFO_FINAL(\"test.TestObjWithFactory\", TestObjWithFactory, Object);\n+};\n+\n+TVM_FFI_STATIC_INIT_BLOCK() {\n+  namespace refl = tvm::ffi::reflection;\n+  refl::ObjectDef<TestObjWithFactory>()\n+      .def_ro(\"items\", &TestObjWithFactory::items,\n+              refl::DefaultFactory(\n+                  Function::FromTyped([]() -> Array<ObjectRef> { return Array<ObjectRef>(); })))\n+      .def_ro(\"count\", &TestObjWithFactory::count, refl::DefaultValue(static_cast<int64_t>(0)));\n+}\n+\n struct TestObjWithAny : public Object {\n   Any value;\n   explicit TestObjWithAny(Any value) : value(std::move(value)) {}\n@@ -350,4 +371,51 @@ TEST(Reflection, InitWithAnyView) {\n   ASSERT_TRUE(obj3.as<TestObjWithAnyView>() != nullptr);\n   EXPECT_EQ(obj3.as<TestObjWithAnyView>()->value.cast<String>(), \"hello\");\n }\n+TEST(Reflection, DefaultFactoryFlag) {\n+  const TVMFFIFieldInfo* info_items = reflection::GetFieldInfo(\"test.TestObjWithFactory\", \"items\");\n+  EXPECT_TRUE(info_items->flags & kTVMFFIFieldFlagBitMaskHasDefault);\n+  EXPECT_TRUE(info_items->flags & kTVMFFIFieldFlagBitMaskDefaultFromFactory);\n+\n+  const TVMFFIFieldInfo* info_count = reflection::GetFieldInfo(\"test.TestObjWithFactory\", \"count\");\n+  EXPECT_TRUE(info_count->flags & kTVMFFIFieldFlagBitMaskHasDefault);\n+  EXPECT_FALSE(info_count->flags & kTVMFFIFieldFlagBitMaskDefaultFromFactory);\n+}\n+\n+TEST(Reflection, DefaultFactoryCreation) {\n+  namespace refl = tvm::ffi::reflection;\n+  refl::ObjectCreator creator(\"test.TestObjWithFactory\");\n+\n+  // Create two objects without providing \"items\" - each should get a fresh Array\n+  Any obj1 = creator(Map<String, Any>({{\"count\", static_cast<int64_t>(42)}}));\n+  Any obj2 = creator(Map<String, Any>({{\"count\", static_cast<int64_t>(99)}}));\n+\n+  auto* p1 = obj1.as<TestObjWithFactory>();\n+  auto* p2 = obj2.as<TestObjWithFactory>();\n+\n+  ASSERT_NE(p1, nullptr);\n+  ASSERT_NE(p2, nullptr);\n+  EXPECT_EQ(p1->count, 42);\n+  EXPECT_EQ(p2->count, 99);\n+  // Both should have empty arrays\n+  EXPECT_EQ(p1->items.size(), 0);\n+  EXPECT_EQ(p2->items.size(), 0);\n+  // Crucially, the arrays should be distinct objects (not aliased)\n+  EXPECT_NE(p1->items.get(), p2->items.get());\n+}\n+\n+TEST(Reflection, DefaultFactoryNotCalledWhenProvided) {\n+  namespace refl = tvm::ffi::reflection;\n+  refl::ObjectCreator creator(\"test.TestObjWithFactory\");\n+\n+  Array<ObjectRef> custom_items;\n+  custom_items.push_back(TInt(1));\n+  Any obj =\n+      creator(Map<String, Any>({{\"items\", custom_items}, {\"count\", static_cast<int64_t>(5)}}));\n+\n+  auto* p = obj.as<TestObjWithFactory>();\n+  ASSERT_NE(p, nullptr);\n+  EXPECT_EQ(p->items.size(), 1);\n+  EXPECT_EQ(p->count, 5);\n+}\n+\n }  // namespace",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".cc",
+      ".h",
+      ".pxi",
+      ".rs"
+    ],
+    "scopes_guess": [
+      "include",
+      "python",
+      "rust",
+      "src",
+      "tests"
+    ]
+  }
+}

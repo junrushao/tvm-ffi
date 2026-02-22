@@ -1,0 +1,61 @@
+{
+  "sha": "f255650b8e5121452dd60805b206a0cb5bcb6525",
+  "sha7": "f255650",
+  "author_name": "Junru Shao",
+  "author_email": "junrushao@apache.org",
+  "date_iso": "2025-12-12T05:07:22-08:00",
+  "subject": "feat: Introduce `tvm_ffi.libinfo.load_lib_module` (#336)",
+  "body":
+      "This PR makes downstream library loading process correct and convenient,\nby bringing in a new API `tvm_ffi.libinfo.load_lib_module`.\n\nTo demonstrate the effect, the file\n`examples/packaging/python/my_ffi_extension/base.py`, which degenerates\nto only 2 lines after this PR:\n\n```python\nimport tvm_ffi\n_LIB = tvm_ffi.libinfo.load_lib_module(\"my-ffi-extension\", \"my_ffi_extension\")\n```\n\nIt's worth mentioning that the new API works smoothly for both editable\nand non-editable builds, which is more correct than the existing one.",
+  "is_merge": false,
+  "parents": [
+    "8dcaec1fb47bf7873b105385b7d2808d51f6b342"
+  ],
+  "name_status": [
+    [
+      "M",
+      "examples/packaging/CMakeLists.txt"
+    ],
+    [
+      "M",
+      "examples/packaging/python/my_ffi_extension/base.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/libinfo.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "examples/packaging/CMakeLists.txt",
+      "additions": 0,
+      "deletions": 3
+    },
+    {
+      "path": "examples/packaging/python/my_ffi_extension/base.py",
+      "additions": 1,
+      "deletions": 27
+    },
+    {
+      "path": "python/tvm_ffi/libinfo.py",
+      "additions": 34,
+      "deletions": 1
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/examples/packaging/CMakeLists.txt b/examples/packaging/CMakeLists.txt\nindex 0463a88..3648da6 100644\n--- a/examples/packaging/CMakeLists.txt\n+++ b/examples/packaging/CMakeLists.txt\n@@ -60,9 +60,6 @@ add_library(my_ffi_extension SHARED src/extension.cc)\n target_link_libraries(my_ffi_extension tvm_ffi_header)\n target_link_libraries(my_ffi_extension tvm_ffi_shared)\n \n-# show as my_ffi_extension.so\n-set_target_properties(my_ffi_extension PROPERTIES PREFIX \"\")\n-\n if (TVM_FFI_EXT_SHIP_DEBUG_SYMBOLS)\n   # ship debugging symbols for backtrace on macos\n   tvm_ffi_add_prefix_map(my_ffi_extension ${CMAKE_CURRENT_SOURCE_DIR})\ndiff --git a/examples/packaging/python/my_ffi_extension/base.py b/examples/packaging/python/my_ffi_extension/base.py\nindex 4165023..5f1005e 100644\n--- a/examples/packaging/python/my_ffi_extension/base.py\n+++ b/examples/packaging/python/my_ffi_extension/base.py\n@@ -16,32 +16,6 @@\n # Base logic to load library for extension package\n \"\"\"Utilities to locate and load the example extension shared library.\"\"\"\n \n-import sys\n-from pathlib import Path\n-\n import tvm_ffi\n \n-\n-def _load_lib() -> tvm_ffi.Module:\n-    # first look at the directory of the current file\n-    file_dir = Path(__file__).resolve().parent\n-\n-    path_candidates = [\n-        file_dir,\n-        file_dir / \"..\" / \"..\" / \"build\",\n-    ]\n-\n-    if sys.platform.startswith(\"win32\"):\n-        lib_dll_name = \"my_ffi_extension.dll\"\n-    elif sys.platform.startswith(\"darwin\"):\n-        lib_dll_name = \"my_ffi_extension.dylib\"\n-    else:\n-        lib_dll_name = \"my_ffi_extension.so\"\n-    for candidate in path_candidates:\n-        for path in Path(candidate).glob(lib_dll_name):\n-            return tvm_ffi.load_module(str(path))\n-\n-    raise RuntimeError(f\"Cannot find {lib_dll_name} in {path_candidates}\")\n-\n-\n-_LIB = _load_lib()\n+_LIB = tvm_ffi.libinfo.load_lib_module(\"my-ffi-extension\", \"my_ffi_extension\")\ndiff --git a/python/tvm_ffi/libinfo.py b/python/tvm_ffi/libinfo.py\nindex 32295ce..d1c1bcf 100644\n--- a/python/tvm_ffi/libinfo.py\n+++ b/python/tvm_ffi/libinfo.py\n@@ -27,7 +27,10 @@ import importlib.metadata as im\n import os\n import sys\n from pathlib import Path\n-from typing import Callable\n+from typing import TYPE_CHECKING, Callable\n+\n+if TYPE_CHECKING:\n+    from .module import Module\n \n \n def find_libtvm_ffi() -> str:\n@@ -169,6 +172,36 @@ def load_lib_ctypes(package: str, target_name: str, mode: str) -> ctypes.CDLL:\n     return ctypes.CDLL(str(lib_path), getattr(ctypes, mode))\n \n \n+def load_lib_module(package: str, target_name: str, keep_module_alive: bool = True) -> Module:\n+    \"\"\"Load the tvm_ffi shared library by searching likely paths.\n+\n+    Parameters\n+    ----------\n+    package\n+        The package name where the library is expected to be found. For example,\n+        ``\"apache-tvm-ffi\"`` is the package name of `tvm-ffi`.\n+\n+    target_name\n+        Name of the CMake target, e.g., ``\"tvm_ffi\"``. It is used to derive the platform-specific\n+        shared library name, e.g., ``\"libtvm_ffi.so\"`` on Linux, ``\"tvm_ffi.dll\"`` on Windows.\n+\n+    keep_module_alive\n+        Whether to keep the loaded module alive to prevent it from being unloaded.\n+\n+    Returns\n+    -------\n+    The loaded shared library.\n+\n+    \"\"\"\n+    from .module import load_module  # noqa: PLC0415\n+\n+    lib_path: Path = _find_library_by_basename(package, target_name)\n+    # The dll search path need to be added explicitly in windows\n+    if sys.platform.startswith(\"win32\"):\n+        os.add_dll_directory(str(lib_path.parent))\n+    return load_module(lib_path, keep_module_alive=keep_module_alive)\n+\n+\n def _find_library_by_basename(package: str, target_name: str) -> Path:  # noqa: PLR0912\n     \"\"\"Find a shared library by target_name name across known directories.\n ",
+  "heuristics": {
+    "tags": [
+      "build"
+    ],
+    "extensions": [
+      ".py",
+      ".txt"
+    ],
+    "scopes_guess": [
+      "examples",
+      "python"
+    ]
+  }
+}

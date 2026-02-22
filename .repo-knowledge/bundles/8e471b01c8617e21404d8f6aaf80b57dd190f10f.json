@@ -1,0 +1,39 @@
+{
+  "sha": "8e471b01c8617e21404d8f6aaf80b57dd190f10f",
+  "sha7": "8e471b0",
+  "author_name": "Junru Shao",
+  "author_email": "junrushao@apache.org",
+  "date_iso": "2025-09-25T04:55:39-07:00",
+  "subject": "fix: Cython Memory Corruption Reported by ASan (#55)",
+  "body":
+      "This PR addresses a memory corruption issue in Cython. The fix involves\nensuring that the `ByteArrayArg` object, which holds the type key, is\nproperly destructed after being passed to the `TVMFFITypeKeyToIndex`\nfunction. This prevents a potential read-after-free scenario, as\nreported by ASan.\n\n## ASan Report\n\n```\nREAD of size 9 at 0x604000420a30 thread T0\n    ...\n    #5 0x7fdb57299506 in __pyx_f_4core__type_info_create_from_type_key /home/dolores/Projects/tvm-ffi/build/core.cpp:17732\n    ...\n\n0x604000420a30 is located 32 bytes inside of 42-byte region [0x604000420a10,0x604000420a3a)\nfreed by thread T0 here:\n    ...\n    #4 0x7fdb572994e2 in __pyx_f_4core__type_info_create_from_type_key /home/dolores/Projects/tvm-ffi/build/core.cpp:17731\n   ...\n\npreviously allocated by thread T0 here:\n    ...\n    #8 0x7fdb57299366 in __pyx_f_4core__type_info_create_from_type_key /home/dolores/Projects/tvm-ffi/build/core.cpp:17718\n```\n\n<img width=\"1444\" height=\"904\" alt=\"image\"\nsrc=\"https://github.com/user-attachments/assets/7a80d33d-dedf-41ca-ac77-108e63b8e57b\"\n/>\n\n## Recommended ASan Options\n\nOne will need to preload `libasan` to properly work with CPython, and\n`libstdc++` to properly intercept `__cxa_throw`. The path to those two\nfiles can be found using:\n\n```\nASAN=\"$(gcc -print-file-name=libasan.so)\"\nSTDCXX=\"$(g++ -print-file-name=libstdc++.so.6)\"\nLD_PRELOAD=\"$ASAN $STDCXX\"\n```\n\nAdditionally, it might be helpful to tweak \n\n```\nPYTHONMALLOC=malloc\n```\n\nand run with ASan options\n\n```\nASAN_OPTIONS=\"detect_leaks=0:abort_on_error=1:symbolize=1:fast_unwind_on_malloc=0\"\n```\n\nNotably, turning on `detect_leaks=1` will lead to bunch of irrelevant\nnoisy reports. Better turning it off.",
+  "is_merge": false,
+  "parents": [
+    "eb5492a1d2feaff5f11a51f32cf5ad339c789665"
+  ],
+  "name_status": [
+    [
+      "M",
+      "python/tvm_ffi/cython/object.pxi"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "python/tvm_ffi/cython/object.pxi",
+      "additions": 2,
+      "deletions": 1
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/python/tvm_ffi/cython/object.pxi b/python/tvm_ffi/cython/object.pxi\nindex 2777d82..e8f3593 100644\n--- a/python/tvm_ffi/cython/object.pxi\n+++ b/python/tvm_ffi/cython/object.pxi\n@@ -303,8 +303,9 @@ def _type_info_create_from_type_key(object type_cls, str type_key):\n     cdef object methods = []\n     cdef FieldGetter getter\n     cdef FieldSetter setter\n+    cdef ByteArrayArg type_key_arg = ByteArrayArg(c_str(type_key))\n \n-    if TVMFFITypeKeyToIndex(ByteArrayArg(c_str(type_key)).cptr(), &type_index) != 0:\n+    if TVMFFITypeKeyToIndex(type_key_arg.cptr(), &type_index) != 0:\n         raise ValueError(f\"Cannot find type key: {type_key}\")\n     info = TVMFFIGetTypeInfo(type_index)\n     for i in range(info.num_fields):",
+  "heuristics": {
+    "tags": [],
+    "extensions": [
+      ".pxi"
+    ],
+    "scopes_guess": [
+      "python"
+    ]
+  }
+}

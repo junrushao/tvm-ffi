@@ -1,0 +1,97 @@
+{
+  "sha": "39d9b2b400646be720e98f001353cc0d8d4b0234",
+  "sha7": "39d9b2b",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2026-02-15T21:33:01-05:00",
+  "subject": "[CORE] Enable customized AnyHash/Equal in Object Type attr (#451)",
+  "body": "This PR enables customizable anyhash/equal by object type via type attr\ncolumn.",
+  "is_merge": false,
+  "parents": [
+    "86c4042d66bf432a3c4a217be1eeab3568329b5b"
+  ],
+  "name_status": [
+    [
+      "M",
+      "include/tvm/ffi/any.h"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/endian.h"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/error.h"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/function_details.h"
+    ],
+    [
+      "M",
+      "src/ffi/container.cc"
+    ],
+    [
+      "M",
+      "tests/cpp/test_any.cc"
+    ],
+    [
+      "M",
+      "tests/cpp/testing_object.h"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "include/tvm/ffi/any.h",
+      "additions": 128,
+      "deletions": 0
+    },
+    {
+      "path": "include/tvm/ffi/endian.h",
+      "additions": 0,
+      "deletions": 1
+    },
+    {
+      "path": "include/tvm/ffi/error.h",
+      "additions": 19,
+      "deletions": 0
+    },
+    {
+      "path": "include/tvm/ffi/function_details.h",
+      "additions": 0,
+      "deletions": 20
+    },
+    {
+      "path": "src/ffi/container.cc",
+      "additions": 2,
+      "deletions": 0
+    },
+    {
+      "path": "tests/cpp/test_any.cc",
+      "additions": 30,
+      "deletions": 0
+    },
+    {
+      "path": "tests/cpp/testing_object.h",
+      "additions": 33,
+      "deletions": 9
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/include/tvm/ffi/any.h b/include/tvm/ffi/any.h\nindex 9adbd84..530d9aa 100644\n--- a/include/tvm/ffi/any.h\n+++ b/include/tvm/ffi/any.h\n@@ -601,6 +601,7 @@ struct AnyUnsafe : public ObjectUnsafe {\n \n /*! \\brief String-aware Any equal functor */\n struct AnyHash {\n+ public:\n   /*!\n    * \\brief Calculate the hash code of an Any\n    * \\param a The given Any\n@@ -623,13 +624,77 @@ struct AnyHash {\n       return details::StableHashCombine(src.data_.type_index,\n                                         details::StableHashBytes(src_str->data, src_str->size));\n     } else {\n+      if (src.data_.type_index >= TypeIndex::kTVMFFIStaticObjectBegin) {\n+        static const TVMFFITypeAttrColumn* custom_hash_column = GetAnyHashTypeAttrColumn();\n+        if (custom_hash_column != nullptr &&\n+            static_cast<size_t>(src.data_.type_index) < custom_hash_column->size) {\n+          const TVMFFIAny& custom_any_hash = custom_hash_column->data[src.data_.type_index];\n+          if (custom_any_hash.type_index != TypeIndex::kTVMFFINone) {\n+            return details::StableHashCombine(src.data_.type_index,\n+                                              CallCustomAnyHash(custom_any_hash, src));\n+          }\n+        }\n+      }\n       return details::StableHashCombine(src.data_.type_index, src.data_.v_uint64);\n     }\n   }\n+\n+ private:\n+  /*!\n+   * \\brief Get the type attribute column for any hash.\n+   * \\return The type attribute column for any hash.\n+   */\n+  static const TVMFFITypeAttrColumn* GetAnyHashTypeAttrColumn() {\n+    constexpr const char* kAttrName = \"__any_hash__\";\n+    TVMFFIByteArray attr_name =\n+        TVMFFIByteArray{kAttrName, std::char_traits<char>::length(kAttrName)};\n+    return TVMFFIGetTypeAttrColumn(&attr_name);\n+  }\n+\n+  /*!\n+   * \\brief Call the custom any hash function registered in type attribute column.\n+   * \\param custom_any_hash The custom any hash function object or function pointer.\n+   * \\param src The source Any.\n+   * \\return The hash value.\n+   */\n+  static uint64_t CallCustomAnyHash(const TVMFFIAny& custom_any_hash, const Any& src) {\n+    // NOTE: we explicitly use low-level ABI here since we do not want to have dep on function.h\n+    // it also keeps the logic simple\n+    if (custom_any_hash.type_index == TypeIndex::kTVMFFIOpaquePtr) {\n+      // we allow this attribute to be a function pointer for fast path\n+      using FCustomAnyHashPtr = int64_t (*)(const Any&);\n+      FCustomAnyHashPtr hash_func = reinterpret_cast<FCustomAnyHashPtr>(custom_any_hash.v_ptr);\n+      TVM_FFI_ICHECK_NOTNULL(hash_func);\n+      return static_cast<uint64_t>(\n+          (*hash_func)(src));  // NOLINT(clang-analyzer-core.CallAndMessage)\n+    } else {\n+      // alternatively it can be a ffi.Function object.\n+      TVM_FFI_ICHECK_EQ(custom_any_hash.type_index, TypeIndex::kTVMFFIFunction);\n+      TVMFFIAny arg = src.data_;\n+      TVMFFIAny result;\n+      result.type_index = TypeIndex::kTVMFFINone;\n+      result.zero_padding = 0;\n+      result.v_int64 = 0;\n+      TVMFFIFunctionCell* func_cell = TVMFFIFunctionGetCellPtr(custom_any_hash.v_obj);\n+      if (func_cell->cpp_call != nullptr) {\n+        // Fast path: invoke C++ ABI call directly when available.\n+        using FCppCall = void (*)(const void*, const TVMFFIAny*, int32_t, TVMFFIAny*);\n+        reinterpret_cast<FCppCall>(func_cell->cpp_call)(custom_any_hash.v_obj, &arg, 1, &result);\n+      } else {\n+        if (func_cell->safe_call(custom_any_hash.v_obj, &arg, 1, &result) != 0) {\n+          throw details::MoveFromSafeCallRaised();\n+        }\n+      }\n+      Any result_any = details::AnyUnsafe::MoveTVMFFIAnyToAny(&result);\n+      TVM_FFI_ICHECK_EQ(result_any.type_index(), TypeIndex::kTVMFFIInt);\n+      return static_cast<uint64_t>(result_any.data_.v_int64);\n+    }\n+  }\n };\n \n /*! \\brief String-aware Any hash functor */\n struct AnyEqual {\n+ public:\n   /*!\n    * \\brief Check if the two Any are equal\n    * \\param lhs left operand.\n@@ -657,6 +722,16 @@ struct AnyEqual {\n             details::AnyUnsafe::CopyFromAnyViewAfterCheck<const details::BytesObjBase*>(rhs);\n         return Bytes::memequal(lhs_str->data, rhs_str->data, lhs_str->size, rhs_str->size);\n       }\n+      if (lhs.data_.type_index >= TypeIndex::kTVMFFIStaticObjectBegin) {\n+        static const TVMFFITypeAttrColumn* custom_equal_column = GetAnyEqualTypeAttrColumn();\n+        if (custom_equal_column != nullptr &&\n+            static_cast<size_t>(lhs.data_.type_index) < custom_equal_column->size) {\n+          const TVMFFIAny& custom_any_equal = custom_equal_column->data[lhs.data_.type_index];\n+          if (custom_any_equal.type_index != TypeIndex::kTVMFFINone) {\n+            return CallCustomAnyEqual(custom_any_equal, lhs, rhs);\n+          }\n+        }\n+      }\n       return false;\n     } else {\n       // type_index mismatch, if index is not string, return false\n@@ -692,6 +767,59 @@ struct AnyEqual {\n       return false;\n     }\n   }\n+\n+ private:\n+  /*!\n+   * \\brief Get the type attribute column for any equal.\n+   * \\return The type attribute column for any equal.\n+   */\n+  static const TVMFFITypeAttrColumn* GetAnyEqualTypeAttrColumn() {\n+    constexpr const char* kAttrName = \"__any_equal__\";\n+    TVMFFIByteArray attr_name =\n+        TVMFFIByteArray{kAttrName, std::char_traits<char>::length(kAttrName)};\n+    return TVMFFIGetTypeAttrColumn(&attr_name);\n+  }\n+\n+  /*!\n+   * \\brief Call the custom any equal function registered in type attribute column.\n+   * \\param custom_any_equal The custom any equal function object or function pointer.\n+   * \\param lhs The left-hand side Any.\n+   * \\param rhs The right-hand side Any.\n+   * \\return The equality result.\n+   */\n+  static bool CallCustomAnyEqual(const TVMFFIAny& custom_any_equal, const Any& lhs,\n+                                 const Any& rhs) {\n+    // NOTE: we explicitly use low-level ABI here since we do not want to have dep on function.h\n+    // it also keeps the logic simple\n+    if (custom_any_equal.type_index == TypeIndex::kTVMFFIOpaquePtr) {\n+      // we allow this attribute to be a function pointer for fast path\n+      using FCustomAnyEqualPtr = bool (*)(const Any&, const Any&);\n+      FCustomAnyEqualPtr equal_func = reinterpret_cast<FCustomAnyEqualPtr>(custom_any_equal.v_ptr);\n+      TVM_FFI_ICHECK_NOTNULL(equal_func);\n+      return (*equal_func)(lhs, rhs);  // NOLINT(clang-analyzer-core.CallAndMessage)\n+    } else {\n+      // alternatively it can be a ffi.Function object.\n+      TVM_FFI_ICHECK_EQ(custom_any_equal.type_index, TypeIndex::kTVMFFIFunction);\n+      TVMFFIAny args[2] = {lhs.data_, rhs.data_};\n+      TVMFFIAny result;\n+      result.type_index = TypeIndex::kTVMFFINone;\n+      result.zero_padding = 0;\n+      result.v_int64 = 0;\n+      TVMFFIFunctionCell* func_cell = TVMFFIFunctionGetCellPtr(custom_any_equal.v_obj);\n+      if (func_cell->cpp_call != nullptr) {\n+        // Fast path: invoke C++ ABI call directly when available.\n+        using FCppCall = void (*)(const void*, const TVMFFIAny*, int32_t, TVMFFIAny*);\n+        reinterpret_cast<FCppCall>(func_cell->cpp_call)(custom_any_equal.v_obj, args, 2, &result);\n+      } else {\n+        if (func_cell->safe_call(custom_any_equal.v_obj, args, 2, &result) != 0) {\n+          throw details::MoveFromSafeCallRaised();\n+        }\n+      }\n+      Any result_any = details::AnyUnsafe::MoveTVMFFIAnyToAny(&result);\n+      TVM_FFI_ICHECK(result_any.type_index() == TypeIndex::kTVMFFIBool);\n+      return result_any.data_.v_int64 != 0;\n+    }\n+  }\n };\n }  // namespace ffi\n \ndiff --git a/include/tvm/ffi/endian.h b/include/tvm/ffi/endian.h\nindex 10639be..c068c3d 100644\n--- a/include/tvm/ffi/endian.h\n+++ b/include/tvm/ffi/endian.h\n@@ -1,4 +1,3 @@\n-\n /*\n  * Licensed to the Apache Software Foundation (ASF) under one\n  * or more contributor license agreements.  See the NOTICE file\ndiff --git a/include/tvm/ffi/error.h b/include/tvm/ffi/error.h\nindex f1cfa21..3ecfbb7 100644\n--- a/include/tvm/ffi/error.h\n+++ b/include/tvm/ffi/error.h\n@@ -317,6 +317,25 @@ inline Error EnvErrorAlreadySet() { return Error(\"EnvErrorAlreadySet\", \"\", \"\");\n \n namespace details {\n \n+/*!\n+ * \\brief Move the last raised safe-call error from TLS.\n+ * \\return The raised error object.\n+ */\n+TVM_FFI_INLINE Error MoveFromSafeCallRaised() {\n+  TVMFFIObjectHandle handle;\n+  TVMFFIErrorMoveFromRaised(&handle);\n+  return details::ObjectUnsafe::ObjectRefFromObjectPtr<Error>(\n+      details::ObjectUnsafe::ObjectPtrFromOwned<Object>(static_cast<TVMFFIObject*>(handle)));\n+}\n+\n+/*!\n+ * \\brief Set a raised safe-call error into TLS.\n+ * \\param error The error to be raised.\n+ */\n+TVM_FFI_INLINE void SetSafeCallRaised(const Error& error) {\n+  TVMFFIErrorSetRaised(details::ObjectUnsafe::TVMFFIObjectPtrFromObjectRef(error));\n+}\n+\n class ErrorBuilder {\n  public:\n   explicit ErrorBuilder(std::string kind, std::string backtrace, bool log_before_throw)\ndiff --git a/include/tvm/ffi/function_details.h b/include/tvm/ffi/function_details.h\nindex d04c697..cf33a79 100644\n--- a/include/tvm/ffi/function_details.h\n+++ b/include/tvm/ffi/function_details.h\n@@ -231,26 +231,6 @@ TVM_FFI_INLINE void unpack_call(std::index_sequence<Is...>, const std::string* o\n   // NOLINTNEXTLINE(clang-analyzer-cplusplus.NewDeleteLeaks\n }\n \n-/*!\n- * \\brief Move the safe call raised error to the caller\n- * \\return The error\n- */\n-TVM_FFI_INLINE static Error MoveFromSafeCallRaised() {\n-  TVMFFIObjectHandle handle;\n-  TVMFFIErrorMoveFromRaised(&handle);\n-  // handle is owned by caller\n-  return details::ObjectUnsafe::ObjectRefFromObjectPtr<Error>(\n-      details::ObjectUnsafe::ObjectPtrFromOwned<Object>(static_cast<TVMFFIObject*>(handle)));\n-}\n-\n-/*!\n- * \\brief Set the safe call raised error\n- * \\param error The error\n- */\n-TVM_FFI_INLINE static void SetSafeCallRaised(const Error& error) {\n-  TVMFFIErrorSetRaised(details::ObjectUnsafe::TVMFFIObjectPtrFromObjectRef(error));\n-}\n-\n template <typename T>\n struct TypeSchemaImpl {\n   static std::string v() {\ndiff --git a/src/ffi/container.cc b/src/ffi/container.cc\nindex 6ebc7c0..570fd75 100644\n--- a/src/ffi/container.cc\n+++ b/src/ffi/container.cc\n@@ -63,6 +63,8 @@ ObjectRef GetMissingObject() {\n \n TVM_FFI_STATIC_INIT_BLOCK() {\n   namespace refl = tvm::ffi::reflection;\n+  refl::EnsureTypeAttrColumn(\"__any_hash__\");\n+  refl::EnsureTypeAttrColumn(\"__any_equal__\");\n   refl::GlobalDef()\n       .def_packed(\"ffi.Array\",\n                   [](ffi::PackedArgs args, Any* ret) {\ndiff --git a/tests/cpp/test_any.cc b/tests/cpp/test_any.cc\nindex c29ad5c..2686b7a 100644\n--- a/tests/cpp/test_any.cc\n+++ b/tests/cpp/test_any.cc\n@@ -428,4 +428,34 @@ TEST(Any, AnyEqualHash) {\n   EXPECT_EQ(AnyHash()(c), AnyHash()(d));\n }\n \n+TEST(Any, CustomAnyHash) {\n+  // Covers the OpaquePtr custom hash branch.\n+  Any int_src = TInt(7);\n+  uint64_t int_expected = details::StableHashCombine(\n+      int_src.type_index(), static_cast<uint64_t>(TInt::CustomAnyHash(int_src)));\n+  EXPECT_EQ(AnyHash()(int_src), int_expected);\n+\n+  // Covers the ffi.Function custom hash branch.\n+  Any float_src = TFloat(3.5);\n+  uint64_t float_expected = details::StableHashCombine(\n+      float_src.type_index(), static_cast<uint64_t>(TFloat::CustomAnyHash(float_src)));\n+  EXPECT_EQ(AnyHash()(float_src), float_expected);\n+}\n+\n+TEST(Any, CustomAnyEqual) {\n+  // Covers the OpaquePtr custom equal branch.\n+  Any int_lhs = TInt(7);\n+  Any int_rhs = TInt(7);\n+  Any int_diff = TInt(8);\n+  EXPECT_TRUE(AnyEqual()(int_lhs, int_rhs));\n+  EXPECT_FALSE(AnyEqual()(int_lhs, int_diff));\n+\n+  // Covers the ffi.Function custom equal branch.\n+  Any float_lhs = TFloat(3.5);\n+  Any float_rhs = TFloat(3.5);\n+  Any float_diff = TFloat(4.5);\n+  EXPECT_TRUE(AnyEqual()(float_lhs, float_rhs));\n+  EXPECT_FALSE(AnyEqual()(float_lhs, float_diff));\n+}\n+\n }  // namespace\ndiff --git a/tests/cpp/testing_object.h b/tests/cpp/testing_object.h\nindex 318aa11..b3ce550 100644\n--- a/tests/cpp/testing_object.h\n+++ b/tests/cpp/testing_object.h\n@@ -20,6 +20,7 @@\n #ifndef TVM_FFI_TESTING_OBJECT_H_\n #define TVM_FFI_TESTING_OBJECT_H_\n \n+#include <tvm/ffi/any.h>\n #include <tvm/ffi/container/array.h>\n #include <tvm/ffi/container/map.h>\n #include <tvm/ffi/memory.h>\n@@ -74,6 +75,14 @@ class TInt : public TNumber {\n \n   static TInt StaticAdd(TInt lhs, TInt rhs) { return TInt(lhs->value + rhs->value); }\n \n+  static int64_t CustomAnyHash(const Any& src) {\n+    return static_cast<int64_t>(src.cast<TInt>()->value + 1024);\n+  }\n+\n+  static bool CustomAnyEqual(const Any& lhs, const Any& rhs) {\n+    return lhs.cast<TInt>()->value == rhs.cast<TInt>()->value;\n+  }\n+\n   TVM_FFI_DEFINE_OBJECT_REF_METHODS_NOTNULLABLE(TInt, TNumber, TIntObj);\n };\n \n@@ -85,7 +94,9 @@ inline void TIntObj::RegisterReflection() {\n   // define extra type attributes\n   refl::TypeAttrDef<TIntObj>()\n       .def(\"test.GetValue\", &TIntObj::GetValue)\n-      .attr(\"test.size\", sizeof(TIntObj));\n+      .attr(\"test.size\", sizeof(TIntObj))\n+      .attr(\"__any_hash__\", reinterpret_cast<void*>(&TInt::CustomAnyHash))\n+      .attr(\"__any_equal__\", reinterpret_cast<void*>(&TInt::CustomAnyEqual));\n   // custom json serialization\n   refl::TypeAttrDef<TIntObj>()\n       .def(\"__data_to_json__\",\n@@ -105,14 +116,7 @@ class TFloatObj : public TNumberObj {\n \n   double Add(double other) const { return value + other; }\n \n-  static void RegisterReflection() {\n-    namespace refl = tvm::ffi::reflection;\n-    refl::ObjectDef<TFloatObj>()\n-        .def_ro(\"value\", &TFloatObj::value, \"float value field\", refl::DefaultValue(10.0))\n-        .def(\"sub\",\n-             [](const TFloatObj* self, double other) -> double { return self->value - other; })\n-        .def(\"add\", &TFloatObj::Add, \"add method\");\n-  }\n+  static void RegisterReflection();\n \n   TVM_FFI_DECLARE_OBJECT_INFO_FINAL(\"test.Float\", TFloatObj, TNumberObj);\n };\n@@ -121,9 +125,29 @@ class TFloat : public TNumber {\n  public:\n   explicit TFloat(double value) { data_ = make_object<TFloatObj>(value); }\n \n+  static uint64_t CustomAnyHash(const Any& src) {\n+    double value = src.cast<TFloat>()->value;\n+    return static_cast<int64_t>(value * 10 + 2048);\n+  }\n+\n+  static bool CustomAnyEqual(const Any& lhs, const Any& rhs) {\n+    return lhs.cast<TFloat>()->value == rhs.cast<TFloat>()->value;\n+  }\n+\n   TVM_FFI_DEFINE_OBJECT_REF_METHODS_NULLABLE(TFloat, TNumber, TFloatObj);\n };\n \n+inline void TFloatObj::RegisterReflection() {\n+  namespace refl = tvm::ffi::reflection;\n+  refl::ObjectDef<TFloatObj>()\n+      .def_ro(\"value\", &TFloatObj::value, \"float value field\", refl::DefaultValue(10.0))\n+      .def(\"sub\", [](const TFloatObj* self, double other) -> double { return self->value - other; })\n+      .def(\"add\", &TFloatObj::Add, \"add method\");\n+  refl::TypeAttrDef<TFloatObj>()\n+      .def(\"__any_hash__\", &TFloat::CustomAnyHash)\n+      .def(\"__any_equal__\", &TFloat::CustomAnyEqual);\n+}\n+\n class TPrimExprObj : public Object {\n  public:\n   std::string dtype;",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".cc",
+      ".h"
+    ],
+    "scopes_guess": [
+      "include",
+      "src",
+      "tests"
+    ]
+  }
+}

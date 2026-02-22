@@ -1,0 +1,38 @@
+{
+  "sha": "6e9b78538d5bfa867c6b438943c0617a85c1a72e",
+  "sha7": "6e9b785",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-10-01T19:11:32-04:00",
+  "subject": "chore: fix lint issue (#84)",
+  "body": "",
+  "is_merge": false,
+  "parents": [
+    "119130d520b85eaecef594131263f15d69d83fc0"
+  ],
+  "name_status": [
+    [
+      "M",
+      "python/tvm_ffi/__init__.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "python/tvm_ffi/__init__.py",
+      "additions": 1,
+      "deletions": 1
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/python/tvm_ffi/__init__.py b/python/tvm_ffi/__init__.py\nindex 112cd2b..c9b6da5 100644\n--- a/python/tvm_ffi/__init__.py\n+++ b/python/tvm_ffi/__init__.py\n@@ -17,7 +17,7 @@\n \"\"\"TVM FFI Python package.\"\"\"\n \n # version\n-__version__ = \"0.1.0b13\"\n+__version__ = \"0.1.0b14\"\n \n # order matters here so we need to skip isort here\n # isort: skip_file",
+  "heuristics": {
+    "tags": [],
+    "extensions": [
+      ".py"
+    ],
+    "scopes_guess": [
+      "python"
+    ]
+  }
+}

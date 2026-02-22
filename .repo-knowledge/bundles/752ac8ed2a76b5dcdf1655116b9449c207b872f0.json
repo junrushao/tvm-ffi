@@ -1,0 +1,87 @@
+{
+  "sha": "752ac8ed2a76b5dcdf1655116b9449c207b872f0",
+  "sha7": "752ac8e",
+  "author_name": "Ruihang Lai",
+  "author_email": "ruihangl@cs.cmu.edu",
+  "date_iso": "2025-11-10T15:21:24-05:00",
+  "subject": "[PyTorch] Allow tensor conversion on rocm backend (#253)",
+  "body": "This commits adds the support of tensor conversion on rocm backend.",
+  "is_merge": false,
+  "parents": [
+    "583e4b73c11aa3257e7be862834b98f33c39a6dd"
+  ],
+  "name_status": [
+    [
+      "M",
+      "addons/torch_c_dlpack_ext/build_backend.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/_optional_torch_c_dlpack.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/utils/_build_optional_torch_c_dlpack.py"
+    ],
+    [
+      "M",
+      "tests/python/test_optional_torch_c_dlpack.py"
+    ],
+    [
+      "M",
+      "tests/python/test_tensor.py"
+    ],
+    [
+      "M",
+      "tests/scripts/benchmark_dlpack.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "addons/torch_c_dlpack_ext/build_backend.py",
+      "additions": 6,
+      "deletions": 1
+    },
+    {
+      "path": "python/tvm_ffi/_optional_torch_c_dlpack.py",
+      "additions": 9,
+      "deletions": 2
+    },
+    {
+      "path": "python/tvm_ffi/utils/_build_optional_torch_c_dlpack.py",
+      "additions": 20,
+      "deletions": 2
+    },
+    {
+      "path": "tests/python/test_optional_torch_c_dlpack.py",
+      "additions": 3,
+      "deletions": 1
+    },
+    {
+      "path": "tests/python/test_tensor.py",
+      "additions": 20,
+      "deletions": 0
+    },
+    {
+      "path": "tests/scripts/benchmark_dlpack.py",
+      "additions": 24,
+      "deletions": 11
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/addons/torch_c_dlpack_ext/build_backend.py b/addons/torch_c_dlpack_ext/build_backend.py\nindex 4301e43..9489c5b 100644\n--- a/addons/torch_c_dlpack_ext/build_backend.py\n+++ b/addons/torch_c_dlpack_ext/build_backend.py\n@@ -74,6 +74,11 @@ def build_wheel(\n                 \"No need to build any torch c dlpackc libs.\"\n             )\n         else:\n+            extra_args = []\n+            if torch.version.cuda is not None:\n+                extra_args.append(\"--build-with-cuda\")\n+            elif torch.version.hip is not None:\n+                extra_args.append(\"--build-with-rocm\")\n             subprocess.run(\n                 [\n                     sys.executable,\n@@ -81,7 +86,7 @@ def build_wheel(\n                     \"tvm_ffi.utils._build_optional_torch_c_dlpack\",\n                     \"--output-dir\",\n                     str(_package_path),\n-                    \"--build-with-cuda\" if torch.cuda.is_available() else \"\",\n+                    *extra_args,\n                 ],\n                 check=True,\n                 env={**os.environ, \"TVM_FFI_DISABLE_TORCH_C_DLPACK\": \"1\"},\ndiff --git a/python/tvm_ffi/_optional_torch_c_dlpack.py b/python/tvm_ffi/_optional_torch_c_dlpack.py\nindex 29c1db3..e05fc34 100644\n--- a/python/tvm_ffi/_optional_torch_c_dlpack.py\n+++ b/python/tvm_ffi/_optional_torch_c_dlpack.py\n@@ -67,7 +67,12 @@ def load_torch_c_dlpack_extension() -> Any:\n         cache_dir = Path(os.environ.get(\"TVM_FFI_CACHE_DIR\", \"~/.cache/tvm-ffi\")).expanduser()\n         addon_output_dir = cache_dir\n         major, minor = torch.__version__.split(\".\")[:2]\n-        device = \"cpu\" if not torch.cuda.is_available() else \"cuda\"\n+        if torch.version.cuda is not None:\n+            device = \"cuda\"\n+        elif torch.version.hip is not None:\n+            device = \"rocm\"\n+        else:\n+            device = \"cpu\"\n         suffix = \".dll\" if sys.platform.startswith(\"win\") else \".so\"\n         libname = f\"libtorch_c_dlpack_addon_torch{major}{minor}-{device}{suffix}\"\n         lib_path = addon_output_dir / libname\n@@ -83,8 +88,10 @@ def load_torch_c_dlpack_extension() -> Any:\n                 \"--libname\",\n                 libname,\n             ]\n-            if torch.cuda.is_available():\n+            if device == \"cuda\":\n                 args.append(\"--build-with-cuda\")\n+            elif device == \"rocm\":\n+                args.append(\"--build-with-rocm\")\n             subprocess.run(\n                 args,\n                 check=True,\ndiff --git a/python/tvm_ffi/utils/_build_optional_torch_c_dlpack.py b/python/tvm_ffi/utils/_build_optional_torch_c_dlpack.py\nindex 5f73d63..20705be 100644\n--- a/python/tvm_ffi/utils/_build_optional_torch_c_dlpack.py\n+++ b/python/tvm_ffi/utils/_build_optional_torch_c_dlpack.py\n@@ -45,6 +45,9 @@ cpp_source = \"\"\"\n #ifdef BUILD_WITH_CUDA\n #include <c10/cuda/CUDAStream.h>\n #endif\n+#ifdef BUILD_WITH_ROCM\n+#include <c10/hip/HIPStream.h>\n+#endif\n \n using namespace std;\n namespace at {\n@@ -708,6 +711,11 @@ def main() -> None:  # noqa: PLR0912, PLR0915\n         action=\"store_true\",\n         help=\"Build with CUDA support.\",\n     )\n+    parser.add_argument(\n+        \"--build-with-rocm\",\n+        action=\"store_true\",\n+        help=\"Build with ROCm support.\",\n+    )\n     parser.add_argument(\n         \"--libname\",\n         type=str,\n@@ -716,6 +724,8 @@ def main() -> None:  # noqa: PLR0912, PLR0915\n     )\n \n     args = parser.parse_args()\n+    if args.build_with_cuda and args.build_with_rocm:\n+        raise ValueError(\"Cannot enable both CUDA and ROCm at the same time.\")\n \n     # resolve build directory\n     if args.build_dir is None:\n@@ -729,7 +739,12 @@ def main() -> None:  # noqa: PLR0912, PLR0915\n     # resolve library name\n     if args.libname == \"auto\":\n         major, minor = torch.__version__.split(\".\")[:2]\n-        device = \"cpu\" if not args.build_with_cuda else \"cuda\"\n+        if args.build_with_cuda:\n+            device = \"cuda\"\n+        elif args.build_with_rocm:\n+            device = \"rocm\"\n+        else:\n+            device = \"cpu\"\n         suffix = \".dll\" if IS_WINDOWS else \".so\"\n         libname = f\"libtorch_c_dlpack_addon_torch{major}{minor}-{device}{suffix}\"\n     else:\n@@ -759,7 +774,10 @@ def main() -> None:  # noqa: PLR0912, PLR0915\n \n         if args.build_with_cuda:\n             cflags.append(\"-DBUILD_WITH_CUDA\")\n-        include_paths.extend(get_torch_include_paths(args.build_with_cuda))\n+        elif args.build_with_rocm:\n+            cflags.extend(torch.utils.cpp_extension.COMMON_HIP_FLAGS)\n+            cflags.append(\"-DBUILD_WITH_ROCM\")\n+        include_paths.extend(get_torch_include_paths(args.build_with_cuda or args.build_with_rocm))\n \n         # use CXX11 ABI\n         if torch.compiled_with_cxx11_abi():\ndiff --git a/tests/python/test_optional_torch_c_dlpack.py b/tests/python/test_optional_torch_c_dlpack.py\nindex fe0bac5..8aded2b 100644\n--- a/tests/python/test_optional_torch_c_dlpack.py\n+++ b/tests/python/test_optional_torch_c_dlpack.py\n@@ -44,8 +44,10 @@ def test_build_torch_c_dlpack_extension() -> None:\n         \"--libname\",\n         \"libtorch_c_dlpack_addon_test.so\",\n     ]\n-    if torch.cuda.is_available():\n+    if torch.version.cuda is not None:\n         args.append(\"--build-with-cuda\")\n+    elif torch.version.hip is not None:\n+        args.append(\"--build-with-rocm\")\n     subprocess.run(args, check=True)\n \n     lib_path = str(Path(\"./output-dir/libtorch_c_dlpack_addon_test.so\").resolve())\ndiff --git a/tests/python/test_tensor.py b/tests/python/test_tensor.py\nindex 4ea8680..d772ab3 100644\n--- a/tests/python/test_tensor.py\n+++ b/tests/python/test_tensor.py\n@@ -112,3 +112,23 @@ def test_tvm_ffi_tensor_compatible() -> None:\n     fecho = tvm_ffi.get_global_func(\"testing.echo\")\n     z = fecho(y)\n     assert z.__chandle__() == x.__chandle__()\n+\n+\n+@pytest.mark.skipif(\n+    torch is None or torch.version.hip is None, reason=\"ROCm is not enabled in PyTorch\"\n+)\n+def test_tensor_from_pytorch_rocm() -> None:\n+    assert torch is not None\n+\n+    @tvm_ffi.register_global_func(\"testing.check_device\", override=True)\n+    def _check_device(x: tvm_ffi.Tensor) -> str:\n+        return x.device.type\n+\n+    # PyTorch uses device name \"cuda\" to represent ROCm device\n+    x = torch.randn(128, device=\"cuda\")\n+    device_type = tvm_ffi.get_global_func(\"testing.check_device\")(x)\n+    assert device_type == \"rocm\"\n+\n+\n+if __name__ == \"__main__\":\n+    pytest.main([__file__])\ndiff --git a/tests/scripts/benchmark_dlpack.py b/tests/scripts/benchmark_dlpack.py\nindex a4833f2..23db3a8 100644\n--- a/tests/scripts/benchmark_dlpack.py\n+++ b/tests/scripts/benchmark_dlpack.py\n@@ -337,17 +337,30 @@ def load_torch_get_current_cuda_stream() -> Callable[[int], int]:\n     \"\"\"Create a faster get_current_cuda_stream for torch through cpp extension.\"\"\"\n     from torch.utils import cpp_extension  # noqa: PLC0415\n \n-    source = \"\"\"\n-    #include <c10/cuda/CUDAStream.h>\n-\n-    int64_t get_current_cuda_stream(int device_id) {\n-        at::cuda::CUDAStream stream = at::cuda::getCurrentCUDAStream(device_id);\n-        // fast invariant, default stream is always 0\n-        if (stream.id() == 0) return 0;\n-        // convert to cudaStream_t\n-        return reinterpret_cast<int64_t>(static_cast<cudaStream_t>(stream));\n-    }\n-    \"\"\"\n+    if torch.version.cuda is not None:\n+        source = \"\"\"\n+        #include <c10/cuda/CUDAStream.h>\n+\n+        int64_t get_current_cuda_stream(int device_id) {\n+            at::cuda::CUDAStream stream = at::cuda::getCurrentCUDAStream(device_id);\n+            // fast invariant, default stream is always 0\n+            if (stream.id() == 0) return 0;\n+            // convert to cudaStream_t\n+            return reinterpret_cast<int64_t>(static_cast<cudaStream_t>(stream));\n+        }\n+        \"\"\"\n+    elif torch.version.hip is not None:\n+        source = \"\"\"\n+        #include <c10/hip/HIPStream.h>\n+\n+        int64_t get_current_cuda_stream(int device_id) {\n+            at::hip::HIPStream stream = at::hip::getCurrentHIPStream(device_id);\n+            // fast invariant, default stream is always 0\n+            if (stream.id() == 0) return 0;\n+            // convert to hipStream_t\n+            return reinterpret_cast<int64_t>(static_cast<hipStream_t>(stream));\n+        }\n+        \"\"\"\n     result = cpp_extension.load_inline(\n         name=\"get_current_cuda_stream\",\n         cpp_sources=[source],",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".py"
+    ],
+    "scopes_guess": [
+      "addons",
+      "python",
+      "tests"
+    ]
+  }
+}

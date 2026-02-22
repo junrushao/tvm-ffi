@@ -1,0 +1,149 @@
+{
+  "sha": "da7007fda1b1ece445cb66dbfbcf8c4bf8afb4bc",
+  "sha7": "da7007f",
+  "author_name": "Junru Shao",
+  "author_email": "junrushao@apache.org",
+  "date_iso": "2025-10-14T17:19:08-07:00",
+  "subject": "chore(build): Split `src/ffi/extra/testing.cc` into `libtvm_ffi_testing.so` (#114)",
+  "body": "",
+  "is_merge": false,
+  "parents": [
+    "0dcd4d2b9a3ca2c7b3614cdbe7792798c00e7513"
+  ],
+  "name_status": [
+    [
+      "M",
+      "CMakeLists.txt"
+    ],
+    [
+      "M",
+      "cmake/Utils/Library.cmake"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/__init__.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/libinfo.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/testing.py"
+    ],
+    [
+      "M",
+      "rust/tvm-ffi-sys/build.rs"
+    ],
+    [
+      "M",
+      "rust/tvm-ffi-sys/src/c_api.rs"
+    ],
+    [
+      "M",
+      "rust/tvm-ffi/tests/test_function.rs"
+    ],
+    [
+      "M",
+      "src/ffi/backtrace_win.cc"
+    ],
+    [
+      "R099",
+      "src/ffi/testing/testing.cc"
+    ],
+    [
+      "M",
+      "tests/cpp/CMakeLists.txt"
+    ],
+    [
+      "M",
+      "tests/cpp/test_function.cc"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "CMakeLists.txt",
+      "additions": 18,
+      "deletions": 1
+    },
+    {
+      "path": "cmake/Utils/Library.cmake",
+      "additions": 15,
+      "deletions": 0
+    },
+    {
+      "path": "python/tvm_ffi/__init__.py",
+      "additions": 0,
+      "deletions": 2
+    },
+    {
+      "path": "python/tvm_ffi/libinfo.py",
+      "additions": 43,
+      "deletions": 9
+    },
+    {
+      "path": "python/tvm_ffi/testing.py",
+      "additions": 6,
+      "deletions": 0
+    },
+    {
+      "path": "rust/tvm-ffi-sys/build.rs",
+      "additions": 1,
+      "deletions": 0
+    },
+    {
+      "path": "rust/tvm-ffi-sys/src/c_api.rs",
+      "additions": 1,
+      "deletions": 0
+    },
+    {
+      "path": "rust/tvm-ffi/tests/test_function.rs",
+      "additions": 6,
+      "deletions": 0
+    },
+    {
+      "path": "src/ffi/backtrace_win.cc",
+      "additions": 13,
+      "deletions": 8
+    },
+    {
+      "path": "src/ffi/{extra => testing}/testing.cc",
+      "additions": 2,
+      "deletions": 0
+    },
+    {
+      "path": "tests/cpp/CMakeLists.txt",
+      "additions": 1,
+      "deletions": 0
+    },
+    {
+      "path": "tests/cpp/test_function.cc",
+      "additions": 7,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/CMakeLists.txt b/CMakeLists.txt\nindex ff1a146..b268152 100644\n--- a/CMakeLists.txt\n+++ b/CMakeLists.txt\n@@ -72,7 +72,6 @@ set(_tvm_ffi_extra_objs_sources\n     \"${CMAKE_CURRENT_SOURCE_DIR}/src/ffi/extra/library_module_dynamic_lib.cc\"\n     \"${CMAKE_CURRENT_SOURCE_DIR}/src/ffi/extra/env_context.cc\"\n     \"${CMAKE_CURRENT_SOURCE_DIR}/src/ffi/extra/env_c_api.cc\"\n-    \"${CMAKE_CURRENT_SOURCE_DIR}/src/ffi/extra/testing.cc\"\n )\n if (TVM_FFI_USE_EXTRA_CXX_API)\n   list(APPEND _tvm_ffi_objs_sources ${_tvm_ffi_extra_objs_sources})\n@@ -132,6 +131,23 @@ target_link_libraries(tvm_ffi_objs PUBLIC tvm_ffi_header)\n target_link_libraries(tvm_ffi_shared PUBLIC tvm_ffi_header)\n target_link_libraries(tvm_ffi_static PUBLIC tvm_ffi_header)\n \n+# ######### Target: `tvm_ffi_testing` ##########\n+# Build testing utilities as a separate shared library that can be loaded on demand\n+# `tvm_ffi_testing` won't be inlcuded in `libtvm_ffi` and contains functions that are registered\n+# only for testing purposes\n+target_sources(tvm_ffi_testing PRIVATE \"${CMAKE_CURRENT_SOURCE_DIR}/src/ffi/testing/testing.cc\")\n+target_compile_features(tvm_ffi_testing PRIVATE cxx_std_17)\n+set_target_properties(\n+  tvm_ffi_testing\n+  PROPERTIES CXX_EXTENSIONS OFF\n+             CXX_STANDARD_REQUIRED ON\n+             LIBRARY_OUTPUT_DIRECTORY \"${CMAKE_BINARY_DIR}/lib\"\n+)\n+target_link_libraries(tvm_ffi_testing PRIVATE tvm_ffi_shared)\n+target_link_libraries(tvm_ffi_testing PUBLIC tvm_ffi_header)\n+tvm_ffi_add_msvc_flags(tvm_ffi_testing)\n+tvm_ffi_add_apple_dsymutil(tvm_ffi_testing)\n+\n # ----------------------------------------------------------------------------\n # The following code section only is triggered when the project is the root and will be skipped when\n # the project is a subproject.\n@@ -265,6 +281,7 @@ endif ()\n install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include/tvm/ffi/ DESTINATION include/tvm/ffi/)\n install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/dlpack/include/ DESTINATION include/)\n install(TARGETS tvm_ffi_shared DESTINATION lib)\n+install(TARGETS tvm_ffi_testing DESTINATION lib)\n # ship additional dSYM files for debugging symbols on if available\n if (APPLE)\n   install(\ndiff --git a/cmake/Utils/Library.cmake b/cmake/Utils/Library.cmake\nindex 1a76fa6..73817e9 100644\n--- a/cmake/Utils/Library.cmake\n+++ b/cmake/Utils/Library.cmake\n@@ -100,6 +100,14 @@ function (tvm_ffi_add_target_from_obj target_name obj_target_name)\n                LIBRARY_OUTPUT_DIRECTORY \"${CMAKE_BINARY_DIR}/lib\"\n                RUNTIME_OUTPUT_DIRECTORY \"${CMAKE_BINARY_DIR}/lib\"\n   )\n+  add_library(${target_name}_testing SHARED)\n+  set_target_properties(\n+    ${target_name}_testing\n+    PROPERTIES OUTPUT_NAME \"${target_name}_testing\"\n+               ARCHIVE_OUTPUT_DIRECTORY \"${CMAKE_BINARY_DIR}/lib\"\n+               LIBRARY_OUTPUT_DIRECTORY \"${CMAKE_BINARY_DIR}/lib\"\n+               RUNTIME_OUTPUT_DIRECTORY \"${CMAKE_BINARY_DIR}/lib\"\n+  )\n   if (WIN32)\n     target_compile_definitions(${obj_target_name} PRIVATE TVM_FFI_EXPORTS)\n     # set the output directory for each config type so msbuild also get into lib without appending\n@@ -118,7 +126,14 @@ function (tvm_ffi_add_target_from_obj target_name obj_target_name)\n                    LIBRARY_OUTPUT_DIRECTORY_${config_type} \"${CMAKE_BINARY_DIR}/lib\"\n                    ARCHIVE_OUTPUT_DIRECTORY_${config_type} \"${CMAKE_BINARY_DIR}/lib\"\n       )\n+      set_target_properties(\n+        ${target_name}_testing\n+        PROPERTIES RUNTIME_OUTPUT_DIRECTORY_${config_type} \"${CMAKE_BINARY_DIR}/lib\"\n+                   LIBRARY_OUTPUT_DIRECTORY_${config_type} \"${CMAKE_BINARY_DIR}/lib\"\n+                   ARCHIVE_OUTPUT_DIRECTORY_${config_type} \"${CMAKE_BINARY_DIR}/lib\"\n+      )\n     endforeach ()\n   endif ()\n   tvm_ffi_add_apple_dsymutil(${target_name}_shared)\n+  tvm_ffi_add_apple_dsymutil(${target_name}_testing)\n endfunction ()\ndiff --git a/python/tvm_ffi/__init__.py b/python/tvm_ffi/__init__.py\nindex df04cf1..f6d9045 100644\n--- a/python/tvm_ffi/__init__.py\n+++ b/python/tvm_ffi/__init__.py\n@@ -45,7 +45,6 @@ from .module import Module, system_lib, load_module\n from .stream import StreamContext, get_raw_stream, use_raw_stream, use_torch_stream\n from . import serialization\n from . import access_path\n-from . import testing\n from . import dataclasses\n \n # optional module to speedup dlpack conversion\n@@ -81,5 +80,4 @@ __all__ = [\n     \"remove_global_func\",\n     \"serialization\",\n     \"system_lib\",\n-    \"testing\",\n ]\ndiff --git a/python/tvm_ffi/libinfo.py b/python/tvm_ffi/libinfo.py\nindex fd0e784..df814cf 100644\n--- a/python/tvm_ffi/libinfo.py\n+++ b/python/tvm_ffi/libinfo.py\n@@ -14,7 +14,11 @@\n # KIND, either express or implied.  See the License for the\n # specific language governing permissions and limitations\n # under the License.\n-\"\"\"Utilities to locate tvm_ffi libraries, headers, and helper include paths.\"\"\"\n+\"\"\"Utilities to locate tvm_ffi libraries, headers, and helper include paths.\n+\n+This module also provides helpers to locate and load platform-specific shared\n+libraries by a base name (e.g., ``tvm_ffi`` -> ``libtvm_ffi.so`` on Linux).\n+\"\"\"\n \n import os\n import sys\n@@ -62,14 +66,46 @@ def get_dll_directories() -> list[str]:\n \n \n def find_libtvm_ffi() -> str:\n-    \"\"\"Find libtvm_ffi.\"\"\"\n+    \"\"\"Find libtvm_ffi.\n+\n+    Returns\n+    -------\n+    path\n+        The full path to the located library.\n+\n+    \"\"\"\n+    return find_library_by_basename(\"tvm_ffi\")\n+\n+\n+def find_library_by_basename(base: str) -> str:\n+    \"\"\"Find a shared library by base name across known directories.\n+\n+    Parameters\n+    ----------\n+    base\n+        Base name (e.g., ``\"tvm_ffi\"`` or ``\"tvm_ffi_testing\"``).\n+\n+    Returns\n+    -------\n+    path\n+        The full path to the located library.\n+\n+    Raises\n+    ------\n+    RuntimeError\n+        If the library cannot be found in any of the candidate directories.\n+\n+    \"\"\"\n     dll_path = [Path(p) for p in get_dll_directories()]\n     if sys.platform.startswith(\"win32\"):\n-        lib_dll_names = [\"tvm_ffi.dll\"]\n+        lib_dll_names = [f\"{base}.dll\"]\n     elif sys.platform.startswith(\"darwin\"):\n-        lib_dll_names = [\"libtvm_ffi.dylib\", \"libtvm_ffi.so\"]\n-    else:\n-        lib_dll_names = [\"libtvm_ffi.so\"]\n+        lib_dll_names = [  # Prefer dylib, also allow .so for some toolchains\n+            f\"lib{base}.dylib\",\n+            f\"lib{base}.so\",\n+        ]\n+    else:  # Linux, FreeBSD, etc\n+        lib_dll_names = [f\"lib{base}.so\"]\n \n     lib_dll_path = [p / name for name in lib_dll_names for p in dll_path]\n     lib_found = [p for p in lib_dll_path if p.exists() and p.is_file()]\n@@ -77,9 +113,7 @@ def find_libtvm_ffi() -> str:\n     if not lib_found:\n         candidate_list = \"\\n\".join(str(p) for p in lib_dll_path)\n         raise RuntimeError(\n-            \"Cannot find library: {}\\nList of candidates:\\n{}\".format(\n-                \", \".join(lib_dll_names), candidate_list\n-            )\n+            f\"Cannot find library: {', '.join(lib_dll_names)}\\nList of candidates:\\n{candidate_list}\"\n         )\n \n     return str(lib_found[0])\ndiff --git a/python/tvm_ffi/testing.py b/python/tvm_ffi/testing.py\nindex 820fd60..04b6387 100644\n--- a/python/tvm_ffi/testing.py\n+++ b/python/tvm_ffi/testing.py\n@@ -19,6 +19,12 @@\n \n from __future__ import annotations\n \n+from . import libinfo\n+from .module import load_module\n+\n+_LIBTVM_FFI_TESTING = load_module(libinfo.find_library_by_basename(\"tvm_ffi_testing\"))\n+\n+\n from collections.abc import Mapping, Sequence\n from typing import TYPE_CHECKING, Any, ClassVar\n \ndiff --git a/rust/tvm-ffi-sys/build.rs b/rust/tvm-ffi-sys/build.rs\nindex 24e1f6c..7cd7f24 100644\n--- a/rust/tvm-ffi-sys/build.rs\n+++ b/rust/tvm-ffi-sys/build.rs\n@@ -61,6 +61,7 @@ fn main() {\n     println!(\"cargo:rustc-link-search=native={}\", lib_dir);\n     // link the library\n     println!(\"cargo:rustc-link-lib=dylib=tvm_ffi\");\n+    println!(\"cargo:rustc-link-lib=dylib=tvm_ffi_testing\");\n     // update the LD_LIBRARY_PATH environment variable\n     update_ld_library_path(&lib_dir);\n }\ndiff --git a/rust/tvm-ffi-sys/src/c_api.rs b/rust/tvm-ffi-sys/src/c_api.rs\nindex a55470d..e0bf085 100644\n--- a/rust/tvm-ffi-sys/src/c_api.rs\n+++ b/rust/tvm-ffi-sys/src/c_api.rs\n@@ -429,4 +429,5 @@ unsafe extern \"C\" {\n         cross_ffi_boundary: i32,\n     ) -> *const TVMFFIByteArray;\n     pub fn TVMFFIGetTypeInfo(type_index: i32) -> *const TVMFFITypeInfo;\n+    pub fn TVMFFITestingDummyTarget() -> i32;\n }\ndiff --git a/rust/tvm-ffi/tests/test_function.rs b/rust/tvm-ffi/tests/test_function.rs\nindex fef5e34..08efc66 100644\n--- a/rust/tvm-ffi/tests/test_function.rs\n+++ b/rust/tvm-ffi/tests/test_function.rs\n@@ -18,6 +18,12 @@\n  */\n use tvm_ffi::*;\n \n+#[test]\n+fn test_function_dummpy_c_api() {\n+    let ret = unsafe { tvm_ffi_sys::TVMFFITestingDummyTarget() };\n+    assert_eq!(ret, 0);\n+}\n+\n #[test]\n fn test_function_get_global_required() {\n     let fecho = Function::get_global(\"testing.echo\").unwrap();\ndiff --git a/src/ffi/backtrace_win.cc b/src/ffi/backtrace_win.cc\nindex c4491db..ca5cf06 100644\n--- a/src/ffi/backtrace_win.cc\n+++ b/src/ffi/backtrace_win.cc\n@@ -62,18 +62,23 @@ const TVMFFIByteArray* TVMFFIBacktrace(const char* filename, int lineno, const c\n   STACKFRAME64 stack = {};\n   DWORD machine_type;\n \n-#if defined(_M_X64)\n-  machine_type = IMAGE_FILE_MACHINE_AMD64;\n-  stack.AddrPC.Offset = context.Rip;\n-  stack.AddrFrame.Offset = context.Rbp;\n-  stack.AddrStack.Offset = context.Rsp;\n-#elif defined(_M_IX86)\n+#ifdef _M_IX86\n   machine_type = IMAGE_FILE_MACHINE_I386;\n   stack.AddrPC.Offset = context.Eip;\n-  stack.AddrFrame.Offset = context.Ebp;\n   stack.AddrStack.Offset = context.Esp;\n+  stack.AddrFrame.Offset = context.Ebp;\n+#elif _M_X64\n+  machine_type = IMAGE_FILE_MACHINE_AMD64;\n+  stack.AddrPC.Offset = context.Rip;\n+  stack.AddrStack.Offset = context.Rsp;\n+  stack.AddrFrame.Offset = context.Rbp;\n+#elif _M_ARM64\n+  machine_type = IMAGE_FILE_MACHINE_ARM64;\n+  stack.AddrPC.Offset = context.Pc;\n+  stack.AddrStack.Offset = context.Sp;\n+  stack.AddrFrame.Offset = context.Fp;\n #else\n-#error \"Platform not supported!\"\n+#error \"Unsupported architecture\"\n #endif\n \n   stack.AddrPC.Mode = AddrModeFlat;\ndiff --git a/src/ffi/extra/testing.cc b/src/ffi/testing/testing.cc\nsimilarity index 99%\nrename from src/ffi/extra/testing.cc\nrename to src/ffi/testing/testing.cc\nindex 11772ad..95c8b30 100644\n--- a/src/ffi/extra/testing.cc\n+++ b/src/ffi/testing/testing.cc\n@@ -451,3 +451,5 @@ TVM_FFI_STATIC_INIT_BLOCK() {\n \n }  // namespace ffi\n }  // namespace tvm\n+\n+extern \"C\" TVM_FFI_DLL_EXPORT int TVMFFITestingDummyTarget() { return 0; }\ndiff --git a/tests/cpp/CMakeLists.txt b/tests/cpp/CMakeLists.txt\nindex 069ba4b..7ab3c2a 100644\n--- a/tests/cpp/CMakeLists.txt\n+++ b/tests/cpp/CMakeLists.txt\n@@ -22,6 +22,7 @@ add_sanitizer_address(tvm_ffi_tests)\n tvm_ffi_add_apple_dsymutil(tvm_ffi_tests)\n tvm_ffi_add_msvc_flags(tvm_ffi_tests)\n target_link_libraries(tvm_ffi_tests PRIVATE tvm_ffi_shared)\n+target_link_libraries(tvm_ffi_tests PRIVATE tvm_ffi_testing)\n tvm_ffi_add_gtest(tvm_ffi_tests)\n \n if (MSVC)\ndiff --git a/tests/cpp/test_function.cc b/tests/cpp/test_function.cc\nindex b8ff769..b32b701 100644\n--- a/tests/cpp/test_function.cc\n+++ b/tests/cpp/test_function.cc\n@@ -269,4 +269,11 @@ int invoke_testing_add1(int x) {\n \n TEST(Func, InvokeExternC) { EXPECT_EQ(invoke_testing_add1(1), 2); }\n \n+extern \"C\" TVM_FFI_DLL int TVMFFITestingDummyTarget();\n+\n+TEST(Func, DummyCFunc) {\n+  int value = TVMFFITestingDummyTarget();\n+  EXPECT_EQ(value, 0);\n+}\n+\n }  // namespace",
+  "heuristics": {
+    "tags": [
+      "build",
+      "test"
+    ],
+    "extensions": [
+      ".cc",
+      ".cmake",
+      ".py",
+      ".rs",
+      ".txt"
+    ],
+    "scopes_guess": [
+      "CMakeLists.txt",
+      "cmake",
+      "python",
+      "rust",
+      "src",
+      "tests"
+    ]
+  }
+}

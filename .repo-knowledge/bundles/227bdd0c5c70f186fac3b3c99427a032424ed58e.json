@@ -1,0 +1,71 @@
+{
+  "sha": "227bdd0c5c70f186fac3b3c99427a032424ed58e",
+  "sha7": "227bdd0",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-11-04T15:28:03-05:00",
+  "subject": "[EXTRA] Improve the Error propagation in alloc (#224)",
+  "body":
+      "This PR updates the env_conetxt.cc to check the ret code first before\nchecking the dl_tensor being not null, this allows us to effectively\npropagate error message from the caller if any to the consumer.\nTest case updated to guard this regression.",
+  "is_merge": false,
+  "parents": [
+    "00a9ad7df61bef0c1af47aef7a8af0a0e68da2f5"
+  ],
+  "name_status": [
+    [
+      "M",
+      "python/tvm_ffi/error.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/utils/_build_optional_torch_c_dlpack.py"
+    ],
+    [
+      "M",
+      "src/ffi/extra/env_context.cc"
+    ],
+    [
+      "M",
+      "tests/cpp/extra/test_c_env_api.cc"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "python/tvm_ffi/error.py",
+      "additions": 1,
+      "deletions": 0
+    },
+    {
+      "path": "python/tvm_ffi/utils/_build_optional_torch_c_dlpack.py",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "src/ffi/extra/env_context.cc",
+      "additions": 3,
+      "deletions": 1
+    },
+    {
+      "path": "tests/cpp/extra/test_c_env_api.cc",
+      "additions": 10,
+      "deletions": 4
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/python/tvm_ffi/error.py b/python/tvm_ffi/error.py\nindex 015fe80..03dfcca 100644\n--- a/python/tvm_ffi/error.py\n+++ b/python/tvm_ffi/error.py\n@@ -214,3 +214,4 @@ register_error(\"AttributeError\", AttributeError)\n register_error(\"KeyError\", KeyError)\n register_error(\"IndexError\", IndexError)\n register_error(\"AssertionError\", AssertionError)\n+register_error(\"MemoryError\", MemoryError)\ndiff --git a/python/tvm_ffi/utils/_build_optional_torch_c_dlpack.py b/python/tvm_ffi/utils/_build_optional_torch_c_dlpack.py\nindex 77900ff..288b3ed 100644\n--- a/python/tvm_ffi/utils/_build_optional_torch_c_dlpack.py\n+++ b/python/tvm_ffi/utils/_build_optional_torch_c_dlpack.py\n@@ -531,7 +531,7 @@ struct TorchDLPackExchangeAPI : public DLPackExchangeAPI {\n       *out = at::toDLPackImpl<DLManagedTensorVersioned>(tensor);\n       return 0;\n     } catch (const std::exception& e) {\n-      SetError(error_ctx, \"TorchDLPackManagedTensorAllocator\", e.what());\n+      SetError(error_ctx, \"MemoryError\", e.what());\n       return -1;\n     }\n   }\ndiff --git a/src/ffi/extra/env_context.cc b/src/ffi/extra/env_context.cc\nindex e8f5a63..cde76c4 100644\n--- a/src/ffi/extra/env_context.cc\n+++ b/src/ffi/extra/env_context.cc\n@@ -139,8 +139,10 @@ int TVMFFIEnvTensorAlloc(DLTensor* prototype, TVMFFIObjectHandle* out) {\n   }\n   DLManagedTensorVersioned* dlpack_tensor = nullptr;\n   int ret = (*dlpack_alloc)(prototype, &dlpack_tensor, nullptr, TVMFFIEnvTensorAllocSetError);\n-  TVM_FFI_ICHECK(dlpack_tensor != nullptr);\n   if (ret != 0) return ret;\n+  // need to first check ret so we can properly propagate the error from caller side.\n+  TVM_FFI_CHECK(dlpack_tensor != nullptr, RuntimeError)\n+      << \"TVMFFIEnvTensorAlloc: failed to allocate a tensor from the allocator\";\n   if (dlpack_tensor->dl_tensor.strides != nullptr || dlpack_tensor->dl_tensor.ndim == 0) {\n     *out = tvm::ffi::details::ObjectUnsafe::MoveObjectPtrToTVMFFIObjectPtr(\n         tvm::ffi::make_object<tvm::ffi::details::TensorObjFromDLPack<DLManagedTensorVersioned>>(\ndiff --git a/tests/cpp/extra/test_c_env_api.cc b/tests/cpp/extra/test_c_env_api.cc\nindex ff8a845..9ac51e3 100644\n--- a/tests/cpp/extra/test_c_env_api.cc\n+++ b/tests/cpp/extra/test_c_env_api.cc\n@@ -48,7 +48,7 @@ int TestDLPackManagedTensorAllocatorError(DLTensor* prototype, DLManagedTensorVe\n                                           void* error_ctx,\n                                           void (*SetError)(void* error_ctx, const char* kind,\n                                                            const char* message)) {\n-  SetError(error_ctx, \"RuntimeError\", \"TestDLPackManagedTensorAllocatorError\");\n+  SetError(error_ctx, \"MemoryError\", \"TestDLPackManagedTensorAllocatorError\");\n   return -1;\n }\n \n@@ -74,13 +74,19 @@ TEST(CEnvAPI, TVMFFIEnvTensorAlloc) {\n TEST(CEnvAPI, TVMFFIEnvTensorAllocError) {\n   auto old_allocator = TVMFFIEnvGetDLPackManagedTensorAllocator();\n   TVMFFIEnvSetDLPackManagedTensorAllocator(TestDLPackManagedTensorAllocatorError, 0, nullptr);\n+\n   EXPECT_THROW(\n       {\n-        Tensor::FromEnvAlloc(TVMFFIEnvTensorAlloc, {1, 2, 3}, DLDataType({kDLFloat, 32, 1}),\n-                             DLDevice({kDLCPU, 0}));\n+        try {\n+          Tensor::FromEnvAlloc(TVMFFIEnvTensorAlloc, {1, 2, 3}, DLDataType({kDLFloat, 32, 1}),\n+                               DLDevice({kDLCPU, 0}));\n+        } catch (const tvm::ffi::Error& e) {\n+          EXPECT_EQ(e.kind(), \"MemoryError\");\n+          EXPECT_EQ(e.message(), \"TestDLPackManagedTensorAllocatorError\");\n+          throw;\n+        }\n       },\n       tvm::ffi::Error);\n   TVMFFIEnvSetDLPackManagedTensorAllocator(old_allocator, 0, nullptr);\n }\n-\n }  // namespace",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".cc",
+      ".py"
+    ],
+    "scopes_guess": [
+      "python",
+      "src",
+      "tests"
+    ]
+  }
+}

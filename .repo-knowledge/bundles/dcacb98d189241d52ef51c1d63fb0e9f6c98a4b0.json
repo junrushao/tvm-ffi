@@ -1,0 +1,39 @@
+{
+  "sha": "dcacb98d189241d52ef51c1d63fb0e9f6c98a4b0",
+  "sha7": "dcacb98",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-12-02T17:07:53-05:00",
+  "subject": "[METADATA] Always return metadata string as created in main lib (#305)",
+  "body":
+      "This PR updates the metadata string creation as always allocating from\nthe libtvm_ffi so to avoid possible delete after module unloading issue.",
+  "is_merge": false,
+  "parents": [
+    "8d237f334194e978790ef394c8e433c5180388ff"
+  ],
+  "name_status": [
+    [
+      "M",
+      "include/tvm/ffi/function.h"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "include/tvm/ffi/function.h",
+      "additions": 10,
+      "deletions": 4
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/include/tvm/ffi/function.h b/include/tvm/ffi/function.h\nindex 3f6fe9b..f2cd61f 100644\n--- a/include/tvm/ffi/function.h\n+++ b/include/tvm/ffi/function.h\n@@ -922,6 +922,8 @@ inline int32_t TypeKeyToIndex(std::string_view type_key) {\n  * TVM_FFI_DLL_EXPORT_INCLUDE_METADATA is defined)\n  */\n #if TVM_FFI_DLL_EXPORT_INCLUDE_METADATA\n+// Implementation note: we specifically use TVMFFIStringFromByteArray\n+// so the returned string metadata is allocated in the libtvm_ffi and long lived.\n #define TVM_FFI_DLL_EXPORT_TYPED_FUNC(ExportName, Function)                                      \\\n   TVM_FFI_DLL_EXPORT_TYPED_FUNC_IMPL_(ExportName, Function)                                      \\\n   extern \"C\" {                                                                                   \\\n@@ -932,8 +934,9 @@ inline int32_t TypeKeyToIndex(std::string_view type_key) {\n     std::ostringstream os;                                                                       \\\n     os << R\"({\"type_schema\":)\"                                                                   \\\n        << ::tvm::ffi::EscapeString(::tvm::ffi::String(FuncInfo::TypeSchema())) << R\"(})\";        \\\n-    ::tvm::ffi::String str(os.str());                                                            \\\n-    ::tvm::ffi::TypeTraits<::tvm::ffi::String>::MoveToAny(std::move(str), result);               \\\n+    std::string data = os.str();                                                                 \\\n+    TVMFFIByteArray data_array{data.data(), data.size()};                                        \\\n+    return TVMFFIStringFromByteArray(&data_array, result);                                       \\\n     TVM_FFI_SAFE_CALL_END();                                                                     \\\n   }                                                                                              \\\n   }\n@@ -983,13 +986,16 @@ inline int32_t TypeKeyToIndex(std::string_view type_key) {\n  *       This symbol is only exported when TVM_FFI_DLL_EXPORT_INCLUDE_METADATA is defined.\n  */\n #if TVM_FFI_DLL_EXPORT_INCLUDE_METADATA\n+// Implementation note: we specifically use TVMFFIStringFromByteArray\n+// so the returned string metadata is allocated in the libtvm_ffi and long lived.\n #define TVM_FFI_DLL_EXPORT_TYPED_FUNC_DOC(ExportName, DocString)                            \\\n   extern \"C\" {                                                                              \\\n   TVM_FFI_DLL_EXPORT int __tvm_ffi__doc_##ExportName(void* self, const TVMFFIAny* args,     \\\n                                                      int32_t num_args, TVMFFIAny* result) { \\\n     TVM_FFI_SAFE_CALL_BEGIN();                                                              \\\n-    ::tvm::ffi::String str(DocString);                                                      \\\n-    ::tvm::ffi::TypeTraits<::tvm::ffi::String>::MoveToAny(std::move(str), result);          \\\n+    std::string_view data(DocString);                                                       \\\n+    TVMFFIByteArray data_array{data.data(), data.size()};                                   \\\n+    return TVMFFIStringFromByteArray(&data_array, result);                                  \\\n     TVM_FFI_SAFE_CALL_END();                                                                \\\n   }                                                                                         \\\n   }",
+  "heuristics": {
+    "tags": [],
+    "extensions": [
+      ".h"
+    ],
+    "scopes_guess": [
+      "include"
+    ]
+  }
+}

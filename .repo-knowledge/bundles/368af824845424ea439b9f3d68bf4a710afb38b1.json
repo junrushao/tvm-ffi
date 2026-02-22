@@ -1,0 +1,83 @@
+{
+  "sha": "368af824845424ea439b9f3d68bf4a710afb38b1",
+  "sha7": "368af82",
+  "author_name": "Junru Shao",
+  "author_email": "junrushao@apache.org",
+  "date_iso": "2025-10-07T04:47:55-07:00",
+  "subject": "fix: `self` overlooked in schema of member functions (#91)",
+  "body":
+      "When generation function schema for member functions of a certain class,\nthe existing logics overlooked `this` as the first argument, which, as a\nresult, generates inproper number of arguments.\n\nMore specifically, in the snippet below,\n\n```C++\nclass MyCls {\n  void MyFunc(int a);\n};\n\nrefl::GlobalDef()\n    .def_method(\"MyCls_MyFunc\", &MyCls::MyFunc);\n```\n\nthe global method `MyCls_MyFunc` is supposed to have signature `(MyCls,\nint) -> None`, but the implementation on mainline gives `(int) -> None`.\n\nThis PR fixes this issue.",
+  "is_merge": false,
+  "parents": [
+    "98b26edda72c3d9b9480cb638a68d07d3df6b88f"
+  ],
+  "name_status": [
+    [
+      "M",
+      "include/tvm/ffi/function_details.h"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/cython/type_info.pxi"
+    ],
+    [
+      "M",
+      "src/ffi/extra/testing.cc"
+    ],
+    [
+      "M",
+      "tests/cpp/test_metadata.cc"
+    ],
+    [
+      "M",
+      "tests/python/test_metadata.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "include/tvm/ffi/function_details.h",
+      "additions": 2,
+      "deletions": 2
+    },
+    {
+      "path": "python/tvm_ffi/cython/type_info.pxi",
+      "additions": 2,
+      "deletions": 2
+    },
+    {
+      "path": "src/ffi/extra/testing.cc",
+      "additions": 3,
+      "deletions": 0
+    },
+    {
+      "path": "tests/cpp/test_metadata.cc",
+      "additions": 9,
+      "deletions": 5
+    },
+    {
+      "path": "tests/python/test_metadata.py",
+      "additions": 8,
+      "deletions": 4
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/include/tvm/ffi/function_details.h b/include/tvm/ffi/function_details.h\nindex ae9de33..01c0bf1 100644\n--- a/include/tvm/ffi/function_details.h\n+++ b/include/tvm/ffi/function_details.h\n@@ -115,9 +115,9 @@ template <typename R, typename... Args>\n struct FunctionInfo<R (*)(Args...)> : FuncFunctorImpl<R, Args...> {};\n // Support pointer-to-member functions used in reflection (e.g. &Class::method)\n template <typename Class, typename R, typename... Args>\n-struct FunctionInfo<R (Class::*)(Args...)> : FuncFunctorImpl<R, Args...> {};\n+struct FunctionInfo<R (Class::*)(Args...)> : FuncFunctorImpl<R, Class*, Args...> {};\n template <typename Class, typename R, typename... Args>\n-struct FunctionInfo<R (Class::*)(Args...) const> : FuncFunctorImpl<R, Args...> {};\n+struct FunctionInfo<R (Class::*)(Args...) const> : FuncFunctorImpl<R, const Class*, Args...> {};\n \n /*! \\brief Using static function to output typed function signature */\n typedef std::string (*FGetFuncSignature)();\ndiff --git a/python/tvm_ffi/cython/type_info.pxi b/python/tvm_ffi/cython/type_info.pxi\nindex 337e3db..4abfa4a 100644\n--- a/python/tvm_ffi/cython/type_info.pxi\n+++ b/python/tvm_ffi/cython/type_info.pxi\n@@ -99,9 +99,9 @@ class TypeSchema:\n         elif origin == \"Optional\":\n             assert len(args) == 1, \"Optional must have exactly one argument\"\n         elif origin == \"list\":\n-            assert len(args) == 1, \"list must have exactly one argument\"\n+            assert len(args) in (0, 1), \"list must have 0 or 1 argument\"\n         elif origin == \"dict\":\n-            assert len(args) == 2, \"dict must have exactly two arguments\"\n+            assert len(args) in (0, 2), \"dict must have 0 or 2 arguments\"\n         elif origin == \"tuple\":\n             pass  # tuple can have arbitrary number of arguments\n \ndiff --git a/src/ffi/extra/testing.cc b/src/ffi/extra/testing.cc\nindex 555a14b..7263b43 100644\n--- a/src/ffi/extra/testing.cc\n+++ b/src/ffi/extra/testing.cc\n@@ -373,6 +373,9 @@ TVM_FFI_STATIC_INIT_BLOCK() {\n       .def(\"testing.schema_id_string\", [](String s) { return s; })\n       .def(\"testing.schema_id_bytes\", [](Bytes b) { return b; })\n       .def(\"testing.schema_id_func\", [](Function f) -> Function { return f; })\n+      .def(\"testing.schema_id_func_typed\",\n+           [](TypedFunction<void(int64_t, float, Function)> f)\n+               -> TypedFunction<void(int64_t, float, Function)> { return f; })\n       .def(\"testing.schema_id_any\", [](Any a) { return a; })\n       .def(\"testing.schema_id_object\", [](ObjectRef o) { return o; })\n       .def(\"testing.schema_id_dltensor\", [](DLTensor* t) { return t; })\ndiff --git a/tests/cpp/test_metadata.cc b/tests/cpp/test_metadata.cc\nindex e0fa054..b5fedb8 100644\n--- a/tests/cpp/test_metadata.cc\n+++ b/tests/cpp/test_metadata.cc\n@@ -70,6 +70,9 @@ TEST(Schema, GlobalFuncTypeSchema) {\n             R\"({\"type\":\"ffi.Function\",\"args\":[{\"type\":\"ffi.Bytes\"},{\"type\":\"ffi.Bytes\"}]})\");\n   EXPECT_EQ(fetch(\"testing.schema_id_func\"),\n             R\"({\"type\":\"ffi.Function\",\"args\":[{\"type\":\"ffi.Function\"},{\"type\":\"ffi.Function\"}]})\");\n+  EXPECT_EQ(\n+      fetch(\"testing.schema_id_func_typed\"),\n+      R\"({\"type\":\"ffi.Function\",\"args\":[{\"type\":\"ffi.Function\",\"args\":[{\"type\":\"None\"},{\"type\":\"int\"},{\"type\":\"float\"},{\"type\":\"ffi.Function\"}]},{\"type\":\"ffi.Function\",\"args\":[{\"type\":\"None\"},{\"type\":\"int\"},{\"type\":\"float\"},{\"type\":\"ffi.Function\"}]}]})\");\n \n   EXPECT_EQ(fetch(\"testing.schema_id_any\"),\n             R\"({\"type\":\"ffi.Function\",\"args\":[{\"type\":\"Any\"},{\"type\":\"Any\"}]})\");\n@@ -173,17 +176,18 @@ TEST(Schema, MethodTypeSchemas) {\n   };\n \n   // Instance methods\n-  EXPECT_EQ(method_schema(\"add_int\"),\n-            R\"({\"type\":\"ffi.Function\",\"args\":[{\"type\":\"int\"},{\"type\":\"int\"}]})\");\n+  EXPECT_EQ(\n+      method_schema(\"add_int\"),\n+      R\"({\"type\":\"ffi.Function\",\"args\":[{\"type\":\"int\"},{\"type\":\"testing.SchemaAllTypes\"},{\"type\":\"int\"}]})\");\n   EXPECT_EQ(\n       method_schema(\"append_int\"),\n-      R\"({\"type\":\"ffi.Function\",\"args\":[{\"type\":\"ffi.Array\",\"args\":[{\"type\":\"int\"}]},{\"type\":\"ffi.Array\",\"args\":[{\"type\":\"int\"}]},{\"type\":\"int\"}]})\");\n+      R\"({\"type\":\"ffi.Function\",\"args\":[{\"type\":\"ffi.Array\",\"args\":[{\"type\":\"int\"}]},{\"type\":\"testing.SchemaAllTypes\"},{\"type\":\"ffi.Array\",\"args\":[{\"type\":\"int\"}]},{\"type\":\"int\"}]})\");\n   EXPECT_EQ(\n       method_schema(\"maybe_concat\"),\n-      R\"({\"type\":\"ffi.Function\",\"args\":[{\"type\":\"Optional\",\"args\":[{\"type\":\"ffi.String\"}]},{\"type\":\"Optional\",\"args\":[{\"type\":\"ffi.String\"}]},{\"type\":\"Optional\",\"args\":[{\"type\":\"ffi.String\"}]}]})\");\n+      R\"({\"type\":\"ffi.Function\",\"args\":[{\"type\":\"Optional\",\"args\":[{\"type\":\"ffi.String\"}]},{\"type\":\"testing.SchemaAllTypes\"},{\"type\":\"Optional\",\"args\":[{\"type\":\"ffi.String\"}]},{\"type\":\"Optional\",\"args\":[{\"type\":\"ffi.String\"}]}]})\");\n   EXPECT_EQ(\n       method_schema(\"merge_map\"),\n-      R\"({\"type\":\"ffi.Function\",\"args\":[{\"type\":\"ffi.Map\",\"args\":[{\"type\":\"ffi.String\"},{\"type\":\"ffi.Array\",\"args\":[{\"type\":\"int\"}]}]},{\"type\":\"ffi.Map\",\"args\":[{\"type\":\"ffi.String\"},{\"type\":\"ffi.Array\",\"args\":[{\"type\":\"int\"}]}]},{\"type\":\"ffi.Map\",\"args\":[{\"type\":\"ffi.String\"},{\"type\":\"ffi.Array\",\"args\":[{\"type\":\"int\"}]}]}]})\");\n+      R\"({\"type\":\"ffi.Function\",\"args\":[{\"type\":\"ffi.Map\",\"args\":[{\"type\":\"ffi.String\"},{\"type\":\"ffi.Array\",\"args\":[{\"type\":\"int\"}]}]},{\"type\":\"testing.SchemaAllTypes\"},{\"type\":\"ffi.Map\",\"args\":[{\"type\":\"ffi.String\"},{\"type\":\"ffi.Array\",\"args\":[{\"type\":\"int\"}]}]},{\"type\":\"ffi.Map\",\"args\":[{\"type\":\"ffi.String\"},{\"type\":\"ffi.Array\",\"args\":[{\"type\":\"int\"}]}]}]})\");\n \n   // Static method make_with: return type is the object type itself.\n   // Build expected JSON as ffi.Function with return type = type_key and args = (int, float, str)\ndiff --git a/tests/python/test_metadata.py b/tests/python/test_metadata.py\nindex 527ffba..9f69bcc 100644\n--- a/tests/python/test_metadata.py\n+++ b/tests/python/test_metadata.py\n@@ -33,6 +33,10 @@ from tvm_ffi.testing import _SchemaAllTypes\n         (\"testing.schema_id_string\", \"Callable[[str], str]\"),\n         (\"testing.schema_id_bytes\", \"Callable[[bytes], bytes]\"),\n         (\"testing.schema_id_func\", \"Callable[[Callable[..., Any]], Callable[..., Any]]\"),\n+        (\n+            \"testing.schema_id_func_typed\",\n+            \"Callable[[Callable[[int, float, Callable[..., Any]], None]], Callable[[int, float, Callable[..., Any]], None]]\",\n+        ),\n         (\"testing.schema_id_any\", \"Callable[[Any], Any]\"),\n         (\"testing.schema_id_object\", \"Callable[[Object], Object]\"),\n         (\"testing.schema_id_dltensor\", \"Callable[[Tensor], Tensor]\"),\n@@ -99,12 +103,12 @@ def test_schema_field(field_name: str, expected: str) -> None:\n @pytest.mark.parametrize(\n     \"method_name,expected\",\n     [\n-        (\"add_int\", \"Callable[[int], int]\"),\n-        (\"append_int\", \"Callable[[list[int], int], list[int]]\"),\n-        (\"maybe_concat\", \"Callable[[str | None, str | None], str | None]\"),\n+        (\"add_int\", \"Callable[[testing.SchemaAllTypes, int], int]\"),\n+        (\"append_int\", \"Callable[[testing.SchemaAllTypes, list[int], int], list[int]]\"),\n+        (\"maybe_concat\", \"Callable[[testing.SchemaAllTypes, str | None, str | None], str | None]\"),\n         (\n             \"merge_map\",\n-            \"Callable[[dict[str, list[int]], dict[str, list[int]]], dict[str, list[int]]]\",\n+            \"Callable[[testing.SchemaAllTypes, dict[str, list[int]], dict[str, list[int]]], dict[str, list[int]]]\",\n         ),\n         (\"make_with\", \"Callable[[int, float, str], testing.SchemaAllTypes]\"),\n     ],",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".cc",
+      ".h",
+      ".pxi",
+      ".py"
+    ],
+    "scopes_guess": [
+      "include",
+      "python",
+      "src",
+      "tests"
+    ]
+  }
+}

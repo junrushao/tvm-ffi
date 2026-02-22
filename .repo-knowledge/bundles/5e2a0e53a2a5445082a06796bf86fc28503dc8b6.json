@@ -1,0 +1,164 @@
+{
+  "sha": "5e2a0e53a2a5445082a06796bf86fc28503dc8b6",
+  "sha7": "5e2a0e5",
+  "author_name": "Yichen Yan",
+  "author_email": "oraluben@outlook.com",
+  "date_iso": "2025-10-16T23:41:04+08:00",
+  "subject": "Enable py38 build (#145)",
+  "body":
+      "Add support for cpython 3.8.\n\n---------\n\nCo-authored-by: Junru Shao <junrushao1994@gmail.com>",
+  "is_merge": false,
+  "parents": [
+    "af258380b8d3e1a9c48558a28e0dec8c7969fb35"
+  ],
+  "name_status": [
+    [
+      "M",
+      ".gitignore"
+    ],
+    [
+      "M",
+      "pyproject.toml"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/_dtype.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/_optional_torch_c_dlpack.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/base.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/container.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/dataclasses/c_class.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/libinfo.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/module.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/stream.py"
+    ],
+    [
+      "M",
+      "tests/lint/check_asf_header.py"
+    ],
+    [
+      "M",
+      "tests/lint/check_version.py"
+    ],
+    [
+      "M",
+      "tests/lint/clang_tidy_precommit.py"
+    ],
+    [
+      "M",
+      "tests/scripts/benchmark_dlpack.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": ".gitignore",
+      "additions": 1,
+      "deletions": 0
+    },
+    {
+      "path": "pyproject.toml",
+      "additions": 6,
+      "deletions": 5
+    },
+    {
+      "path": "python/tvm_ffi/_dtype.py",
+      "additions": 4,
+      "deletions": 2
+    },
+    {
+      "path": "python/tvm_ffi/_optional_torch_c_dlpack.py",
+      "additions": 4,
+      "deletions": 0
+    },
+    {
+      "path": "python/tvm_ffi/base.py",
+      "additions": 2,
+      "deletions": 2
+    },
+    {
+      "path": "python/tvm_ffi/container.py",
+      "additions": 25,
+      "deletions": 1
+    },
+    {
+      "path": "python/tvm_ffi/dataclasses/c_class.py",
+      "additions": 2,
+      "deletions": 0
+    },
+    {
+      "path": "python/tvm_ffi/libinfo.py",
+      "additions": 2,
+      "deletions": 0
+    },
+    {
+      "path": "python/tvm_ffi/module.py",
+      "additions": 4,
+      "deletions": 2
+    },
+    {
+      "path": "python/tvm_ffi/stream.py",
+      "additions": 9,
+      "deletions": 7
+    },
+    {
+      "path": "tests/lint/check_asf_header.py",
+      "additions": 4,
+      "deletions": 3
+    },
+    {
+      "path": "tests/lint/check_version.py",
+      "additions": 4,
+      "deletions": 3
+    },
+    {
+      "path": "tests/lint/clang_tidy_precommit.py",
+      "additions": 1,
+      "deletions": 0
+    },
+    {
+      "path": "tests/scripts/benchmark_dlpack.py",
+      "additions": 2,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/.gitignore b/.gitignore\nindex 1507523..ae2591b 100644\n--- a/.gitignore\n+++ b/.gitignore\n@@ -31,6 +31,7 @@ parts/\n sdist/\n var/\n wheels/\n+wheelhouse/\n pip-wheel-metadata/\n share/python-wheels/\n *.egg-info/\ndiff --git a/pyproject.toml b/pyproject.toml\nindex 4e0e2b8..83a87a4 100644\n--- a/pyproject.toml\n+++ b/pyproject.toml\n@@ -31,7 +31,7 @@ classifiers = [\n   \"Intended Audience :: Science/Research\",\n ]\n keywords = [\"machine learning\", \"inference\"]\n-requires-python = \">=3.9\"\n+requires-python = \">=3.8\"\n dependencies = [\"typing-extensions>=4.5\"]\n \n [project.urls]\n@@ -173,7 +173,7 @@ testpaths = [\"tests\"]\n include = [\"python/**/*.py\", \"tests/**/*.py\"]\n line-length = 100\n indent-width = 4\n-target-version = \"py39\"\n+target-version = \"py38\"\n \n [tool.ruff.lint]\n select = [\n@@ -183,6 +183,7 @@ select = [\n   \"RUF\", # ruff, https://docs.astral.sh/ruff/rules/#ruff-specific-rules-ruf\n   \"NPY\", # numpy, https://docs.astral.sh/ruff/rules/#numpy-specific-rules-npy\n   \"F\",   # pyflakes, https://docs.astral.sh/ruff/rules/#pyflakes-f\n+  \"FA\",  # flake8-future-annotations, https://docs.astral.sh/ruff/rules/#flake8-future-annotations-fa\n   \"ANN\", # flake8-annotations, https://docs.astral.sh/ruff/rules/#flake8-annotations-ann\n   \"PTH\", # flake8-use-pathlib, https://docs.astral.sh/ruff/rules/#flake8-use-pathlib-pth\n   \"D\",   # pydocstyle, https://docs.astral.sh/ruff/rules/#pydocstyle-d\n@@ -224,10 +225,10 @@ build-verbosity = 1\n # only build up to cp312, cp312\n # will be abi3 and can be used in future versions\n # ship 314t threaded nogil version\n-build = [\"cp39-*\", \"cp310-*\", \"cp311-*\", \"cp312-*\", \"cp314t-*\"]\n+build = [\"cp38-*\", \"cp39-*\", \"cp310-*\", \"cp311-*\", \"cp312-*\", \"cp314t-*\"]\n skip = [\"*musllinux*\"]\n # we only need to test on cp312\n-test-skip = [\"cp39-*\", \"cp310-*\", \"cp311-*\"]\n+test-skip = [\"cp38-*\", \"cp39-*\", \"cp310-*\", \"cp311-*\"]\n # focus on testing abi3 wheel\n build-frontend = \"build[uv]\"\n test-command = \"pytest {package}/tests/python -vvs\"\n@@ -244,7 +245,7 @@ environment = { MACOSX_DEPLOYMENT_TARGET = \"10.14\" }\n archs = [\"AMD64\"]\n \n [tool.mypy]\n-python_version = \"3.9\"\n+python_version = \"3.8\"\n show_error_codes = true\n mypy_path = [\"python\", \"examples\", \"tests/python\"]\n files = [\"python/tvm_ffi\", \"examples\", \"tests/python\"]\ndiff --git a/python/tvm_ffi/_dtype.py b/python/tvm_ffi/_dtype.py\nindex 3aae074..b712c65 100644\n--- a/python/tvm_ffi/_dtype.py\n+++ b/python/tvm_ffi/_dtype.py\n@@ -17,6 +17,8 @@\n \"\"\"dtype class.\"\"\"\n \n # pylint: disable=invalid-name\n+from __future__ import annotations\n+\n from enum import IntEnum\n from typing import Any, ClassVar\n \n@@ -63,7 +65,7 @@ class dtype(str):\n \n     _NUMPY_DTYPE_TO_STR: ClassVar[dict[Any, str]] = {}\n \n-    def __new__(cls, content: Any) -> \"dtype\":\n+    def __new__(cls, content: Any) -> dtype:\n         content = str(content)\n         val = str.__new__(cls, content)\n         val.__tvm_ffi_dtype__ = core.DataType(content)\n@@ -72,7 +74,7 @@ class dtype(str):\n     def __repr__(self) -> str:\n         return f\"dtype('{self}')\"\n \n-    def with_lanes(self, lanes: int) -> \"dtype\":\n+    def with_lanes(self, lanes: int) -> dtype:\n         \"\"\"Create a new dtype with the given number of lanes.\n \n         Parameters\ndiff --git a/python/tvm_ffi/_optional_torch_c_dlpack.py b/python/tvm_ffi/_optional_torch_c_dlpack.py\nindex ee50e5f..3cc1529 100644\n--- a/python/tvm_ffi/_optional_torch_c_dlpack.py\n+++ b/python/tvm_ffi/_optional_torch_c_dlpack.py\n@@ -30,6 +30,8 @@ This module will load slowly at first time due to JITing,\n subsequent calls will be much faster.\n \"\"\"\n \n+from __future__ import annotations\n+\n import warnings\n from typing import Any\n \n@@ -69,6 +71,7 @@ DLDataType getDLDataTypeForDLPackv1(const Tensor& t) {\n     case ScalarType::UInt64:\n       dtype.code = DLDataTypeCode::kDLUInt;\n       break;\n+#if TORCH_VERSION_MAJOR >= 2 && TORCH_VERSION_MINOR >= 6\n     case ScalarType::Int1:\n     case ScalarType::Int2:\n     case ScalarType::Int3:\n@@ -79,6 +82,7 @@ DLDataType getDLDataTypeForDLPackv1(const Tensor& t) {\n     case ScalarType::Char:\n       dtype.code = DLDataTypeCode::kDLInt;\n       break;\n+#endif\n     case ScalarType::Double:\n       dtype.code = DLDataTypeCode::kDLFloat;\n       break;\ndiff --git a/python/tvm_ffi/base.py b/python/tvm_ffi/base.py\nindex 3ec2feb..3a3eede 100644\n--- a/python/tvm_ffi/base.py\n+++ b/python/tvm_ffi/base.py\n@@ -29,8 +29,8 @@ logger = logging.getLogger(__name__)\n # ----------------------------\n # Python3 version.\n # ----------------------------\n-if not (sys.version_info[0] >= 3 and sys.version_info[1] >= 9):\n-    PY3STATEMENT = \"The minimal Python requirement is Python 3.9\"\n+if not (sys.version_info[0] >= 3 and sys.version_info[1] >= 8):\n+    PY3STATEMENT = \"The minimal Python requirement is Python 3.8\"\n     raise Exception(PY3STATEMENT)\n \n # ----------------------------\ndiff --git a/python/tvm_ffi/container.py b/python/tvm_ffi/container.py\nindex a1b51a4..046f8c9 100644\n--- a/python/tvm_ffi/container.py\n+++ b/python/tvm_ffi/container.py\n@@ -20,15 +20,39 @@ from __future__ import annotations\n \n import itertools\n import operator\n+import sys\n from collections.abc import ItemsView as ItemsViewBase\n from collections.abc import Iterable, Iterator, Mapping, Sequence\n from collections.abc import KeysView as KeysViewBase\n from collections.abc import ValuesView as ValuesViewBase\n-from typing import Any, Callable, SupportsIndex, TypeVar, cast, overload\n+from typing import (\n+    Any,\n+    Callable,\n+    SupportsIndex,\n+    TypeVar,\n+    cast,\n+    overload,\n+)\n \n from . import _ffi_api, core\n from .registry import register_object\n \n+# workarounds for python 3.8\n+if not (sys.version_info[0] == 3 and sys.version_info[1] <= 8):\n+    from typing import (\n+        ItemsView as ItemsViewBase,\n+    )\n+    from typing import (\n+        KeysView as KeysViewBase,\n+    )\n+    from typing import (\n+        Mapping,\n+        Sequence,\n+    )\n+    from typing import (\n+        ValuesView as ValuesViewBase,\n+    )\n+\n __all__ = [\"Array\", \"Map\"]\n \n \ndiff --git a/python/tvm_ffi/dataclasses/c_class.py b/python/tvm_ffi/dataclasses/c_class.py\nindex 35c22d7..0a09740 100644\n--- a/python/tvm_ffi/dataclasses/c_class.py\n+++ b/python/tvm_ffi/dataclasses/c_class.py\n@@ -23,6 +23,8 @@ properties that forward to the underlying C++ object, while an ``__init__``\n method is synthesized to call the FFI constructor when requested.\n \"\"\"\n \n+from __future__ import annotations\n+\n from collections.abc import Callable\n from dataclasses import InitVar\n from typing import ClassVar, TypeVar, get_origin, get_type_hints\ndiff --git a/python/tvm_ffi/libinfo.py b/python/tvm_ffi/libinfo.py\nindex c59bd60..a16d5fc 100644\n--- a/python/tvm_ffi/libinfo.py\n+++ b/python/tvm_ffi/libinfo.py\n@@ -20,6 +20,8 @@ This module also provides helpers to locate and load platform-specific shared\n libraries by a base name (e.g., ``tvm_ffi`` -> ``libtvm_ffi.so`` on Linux).\n \"\"\"\n \n+from __future__ import annotations\n+\n import os\n import sys\n from pathlib import Path\ndiff --git a/python/tvm_ffi/module.py b/python/tvm_ffi/module.py\nindex 659a641..1b53d89 100644\n--- a/python/tvm_ffi/module.py\n+++ b/python/tvm_ffi/module.py\n@@ -15,7 +15,9 @@\n # specific language governing permissions and limitations\n # under the License.\n \"\"\"Module related objects and functions.\"\"\"\n+\n # pylint: disable=invalid-name\n+from __future__ import annotations\n \n from collections.abc import Sequence\n from enum import IntEnum\n@@ -98,7 +100,7 @@ class Module(core.Object):\n         return _ffi_api.ModuleGetKind(self)\n \n     @property\n-    def imports(self) -> list[\"Module\"]:\n+    def imports(self) -> list[Module]:\n         \"\"\"Get imported modules.\n \n         Returns\n@@ -168,7 +170,7 @@ class Module(core.Object):\n             raise AttributeError(f\"Module has no function '{name}'\")\n         return func\n \n-    def import_module(self, module: \"Module\") -> None:\n+    def import_module(self, module: Module) -> None:\n         \"\"\"Add module to the import list of current one.\n \n         Parameters\ndiff --git a/python/tvm_ffi/stream.py b/python/tvm_ffi/stream.py\nindex b2083f3..ee71e5d 100644\n--- a/python/tvm_ffi/stream.py\n+++ b/python/tvm_ffi/stream.py\n@@ -17,8 +17,10 @@\n # pylint: disable=invalid-name\n \"\"\"Stream context.\"\"\"\n \n+from __future__ import annotations\n+\n from ctypes import c_void_p\n-from typing import Any, Union\n+from typing import Any\n \n from . import core\n from ._tensor import device\n@@ -46,13 +48,13 @@ class StreamContext:\n \n     \"\"\"\n \n-    def __init__(self, device: core.Device, stream: Union[int, c_void_p]) -> None:\n+    def __init__(self, device: core.Device, stream: int | c_void_p) -> None:\n         \"\"\"Initialize a stream context with a device and stream handle.\"\"\"\n         self.device_type = device.dlpack_device_type()\n         self.device_id = device.index\n         self.stream = stream\n \n-    def __enter__(self) -> \"StreamContext\":\n+    def __enter__(self) -> StreamContext:\n         \"\"\"Enter the context and set the current stream.\"\"\"\n         self.prev_stream = core._env_set_current_stream(\n             self.device_type, self.device_id, self.stream\n@@ -76,7 +78,7 @@ try:\n             \"\"\"Initialize with an optional Torch stream/graph context wrapper.\"\"\"\n             self.torch_context = context\n \n-        def __enter__(self) -> \"TorchStreamContext\":\n+        def __enter__(self) -> TorchStreamContext:\n             \"\"\"Enter both Torch and FFI stream contexts.\"\"\"\n             if self.torch_context:\n                 self.torch_context.__enter__()\n@@ -93,7 +95,7 @@ try:\n                 self.torch_context.__exit__(*args)\n             self.ffi_context.__exit__(*args)\n \n-    def use_torch_stream(context: Any = None) -> \"TorchStreamContext\":\n+    def use_torch_stream(context: Any = None) -> TorchStreamContext:\n         \"\"\"Create an FFI stream context with a Torch stream or graph.\n \n         cuda graph or current stream if `None` provided.\n@@ -129,12 +131,12 @@ try:\n \n except ImportError:\n \n-    def use_torch_stream(context: Any = None) -> \"TorchStreamContext\":\n+    def use_torch_stream(context: Any = None) -> TorchStreamContext:\n         \"\"\"Raise an informative error when Torch is unavailable.\"\"\"\n         raise ImportError(\"Cannot import torch\")\n \n \n-def use_raw_stream(device: core.Device, stream: Union[int, c_void_p]) -> StreamContext:\n+def use_raw_stream(device: core.Device, stream: int | c_void_p) -> StreamContext:\n     \"\"\"Create a ffi stream context with given device and stream handle.\n \n     Parameters\ndiff --git a/tests/lint/check_asf_header.py b/tests/lint/check_asf_header.py\nindex 713520f..efc3546 100644\n--- a/tests/lint/check_asf_header.py\n+++ b/tests/lint/check_asf_header.py\n@@ -16,12 +16,13 @@\n # under the License.\n \"\"\"Helper tool to add ASF header to files that cannot be handled by Rat.\"\"\"\n \n+from __future__ import annotations\n+\n import argparse\n import fnmatch\n import subprocess\n import sys\n from pathlib import Path\n-from typing import Optional\n \n header_cstyle = \"\"\"\n /*\n@@ -181,7 +182,7 @@ def should_skip_file(filepath: str) -> bool:\n     return False\n \n \n-def get_git_files() -> Optional[list[str]]:\n+def get_git_files() -> list[str] | None:\n     \"\"\"Get list of files tracked by git.\"\"\"\n     try:\n         result = subprocess.run(\n@@ -242,7 +243,7 @@ def check_header(fname: str, header: str) -> bool:\n     return True\n \n \n-def collect_files() -> Optional[list[str]]:\n+def collect_files() -> list[str] | None:\n     \"\"\"Collect all files that need header checking from git.\"\"\"\n     files = []\n \ndiff --git a/tests/lint/check_version.py b/tests/lint/check_version.py\nindex f853d9e..10aca3b 100644\n--- a/tests/lint/check_version.py\n+++ b/tests/lint/check_version.py\n@@ -16,15 +16,16 @@\n # under the License.\n \"\"\"Helper tool to check version consistency between pyproject.toml and __init__.py.\"\"\"\n \n+from __future__ import annotations\n+\n import re\n import sys\n from pathlib import Path\n-from typing import Optional\n \n import tomli\n \n \n-def read_pyproject_version(pyproject_path: Path) -> Optional[str]:\n+def read_pyproject_version(pyproject_path: Path) -> str | None:\n     \"\"\"Read version from pyproject.toml.\"\"\"\n     with pyproject_path.open(\"rb\") as f:\n         data = tomli.load(f)\n@@ -32,7 +33,7 @@ def read_pyproject_version(pyproject_path: Path) -> Optional[str]:\n     return data.get(\"project\", {}).get(\"version\")\n \n \n-def read_init_version(init_path: Path) -> Optional[str]:\n+def read_init_version(init_path: Path) -> str | None:\n     \"\"\"Read __version__ from __init__.py.\"\"\"\n     with init_path.open(encoding=\"utf-8\") as f:\n         content = f.read()\ndiff --git a/tests/lint/clang_tidy_precommit.py b/tests/lint/clang_tidy_precommit.py\nindex 3b0ec3c..9b20d7f 100644\n--- a/tests/lint/clang_tidy_precommit.py\n+++ b/tests/lint/clang_tidy_precommit.py\n@@ -14,6 +14,7 @@\n # KIND, either express or implied.  See the License for the\n # specific language governing permissions and limitations\n # under the License.\n+from __future__ import annotations\n \n import os\n import subprocess\ndiff --git a/tests/scripts/benchmark_dlpack.py b/tests/scripts/benchmark_dlpack.py\nindex 0196ee7..a4833f2 100644\n--- a/tests/scripts/benchmark_dlpack.py\n+++ b/tests/scripts/benchmark_dlpack.py\n@@ -30,6 +30,8 @@ Summary of some takeaways:\n - torch.add on gpu takes about 3.7us per call, giving us an idea of what roughly we need to get to in eager mode.\n \"\"\"\n \n+from __future__ import annotations\n+\n import time\n from typing import Any, Callable\n ",
+  "heuristics": {
+    "tags": [
+      "build",
+      "test"
+    ],
+    "extensions": [
+      "",
+      ".py",
+      ".toml"
+    ],
+    "scopes_guess": [
+      ".gitignore",
+      "pyproject.toml",
+      "python",
+      "tests"
+    ]
+  }
+}

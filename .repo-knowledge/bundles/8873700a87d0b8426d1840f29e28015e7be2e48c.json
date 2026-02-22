@@ -1,0 +1,137 @@
+{
+  "sha": "8873700a87d0b8426d1840f29e28015e7be2e48c",
+  "sha7": "8873700",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-10-14T11:58:27-04:00",
+  "subject": "[CYTHON][REFACTOR] __tvm_ffi_object__ protocol (#115)",
+  "body":
+      "This PR does two things:\n- We renamed `PyNativeObject.__tvm_ffi_object__` to\n`_tvm_ffi_cached_object` This is because the dunder convention is\nnormally used for functions instead of attributes\n- We then updated the original `__tvm_ffi_tensor__` protocol to\n`__tvm_ffi_object__` so that the same protocol can be used for generic\nobjects.\n\nGiven the original attribute is hidden to user and we did not yet\nintroduce `__tvm_ffi_tensor__` in a formal release, the change should\nhave low impact. We will however freeze the protocol for formal release\nideally soon.",
+  "is_merge": false,
+  "parents": [
+    "7b57a46648662b11b483f252787db22ab701231f"
+  ],
+  "name_status": [
+    [
+      "M",
+      "pyproject.toml"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/__init__.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/_tensor.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/core.pyi"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/cython/function.pxi"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/cython/object.pxi"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/cython/string.pxi"
+    ],
+    [
+      "M",
+      "tests/python/test_function.py"
+    ],
+    [
+      "M",
+      "tests/python/test_object.py"
+    ],
+    [
+      "M",
+      "tests/python/test_tensor.py"
+    ],
+    [
+      "M",
+      "tests/scripts/benchmark_dlpack.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "pyproject.toml",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "python/tvm_ffi/__init__.py",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "python/tvm_ffi/_tensor.py",
+      "additions": 3,
+      "deletions": 3
+    },
+    {
+      "path": "python/tvm_ffi/core.pyi",
+      "additions": 5,
+      "deletions": 5
+    },
+    {
+      "path": "python/tvm_ffi/cython/function.pxi",
+      "additions": 21,
+      "deletions": 21
+    },
+    {
+      "path": "python/tvm_ffi/cython/object.pxi",
+      "additions": 3,
+      "deletions": 3
+    },
+    {
+      "path": "python/tvm_ffi/cython/string.pxi",
+      "additions": 5,
+      "deletions": 5
+    },
+    {
+      "path": "tests/python/test_function.py",
+      "additions": 2,
+      "deletions": 2
+    },
+    {
+      "path": "tests/python/test_object.py",
+      "additions": 16,
+      "deletions": 0
+    },
+    {
+      "path": "tests/python/test_tensor.py",
+      "additions": 4,
+      "deletions": 4
+    },
+    {
+      "path": "tests/scripts/benchmark_dlpack.py",
+      "additions": 3,
+      "deletions": 3
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/pyproject.toml b/pyproject.toml\nindex def1d80..f5ee20f 100644\n--- a/pyproject.toml\n+++ b/pyproject.toml\n@@ -17,7 +17,7 @@\n \n [project]\n name = \"apache-tvm-ffi\"\n-version = \"0.1.0b17\"\n+version = \"0.1.0b18\"\n description = \"tvm ffi\"\n \n authors = [{ name = \"TVM FFI team\" }]\ndiff --git a/python/tvm_ffi/__init__.py b/python/tvm_ffi/__init__.py\nindex 5d32c92..df04cf1 100644\n--- a/python/tvm_ffi/__init__.py\n+++ b/python/tvm_ffi/__init__.py\n@@ -17,7 +17,7 @@\n \"\"\"TVM FFI Python package.\"\"\"\n \n # version\n-__version__ = \"0.1.0b17\"\n+__version__ = \"0.1.0b18\"\n \n # order matters here so we need to skip isort here\n # isort: skip_file\ndiff --git a/python/tvm_ffi/_tensor.py b/python/tvm_ffi/_tensor.py\nindex 512ba44..a4714b2 100644\n--- a/python/tvm_ffi/_tensor.py\n+++ b/python/tvm_ffi/_tensor.py\n@@ -45,13 +45,13 @@ class Shape(tuple, PyNativeObject):\n \n     \"\"\"\n \n-    __tvm_ffi_object__: Any\n+    _tvm_ffi_cached_object: Any\n \n     def __new__(cls, content: tuple[int, ...]) -> Shape:\n         if any(not isinstance(x, Integral) for x in content):\n             raise ValueError(\"Shape must be a tuple of integers\")\n         val: Shape = tuple.__new__(cls, content)\n-        val.__init_tvm_ffi_object_by_constructor__(_ffi_api.Shape, *content)\n+        val.__init_cached_object_by_constructor__(_ffi_api.Shape, *content)\n         return val\n \n     # pylint: disable=no-self-argument\n@@ -59,7 +59,7 @@ class Shape(tuple, PyNativeObject):\n         \"\"\"Construct from a given tvm object.\"\"\"\n         content = _shape_obj_get_py_tuple(obj)\n         val: Shape = tuple.__new__(cls, content)  # type: ignore[arg-type]\n-        val.__tvm_ffi_object__ = obj  # type: ignore[attr-defined]\n+        val._tvm_ffi_cached_object = obj  # type: ignore[attr-defined]\n         return val\n \n \ndiff --git a/python/tvm_ffi/core.pyi b/python/tvm_ffi/core.pyi\nindex 3496ece..5ad8269 100644\n--- a/python/tvm_ffi/core.pyi\n+++ b/python/tvm_ffi/core.pyi\n@@ -206,7 +206,7 @@ class PyNativeObject:\n     \"\"\"\n \n     __slots__: list[str]\n-    def __init_tvm_ffi_object_by_constructor__(self, fconstructor: Any, *args: Any) -> None: ...\n+    def __init_cached_object_by_constructor__(self, fconstructor: Any, *args: Any) -> None: ...\n \n def _set_class_object(cls: type) -> None: ...\n def _register_object_by_index(type_index: int, type_cls: type) -> TypeInfo: ...\n@@ -602,8 +602,8 @@ class String(str, PyNativeObject):\n \n     \"\"\"\n \n-    __slots__ = [\"__tvm_ffi_object__\"]\n-    __tvm_ffi_object__: Object | None\n+    __slots__ = [\"_tvm_ffi_cached_object\"]\n+    _tvm_ffi_cached_object: Object | None\n \n     def __new__(cls, value: str) -> String:\n         \"\"\"Create a new ``String`` from a Python ``str``.\"\"\"\n@@ -620,8 +620,8 @@ class Bytes(bytes, PyNativeObject):\n     layer constructs :class:`Bytes` as needed.\n     \"\"\"\n \n-    __slots__ = [\"__tvm_ffi_object__\"]\n-    __tvm_ffi_object__: Object | None\n+    __slots__ = [\"_tvm_ffi_cached_object\"]\n+    _tvm_ffi_cached_object: Object | None\n \n     def __new__(cls, value: bytes) -> Bytes:\n         \"\"\"Create a new ``Bytes`` from a Python ``bytes`` value.\"\"\"\ndiff --git a/python/tvm_ffi/cython/function.pxi b/python/tvm_ffi/cython/function.pxi\nindex 6fc2a7b..cd35a7e 100644\n--- a/python/tvm_ffi/cython/function.pxi\n+++ b/python/tvm_ffi/cython/function.pxi\n@@ -267,17 +267,17 @@ cdef int TVMFFIPyArgSetterDLPack_(\n     return 0\n \n \n-cdef int TVMFFIPyArgSetterFFITensorCompatible_(\n+cdef int TVMFFIPyArgSetterFFIObjectCompatible_(\n     TVMFFIPyArgSetter* handle, TVMFFIPyCallContext* ctx,\n     PyObject* py_arg, TVMFFIAny* out\n ) except -1:\n-    \"\"\"Setter for objects that implement the `__tvm_ffi_tensor__` protocol.\"\"\"\n+    \"\"\"Setter for objects that implement the `__tvm_ffi_object__` protocol.\"\"\"\n     cdef object arg = <object>py_arg\n     cdef TVMFFIObjectHandle temp_chandle\n-    cdef Tensor tensor = arg.__tvm_ffi_tensor__()\n-    cdef long ref_count = Py_REFCNT(tensor)\n-    temp_chandle = tensor.chandle\n-    out.type_index = kTVMFFITensor\n+    cdef Object obj = arg.__tvm_ffi_object__()\n+    cdef long ref_count = Py_REFCNT(obj)\n+    temp_chandle = obj.chandle\n+    out.type_index = TVMFFIObjectGetTypeIndex(temp_chandle)\n     out.v_ptr = temp_chandle\n     if ref_count == 1:\n         # keep alive the tensor, since the tensor is temporary\n@@ -349,11 +349,11 @@ cdef int TVMFFIPyArgSetterPyNativeObjectStr_(\n     TVMFFIPyArgSetter* handle, TVMFFIPyCallContext* ctx,\n     PyObject* py_arg, TVMFFIAny* out\n ) except -1:\n-    \"\"\"Specially handle String as its __tvm_ffi_object__ may be empty\"\"\"\n+    \"\"\"Specially handle String as its _tvm_ffi_cached_object may be empty\"\"\"\n     cdef object arg = <object>py_arg\n     # need to check if the arg is a large string returned from ffi\n-    if arg.__tvm_ffi_object__ is not None:\n-        arg = arg.__tvm_ffi_object__\n+    if arg._tvm_ffi_cached_object is not None:\n+        arg = arg._tvm_ffi_cached_object\n         out.type_index = TVMFFIObjectGetTypeIndex((<Object>arg).chandle)\n         out.v_ptr = (<Object>arg).chandle\n         return 0\n@@ -388,11 +388,11 @@ cdef int TVMFFIPyArgSetterPyNativeObjectBytes_(\n     TVMFFIPyArgSetter* handle, TVMFFIPyCallContext* ctx,\n     PyObject* py_arg, TVMFFIAny* out\n ) except -1:\n-    \"\"\"Specially handle Bytes as its __tvm_ffi_object__ may be empty\"\"\"\n+    \"\"\"Specially handle Bytes as its _tvm_ffi_cached_object may be empty\"\"\"\n     cdef object arg = <object>py_arg\n     # need to check if the arg is a large bytes returned from ffi\n-    if arg.__tvm_ffi_object__ is not None:\n-        arg = arg.__tvm_ffi_object__\n+    if arg._tvm_ffi_cached_object is not None:\n+        arg = arg._tvm_ffi_cached_object\n         out.type_index = TVMFFIObjectGetTypeIndex((<Object>arg).chandle)\n         out.v_ptr = (<Object>arg).chandle\n         return 0\n@@ -403,12 +403,12 @@ cdef int TVMFFIPyArgSetterPyNativeObjectGeneral_(\n     TVMFFIPyArgSetter* handle, TVMFFIPyCallContext* ctx,\n     PyObject* py_arg, TVMFFIAny* out\n ) except -1:\n-    \"\"\"Specially handle Bytes as its __tvm_ffi_object__ may be empty\"\"\"\n+    \"\"\"Specially handle Object as its _tvm_ffi_cached_object may be empty\"\"\"\n     cdef object arg = <object>py_arg\n-    if arg.__tvm_ffi_object__ is None:\n-        raise ValueError(f\"__tvm_ffi_object__ is None for {type(arg)}\")\n-    assert arg.__tvm_ffi_object__ is not None\n-    arg = arg.__tvm_ffi_object__\n+    if arg._tvm_ffi_cached_object is None:\n+        raise ValueError(f\"_tvm_ffi_cached_object is None for {type(arg)}\")\n+    assert arg._tvm_ffi_cached_object is not None\n+    arg = arg._tvm_ffi_cached_object\n     out.type_index = TVMFFIObjectGetTypeIndex((<Object>arg).chandle)\n     out.v_ptr = (<Object>arg).chandle\n     return 0\n@@ -605,11 +605,11 @@ cdef int TVMFFIPyArgSetterFactory_(PyObject* value, TVMFFIPyArgSetter* out) exce\n         out.func = TVMFFIPyArgSetterObjectRValueRef_\n         return 0\n     arg_class = type(arg)\n-    if hasattr(arg_class, \"__tvm_ffi_tensor__\"):\n-        # can directly map to tvm ffi tensor\n-        # usually used for solutions that takes ffi.Tensor\n+    if hasattr(arg_class, \"__tvm_ffi_object__\"):\n+        # can directly map to tvm ffi object\n+        # usually used for solutions that takes subclass of ffi.Object\n         # as a member variable\n-        out.func = TVMFFIPyArgSetterFFITensorCompatible_\n+        out.func = TVMFFIPyArgSetterFFIObjectCompatible_\n         return 0\n     if os.environ.get(\"TVM_FFI_SKIP_c_dlpack_from_pyobject\", \"0\") != \"1\":\n         # Check for DLPackExchangeAPI struct (new approach)\ndiff --git a/python/tvm_ffi/cython/object.pxi b/python/tvm_ffi/cython/object.pxi\nindex b52b328..a8a73b0 100644\n--- a/python/tvm_ffi/cython/object.pxi\n+++ b/python/tvm_ffi/cython/object.pxi\n@@ -218,8 +218,8 @@ class PyNativeObject:\n     \"\"\"Base class of all TVM objects that also subclass python's builtin types.\"\"\"\n     __slots__ = []\n \n-    def __init_tvm_ffi_object_by_constructor__(self, fconstructor, *args):\n-        \"\"\"Initialize the internal tvm_ffi_object by calling constructor function.\n+    def __init_cached_object_by_constructor__(self, fconstructor, *args):\n+        \"\"\"Initialize the internal _tvm_ffi_cached_object by calling constructor function.\n \n         Parameters\n         ----------\n@@ -236,7 +236,7 @@ class PyNativeObject:\n         \"\"\"\n         obj = _CLASS_OBJECT.__new__(_CLASS_OBJECT)\n         obj.__init_handle_by_constructor__(fconstructor, *args)\n-        self.__tvm_ffi_object__ = obj\n+        self._tvm_ffi_cached_object = obj\n \n \n def _object_type_key_to_index(str type_key):\ndiff --git a/python/tvm_ffi/cython/string.pxi b/python/tvm_ffi/cython/string.pxi\nindex bb8f6e5..5a25977 100644\n--- a/python/tvm_ffi/cython/string.pxi\n+++ b/python/tvm_ffi/cython/string.pxi\n@@ -29,7 +29,7 @@ cdef inline bytes _bytes_obj_get_py_bytes(obj):\n \n \n class String(str, PyNativeObject):\n-    __slots__ = [\"__tvm_ffi_object__\"]\n+    __slots__ = [\"_tvm_ffi_cached_object\"]\n     \"\"\"String object that is possibly returned by FFI call.\n \n     Note\n@@ -39,7 +39,7 @@ class String(str, PyNativeObject):\n     \"\"\"\n     def __new__(cls, value):\n         val = str.__new__(cls, value)\n-        val.__tvm_ffi_object__ = None\n+        val._tvm_ffi_cached_object = None\n         return val\n \n     # pylint: disable=no-self-argument\n@@ -47,7 +47,7 @@ class String(str, PyNativeObject):\n         \"\"\"Construct from a given tvm object.\"\"\"\n         content = _string_obj_get_py_str(obj)\n         val = str.__new__(cls, content)\n-        val.__tvm_ffi_object__ = obj\n+        val._tvm_ffi_cached_object = obj\n         return val\n \n \n@@ -64,7 +64,7 @@ class Bytes(bytes, PyNativeObject):\n     \"\"\"\n     def __new__(cls, value):\n         val = bytes.__new__(cls, value)\n-        val.__tvm_ffi_object__ = None\n+        val._tvm_ffi_cached_object = None\n         return val\n \n     # pylint: disable=no-self-argument\n@@ -72,7 +72,7 @@ class Bytes(bytes, PyNativeObject):\n         \"\"\"Construct from a given tvm object.\"\"\"\n         content = _bytes_obj_get_py_bytes(obj)\n         val = bytes.__new__(cls, content)\n-        val.__tvm_ffi_object__ = obj\n+        val._tvm_ffi_cached_object = obj\n         return val\n \n \ndiff --git a/tests/python/test_function.py b/tests/python/test_function.py\nindex 71aecbc..cf50dcf 100644\n--- a/tests/python/test_function.py\n+++ b/tests/python/test_function.py\n@@ -109,7 +109,7 @@ def test_string_bytes_passing() -> None:\n     x = \"hello\" * 100\n     y = fecho(x)\n     assert y == x\n-    assert y.__tvm_ffi_object__ is not None\n+    assert y._tvm_ffi_cached_object is not None\n     use_count(y) == 1\n     # small bytes\n     assert fecho(b\"hello\") == b\"hello\"\n@@ -117,7 +117,7 @@ def test_string_bytes_passing() -> None:\n     x2 = b\"hello\" * 100\n     y2 = fecho(x2)\n     assert y2 == x2\n-    assert y2.__tvm_ffi_object__ is not None\n+    assert y2._tvm_ffi_cached_object is not None\n     fecho(y2) == 1\n \n \ndiff --git a/tests/python/test_object.py b/tests/python/test_object.py\nindex 98c0bb0..ebe8043 100644\n--- a/tests/python/test_object.py\n+++ b/tests/python/test_object.py\n@@ -133,6 +133,22 @@ def test_opaque_type_error() -> None:\n     )\n \n \n+def test_object_protocol() -> None:\n+    class CompactObject:\n+        def __init__(self, backend_obj: Any) -> None:\n+            self.backend_obj = backend_obj\n+\n+        def __tvm_ffi_object__(self) -> Any:\n+            return self.backend_obj\n+\n+    x = tvm_ffi.convert([])\n+    assert isinstance(x, tvm_ffi.Object)\n+    x_compact = CompactObject(x)\n+    test_echo = tvm_ffi.get_global_func(\"testing.echo\")\n+    y = test_echo(x_compact)\n+    assert y.__chandle__() == x.__chandle__()\n+\n+\n def test_unregistered_object_fallback() -> None:\n     def _check_type(x: Any) -> None:\n         type_info: TypeInfo = type(x).__tvm_ffi_type_info__  # type: ignore[attr-defined]\ndiff --git a/tests/python/test_tensor.py b/tests/python/test_tensor.py\nindex 48d933f..4ea8680 100644\n--- a/tests/python/test_tensor.py\n+++ b/tests/python/test_tensor.py\n@@ -53,12 +53,12 @@ def test_shape_object() -> None:\n \n     fecho = tvm_ffi.convert(lambda x: x)\n     shape2: tvm_ffi.Shape = fecho(shape)\n-    assert shape2.__tvm_ffi_object__.same_as(shape.__tvm_ffi_object__)\n+    assert shape2._tvm_ffi_cached_object.same_as(shape._tvm_ffi_cached_object)\n     assert isinstance(shape2, tvm_ffi.Shape)\n     assert isinstance(shape2, tuple)\n \n     shape3: tvm_ffi.Shape = tvm_ffi.convert(shape)\n-    assert shape3.__tvm_ffi_object__.same_as(shape.__tvm_ffi_object__)\n+    assert shape3._tvm_ffi_cached_object.same_as(shape._tvm_ffi_cached_object)\n     assert isinstance(shape3, tvm_ffi.Shape)\n \n \n@@ -100,8 +100,8 @@ def test_tvm_ffi_tensor_compatible() -> None:\n             \"\"\"Initialize the MyTensor.\"\"\"\n             self._tensor = tensor\n \n-        def __tvm_ffi_tensor__(self) -> tvm_ffi.Tensor:\n-            \"\"\"Implement __tvm_ffi_tensor__ protocol.\"\"\"\n+        def __tvm_ffi_object__(self) -> tvm_ffi.Tensor:\n+            \"\"\"Implement __tvm_ffi_object__ protocol.\"\"\"\n             return self._tensor\n \n     data = np.zeros((10, 8, 4, 2), dtype=\"int32\")\ndiff --git a/tests/scripts/benchmark_dlpack.py b/tests/scripts/benchmark_dlpack.py\nindex 6c36246..0196ee7 100644\n--- a/tests/scripts/benchmark_dlpack.py\n+++ b/tests/scripts/benchmark_dlpack.py\n@@ -39,14 +39,14 @@ import tvm_ffi\n \n \n class TestFFITensor:\n-    \"\"\"Test FFI Tensor that exposes __tvm_ffi_tensor__ protocol.\"\"\"\n+    \"\"\"Test FFI Tensor that exposes __tvm_ffi_object__ protocol.\"\"\"\n \n     def __init__(self, tensor: tvm_ffi.Tensor) -> None:\n         \"\"\"Initialize the TestFFITensor.\"\"\"\n         self._tensor = tensor\n \n-    def __tvm_ffi_tensor__(self) -> tvm_ffi.Tensor:\n-        \"\"\"Implement __tvm_ffi_tensor__ protocol.\"\"\"\n+    def __tvm_ffi_object__(self) -> tvm_ffi.Tensor:\n+        \"\"\"Implement __tvm_ffi_object__ protocol.\"\"\"\n         return self._tensor\n \n ",
+  "heuristics": {
+    "tags": [
+      "build",
+      "test"
+    ],
+    "extensions": [
+      ".pxi",
+      ".py",
+      ".pyi",
+      ".toml"
+    ],
+    "scopes_guess": [
+      "pyproject.toml",
+      "python",
+      "tests"
+    ]
+  }
+}

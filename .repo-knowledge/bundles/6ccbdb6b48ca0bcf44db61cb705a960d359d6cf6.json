@@ -1,0 +1,51 @@
+{
+  "sha": "6ccbdb6b48ca0bcf44db61cb705a960d359d6cf6",
+  "sha7": "6ccbdb6",
+  "author_name": "Kexing Zhou",
+  "author_email": "KEKE_046@pku.edu.cn",
+  "date_iso": "2025-12-12T02:47:35+08:00",
+  "subject": "[Feat] Remove reference cycle in error handling for faster GC (#327)",
+  "body":
+      "When training neural networks, it is beneficial to free tensors as early\nas possible once they are no longer used. In CPython, as long as there\nis no reference cycle, tensors are freed immediately when their\nreference count drops to zero.\n\nTorch blog: [Finding and Removing Reference\nCycles](https://pytorch.org/blog/understanding-gpu-memory-2/)\n\nHowever, in our TVM FFI error handling path, we create reference cycles\nthat keep intermediate tensors (and the entire call chain) alive much\nlonger than necessary. This slows down local GC, increases memory\npressure, and hurts training throughput.\n\n## Problem\n\nThe following code represents the problem.\n1. We allocate a tensor in foo\n2. We call `Map.get` with a non-existent key, which causes a KeyError\nand will be captured by Map\n3. The KeyError causes a reference cycle, and makes the whole call chain\nrequire gc\n\n``` py\nimport torch\nimport tvm_ffi\nimport gc\nfrom torch.utils.viz._cycles import warn_tensor_cycles\n\nm = tvm_ffi.Map({'a': 1})\n\ndef foo():\n    a = torch.tensor([1], device='cuda')\n    # map get a non-existent key will cause a KeyError and capture it\n    _tmp = m.get('b', 0)\n\nfoo()\n\nremove = warn_tensor_cycles()\ngc.collect()\nremove()\n```\n\nThe following figure demonstrates the call chain and reference cycles:\n\n<img width=\"60%\" alt=\"image\"\nsrc=\"https://github.com/user-attachments/assets/ba477a5a-eca5-4e6b-a9db-395da9ac49c5\"\n/>\n\nThe following figure shows the object reference graph from torch\nwarn_tensor_cycles\n\n<img width=\"3624\" height=\"512\" alt=\"image\"\nsrc=\"https://github.com/user-attachments/assets/e2b8b211-9e7a-4a46-b500-425f09f71d75\"\n/>\n\n## Approach\n\nAs shown in the figure, the 3 variables, `frame`, `py_error`, and `tb`,\nare the core of the reference cycle. To remove this error, we can\nmanually delete the 3 variables in the loop.\n\n\nhttps://github.com/apache/tvm-ffi/blob/f7e09d6a96b54554190bae0d7ba9ff7a6e9a109e/python/tvm_ffi/error.py#L124-L136\n\nWe can use `try ... finally ...` to manually delete these variables\nafter the function returns.\n\n```py\n    try:\n        tb = py_error.__traceback__\n        for filename, lineno, func in _parse_backtrace(backtrace):\n            tb = _TRACEBACK_MANAGER.append_traceback(tb, filename, lineno, func)\n        return py_error.with_traceback(tb)\n    finally:\n        del py_error, tb\n```\n\n---------\n\nCo-authored-by: gemini-code-assist[bot] <176961590+gemini-code-assist[bot]@users.noreply.github.com>",
+  "is_merge": false,
+  "parents": [
+    "f7e09d6a96b54554190bae0d7ba9ff7a6e9a109e"
+  ],
+  "name_status": [
+    [
+      "M",
+      "python/tvm_ffi/error.py"
+    ],
+    [
+      "M",
+      "tests/python/test_error.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "python/tvm_ffi/error.py",
+      "additions": 52,
+      "deletions": 5
+    },
+    {
+      "path": "tests/python/test_error.py",
+      "additions": 38,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/python/tvm_ffi/error.py b/python/tvm_ffi/error.py\nindex 03dfcca..9a0a23a 100644\n--- a/python/tvm_ffi/error.py\n+++ b/python/tvm_ffi/error.py\n@@ -121,8 +121,18 @@ class TracebackManager:\n             The new traceback with the appended frame.\n \n         \"\"\"\n-        frame = self._create_frame(filename, lineno, func)\n-        return types.TracebackType(tb, frame, frame.f_lasti, lineno)\n+\n+        # This approach avoids binding the created frame object to a local variable\n+        # in `append_traceback`, which would create a reference cycle. By using a\n+        # nested function, the frame object is a temporary that is not held by\n+        # the locals of `append_traceback`. See the diagram in `_with_append_backtrace`\n+        # and PR #327 for more details.\n+        def create(\n+            tb: types.TracebackType | None, frame: types.FrameType, lineno: int\n+        ) -> types.TracebackType:\n+            return types.TracebackType(tb, frame, frame.f_lasti, lineno)\n+\n+        return create(tb, self._create_frame(filename, lineno, func), lineno)\n \n \n _TRACEBACK_MANAGER = TracebackManager()\n@@ -130,10 +140,47 @@ _TRACEBACK_MANAGER = TracebackManager()\n \n def _with_append_backtrace(py_error: BaseException, backtrace: str) -> BaseException:\n     \"\"\"Append the backtrace to the py_error and return it.\"\"\"\n+    # We manually delete py_error and tb to avoid reference cycle, making it faster to gc the locals inside the frame\n+    # please see pull request #327 for more details\n+    #\n+    # Memory Cycle Diagram:\n+    #\n+    #         [Stack Frames]                            [Heap Objects]\n+    #     +-------------------+\n+    #     | outside functions | -----------------------> [ Tensor ]\n+    #     +-------------------+                   (Held by cycle, slow to free)\n+    #             ^\n+    #             | f_back\n+    #     +-------------------+  locals      py_error\n+    #     | py_error (this)   | -----+--------------> [ BaseException ]\n+    #     +-------------------+      |                       |\n+    #             ^                  |                       | (with_traceback)\n+    #             | f_back           |                       v\n+    #     +-------------------+      +--------------> [ Traceback Obj ]\n+    #     | append_traceback  |                   tb         |\n+    #     +-------------------+                              |\n+    #             ^                                          |\n+    #             | f_back                                   |\n+    #     +-------------------+                              |\n+    #     | _create_frame     |                              |\n+    #     +-------------------+                              |\n+    #             ^                                          |\n+    #             | f_back                                   |\n+    #     +-------------------+                              |\n+    #     | _get_frame        | <----------------------------+\n+    #     +-------------------+      (Cycle closes here)\n     tb = py_error.__traceback__\n-    for filename, lineno, func in _parse_backtrace(backtrace):\n-        tb = _TRACEBACK_MANAGER.append_traceback(tb, filename, lineno, func)\n-    return py_error.with_traceback(tb)\n+    try:\n+        for filename, lineno, func in _parse_backtrace(backtrace):\n+            tb = _TRACEBACK_MANAGER.append_traceback(tb, filename, lineno, func)\n+        return py_error.with_traceback(tb)\n+    finally:\n+        # We explicitly break the reference cycle here. The `finally` block is\n+        # executed just before the function returns, after the `return` expression\n+        # in the `try` block has been evaluated. Deleting `py_error` and `tb`\n+        # here ensures they are not held by this function's frame's locals,\n+        # which resolves the cycle.\n+        del py_error, tb\n \n \n def _traceback_to_backtrace_str(tb: types.TracebackType | None) -> str:\ndiff --git a/tests/python/test_error.py b/tests/python/test_error.py\nindex dd94cf3..068fb3f 100644\n--- a/tests/python/test_error.py\n+++ b/tests/python/test_error.py\n@@ -16,6 +16,8 @@\n # under the License.\n \n \n+import gc\n+import weakref\n from typing import NoReturn\n \n import pytest\n@@ -113,3 +115,39 @@ def test_error_traceback_update() -> None:\n         ffi_error2 = fecho(e)\n         assert ffi_error1.backtrace.find(\"raise_cxx_error\") != -1\n         assert ffi_error2.backtrace.find(\"raise_cxx_error\") != -1\n+\n+\n+def test_error_no_cyclic_reference() -> None:\n+    # This test case ensures that when an error is raised from C++ side,\n+    # there is no cyclic reference that slows down the garbage collection.\n+    # Please see `_with_append_backtrace` in error.py\n+\n+    # temporarily disable gc\n+    gc.disable()\n+\n+    try:\n+        # We should create a class as a probe to detect gc activity\n+        # beacuse weakref doesn't support list, dict or other trivial types\n+        class SampleObject: ...\n+\n+        # trigger a C++ side KeyError by accessing a non-existent key\n+        def trigger_cpp_side_error() -> None:\n+            try:\n+                tmp_map: tvm_ffi.Map = tvm_ffi.Map(dict())\n+                tmp_map[\"a\"]\n+            except KeyError:\n+                pass\n+\n+        def may_create_cyclic_reference() -> weakref.ReferenceType:\n+            obj = SampleObject()\n+            trigger_cpp_side_error()\n+            return weakref.ref(obj)\n+\n+        wref = may_create_cyclic_reference()\n+\n+        # if the object is not collected, wref() will return the object\n+        assert wref() is None, \"Cyclic reference occurs inside error handling pipeline\"\n+\n+    finally:\n+        # re-enable gc whenever exception occurs\n+        gc.enable()",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".py"
+    ],
+    "scopes_guess": [
+      "python",
+      "tests"
+    ]
+  }
+}

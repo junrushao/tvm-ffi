@@ -1,0 +1,98 @@
+{
+  "sha": "3bc64186e23f097c4b44c3da2be314ea04740565",
+  "sha7": "3bc6418",
+  "author_name": "Junru Shao",
+  "author_email": "junrushao@apache.org",
+  "date_iso": "2025-09-22T16:39:03-07:00",
+  "subject": "doc: Enable Doxygen Build Checks in CI (#42)",
+  "body":
+      "Previously `BUILD_CPP_DOCS` is not turned on in CI, and careless small\nerrors may occur across cpp doc updates. This PR turns it on, so that\nall docs are well-tested in CI.\n\n<img width=\"951\" height=\"412\" alt=\"image\"\nsrc=\"https://github.com/user-attachments/assets/d774b400-86c3-4ca9-aa39-7b156e5d33a6\"\n/>",
+  "is_merge": false,
+  "parents": [
+    "b5dd851f7019f4f63a19d9dce074ba62706f16e7"
+  ],
+  "name_status": [
+    [
+      "M",
+      ".github/workflows/ci_test.yml"
+    ],
+    [
+      "M",
+      "docs/conf.py"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/c_api.h"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/container/map.h"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/container/tensor.h"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/reflection/access_path.h"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/reflection/registry.h"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": ".github/workflows/ci_test.yml",
+      "additions": 2,
+      "deletions": 1
+    },
+    {
+      "path": "docs/conf.py",
+      "additions": 21,
+      "deletions": 5
+    },
+    {
+      "path": "include/tvm/ffi/c_api.h",
+      "additions": 31,
+      "deletions": 10
+    },
+    {
+      "path": "include/tvm/ffi/container/map.h",
+      "additions": 6,
+      "deletions": 0
+    },
+    {
+      "path": "include/tvm/ffi/container/tensor.h",
+      "additions": 0,
+      "deletions": 1
+    },
+    {
+      "path": "include/tvm/ffi/reflection/access_path.h",
+      "additions": 0,
+      "deletions": 1
+    },
+    {
+      "path": "include/tvm/ffi/reflection/registry.h",
+      "additions": 1,
+      "deletions": 3
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/.github/workflows/ci_test.yml b/.github/workflows/ci_test.yml\nindex 91f6bbd..eee0c55 100644\n--- a/.github/workflows/ci_test.yml\n+++ b/.github/workflows/ci_test.yml\n@@ -65,7 +65,8 @@ jobs:\n           python-version: 3.13\n       - name: Generate docs\n         run: |\n-          uv run --group docs sphinx-build -W --keep-going -b html docs docs/_build/html\n+          sudo apt install doxygen\n+          BUILD_CPP_DOCS=1 uv run --group docs sphinx-build -W --keep-going -b html docs docs/_build/html\n \n   test:\n     needs: [lint, prepare]\ndiff --git a/docs/conf.py b/docs/conf.py\nindex 69df5ca..50495de 100644\n--- a/docs/conf.py\n+++ b/docs/conf.py\n@@ -71,14 +71,16 @@ breathe_projects = {\"tvm-ffi\": \"./_build/doxygen/xml\"}\n \n exhaleDoxygenStdin = \"\"\"\n INPUT = ../include\n-PREDEFINED  += TVM_FFI_DLL= TVM_FFI_INLINE= TVM_FFI_EXTRA_CXX_API= __cplusplus=201703\n-\n-EXCLUDE_SYMBOLS   += *details*  *TypeTraits* std \\\n+PREDEFINED             += TVM_FFI_DLL= TVM_FFI_DLL_EXPORT= TVM_FFI_INLINE= \\\n+                          TVM_FFI_EXTRA_CXX_API= TVM_FFI_WEAK= TVM_FFI_DOXYGEN_MODE \\\n+                          __cplusplus=201703\n+EXCLUDE_SYMBOLS        += *details*  *TypeTraits* std \\\n                          *use_default_type_traits_v* *is_optional_type_v* *operator* \\\n-\n-EXCLUDE_PATTERNS   += *details.h\n+EXCLUDE_PATTERNS       += *details.h\n ENABLE_PREPROCESSING   = YES\n MACRO_EXPANSION        = YES\n+WARNINGS               = YES\n+WARN_AS_ERROR          = FAIL_ON_WARNINGS_PRINT   # if your Doxygen version supports it\n \"\"\"\n \n exhaleAfterTitleDescription = \"\"\"\n@@ -97,6 +99,20 @@ exhale_args = {\n     \"afterTitleDescription\": exhaleAfterTitleDescription,\n }\n nbsphinx_allow_errors = True\n+cpp_id_attributes = [\n+    \"TVM_FFI_DLL\",\n+    \"TVM_FFI_DLL_EXPORT\",\n+    \"TVM_FFI_INLINE\",\n+    \"TVM_FFI_EXTRA_CXX_API\",\n+    \"TVM_FFI_WEAK\",\n+]\n+\n+c_id_attributes = [\n+    \"TVM_FFI_DLL\",\n+    \"TVM_FFI_DLL_EXPORT\",\n+    \"TVM_FFI_WEAK\",\n+]\n+\n nbsphinx_execute = \"never\"\n \n autosectionlabel_prefix_document = True\ndiff --git a/include/tvm/ffi/c_api.h b/include/tvm/ffi/c_api.h\nindex b0ce3c1..e988e24 100644\n--- a/include/tvm/ffi/c_api.h\n+++ b/include/tvm/ffi/c_api.h\n@@ -233,7 +233,9 @@ typedef struct {\n   uint32_t weak_ref_count;\n   /*! \\brief Strong reference counter of the object. */\n   uint64_t strong_ref_count;\n+#if !defined(TVM_FFI_DOXYGEN_MODE)\n   union {\n+#endif\n     /*!\n      * \\brief Deleter to be invoked when strong reference counter goes to zero.\n      * \\param self The self object handle.\n@@ -246,7 +248,9 @@ typedef struct {\n      * \\note This helps us to ensure cross platform compatibility.\n      */\n     int64_t __ensure_align;\n+#if !defined(TVM_FFI_DOXYGEN_MODE)\n   };\n+#endif\n } TVMFFIObject;\n \n /*!\n@@ -261,7 +265,9 @@ typedef struct {\n    * \\note The type index of Object and Any are shared in FFI.\n    */\n   int32_t type_index;\n+#if !defined(TVM_FFI_DOXYGEN_MODE)\n   union {  // 4 bytes\n+#endif\n     /*! \\brief padding, must set to zero for values other than small string. */\n     uint32_t zero_padding;\n     /*!\n@@ -271,18 +277,33 @@ typedef struct {\n      * when accessing the small str content.\n      */\n     uint32_t small_str_len;\n+#if !defined(TVM_FFI_DOXYGEN_MODE)\n   };\n-  union {                 // 8 bytes\n-    int64_t v_int64;      // integers\n-    double v_float64;     // floating-point numbers\n-    void* v_ptr;          // typeless pointers\n-    const char* v_c_str;  // raw C-string\n-    TVMFFIObject* v_obj;  // ref counted objects\n-    DLDataType v_dtype;   // data type\n-    DLDevice v_device;    // device\n-    char v_bytes[8];      // small string\n-    uint64_t v_uint64;    // uint64 repr mainly used for hashing\n+#endif\n+#if !defined(TVM_FFI_DOXYGEN_MODE)\n+  union {  // 8 bytes\n+#endif\n+    /*! \\brief integers */\n+    int64_t v_int64;\n+    /*! \\brief floating-point numbers */\n+    double v_float64;\n+    /*! \\brief typeless pointers */\n+    void* v_ptr;\n+    /*! \\brief raw C-string */\n+    const char* v_c_str;\n+    /*! \\brief ref counted objects */\n+    TVMFFIObject* v_obj;\n+    /*! \\brief data type */\n+    DLDataType v_dtype;\n+    /*! \\brief device */\n+    DLDevice v_device;\n+    /*! \\brief small string */\n+    char v_bytes[8];\n+    /*! \\brief uint64 repr mainly used for hashing */\n+    uint64_t v_uint64;\n+#if !defined(TVM_FFI_DOXYGEN_MODE)\n   };\n+#endif\n } TVMFFIAny;\n \n /*!\ndiff --git a/include/tvm/ffi/container/map.h b/include/tvm/ffi/container/map.h\nindex 4719045..df41d3f 100644\n--- a/include/tvm/ffi/container/map.h\n+++ b/include/tvm/ffi/container/map.h\n@@ -1357,8 +1357,14 @@ inline void MapObj::InsertMaybeReHash(KVType&& kv, ObjectPtr<Object>* map) {\n   }\n }\n \n+/// \\cond Doxygen_Suppress\n+/*!\n+ * \\brief Specialize make_object<MapObj> to be deleted for make_object<DenseMapObj> and\n+ * make_object<SmallMapObj> only.\n+ */\n template <>\n inline ObjectPtr<MapObj> make_object<>() = delete;\n+/// \\endcond\n \n /*!\n  * \\brief Map container of NodeRef->NodeRef in DSL graph.\ndiff --git a/include/tvm/ffi/container/tensor.h b/include/tvm/ffi/container/tensor.h\nindex 1e251b0..9f698de 100644\n--- a/include/tvm/ffi/container/tensor.h\n+++ b/include/tvm/ffi/container/tensor.h\n@@ -218,7 +218,6 @@ class TensorObj : public Object, public DLTensor {\n   }\n \n   friend class Tensor;\n-  /// \\endcond\n };\n \n namespace details {\ndiff --git a/include/tvm/ffi/reflection/access_path.h b/include/tvm/ffi/reflection/access_path.h\nindex ea102e1..e728499 100644\n--- a/include/tvm/ffi/reflection/access_path.h\n+++ b/include/tvm/ffi/reflection/access_path.h\n@@ -108,7 +108,6 @@ class AccessStep : public ObjectRef {\n    * \\brief Constructor\n    * \\param kind The kind of the access step.\n    * \\param key The key of the access step.\n-   * \\return The access step.\n    */\n   AccessStep(AccessKind kind, Any key) : ObjectRef(make_object<AccessStepObj>(kind, key)) {}\n \ndiff --git a/include/tvm/ffi/reflection/registry.h b/include/tvm/ffi/reflection/registry.h\nindex f72fd3c..e989530 100644\n--- a/include/tvm/ffi/reflection/registry.h\n+++ b/include/tvm/ffi/reflection/registry.h\n@@ -73,10 +73,7 @@ class AttachFieldFlag : public FieldInfoTrait {\n  public:\n   /*!\n    * \\brief Attach a field flag to the field\n-   *\n    * \\param flag The flag to be set\n-   *\n-   * \\return The trait object.\n    */\n   explicit AttachFieldFlag(int32_t flag) : flag_(flag) {}\n \n@@ -580,6 +577,7 @@ inline void EnsureTypeAttrColumn(std::string_view name) {\n  *   };\n  *   refl::ObjectDef<ExampleObject>()\n  *      .def_static(\"__init__\", refl::init<ExampleObject, int64_t, int32_t>);\n+ * \\endcode\n  */\n template <typename T, typename... Args>\n inline ObjectRef init(Args&&... args) {",
+  "heuristics": {
+    "tags": [
+      "ci"
+    ],
+    "extensions": [
+      ".h",
+      ".py",
+      ".yml"
+    ],
+    "scopes_guess": [
+      "docs",
+      "include"
+    ]
+  }
+}

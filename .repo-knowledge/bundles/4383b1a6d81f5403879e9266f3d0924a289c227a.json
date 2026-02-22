@@ -1,0 +1,51 @@
+{
+  "sha": "4383b1a6d81f5403879e9266f3d0924a289c227a",
+  "sha7": "4383b1a",
+  "author_name": "Yaoyao Ding",
+  "author_email": "dingyaoyao.cs@gmail.com",
+  "date_iso": "2025-09-14T17:36:31-04:00",
+  "subject": "[Bugfix] Run ninja build command in MSVC dev env (#11)",
+  "body":
+      "* run the ninja build in msvc dev env on windows\n\n* format & lint\n\n* remove one debug print",
+  "is_merge": false,
+  "parents": [
+    "742b16e5c71cf388e3bf8834763755448f3f0033"
+  ],
+  "name_status": [
+    [
+      "M",
+      "python/tvm_ffi/cpp/load_inline.py"
+    ],
+    [
+      "M",
+      "tests/python/test_load_inline.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "python/tvm_ffi/cpp/load_inline.py",
+      "additions": 61,
+      "deletions": 1
+    },
+    {
+      "path": "tests/python/test_load_inline.py",
+      "additions": 0,
+      "deletions": 5
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/python/tvm_ffi/cpp/load_inline.py b/python/tvm_ffi/cpp/load_inline.py\nindex 3c3c8d3..ced9705 100644\n--- a/python/tvm_ffi/cpp/load_inline.py\n+++ b/python/tvm_ffi/cpp/load_inline.py\n@@ -128,6 +128,63 @@ def _get_cuda_target() -> str:\n             return \"-gencode=arch=compute_70,code=sm_70\"\n \n \n+def _run_command_in_dev_prompt(args, cwd, capture_output):\n+    \"\"\"Locates the Developer Command Prompt and runs a command within its environment.\"\"\"\n+    try:\n+        # Path to vswhere.exe\n+        vswhere_path = os.path.join(\n+            os.environ.get(\"ProgramFiles(x86)\", \"C:\\\\Program Files (x86)\"),\n+            \"Microsoft Visual Studio\",\n+            \"Installer\",\n+            \"vswhere.exe\",\n+        )\n+\n+        if not os.path.exists(vswhere_path):\n+            raise FileNotFoundError(\"vswhere.exe not found.\")\n+\n+        # Find the Visual Studio installation path\n+        vs_install_path = subprocess.run(\n+            [\n+                vswhere_path,\n+                \"-latest\",\n+                \"-prerelease\",\n+                \"-products\",\n+                \"*\",\n+                \"-property\",\n+                \"installationPath\",\n+            ],\n+            capture_output=True,\n+            text=True,\n+            check=True,\n+        ).stdout.strip()\n+\n+        if not vs_install_path:\n+            raise FileNotFoundError(\"No Visual Studio installation found.\")\n+\n+        # Construct the path to the VsDevCmd.bat file\n+        vsdevcmd_path = os.path.join(vs_install_path, \"Common7\", \"Tools\", \"VsDevCmd.bat\")\n+\n+        if not os.path.exists(vsdevcmd_path):\n+            raise FileNotFoundError(f\"VsDevCmd.bat not found at: {vsdevcmd_path}\")\n+\n+        # Use cmd.exe to run the batch file and then your command.\n+        # The /k flag keeps the command prompt open after the batch file runs.\n+        # The \"&\" symbol chains the commands.\n+        cmd_command = '\"{vsdevcmd_path}\" -arch=x64 & {command}'.format(\n+            vsdevcmd_path=vsdevcmd_path, command=\" \".join(args)\n+        )\n+\n+        # Execute the command in a new shell\n+        return subprocess.run(cmd_command, cwd=cwd, capture_output=capture_output, shell=True)\n+\n+    except (FileNotFoundError, subprocess.CalledProcessError) as e:\n+        raise RuntimeError(\n+            \"Failed to run the following command in MSVC developer environment: {}\".format(\n+                \" \".join(args)\n+            )\n+        ) from e\n+\n+\n def _generate_ninja_build(\n     name: str,\n     build_dir: str,\n@@ -248,7 +305,10 @@ def _build_ninja(build_dir: str) -> None:\n     num_workers = os.environ.get(\"MAX_JOBS\", None)\n     if num_workers is not None:\n         command += [\"-j\", num_workers]\n-    status = subprocess.run(args=command, cwd=build_dir, capture_output=True)\n+    if IS_WINDOWS:\n+        status = _run_command_in_dev_prompt(args=command, cwd=build_dir, capture_output=True)\n+    else:\n+        status = subprocess.run(args=command, cwd=build_dir, capture_output=True)\n     if status.returncode != 0:\n         msg = [\"ninja exited with status {}\".format(status.returncode)]\n         encoding = \"oem\" if IS_WINDOWS else \"utf-8\"\ndiff --git a/tests/python/test_load_inline.py b/tests/python/test_load_inline.py\nindex d72bfa7..25dcee4 100644\n--- a/tests/python/test_load_inline.py\n+++ b/tests/python/test_load_inline.py\n@@ -15,7 +15,6 @@\n # specific language governing permissions and limitations\n # under the License.\n \n-import sys\n \n import numpy\n import pytest\n@@ -29,7 +28,6 @@ import tvm_ffi.cpp\n from tvm_ffi.module import Module\n \n \n-@pytest.mark.xfail(sys.platform.startswith(\"win\"), reason=\"needs to robustify windows support\")\n def test_load_inline_cpp():\n     mod: Module = tvm_ffi.cpp.load_inline(\n         name=\"hello\",\n@@ -56,7 +54,6 @@ def test_load_inline_cpp():\n     numpy.testing.assert_equal(x + 1, y)\n \n \n-@pytest.mark.xfail(sys.platform.startswith(\"win\"), reason=\"needs to robustify windows support\")\n def test_load_inline_cpp_with_docstrings():\n     mod: Module = tvm_ffi.cpp.load_inline(\n         name=\"hello\",\n@@ -83,7 +80,6 @@ def test_load_inline_cpp_with_docstrings():\n     numpy.testing.assert_equal(x + 1, y)\n \n \n-@pytest.mark.xfail(sys.platform.startswith(\"win\"), reason=\"needs to robustify windows support\")\n def test_load_inline_cpp_multiple_sources():\n     mod: Module = tvm_ffi.cpp.load_inline(\n         name=\"hello\",\n@@ -126,7 +122,6 @@ def test_load_inline_cpp_multiple_sources():\n     numpy.testing.assert_equal(x + 1, y)\n \n \n-@pytest.mark.xfail(sys.platform.startswith(\"win\"), reason=\"needs to robustify windows support\")\n def test_load_inline_cpp_build_dir():\n     mod: Module = tvm_ffi.cpp.load_inline(\n         name=\"hello\",",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".py"
+    ],
+    "scopes_guess": [
+      "python",
+      "tests"
+    ]
+  }
+}

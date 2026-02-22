@@ -1,0 +1,61 @@
+{
+  "sha": "6c85e562c00f098743ed257ff4516a250f5145e7",
+  "sha7": "6c85e56",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-11-07T14:07:05-05:00",
+  "subject": "[STREAM] Enable compact with cuda-python driver stream (#236)",
+  "body":
+      "As of now cuda-python driver stream do not yet support cuda stream\nprotocol. This PR enables a compact mode so we can take\ncuda_driver.CUstream arguments and treat them as void_p.",
+  "is_merge": false,
+  "parents": [
+    "e6a85e9cbc4e2d0b8f414a2dfda051f4c37bb1a1"
+  ],
+  "name_status": [
+    [
+      "M",
+      "python/tvm_ffi/_optional_torch_c_dlpack.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/cython/function.pxi"
+    ],
+    [
+      "M",
+      "tests/python/test_stream.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "python/tvm_ffi/_optional_torch_c_dlpack.py",
+      "additions": 2,
+      "deletions": 2
+    },
+    {
+      "path": "python/tvm_ffi/cython/function.pxi",
+      "additions": 25,
+      "deletions": 2
+    },
+    {
+      "path": "tests/python/test_stream.py",
+      "additions": 19,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/python/tvm_ffi/_optional_torch_c_dlpack.py b/python/tvm_ffi/_optional_torch_c_dlpack.py\nindex 302a29c..7673c03 100644\n--- a/python/tvm_ffi/_optional_torch_c_dlpack.py\n+++ b/python/tvm_ffi/_optional_torch_c_dlpack.py\n@@ -109,7 +109,7 @@ def load_torch_c_dlpack_extension() -> Any:\n     return None\n \n \n-def patch_torch_cuda_stream_protocol() -> Any:\n+def patch_torch_cuda_stream_protocol() -> None:\n     \"\"\"Load the torch cuda stream protocol for older versions of torch.\"\"\"\n     try:\n         import torch  # noqa: PLC0415\n@@ -118,7 +118,7 @@ def patch_torch_cuda_stream_protocol() -> Any:\n             return\n         if not hasattr(torch.cuda.Stream, \"__cuda_stream__\"):\n \n-            def __torch_cuda_stream__(self: torch.cuda.Stream) -> tuple[int, torch.cuda.Stream]:\n+            def __torch_cuda_stream__(self: torch.cuda.Stream) -> tuple[int, int]:\n                 \"\"\"Return the version number and the cuda stream.\"\"\"\n                 return (0, self.cuda_stream)\n \ndiff --git a/python/tvm_ffi/cython/function.pxi b/python/tvm_ffi/cython/function.pxi\nindex 4f9fca6..acfe3e2 100644\n--- a/python/tvm_ffi/cython/function.pxi\n+++ b/python/tvm_ffi/cython/function.pxi\n@@ -33,9 +33,15 @@ if os.environ.get(\"TVM_FFI_BUILD_DOCS\", \"0\") == \"0\":\n         import numpy\n     except ImportError:\n         numpy = None\n+\n+    try:\n+        from cuda.bindings import driver as cuda_driver\n+    except ImportError:\n+        cuda_driver = None\n else:\n     torch = None\n     numpy = None\n+    cuda_driver = None\n \n \n cdef int _RELEASE_GIL_BY_DEFAULT = int(\n@@ -287,7 +293,7 @@ cdef int TVMFFIPyArgSetterFFIObjectCompatible_(\n     return 0\n \n \n-cdef int TVMFFIPyArgSetterCUDAStream_(\n+cdef int TVMFFIPyArgSetterCUDAStreamProtocol_(\n     TVMFFIPyArgSetter* handle, TVMFFIPyCallContext* ctx,\n     PyObject* py_arg, TVMFFIAny* out\n ) except -1:\n@@ -301,6 +307,19 @@ cdef int TVMFFIPyArgSetterCUDAStream_(\n     return 0\n \n \n+cdef int TVMFFIPyArgSetterCUDADriverStreamFallback_(\n+    TVMFFIPyArgSetter* handle, TVMFFIPyCallContext* ctx,\n+    PyObject* py_arg, TVMFFIAny* out\n+) except -1:\n+    \"\"\"Setter for cuda.bindings.driver.CUstream as a fallback without __cuda_stream__ protocol\"\"\"\n+    cdef object arg = <object>py_arg\n+    # call driver stream\n+    cdef long long long_ptr = int(arg)\n+    out.type_index = kTVMFFIOpaquePtr\n+    out.v_ptr = <void*>long_ptr\n+    return 0\n+\n+\n cdef int TVMFFIPyArgSetterDType_(\n     TVMFFIPyArgSetter* handle, TVMFFIPyCallContext* ctx,\n     PyObject* py_arg, TVMFFIAny* out\n@@ -658,7 +677,11 @@ cdef int TVMFFIPyArgSetterFactory_(PyObject* value, TVMFFIPyArgSetter* out) exce\n             return 0\n     if hasattr(arg_class, \"__cuda_stream__\"):\n         # cuda stream protocol\n-        out.func = TVMFFIPyArgSetterCUDAStream_\n+        out.func = TVMFFIPyArgSetterCUDAStreamProtocol_\n+        return 0\n+    if cuda_driver is not None and isinstance(arg, cuda_driver.CUstream):\n+        # TODO(tqchen): remove this once cuda-python supports __cuda_stream__ protocol\n+        out.func = TVMFFIPyArgSetterCUDADriverStreamFallback_\n         return 0\n     if torch is not None and isinstance(arg, torch.Tensor):\n         out.func = TVMFFIPyArgSetterTorchFallback_\ndiff --git a/tests/python/test_stream.py b/tests/python/test_stream.py\nindex fbe1a0a..3b58ccb 100644\n--- a/tests/python/test_stream.py\n+++ b/tests/python/test_stream.py\n@@ -17,6 +17,7 @@\n \n from __future__ import annotations\n \n+import ctypes\n from types import ModuleType\n \n import pytest\n@@ -30,6 +31,24 @@ except ImportError:\n     torch = None\n \n \n+try:\n+    from cuda.bindings import driver as cuda_driver  # type: ignore[import-not-found]\n+except ImportError:\n+    cuda_driver = None\n+\n+\n+@pytest.mark.skipif(cuda_driver is None, reason=\"Requires cuda-python\")\n+def test_cuda_driver_stream() -> None:\n+    assert cuda_driver is not None\n+    echo = tvm_ffi.get_global_func(\"testing.echo\")\n+    stream = cuda_driver.CUstream(0)\n+    y = echo(stream)\n+    assert y is not None\n+    z = echo(cuda_driver.CUstream(1))\n+    assert isinstance(z, ctypes.c_void_p)\n+    assert z.value == 1\n+\n+\n def gen_check_stream_mod() -> tvm_ffi.Module:\n     return tvm_ffi.cpp.load_inline(\n         name=\"check_stream\",",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".pxi",
+      ".py"
+    ],
+    "scopes_guess": [
+      "python",
+      "tests"
+    ]
+  }
+}

@@ -1,0 +1,49 @@
+{
+  "sha": "8dbd28112cddbaeeffa26420b1dee98a582a7cd7",
+  "sha7": "8dbd281",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-11-21T20:01:22-05:00",
+  "subject": "[TORCH] Fix precise version of f8e8m0 support (#282)",
+  "body": "This PR updates the torch-c-dlpact-ext to enable f8e8m0 support 2.7.",
+  "is_merge": false,
+  "parents": [
+    "a999de6efa7f59b6a120ddc1b762eafc290d45a6"
+  ],
+  "name_status": [
+    [
+      "M",
+      "include/tvm/ffi/c_api.h"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/utils/_build_optional_torch_c_dlpack.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "include/tvm/ffi/c_api.h",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "python/tvm_ffi/utils/_build_optional_torch_c_dlpack.py",
+      "additions": 6,
+      "deletions": 2
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/include/tvm/ffi/c_api.h b/include/tvm/ffi/c_api.h\nindex 152046a..ac1ac8a 100644\n--- a/include/tvm/ffi/c_api.h\n+++ b/include/tvm/ffi/c_api.h\n@@ -62,7 +62,7 @@\n /*! \\brief TVM FFI minor version. */\n #define TVM_FFI_VERSION_MINOR 1\n /*! \\brief TVM FFI patch version. */\n-#define TVM_FFI_VERSION_PATCH 3\n+#define TVM_FFI_VERSION_PATCH 4\n // NOLINTEND(modernize-macro-to-enum)\n \n #ifdef __cplusplus\ndiff --git a/python/tvm_ffi/utils/_build_optional_torch_c_dlpack.py b/python/tvm_ffi/utils/_build_optional_torch_c_dlpack.py\nindex 81762ef..99f76d4 100644\n--- a/python/tvm_ffi/utils/_build_optional_torch_c_dlpack.py\n+++ b/python/tvm_ffi/utils/_build_optional_torch_c_dlpack.py\n@@ -125,10 +125,12 @@ DLDataType getDLDataTypeForDLPackv1(const Tensor& t) {\n     case ScalarType::Float8_e4m3fnuz:\n       dtype.code = DLDataTypeCode::kDLFloat8_e4m3fnuz;\n       break;\n-#if TORCH_VERSION_MAJOR >= 2 && TORCH_VERSION_MINOR >= 8\n+#if (TORCH_VERSION_MAJOR > 2) || (TORCH_VERSION_MAJOR == 2 && TORCH_VERSION_MINOR >= 7)\n     case ScalarType::Float8_e8m0fnu:\n       dtype.code = DLDataTypeCode::kDLFloat8_e8m0fnu;\n       break;\n+#endif\n+#if (TORCH_VERSION_MAJOR > 2) || (TORCH_VERSION_MAJOR == 2 && TORCH_VERSION_MINOR >= 8)\n     case ScalarType::Float4_e2m1fn_x2:\n       dtype.code = DLDataTypeCode::kDLFloat4_e2m1fn;\n       dtype.lanes = 2;\n@@ -389,7 +391,7 @@ ScalarType toScalarTypeForDLPackv1(const DLDataType& dtype) {\n           TORCH_CHECK(false, \"Unsupported kDLFloat8_e4m3fnuz bits \", std::to_string(dtype.bits));\n       }\n       break;\n-#if TORCH_VERSION_MAJOR >= 2 && TORCH_VERSION_MINOR >= 8\n+#if (TORCH_VERSION_MAJOR > 2) || (TORCH_VERSION_MAJOR == 2 && TORCH_VERSION_MINOR >= 7)\n     case DLDataTypeCode::kDLFloat8_e8m0fnu:\n       switch (dtype.bits) {\n         case 8:\n@@ -399,6 +401,8 @@ ScalarType toScalarTypeForDLPackv1(const DLDataType& dtype) {\n           TORCH_CHECK(false, \"Unsupported kDLFloat8_e8m0fnu bits \", std::to_string(dtype.bits));\n       }\n       break;\n+#endif\n+#if (TORCH_VERSION_MAJOR > 2) || (TORCH_VERSION_MAJOR == 2 && TORCH_VERSION_MINOR >= 8)\n     case DLDataTypeCode::kDLFloat4_e2m1fn:\n       switch (dtype.bits) {\n         case 4:",
+  "heuristics": {
+    "tags": [],
+    "extensions": [
+      ".h",
+      ".py"
+    ],
+    "scopes_guess": [
+      "include",
+      "python"
+    ]
+  }
+}

@@ -1,0 +1,81 @@
+{
+  "sha": "4fc83d789052be1a30ca4678cd8cfb0250413e1d",
+  "sha7": "4fc83d7",
+  "author_name": "Ruihang Lai",
+  "author_email": "ruihangl@cs.cmu.edu",
+  "date_iso": "2025-11-11T10:51:58-05:00",
+  "subject": "[Fix] Enhanced check for CUDA availability (#258)",
+  "body":
+      "This commit fixes a bug that only uses `torch.version.cuda` to check if\nCUDA is available. This is insufficient and we need an additional check\nof `torch.cuda.is_available()` to ensure that CUDA can be found in the\nenvironment.",
+  "is_merge": false,
+  "parents": [
+    "d1595c459f5c5a17ed80ab4b152f24d2c8a65a49"
+  ],
+  "name_status": [
+    [
+      "M",
+      "addons/torch_c_dlpack_ext/build_backend.py"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/c_api.h"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/_optional_torch_c_dlpack.py"
+    ],
+    [
+      "M",
+      "tests/python/test_optional_torch_c_dlpack.py"
+    ],
+    [
+      "M",
+      "tests/python/test_tensor.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "addons/torch_c_dlpack_ext/build_backend.py",
+      "additions": 9,
+      "deletions": 4
+    },
+    {
+      "path": "include/tvm/ffi/c_api.h",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "python/tvm_ffi/_optional_torch_c_dlpack.py",
+      "additions": 10,
+      "deletions": 5
+    },
+    {
+      "path": "tests/python/test_optional_torch_c_dlpack.py",
+      "additions": 9,
+      "deletions": 4
+    },
+    {
+      "path": "tests/python/test_tensor.py",
+      "additions": 2,
+      "deletions": 1
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/addons/torch_c_dlpack_ext/build_backend.py b/addons/torch_c_dlpack_ext/build_backend.py\nindex 9489c5b..17bc2c4 100644\n--- a/addons/torch_c_dlpack_ext/build_backend.py\n+++ b/addons/torch_c_dlpack_ext/build_backend.py\n@@ -75,10 +75,15 @@ def build_wheel(\n             )\n         else:\n             extra_args = []\n-            if torch.version.cuda is not None:\n-                extra_args.append(\"--build-with-cuda\")\n-            elif torch.version.hip is not None:\n-                extra_args.append(\"--build-with-rocm\")\n+            # First use \"torch.cuda.is_available()\" to check whether GPU environment\n+            # is available. Then determine the GPU type.\n+            if torch.cuda.is_available():\n+                if torch.version.cuda is not None:\n+                    extra_args.append(\"--build-with-cuda\")\n+                elif torch.version.hip is not None:\n+                    extra_args.append(\"--build-with-rocm\")\n+                else:\n+                    raise ValueError(\"Cannot determine whether to build with CUDA or ROCm.\")\n             subprocess.run(\n                 [\n                     sys.executable,\ndiff --git a/include/tvm/ffi/c_api.h b/include/tvm/ffi/c_api.h\nindex e773208..152046a 100644\n--- a/include/tvm/ffi/c_api.h\n+++ b/include/tvm/ffi/c_api.h\n@@ -62,7 +62,7 @@\n /*! \\brief TVM FFI minor version. */\n #define TVM_FFI_VERSION_MINOR 1\n /*! \\brief TVM FFI patch version. */\n-#define TVM_FFI_VERSION_PATCH 2\n+#define TVM_FFI_VERSION_PATCH 3\n // NOLINTEND(modernize-macro-to-enum)\n \n #ifdef __cplusplus\ndiff --git a/python/tvm_ffi/_optional_torch_c_dlpack.py b/python/tvm_ffi/_optional_torch_c_dlpack.py\nindex e05fc34..7f259d1 100644\n--- a/python/tvm_ffi/_optional_torch_c_dlpack.py\n+++ b/python/tvm_ffi/_optional_torch_c_dlpack.py\n@@ -41,7 +41,7 @@ from pathlib import Path\n from typing import Any\n \n \n-def load_torch_c_dlpack_extension() -> Any:\n+def load_torch_c_dlpack_extension() -> Any:  # noqa: PLR0912\n     try:\n         import torch  # noqa: PLC0415\n \n@@ -67,10 +67,15 @@ def load_torch_c_dlpack_extension() -> Any:\n         cache_dir = Path(os.environ.get(\"TVM_FFI_CACHE_DIR\", \"~/.cache/tvm-ffi\")).expanduser()\n         addon_output_dir = cache_dir\n         major, minor = torch.__version__.split(\".\")[:2]\n-        if torch.version.cuda is not None:\n-            device = \"cuda\"\n-        elif torch.version.hip is not None:\n-            device = \"rocm\"\n+        # First use \"torch.cuda.is_available()\" to check whether GPU environment\n+        # is available. Then determine the GPU type.\n+        if torch.cuda.is_available():\n+            if torch.version.cuda is not None:\n+                device = \"cuda\"\n+            elif torch.version.hip is not None:\n+                device = \"rocm\"\n+            else:\n+                raise ValueError(\"Cannot determine whether to build with CUDA or ROCm.\")\n         else:\n             device = \"cpu\"\n         suffix = \".dll\" if sys.platform.startswith(\"win\") else \".so\"\ndiff --git a/tests/python/test_optional_torch_c_dlpack.py b/tests/python/test_optional_torch_c_dlpack.py\nindex 8aded2b..4666d5c 100644\n--- a/tests/python/test_optional_torch_c_dlpack.py\n+++ b/tests/python/test_optional_torch_c_dlpack.py\n@@ -44,10 +44,15 @@ def test_build_torch_c_dlpack_extension() -> None:\n         \"--libname\",\n         \"libtorch_c_dlpack_addon_test.so\",\n     ]\n-    if torch.version.cuda is not None:\n-        args.append(\"--build-with-cuda\")\n-    elif torch.version.hip is not None:\n-        args.append(\"--build-with-rocm\")\n+    # First use \"torch.cuda.is_available()\" to check whether GPU environment\n+    # is available. Then determine the GPU type.\n+    if torch.cuda.is_available():\n+        if torch.version.cuda is not None:\n+            args.append(\"--build-with-cuda\")\n+        elif torch.version.hip is not None:\n+            args.append(\"--build-with-rocm\")\n+        else:\n+            raise ValueError(\"Cannot determine whether to build with CUDA or ROCm.\")\n     subprocess.run(args, check=True)\n \n     lib_path = str(Path(\"./output-dir/libtorch_c_dlpack_addon_test.so\").resolve())\ndiff --git a/tests/python/test_tensor.py b/tests/python/test_tensor.py\nindex d772ab3..7a257cd 100644\n--- a/tests/python/test_tensor.py\n+++ b/tests/python/test_tensor.py\n@@ -115,7 +115,8 @@ def test_tvm_ffi_tensor_compatible() -> None:\n \n \n @pytest.mark.skipif(\n-    torch is None or torch.version.hip is None, reason=\"ROCm is not enabled in PyTorch\"\n+    torch is None or not torch.cuda.is_available() or torch.version.hip is None,\n+    reason=\"ROCm is not enabled in PyTorch\",\n )\n def test_tensor_from_pytorch_rocm() -> None:\n     assert torch is not None",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".h",
+      ".py"
+    ],
+    "scopes_guess": [
+      "addons",
+      "include",
+      "python",
+      "tests"
+    ]
+  }
+}

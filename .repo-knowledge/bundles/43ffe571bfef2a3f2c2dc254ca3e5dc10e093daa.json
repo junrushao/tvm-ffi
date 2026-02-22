@@ -1,0 +1,63 @@
+{
+  "sha": "43ffe571bfef2a3f2c2dc254ca3e5dc10e093daa",
+  "sha7": "43ffe57",
+  "author_name": "Junru Shao",
+  "author_email": "junrushao@apache.org",
+  "date_iso": "2025-09-26T12:03:39-07:00",
+  "subject": "fix: Only attach docstring when it's defined (#60)",
+  "body":
+      "PR #49 introduced a behavior that generates a default docstring if it's\nnot available. However, it seems to conflict with upstream Sphinx doc\ngeneration. This PR reverts such behavior.",
+  "is_merge": false,
+  "parents": [
+    "43d13e86ee24d1558f929e3b0faa3182ca1af872"
+  ],
+  "name_status": [
+    [
+      "M",
+      "python/tvm_ffi/cython/type_info.pxi"
+    ],
+    [
+      "M",
+      "src/ffi/extra/testing.cc"
+    ],
+    [
+      "M",
+      "tests/python/test_object.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "python/tvm_ffi/cython/type_info.pxi",
+      "additions": 9,
+      "deletions": 6
+    },
+    {
+      "path": "src/ffi/extra/testing.cc",
+      "additions": 2,
+      "deletions": 2
+    },
+    {
+      "path": "tests/python/test_object.py",
+      "additions": 8,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/python/tvm_ffi/cython/type_info.pxi b/python/tvm_ffi/cython/type_info.pxi\nindex ca893b4..0ef53e3 100644\n--- a/python/tvm_ffi/cython/type_info.pxi\n+++ b/python/tvm_ffi/cython/type_info.pxi\n@@ -79,18 +79,21 @@ class TypeField:\n     def as_property(self, object cls):\n         \"\"\"Create a Python ``property`` object for this field on ``cls``.\"\"\"\n         cdef str name = self.name\n-        cdef str doc = self.doc or f\"{cls.__module__}.{cls.__qualname__}.{name}\"\n         cdef FieldGetter fget = self.getter\n         cdef FieldSetter fset = self.setter\n+        cdef object ret\n         fget.__name__ = fset.__name__ = name\n         fget.__module__ = fset.__module__ = cls.__module__\n         fget.__qualname__ = fset.__qualname__ = f\"{cls.__qualname__}.{name}\"\n-        fget.__doc__ = fset.__doc__ = f\"Property `{name}` of class `{cls.__qualname__}`\"\n-        return property(\n+        ret = property(\n             fget=fget,\n             fset=fset if (not self.frozen) else None,\n-            doc=doc,\n         )\n+        if self.doc:\n+            ret.__doc__ = self.doc\n+            fget.__doc__ = self.doc\n+            fset.__doc__ = self.doc\n+        return ret\n \n \n @dataclasses.dataclass(eq=False)\n@@ -105,14 +108,14 @@ class TypeMethod:\n     def as_callable(self, object cls):\n         \"\"\"Create a Python method attribute for this method on ``cls``.\"\"\"\n         cdef str name = self.name\n-        cdef str doc = self.doc or f\"Method `{name}` of class `{cls.__qualname__}`\"\n         cdef object func = self.func\n         if not self.is_static:\n             func = _member_method_wrapper(func)\n         func.__module__ = cls.__module__\n         func.__name__ = name\n         func.__qualname__ = f\"{cls.__qualname__}.{name}\"\n-        func.__doc__ = doc\n+        if self.doc:\n+            func.__doc__ = self.doc\n         if self.is_static:\n             func = staticmethod(func)\n         return func\ndiff --git a/src/ffi/extra/testing.cc b/src/ffi/extra/testing.cc\nindex 5d7ef58..43ab8d2 100644\n--- a/src/ffi/extra/testing.cc\n+++ b/src/ffi/extra/testing.cc\n@@ -58,8 +58,8 @@ class TestIntPair : public tvm::ffi::ObjectRef {\n TVM_FFI_STATIC_INIT_BLOCK() {\n   namespace refl = tvm::ffi::reflection;\n   refl::ObjectDef<TestIntPairObj>()\n-      .def_ro(\"a\", &TestIntPairObj::a)\n-      .def_ro(\"b\", &TestIntPairObj::b)\n+      .def_ro(\"a\", &TestIntPairObj::a, \"Field `a`\")\n+      .def_ro(\"b\", &TestIntPairObj::b, \"Field `b`\")\n       .def_static(\"__ffi_init__\", refl::init<TestIntPairObj, int64_t, int64_t>);\n }\n \ndiff --git a/tests/python/test_object.py b/tests/python/test_object.py\nindex d23aa10..ee5dc4e 100644\n--- a/tests/python/test_object.py\n+++ b/tests/python/test_object.py\n@@ -45,6 +45,14 @@ def test_method() -> None:\n     assert type(obj0).v_i64.__doc__ == \"i64 field\"  # type: ignore[attr-defined]\n \n \n+def test_attribute() -> None:\n+    obj = tvm_ffi.testing.TestIntPair(3, 4)\n+    assert obj.a == 3\n+    assert obj.b == 4\n+    assert type(obj).a.__doc__ == \"Field `a`\"\n+    assert type(obj).b.__doc__ == \"Field `b`\"\n+\n+\n def test_setter() -> None:\n     # test setter\n     obj0 = tvm_ffi.testing.create_object(\"testing.TestObjectBase\", v_i64=10, v_str=\"hello\")",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".cc",
+      ".pxi",
+      ".py"
+    ],
+    "scopes_guess": [
+      "python",
+      "src",
+      "tests"
+    ]
+  }
+}

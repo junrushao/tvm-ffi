@@ -1,0 +1,39 @@
+{
+  "sha": "f5633e92b3149af105c9081844d9405569730b8a",
+  "sha7": "f5633e9",
+  "author_name": "Junru Shao",
+  "author_email": "junrushao@apache.org",
+  "date_iso": "2025-09-22T13:07:13-07:00",
+  "subject": "chore: Test Various Python Versions in GitHub Action CI (#41)",
+  "body":
+      "Previously all commits are tested only against Python 3.13 in CI. This\nPR covers more Python versions, more specifically:\n- ubuntu-latest => Python 3.13 \n- ubuntu-24.04-arm => Python 3.9\n- windows-latest => Python 3.12\n- macos-14 => Python 3.10",
+  "is_merge": false,
+  "parents": [
+    "40e9c83345636b187f39df86a077e0b56683c792"
+  ],
+  "name_status": [
+    [
+      "M",
+      ".github/workflows/ci_test.yml"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": ".github/workflows/ci_test.yml",
+      "additions": 15,
+      "deletions": 16
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/.github/workflows/ci_test.yml b/.github/workflows/ci_test.yml\nindex 641d3a8..9787d5c 100644\n--- a/.github/workflows/ci_test.yml\n+++ b/.github/workflows/ci_test.yml\n@@ -63,30 +63,26 @@ jobs:\n       fail-fast: true\n       matrix:\n         include:\n-          - {os: ubuntu-latest, arch: x86_64}\n-          - {os: ubuntu-24.04-arm, arch: aarch64}\n-          - {os: windows-latest, arch: AMD64}\n-          - {os: macos-14, arch: arm64}\n+          - {os: ubuntu-latest, arch: x86_64, python_version: '3.13'}\n+          - {os: ubuntu-24.04-arm, arch: aarch64, python_version: '3.9'}\n+          - {os: windows-latest, arch: AMD64, python_version: '3.12'}\n+          - {os: macos-14, arch: arm64, python_version: '3.10'}\n \n     steps:\n-      - uses: actions/setup-python@v6\n-        with:\n-          python-version: '3.13'\n-\n       - uses: actions/checkout@v4\n         with:\n           submodules: recursive\n+      - name: Print current commit\n+        run: git log -1 --oneline\n \n+      # Detect CPU count\n       - uses: ./.github/actions/detect-env-vars\n         id: env_vars\n-\n       - name: Print CPU count\n         run: |\n           echo \"CPU count: ${{ steps.env_vars.outputs.cpu_count }}\"\n \n-      - name: Print current commit\n-        run: git log -1 --oneline\n-\n+      # Run C++ tests\n       - name: Run cpp tests\n         if: ${{ matrix.os != 'windows-latest' }}\n         env:\n@@ -95,7 +91,6 @@ jobs:\n           cmake . -B build_test -DTVM_FFI_BUILD_TESTS=ON -DCMAKE_BUILD_TYPE=Debug\n           cmake --build build_test --clean-first --config Debug --target tvm_ffi_tests\n           ctest -V -C Debug --test-dir build_test --output-on-failure\n-\n       - name: Run cpp tests[windows]\n         if: ${{ matrix.os == 'windows-latest' }}\n         shell: cmd\n@@ -106,13 +101,17 @@ jobs:\n           cmake --build build_test --clean-first --config Debug --target tvm_ffi_tests &&\n           ctest -V -C Debug --test-dir build_test --output-on-failure\n \n+      # Run Python tests\n+      - name: Setup Python ${{ matrix.python_version }}\n+        uses: astral-sh/setup-uv@b75a909f75acd358c2196fb9a5f1299a9a8868a4 # v6.7.0\n+        with:\n+          python-version: ${{ matrix.python_version }}\n+          activate-environment: true\n       - name: Build and install python package\n         env:\n           CMAKE_BUILD_PARALLEL_LEVEL: ${{ steps.env_vars.outputs.cpu_count }}\n         run: |\n-          python -m pip install --upgrade pip\n-          pip install -v \".[test]\"\n-\n+          uv pip install --reinstall --verbose -e \".[test]\"\n       - name: Run python tests\n         run: |\n           pytest -vvs tests/python",
+  "heuristics": {
+    "tags": [
+      "ci"
+    ],
+    "extensions": [
+      ".yml"
+    ],
+    "scopes_guess": []
+  }
+}

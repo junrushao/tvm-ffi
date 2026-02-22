@@ -1,0 +1,52 @@
+{
+  "sha": "e6a85e9cbc4e2d0b8f414a2dfda051f4c37bb1a1",
+  "sha7": "e6a85e9",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-11-07T13:09:13-05:00",
+  "subject": "[CYTHON] Fix ctypes.c_void_p for nullptr (#235)",
+  "body":
+      "ctypes.c_void_p.value returns None instead of 0 when we construct a\nnullptr with value=0. This PR fixes the corner case.",
+  "is_merge": false,
+  "parents": [
+    "75c2a2bb7b8d367f33ade1a1b4f9f14212fc080f"
+  ],
+  "name_status": [
+    [
+      "M",
+      "python/tvm_ffi/cython/base.pxi"
+    ],
+    [
+      "M",
+      "tests/python/test_function.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "python/tvm_ffi/cython/base.pxi",
+      "additions": 2,
+      "deletions": 1
+    },
+    {
+      "path": "tests/python/test_function.py",
+      "additions": 4,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/python/tvm_ffi/cython/base.pxi b/python/tvm_ffi/cython/base.pxi\nindex 0e3aa72..597956b 100644\n--- a/python/tvm_ffi/cython/base.pxi\n+++ b/python/tvm_ffi/cython/base.pxi\n@@ -439,7 +439,8 @@ cdef inline object ctypes_handle(void* chandle):\n cdef inline void* c_handle(object handle):\n     \"\"\"Cast C types handle to c handle.\"\"\"\n     cdef unsigned long long v_ptr\n-    v_ptr = handle.value\n+    cdef object value = handle.value\n+    v_ptr = 0 if value is None else value\n     return <void*>(v_ptr)\n \n \ndiff --git a/tests/python/test_function.py b/tests/python/test_function.py\nindex 8d6dd34..deef0f5 100644\n--- a/tests/python/test_function.py\n+++ b/tests/python/test_function.py\n@@ -72,6 +72,10 @@ def test_echo() -> None:\n     assert isinstance(c_void_p_result, ctypes.c_void_p)\n     assert c_void_p_result.value == 0x12345678\n \n+    # test c_void_p for nullptr\n+    c_void_p_nullptr_result = fecho(ctypes.c_void_p(0))\n+    c_void_p_nullptr_result is None\n+\n     # test function: aka object\n     fadd = tvm_ffi.convert(lambda a, b: a + b)\n     fadd1 = fecho(fadd)",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".pxi",
+      ".py"
+    ],
+    "scopes_guess": [
+      "python",
+      "tests"
+    ]
+  }
+}

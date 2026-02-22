@@ -1,0 +1,72 @@
+{
+  "sha": "5facac5ff2881370ddcae7d9440849bc475b6ca7",
+  "sha7": "5facac5",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-09-14T10:46:53-04:00",
+  "subject": "[DOCS] Add Contributing (#9)",
+  "body":
+      "This PR adds contributing docs and also fixes remaining\nplaces to point to the right location",
+  "is_merge": false,
+  "parents": [
+    "cc93373b344715422d158d14b5502d7c673a0153"
+  ],
+  "name_status": [
+    [
+      "A",
+      "CONTRIBUTING.md"
+    ],
+    [
+      "M",
+      "README.md"
+    ],
+    [
+      "M",
+      "docs/concepts/abi_overview.md"
+    ],
+    [
+      "M",
+      "pyproject.toml"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "CONTRIBUTING.md",
+      "additions": 74,
+      "deletions": 0
+    },
+    {
+      "path": "README.md",
+      "additions": 2,
+      "deletions": 0
+    },
+    {
+      "path": "docs/concepts/abi_overview.md",
+      "additions": 2,
+      "deletions": 2
+    },
+    {
+      "path": "pyproject.toml",
+      "additions": 3,
+      "deletions": 3
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/CONTRIBUTING.md b/CONTRIBUTING.md\nnew file mode 100644\nindex 0000000..d89796b\n--- /dev/null\n+++ b/CONTRIBUTING.md\n@@ -0,0 +1,74 @@\n+<!--- Licensed to the Apache Software Foundation (ASF) under one -->\n+<!--- or more contributor license agreements.  See the NOTICE file -->\n+<!--- distributed with this work for additional information -->\n+<!--- regarding copyright ownership.  The ASF licenses this file -->\n+<!--- to you under the Apache License, Version 2.0 (the -->\n+<!--- \"License\"); you may not use this file except in compliance -->\n+<!--- with the License.  You may obtain a copy of the License at -->\n+\n+<!---   http://www.apache.org/licenses/LICENSE-2.0 -->\n+\n+<!--- Unless required by applicable law or agreed to in writing, -->\n+<!--- software distributed under the License is distributed on an -->\n+<!--- \"AS IS\" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY -->\n+<!--- KIND, either express or implied.  See the License for the -->\n+<!--- specific language governing permissions and limitations -->\n+<!--- under the License. -->\n+\n+# Contributing to TVM FFI\n+\n+We welcome contributions of all kinds, including bug fixes, documentation improvements, enhancements,\n+and more. To ensure a smooth process, Here is a general guide to contributing.\n+\n+## Installation\n+\n+For development, you can install through editable installation:\n+\n+```bash\n+git clone https://github.com/apache/tvm-ffi --recursive\n+cd tvm-ffi\n+pip install --no-build-isolation -e . -v\n+```\n+\n+We recommend using the `--no-build-isolation` flag to ensure compatibility with your existing environment.\n+You can contribute to the repo through the following steps.\n+\n+- Fork the repository and create a new branch for your work.\n+- Push your changes to your fork and open a pull request to the main repository.\n+  - Please provide a clear description of your changes and link to the relevant issue if one exists.\n+  - Create necessary test cases and documentation.\n+- Work with the community by incorporating feedback from reviewers until the change is ready to be merged.\n+\n+For significant changes, it's often a good idea to open a GitHub issue first (with `[RFC] title`) to discuss your proposal.\n+It is optional, but can be very helpful as it allows the maintainers and the community to provide feedback and helps ensure your\n+work aligns with the project's goals.\n+\n+\n+## Stability and Minimalism\n+\n+C ABI stability is the top priority of this project. We also prioritize minimalism and efficiency\n+in the core so it is portable and can be used broadly.\n+We also recognize potential needs for evolution to ensure it works best for the machine\n+learning systems community, and would like to work together collectively with the community for such evolution.\n+\n+- When proposing a change, consider first whether things can be built on top of the current mechanism.\n+- We welcome RFCs and DISCUSS discussions for ABI discussions and rationales.\n+- We will communicate very mindfully to the community about major changes.\n+\n+Feature improvements in the Python layer and C++ headers (that do not impact the ABI) have\n+comparatively less significant impacts on downstream users, so they can follow normal contribution\n+process in general open source projects.\n+\n+## Status and Release Versioning\n+\n+The project is in the RFC stage, which means the main features are complete.\n+We anticipate the API will be reasonably stable but will continue to work with the community to evolve it.\n+More importantly, the RFC stage is a period where we are working with the open source communities\n+to ensure we evolve the ABI to meet the needs of frameworks.\n+\n+Releases during the RFC stage will be `0.X.Y`, where bumps in `X` indicate C ABI-breaking changes\n+and `Y` indicates other changes. We may also produce pre-releases (beta releases) during this period.\n+\n+We anticipate the RFC stage will last for a few months, then we will start to follow\n+[Semantic Versioning](https://packaging.python.org/en/latest/discussions/versioning/)\n+(`major.minor.patch`) going forward.\ndiff --git a/README.md b/README.md\nindex 88083e9..525518e 100644\n--- a/README.md\n+++ b/README.md\n@@ -18,3 +18,5 @@\n # tvm ffi\n \n [![CI](https://github.com/apache/tvm-ffi/actions/workflows/ci_test.yml/badge.svg)](https://github.com/apache/tvm-ffi/actions/workflows/ci_test.yml)\n+\n+\ndiff --git a/docs/concepts/abi_overview.md b/docs/concepts/abi_overview.md\nindex e891de6..ad671d3 100644\n--- a/docs/concepts/abi_overview.md\n+++ b/docs/concepts/abi_overview.md\n@@ -29,8 +29,8 @@ so the code itself illustrates the low-level semantics of how to work with the A\n These can serve as references for how to build language bindings and compiler codegen for the ABI.\n \n ```{note}\n-The authoritative ABI specifications are defined in [tvm/ffi/c_api.h](https://github.com/apache/tvm/blob/main/ffi/include/tvm/ffi/c_api.h) for core ABI,\n-and [tvm/ffi/extra/c_env_api.h](https://github.com/apache/tvm/blob/main/ffi/include/tvm/ffi/extra/c_env_api.h) for extra support features\n+The authoritative ABI specifications are defined in [tvm/ffi/c_api.h](https://github.com/apache/tvm-ffi/blob/main/include/tvm/ffi/c_api.h) for core ABI,\n+and [tvm/ffi/extra/c_env_api.h](https://github.com/apache/tvm-ffi/blob/main/include/tvm/ffi/extra/c_env_api.h) for extra support features\n such as stream handling. This document provides explanations about design concepts and rationales.\n ```\n \ndiff --git a/pyproject.toml b/pyproject.toml\nindex 4892161..bfe7b42 100644\n--- a/pyproject.toml\n+++ b/pyproject.toml\n@@ -17,7 +17,7 @@\n \n [project]\n name = \"apache-tvm-ffi\"\n-version = \"0.1.0b0\"\n+version = \"0.1.0b1\"\n description = \"tvm ffi\"\n \n authors = [{ name = \"TVM FFI team\" }]\n@@ -37,8 +37,8 @@ dependencies = []\n \n \n [project.urls]\n-Homepage = \"https://github.com/apache/tvm/ffi\"\n-GitHub = \"https://github.com/apache/tvm/ffi\"\n+Homepage = \"https://github.com/apache/tvm-ffi\"\n+GitHub = \"https://github.com/apache/tvm-ffi\"\n \n [project.optional-dependencies]\n # setup tools is needed by torch jit for best perf",
+  "heuristics": {
+    "tags": [
+      "build"
+    ],
+    "extensions": [
+      ".md",
+      ".toml"
+    ],
+    "scopes_guess": [
+      "CONTRIBUTING.md",
+      "README.md",
+      "docs",
+      "pyproject.toml"
+    ]
+  }
+}

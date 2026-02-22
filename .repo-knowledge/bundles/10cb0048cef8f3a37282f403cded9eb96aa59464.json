@@ -1,0 +1,157 @@
+{
+  "sha": "10cb0048cef8f3a37282f403cded9eb96aa59464",
+  "sha7": "10cb004",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2026-01-12T21:08:36-05:00",
+  "subject": "[CUDA] Isolate unified api to only in cubin launcher (#408)",
+  "body":
+      "This PR isolates out the unified api to be only local to cubin launcher.\n\nBackground: it is generally error-prone to mix the driver and runtime\nAPI. The particular unified api switch was mainly meant to be used in\ncubin launcher for a narrow set of cuda versions(around 12.8 ish to\n13.0).\n\nHowever, we would like the most generic macros like\nTVM_FFI_CHECK_CUDA_ERROR to be specific to runtime API. We should\nrevisit if we should simply deprecate driver API usages for better\nmaintainability.\n\n---------\n\nCo-authored-by: Junru Shao <junrus@nvidia.com>",
+  "is_merge": false,
+  "parents": [
+    "91fcaa8bd261d55255fe658ce026ce6840547234"
+  ],
+  "name_status": [
+    [
+      "M",
+      ".github/workflows/ci_test.yml"
+    ],
+    [
+      "M",
+      "docs/guides/cubin_launcher.rst"
+    ],
+    [
+      "M",
+      "examples/cubin_launcher/dynamic_cubin/src/lib_dynamic.cc"
+    ],
+    [
+      "M",
+      "examples/cubin_launcher/embedded_cubin/cpp_embed/src/lib_embedded.cc"
+    ],
+    [
+      "M",
+      "examples/cubin_launcher/embedded_cubin/embed_with_tvm_ffi/src/lib_embedded.cc"
+    ],
+    [
+      "M",
+      "examples/cubin_launcher/embedded_cubin/include_bin2c/src/lib_embedded.cc"
+    ],
+    [
+      "M",
+      "examples/cubin_launcher/example_nvrtc_cubin.py"
+    ],
+    [
+      "M",
+      "examples/cubin_launcher/example_triton_cubin.py"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/extra/cuda/base.h"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/extra/cuda/cubin_launcher.h"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/extra/cuda/device_guard.h"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/extra/cuda/internal/unified_api.h"
+    ],
+    [
+      "M",
+      "tests/python/test_cubin_launcher.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": ".github/workflows/ci_test.yml",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "docs/guides/cubin_launcher.rst",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "examples/cubin_launcher/dynamic_cubin/src/lib_dynamic.cc",
+      "additions": 2,
+      "deletions": 2
+    },
+    {
+      "path": "examples/cubin_launcher/embedded_cubin/cpp_embed/src/lib_embedded.cc",
+      "additions": 2,
+      "deletions": 2
+    },
+    {
+      "path": "examples/cubin_launcher/embedded_cubin/embed_with_tvm_ffi/src/lib_embedded.cc",
+      "additions": 2,
+      "deletions": 2
+    },
+    {
+      "path": "examples/cubin_launcher/embedded_cubin/include_bin2c/src/lib_embedded.cc",
+      "additions": 2,
+      "deletions": 2
+    },
+    {
+      "path": "examples/cubin_launcher/example_nvrtc_cubin.py",
+      "additions": 2,
+      "deletions": 4
+    },
+    {
+      "path": "examples/cubin_launcher/example_triton_cubin.py",
+      "additions": 1,
+      "deletions": 2
+    },
+    {
+      "path": "include/tvm/ffi/extra/cuda/base.h",
+      "additions": 22,
+      "deletions": 0
+    },
+    {
+      "path": "include/tvm/ffi/extra/cuda/cubin_launcher.h",
+      "additions": 8,
+      "deletions": 9
+    },
+    {
+      "path": "include/tvm/ffi/extra/cuda/device_guard.h",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "include/tvm/ffi/extra/cuda/internal/unified_api.h",
+      "additions": 5,
+      "deletions": 3
+    },
+    {
+      "path": "tests/python/test_cubin_launcher.py",
+      "additions": 4,
+      "deletions": 4
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/.github/workflows/ci_test.yml b/.github/workflows/ci_test.yml\nindex 4191f01..88e7157 100644\n--- a/.github/workflows/ci_test.yml\n+++ b/.github/workflows/ci_test.yml\n@@ -51,7 +51,7 @@ jobs:\n         id: cpp_files\n         run: |\n           FILES=$(git diff --name-only --diff-filter=ACMR origin/${{ github.base_ref }}...HEAD -- \\\n-            '*.c' '*.cc' '*.cpp' '*.cxx' | tr '\\n' ' ')\n+            src/ tests/ | grep -E '\\.(c|cc|cpp|cxx)$' | tr '\\n' ' ')\n           echo \"files=$FILES\" >> $GITHUB_OUTPUT\n           [ -n \"$FILES\" ] && echo \"changed=true\" >> $GITHUB_OUTPUT || echo \"changed=false\" >> $GITHUB_OUTPUT\n \ndiff --git a/docs/guides/cubin_launcher.rst b/docs/guides/cubin_launcher.rst\nindex 8407eb5..386ca16 100644\n--- a/docs/guides/cubin_launcher.rst\n+++ b/docs/guides/cubin_launcher.rst\n@@ -376,7 +376,7 @@ To use dynamic shared memory, specify the size in the :cpp:func:`tvm::ffi::Cubin\n \n    // Allocate 1KB of dynamic shared memory\n    uint32_t shared_mem_bytes = 1024;\n-   cudaError_t result = kernel.Launch(args, grid, block, stream, shared_mem_bytes);\n+   TVM_FFI_CHECK_CUBIN_LAUNCHER_CUDA_ERROR(kernel.Launch(args, grid, block, stream, shared_mem_bytes));\n \n Integration with Different Compilers\n ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\ndiff --git a/examples/cubin_launcher/dynamic_cubin/src/lib_dynamic.cc b/examples/cubin_launcher/dynamic_cubin/src/lib_dynamic.cc\nindex 1a39383..ef5933a 100644\n--- a/examples/cubin_launcher/dynamic_cubin/src/lib_dynamic.cc\n+++ b/examples/cubin_launcher/dynamic_cubin/src/lib_dynamic.cc\n@@ -85,7 +85,7 @@ void AddOne(tvm::ffi::TensorView x, tvm::ffi::TensorView y) {\n \n   // Launch kernel\n   tvm::ffi::cuda_api::ResultType result = g_add_one_kernel->Launch(args, grid, block, stream);\n-  TVM_FFI_CHECK_CUDA_ERROR(result);\n+  TVM_FFI_CHECK_CUBIN_LAUNCHER_CUDA_ERROR(result);\n }\n \n }  // namespace cubin_dynamic\n@@ -125,7 +125,7 @@ void MulTwo(tvm::ffi::TensorView x, tvm::ffi::TensorView y) {\n \n   // Launch kernel\n   tvm::ffi::cuda_api::ResultType result = g_mul_two_kernel->Launch(args, grid, block, stream);\n-  TVM_FFI_CHECK_CUDA_ERROR(result);\n+  TVM_FFI_CHECK_CUBIN_LAUNCHER_CUDA_ERROR(result);\n }\n \n // Export TVM-FFI functions\ndiff --git a/examples/cubin_launcher/embedded_cubin/cpp_embed/src/lib_embedded.cc b/examples/cubin_launcher/embedded_cubin/cpp_embed/src/lib_embedded.cc\nindex 615bdc9..418338d 100644\n--- a/examples/cubin_launcher/embedded_cubin/cpp_embed/src/lib_embedded.cc\n+++ b/examples/cubin_launcher/embedded_cubin/cpp_embed/src/lib_embedded.cc\n@@ -73,7 +73,7 @@ void AddOne(tvm::ffi::TensorView x, tvm::ffi::TensorView y) {\n \n   // Launch kernel\n   tvm::ffi::cuda_api::ResultType result = kernel.Launch(args, grid, block, stream);\n-  TVM_FFI_CHECK_CUDA_ERROR(result);\n+  TVM_FFI_CHECK_CUBIN_LAUNCHER_CUDA_ERROR(result);\n }\n \n }  // namespace cubin_embedded\n@@ -112,7 +112,7 @@ void MulTwo(tvm::ffi::TensorView x, tvm::ffi::TensorView y) {\n \n   // Launch kernel\n   tvm::ffi::cuda_api::ResultType result = kernel.Launch(args, grid, block, stream);\n-  TVM_FFI_CHECK_CUDA_ERROR(result);\n+  TVM_FFI_CHECK_CUBIN_LAUNCHER_CUDA_ERROR(result);\n }\n \n // Export TVM-FFI functions\ndiff --git a/examples/cubin_launcher/embedded_cubin/embed_with_tvm_ffi/src/lib_embedded.cc b/examples/cubin_launcher/embedded_cubin/embed_with_tvm_ffi/src/lib_embedded.cc\nindex ea410a6..55520d4 100644\n--- a/examples/cubin_launcher/embedded_cubin/embed_with_tvm_ffi/src/lib_embedded.cc\n+++ b/examples/cubin_launcher/embedded_cubin/embed_with_tvm_ffi/src/lib_embedded.cc\n@@ -70,7 +70,7 @@ void AddOne(tvm::ffi::TensorView x, tvm::ffi::TensorView y) {\n \n   // Launch kernel\n   tvm::ffi::cuda_api::ResultType result = kernel.Launch(args, grid, block, stream);\n-  TVM_FFI_CHECK_CUDA_ERROR(result);\n+  TVM_FFI_CHECK_CUBIN_LAUNCHER_CUDA_ERROR(result);\n }\n \n }  // namespace cubin_embedded\n@@ -109,7 +109,7 @@ void MulTwo(tvm::ffi::TensorView x, tvm::ffi::TensorView y) {\n \n   // Launch kernel\n   tvm::ffi::cuda_api::ResultType result = kernel.Launch(args, grid, block, stream);\n-  TVM_FFI_CHECK_CUDA_ERROR(result);\n+  TVM_FFI_CHECK_CUBIN_LAUNCHER_CUDA_ERROR(result);\n }\n \n // Export TVM-FFI functions\ndiff --git a/examples/cubin_launcher/embedded_cubin/include_bin2c/src/lib_embedded.cc b/examples/cubin_launcher/embedded_cubin/include_bin2c/src/lib_embedded.cc\nindex 3c87889..a3ceec8 100644\n--- a/examples/cubin_launcher/embedded_cubin/include_bin2c/src/lib_embedded.cc\n+++ b/examples/cubin_launcher/embedded_cubin/include_bin2c/src/lib_embedded.cc\n@@ -70,7 +70,7 @@ void AddOne(tvm::ffi::TensorView x, tvm::ffi::TensorView y) {\n \n   // Launch kernel\n   tvm::ffi::cuda_api::ResultType result = kernel.Launch(args, grid, block, stream);\n-  TVM_FFI_CHECK_CUDA_ERROR(result);\n+  TVM_FFI_CHECK_CUBIN_LAUNCHER_CUDA_ERROR(result);\n }\n \n }  // namespace cubin_embedded\n@@ -109,7 +109,7 @@ void MulTwo(tvm::ffi::TensorView x, tvm::ffi::TensorView y) {\n \n   // Launch kernel\n   tvm::ffi::cuda_api::ResultType result = kernel.Launch(args, grid, block, stream);\n-  TVM_FFI_CHECK_CUDA_ERROR(result);\n+  TVM_FFI_CHECK_CUBIN_LAUNCHER_CUDA_ERROR(result);\n }\n \n // Export TVM-FFI functions\ndiff --git a/examples/cubin_launcher/example_nvrtc_cubin.py b/examples/cubin_launcher/example_nvrtc_cubin.py\nindex 04668e6..8d04e40 100644\n--- a/examples/cubin_launcher/example_nvrtc_cubin.py\n+++ b/examples/cubin_launcher/example_nvrtc_cubin.py\n@@ -129,8 +129,7 @@ def use_cubin_kernel(cubin_bytes: bytes) -> int:\n     cudaStream_t stream = static_cast<cudaStream_t>(TVMFFIEnvGetStream(device.device_type, device.device_id));\n \n     // Launch kernel\n-    cudaError_t result = kernel.Launch(args, grid, block, stream);\n-    TVM_FFI_CHECK_CUDA_ERROR(result);\n+    TVM_FFI_CHECK_CUBIN_LAUNCHER_CUDA_ERROR(kernel.Launch(args, grid, block, stream));\n     }\n \n     void MulTwo(tvm::ffi::TensorView x, tvm::ffi::TensorView y) {\n@@ -158,8 +157,7 @@ def use_cubin_kernel(cubin_bytes: bytes) -> int:\n     cudaStream_t stream = static_cast<cudaStream_t>(TVMFFIEnvGetStream(device.device_type, device.device_id));\n \n     // Launch kernel\n-    cudaError_t result = kernel.Launch(args, grid, block, stream);\n-    TVM_FFI_CHECK_CUDA_ERROR(result);\n+    TVM_FFI_CHECK_CUBIN_LAUNCHER_CUDA_ERROR(kernel.Launch(args, grid, block, stream));\n     }\n \n     }  // namespace nvrtc_loader\ndiff --git a/examples/cubin_launcher/example_triton_cubin.py b/examples/cubin_launcher/example_triton_cubin.py\nindex 8d92440..6654289 100644\n--- a/examples/cubin_launcher/example_triton_cubin.py\n+++ b/examples/cubin_launcher/example_triton_cubin.py\n@@ -133,8 +133,7 @@ def use_cubin_kernel(cubin_bytes: bytes) -> int:\n     DLDevice device = x.device();\n     cudaStream_t stream = static_cast<cudaStream_t>(TVMFFIEnvGetStream(device.device_type, device.device_id));\n \n-    cudaError_t result = kernel.Launch(args, grid, block, stream);\n-    TVM_FFI_CHECK_CUDA_ERROR(result);\n+    TVM_FFI_CHECK_CUBIN_LAUNCHER_CUDA_ERROR(kernel.Launch(args, grid, block, stream));\n     }\n \n     }  // namespace triton_loader\ndiff --git a/include/tvm/ffi/extra/cuda/base.h b/include/tvm/ffi/extra/cuda/base.h\nindex d8ea486..3ce1529 100644\n--- a/include/tvm/ffi/extra/cuda/base.h\n+++ b/include/tvm/ffi/extra/cuda/base.h\n@@ -23,9 +23,31 @@\n #ifndef TVM_FFI_EXTRA_CUDA_BASE_H_\n #define TVM_FFI_EXTRA_CUDA_BASE_H_\n \n+#include <cuda_runtime.h>\n+#include <tvm/ffi/error.h>\n+\n namespace tvm {\n namespace ffi {\n \n+/*!\n+ * \\brief Macro for checking CUDA runtime API errors.\n+ *\n+ * This macro checks the return value of CUDA runtime API calls and throws\n+ * a RuntimeError with detailed error information if the call fails.\n+ *\n+ * \\param stmt The CUDA runtime API call to check.\n+ */\n+#define TVM_FFI_CHECK_CUDA_ERROR(stmt)                                              \\\n+  do {                                                                              \\\n+    cudaError_t __err = (stmt);                                                     \\\n+    if (__err != cudaSuccess) {                                                     \\\n+      const char* __err_name = cudaGetErrorName(__err);                             \\\n+      const char* __err_str = cudaGetErrorString(__err);                            \\\n+      TVM_FFI_THROW(RuntimeError) << \"CUDA Runtime Error: \" << __err_name << \" (\"   \\\n+                                  << static_cast<int>(__err) << \"): \" << __err_str; \\\n+    }                                                                               \\\n+  } while (0)\n+\n /*!\n  * \\brief A simple 3D dimension type for CUDA kernel launch configuration.\n  *\ndiff --git a/include/tvm/ffi/extra/cuda/cubin_launcher.h b/include/tvm/ffi/extra/cuda/cubin_launcher.h\nindex c910e89..f1aabde 100644\n--- a/include/tvm/ffi/extra/cuda/cubin_launcher.h\n+++ b/include/tvm/ffi/extra/cuda/cubin_launcher.h\n@@ -29,7 +29,7 @@\n #ifndef TVM_FFI_EXTRA_CUDA_CUBIN_LAUNCHER_H_\n #define TVM_FFI_EXTRA_CUDA_CUBIN_LAUNCHER_H_\n \n-#include <cuda.h>\n+#include <cuda.h>  // NOLINT(clang-diagnostic-error)\n #include <cuda_runtime.h>\n #include <tvm/ffi/error.h>\n #include <tvm/ffi/extra/c_env_api.h>\n@@ -234,7 +234,7 @@ namespace ffi {\n  *       TVMFFIEnvGetStream(device.device_type, device.device_id));\n  *\n  *   cudaError_t result = kernel.Launch(args, grid, block, stream);\n- *   TVM_FFI_CHECK_CUDA_ERROR(result);\n+ *   TVM_FFI_CHECK_CUBIN_LAUNCHER_CUDA_ERROR(result);\n  * }\n  * \\endcode\n  *\n@@ -295,7 +295,7 @@ class CubinModule {\n    * \\param bytes CUBIN binary data as a Bytes object.\n    */\n   explicit CubinModule(const Bytes& bytes) {\n-    TVM_FFI_CHECK_CUDA_ERROR(cuda_api::LoadLibrary(&library_, bytes.data()));\n+    TVM_FFI_CHECK_CUBIN_LAUNCHER_CUDA_ERROR(cuda_api::LoadLibrary(&library_, bytes.data()));\n   }\n \n   /*!\n@@ -305,7 +305,7 @@ class CubinModule {\n    * \\note The `code` buffer points to an ELF image.\n    */\n   explicit CubinModule(const char* code) {\n-    TVM_FFI_CHECK_CUDA_ERROR(cuda_api::LoadLibrary(&library_, code));\n+    TVM_FFI_CHECK_CUBIN_LAUNCHER_CUDA_ERROR(cuda_api::LoadLibrary(&library_, code));\n   }\n \n   /*!\n@@ -315,7 +315,7 @@ class CubinModule {\n    * \\note The `code` buffer points to an ELF image.\n    */\n   explicit CubinModule(const unsigned char* code) {\n-    TVM_FFI_CHECK_CUDA_ERROR(cuda_api::LoadLibrary(&library_, code));\n+    TVM_FFI_CHECK_CUBIN_LAUNCHER_CUDA_ERROR(cuda_api::LoadLibrary(&library_, code));\n   }\n \n   /*! \\brief Destructor unloads the library */\n@@ -418,7 +418,7 @@ class CubinModule {\n  * // Launch on stream\n  * cudaStream_t stream = ...;\n  * cudaError_t result = kernel.Launch(args, grid, block, stream);\n- * TVM_FFI_CHECK_CUDA_ERROR(result);\n+ * TVM_FFI_CHECK_CUBIN_LAUNCHER_CUDA_ERROR(result);\n  * \\endcode\n  *\n  * \\note This class is movable but not copyable.\n@@ -434,7 +434,7 @@ class CubinKernel {\n    * \\param name Name of the kernel function.\n    */\n   CubinKernel(cuda_api::LibraryHandle library, const char* name) {\n-    TVM_FFI_CHECK_CUDA_ERROR(cuda_api::GetKernel(&kernel_, library, name));\n+    TVM_FFI_CHECK_CUBIN_LAUNCHER_CUDA_ERROR(cuda_api::GetKernel(&kernel_, library, name));\n   }\n \n   /*! \\brief Destructor (kernel handle doesn't need explicit cleanup) */\n@@ -464,8 +464,7 @@ class CubinKernel {\n    * \\par Error Checking\n    * Always check the returned cudaError_t:\n    * \\code{.cpp}\n-   * cudaError_t result = kernel.Launch(args, grid, block, stream);\n-   * TVM_FFI_CHECK_CUDA_ERROR(result);\n+   * TVM_FFI_CHECK_CUBIN_LAUNCHER_CUDA_ERROR(kernel.Launch(args, grid, block, stream));\n    * \\endcode\n    *\n    * \\param args Array of pointers to kernel arguments (must point to actual values).\ndiff --git a/include/tvm/ffi/extra/cuda/device_guard.h b/include/tvm/ffi/extra/cuda/device_guard.h\nindex 1b44cf6..0158688 100644\n--- a/include/tvm/ffi/extra/cuda/device_guard.h\n+++ b/include/tvm/ffi/extra/cuda/device_guard.h\n@@ -23,7 +23,7 @@\n #ifndef TVM_FFI_EXTRA_CUDA_DEVICE_GUARD_H_\n #define TVM_FFI_EXTRA_CUDA_DEVICE_GUARD_H_\n \n-#include <tvm/ffi/extra/cuda/internal/unified_api.h>\n+#include <tvm/ffi/extra/cuda/base.h>\n \n namespace tvm {\n namespace ffi {\ndiff --git a/include/tvm/ffi/extra/cuda/internal/unified_api.h b/include/tvm/ffi/extra/cuda/internal/unified_api.h\nindex 302d8ef..7b16150 100644\n--- a/include/tvm/ffi/extra/cuda/internal/unified_api.h\n+++ b/include/tvm/ffi/extra/cuda/internal/unified_api.h\n@@ -74,7 +74,7 @@ using DeviceAttrType = CUdevice_attribute;\n constexpr ResultType kSuccess = CUDA_SUCCESS;\n \n // Driver API Functions\n-#define _TVM_FFI_CUDA_FUNC(name) cu##name\n+#define _TVM_FFI_CUDA_FUNC(name) cu##name  // NOLINT(bugprone-reserved-identifier)\n \n #else\n \n@@ -110,7 +110,9 @@ inline void GetErrorString(ResultType err, const char** name, const char** str)\n #endif\n }\n \n-#define TVM_FFI_CHECK_CUDA_ERROR(stmt)                                              \\\n+// this macro is only used to check cuda errors in cubin launcher where\n+// we might switch between driver and runtime API.\n+#define TVM_FFI_CHECK_CUBIN_LAUNCHER_CUDA_ERROR(stmt)                               \\\n   do {                                                                              \\\n     ::tvm::ffi::cuda_api::ResultType __err = (stmt);                                \\\n     if (__err != ::tvm::ffi::cuda_api::kSuccess) {                                  \\\n@@ -143,7 +145,7 @@ inline DeviceHandle GetDeviceHandle(int device_id) {\n   CUdevice dev;\n   // Note: We use CHECK here because this conversion usually shouldn't fail if ID is valid\n   // and we need to return a value.\n-  TVM_FFI_CHECK_CUDA_ERROR(cuDeviceGet(&dev, device_id));\n+  TVM_FFI_CHECK_CUBIN_LAUNCHER_CUDA_ERROR(cuDeviceGet(&dev, device_id));\n   return dev;\n #else\n   return device_id;\ndiff --git a/tests/python/test_cubin_launcher.py b/tests/python/test_cubin_launcher.py\nindex d2e4ff0..014511a 100644\n--- a/tests/python/test_cubin_launcher.py\n+++ b/tests/python/test_cubin_launcher.py\n@@ -158,8 +158,8 @@ void LaunchAddOne(tvm::ffi::TensorView x, tvm::ffi::TensorView y) {\n   DLDevice device = x.device();\n   cudaStream_t stream = static_cast<cudaStream_t>(TVMFFIEnvGetStream(device.device_type, device.device_id));\n \n-  cudaError_t result = g_kernel_add_one->Launch(args, grid, block, stream);\n-  TVM_FFI_CHECK_CUDA_ERROR(result);\n+  auto result = g_kernel_add_one->Launch(args, grid, block, stream);\n+  TVM_FFI_CHECK_CUBIN_LAUNCHER_CUDA_ERROR(result);\n }\n \n void LaunchMulTwo(tvm::ffi::TensorView x, tvm::ffi::TensorView y) {\n@@ -184,8 +184,8 @@ void LaunchMulTwo(tvm::ffi::TensorView x, tvm::ffi::TensorView y) {\n   DLDevice device = x.device();\n   cudaStream_t stream = static_cast<cudaStream_t>(TVMFFIEnvGetStream(device.device_type, device.device_id));\n \n-  cudaError_t result = g_kernel_mul_two->Launch(args, grid, block, stream);\n-  TVM_FFI_CHECK_CUDA_ERROR(result);\n+  auto result = g_kernel_mul_two->Launch(args, grid, block, stream);\n+  TVM_FFI_CHECK_CUBIN_LAUNCHER_CUDA_ERROR(result);\n }\n \n TVM_FFI_DLL_EXPORT_TYPED_FUNC(load_cubin_data, cubin_test::LoadCubinData);",
+  "heuristics": {
+    "tags": [
+      "ci",
+      "test"
+    ],
+    "extensions": [
+      ".cc",
+      ".h",
+      ".py",
+      ".rst",
+      ".yml"
+    ],
+    "scopes_guess": [
+      "docs",
+      "examples",
+      "include",
+      "tests"
+    ]
+  }
+}

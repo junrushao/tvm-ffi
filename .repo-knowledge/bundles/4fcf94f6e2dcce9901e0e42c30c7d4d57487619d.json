@@ -1,0 +1,90 @@
+{
+  "sha": "4fcf94f6e2dcce9901e0e42c30c7d4d57487619d",
+  "sha7": "4fcf94f",
+  "author_name": "Yaoyao Ding",
+  "author_email": "dingyaoyao.cs@gmail.com",
+  "date_iso": "2025-09-29T18:52:53-04:00",
+  "subject": "[Utils] Add `build_inline` utility (#73)",
+  "body":
+      "This PR adds the `tvm_ffi.cpp.build_inline` utility function.\n\nExample:\n```python\nimport torch\nfrom tvm_ffi import Module\nimport tvm_ffi.cpp\n\n# define the cpp source code\ncpp_source = '''\n     void add_one_cpu(tvm::ffi::Tensor x, tvm::ffi::Tensor y) {\n       // implementation of a library function\n       TVM_FFI_ICHECK(x->ndim == 1) << \"x must be a 1D tensor\";\n       DLDataType f32_dtype{kDLFloat, 32, 1};\n       TVM_FFI_ICHECK(x->dtype == f32_dtype) << \"x must be a float tensor\";\n       TVM_FFI_ICHECK(y->ndim == 1) << \"y must be a 1D tensor\";\n       TVM_FFI_ICHECK(y->dtype == f32_dtype) << \"y must be a float tensor\";\n       TVM_FFI_ICHECK(x->shape[0] == y->shape[0]) << \"x and y must have the same shape\";\n       for (int i = 0; i < x->shape[0]; ++i) {\n         static_cast<float*>(y->data)[i] = static_cast<float*>(x->data)[i] + 1;\n       }\n     }\n'''\n\n# compile the cpp source code and load the module\nlib_path: str = tvm_ffi.cpp.load_inline(\n    name='hello',\n    cpp_sources=cpp_source,\n    functions='add_one_cpu',\n    # build_directory='./add_one/',  # can we optionally specify the build directory\n)\n\n# load the module\nmod: Module = tvm_ffi.load_module(lib_path)\n\n# use the function from the loaded module to perform\nx = torch.tensor([1, 2, 3, 4, 5], dtype=torch.float32)\ny = torch.empty_like(x)\nmod.add_one_cpu(x, y)\ntorch.testing.assert_close(x + 1, y)\n```\n\nThe `build_inline` function is similar to `tvm_ffi.cpp.load_inline` but\nonly build the module without loading it after build. It returns the\npath to the build shared library (e.g.,\n`~/.cache/tvm-ffi/hello_95b50659cc3e9b6d/hello.so`).\n\nMinor:\nAlso add `autodoc_typehints = 'description'` following\nhttps://github.com/apache/tvm-ffi/pull/52#discussion_r2374528315.",
+  "is_merge": false,
+  "parents": [
+    "4fe8b2b79dfeb469b2499acecb3e10038ddcee0f"
+  ],
+  "name_status": [
+    [
+      "M",
+      "docs/conf.py"
+    ],
+    [
+      "M",
+      "docs/guides/python_guide.md"
+    ],
+    [
+      "M",
+      "docs/reference/python/index.rst"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/cpp/__init__.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/cpp/load_inline.py"
+    ],
+    [
+      "A",
+      "tests/python/test_build_inline.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "docs/conf.py",
+      "additions": 1,
+      "deletions": 0
+    },
+    {
+      "path": "docs/guides/python_guide.md",
+      "additions": 3,
+      "deletions": 0
+    },
+    {
+      "path": "docs/reference/python/index.rst",
+      "additions": 1,
+      "deletions": 0
+    },
+    {
+      "path": "python/tvm_ffi/cpp/__init__.py",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "python/tvm_ffi/cpp/load_inline.py",
+      "additions": 148,
+      "deletions": 9
+    },
+    {
+      "path": "tests/python/test_build_inline.py",
+      "additions": 52,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/docs/conf.py b/docs/conf.py\nindex 50495de..0d4c3f1 100644\n--- a/docs/conf.py\n+++ b/docs/conf.py\n@@ -177,6 +177,7 @@ autodoc_default_options = {\n     \"inherited-members\": False,\n     \"member-order\": \"bysource\",\n }\n+autodoc_typehints = \"description\"\n \n # -- Other Options --------------------------------------------------------\n \ndiff --git a/docs/guides/python_guide.md b/docs/guides/python_guide.md\nindex 0fd35d8..de2adfa 100644\n--- a/docs/guides/python_guide.md\n+++ b/docs/guides/python_guide.md\n@@ -181,6 +181,9 @@ The above code defines a C++ function `add_one_cpu` in Python script, compiles i\n {py:class}`tvm_ffi.Module` object via {py:func}`tvm_ffi.cpp.load_inline`. You can then call the function `add_one_cpu`\n from the module as usual.\n \n+We can also use {py:func}`tvm_ffi.cpp.build_inline` to build the inline module without loading it. The built shared library is returned\n+and can be loaded via {py:func}`tvm_ffi.load_module`.\n+\n ## Error Handling\n \n An FFI function may raise an error. In such cases, the Python package will automatically\ndiff --git a/docs/reference/python/index.rst b/docs/reference/python/index.rst\nindex 8b478e8..7cae49d 100644\n--- a/docs/reference/python/index.rst\n+++ b/docs/reference/python/index.rst\n@@ -87,6 +87,7 @@ C++ integration helpers for building and loading inline modules.\n   :toctree: cpp/generated/\n \n   cpp.load_inline\n+  cpp.build_inline\n \n \n .. (Experimental) Dataclasses\ndiff --git a/python/tvm_ffi/cpp/__init__.py b/python/tvm_ffi/cpp/__init__.py\nindex ede2b54..8835e4a 100644\n--- a/python/tvm_ffi/cpp/__init__.py\n+++ b/python/tvm_ffi/cpp/__init__.py\n@@ -16,4 +16,4 @@\n # under the License.\n \"\"\"C++ integration helpers for building and loading inline modules.\"\"\"\n \n-from .load_inline import load_inline\n+from .load_inline import build_inline, load_inline\ndiff --git a/python/tvm_ffi/cpp/load_inline.py b/python/tvm_ffi/cpp/load_inline.py\nindex d7a5c14..3d1d5b5 100644\n--- a/python/tvm_ffi/cpp/load_inline.py\n+++ b/python/tvm_ffi/cpp/load_inline.py\n@@ -360,7 +360,7 @@ def _decorate_with_tvm_ffi(source: str, functions: Mapping[str, str]) -> str:\n     return \"\\n\".join(sources)\n \n \n-def load_inline(  # noqa: PLR0912, PLR0915\n+def build_inline(  # noqa: PLR0915, PLR0912\n     name: str,\n     *,\n     cpp_sources: Sequence[str] | str | None = None,\n@@ -371,12 +371,12 @@ def load_inline(  # noqa: PLR0912, PLR0915\n     extra_ldflags: Sequence[str] | None = None,\n     extra_include_paths: Sequence[str] | None = None,\n     build_directory: str | None = None,\n-) -> Module:\n-    \"\"\"Compile and load a C++/CUDA module from inline source code.\n+) -> str:\n+    \"\"\"Compile and build a C++/CUDA module from inline source code.\n \n     This function compiles the given C++ and/or CUDA source code into a shared library. Both ``cpp_sources`` and\n     ``cuda_sources`` are compiled to an object file, and then linked together into a shared library. It's possible to only\n-    provide cpp_sources or cuda_sources.\n+    provide cpp_sources or cuda_sources. The path to the compiled shared library is returned.\n \n     The ``functions`` parameter is used to specify which functions in the source code should be exported to the tvm ffi\n     module. It can be a mapping, a sequence, or a single string. When a mapping is given, the keys are the names of the\n@@ -439,9 +439,8 @@ def load_inline(  # noqa: PLR0912, PLR0915\n \n     Returns\n     -------\n-    mod: Module\n-        The loaded tvm ffi module.\n-\n+    lib_path: str\n+        The path to the built shared library.\n \n     Example\n     -------\n@@ -469,12 +468,15 @@ def load_inline(  # noqa: PLR0912, PLR0915\n         '''\n \n         # compile the cpp source code and load the module\n-        mod: Module = tvm_ffi.cpp.load_inline(\n+        lib_path: str = tvm_ffi.cpp.build_inline(\n             name='hello',\n             cpp_sources=cpp_source,\n             functions='add_one_cpu'\n         )\n \n+        # load the module\n+        mod: Module = tvm_ffi.load_module(lib_path)\n+\n         # use the function from the loaded module to perform\n         x = torch.tensor([1, 2, 3, 4, 5], dtype=torch.float32)\n         y = torch.empty_like(x)\n@@ -562,4 +564,141 @@ def load_inline(  # noqa: PLR0912, PLR0915\n         _build_ninja(str(build_dir))\n         # Use appropriate extension based on platform\n         ext = \".dll\" if IS_WINDOWS else \".so\"\n-        return load_module(str((build_dir / f\"{name}{ext}\").resolve()))\n+        return str((build_dir / f\"{name}{ext}\").resolve())\n+\n+\n+def load_inline(\n+    name: str,\n+    *,\n+    cpp_sources: Sequence[str] | str | None = None,\n+    cuda_sources: Sequence[str] | str | None = None,\n+    functions: Mapping[str, str] | Sequence[str] | str | None = None,\n+    extra_cflags: Sequence[str] | None = None,\n+    extra_cuda_cflags: Sequence[str] | None = None,\n+    extra_ldflags: Sequence[str] | None = None,\n+    extra_include_paths: Sequence[str] | None = None,\n+    build_directory: str | None = None,\n+) -> Module:\n+    \"\"\"Compile, build and load a C++/CUDA module from inline source code.\n+\n+    This function compiles the given C++ and/or CUDA source code into a shared library. Both ``cpp_sources`` and\n+    ``cuda_sources`` are compiled to an object file, and then linked together into a shared library. It's possible to only\n+    provide cpp_sources or cuda_sources.\n+\n+    The ``functions`` parameter is used to specify which functions in the source code should be exported to the tvm ffi\n+    module. It can be a mapping, a sequence, or a single string. When a mapping is given, the keys are the names of the\n+    exported functions, and the values are docstrings for the functions. When a sequence of string is given, they are\n+    the function names needed to be exported, and the docstrings are set to empty strings. A single function name can\n+    also be given as a string, indicating that only one function is to be exported.\n+\n+    Extra compiler and linker flags can be provided via the ``extra_cflags``, ``extra_cuda_cflags``, and ``extra_ldflags``\n+    parameters. The default flags are generally sufficient for most use cases, but you may need to provide additional\n+    flags for your specific use case.\n+\n+    The include dir of tvm ffi and dlpack are used by default for the compiler to find the headers. Thus, you can\n+    include any header from tvm ffi in your source code. You can also provide additional include paths via the\n+    ``extra_include_paths`` parameter and include custom headers in your source code.\n+\n+    The compiled shared library is cached in a cache directory to avoid recompilation. The `build_directory` parameter\n+    is provided to specify the build directory. If not specified, a default tvm ffi cache directory will be used.\n+    The default cache directory can be specified via the `TVM_FFI_CACHE_DIR` environment variable. If not specified,\n+    the default cache directory is ``~/.cache/tvm-ffi``.\n+\n+    Parameters\n+    ----------\n+    name: str\n+        The name of the tvm ffi module.\n+    cpp_sources: Sequence[str] | str, optional\n+        The C++ source code. It can be a list of sources or a single source.\n+    cuda_sources: Sequence[str] | str, optional\n+        The CUDA source code. It can be a list of sources or a single source.\n+    functions: Mapping[str, str] | Sequence[str] | str, optional\n+        The functions in cpp_sources or cuda_source that will be exported to the tvm ffi module. When a mapping is\n+        given, the keys are the names of the exported functions, and the values are docstrings for the functions. When\n+        a sequence or a single string is given, they are the functions needed to be exported, and the docstrings are set\n+        to empty strings. A single function name can also be given as a string. When cpp_sources is given, the functions\n+        must be declared (not necessarily defined) in the cpp_sources. When cpp_sources is not given, the functions\n+        must be defined in the cuda_sources. If not specified, no function will be exported.\n+    extra_cflags: Sequence[str], optional\n+        The extra compiler flags for C++ compilation.\n+        The default flags are:\n+\n+        - On Linux/macOS: ['-std=c++17', '-fPIC', '-O2']\n+        - On Windows: ['/std:c++17', '/O2']\n+\n+    extra_cuda_cflags: Sequence[str], optional\n+        The extra compiler flags for CUDA compilation.\n+\n+    extra_ldflags: Sequence[str], optional\n+        The extra linker flags.\n+        The default flags are:\n+\n+        - On Linux/macOS: ['-shared']\n+        - On Windows: ['/DLL']\n+\n+    extra_include_paths: Sequence[str], optional\n+        The extra include paths.\n+\n+    build_directory: str, optional\n+        The build directory. If not specified, a default tvm ffi cache directory will be used. By default, the\n+        cache directory is ``~/.cache/tvm-ffi``. You can also set the ``TVM_FFI_CACHE_DIR`` environment variable to\n+        specify the cache directory.\n+\n+    Returns\n+    -------\n+    mod: Module\n+        The loaded tvm ffi module.\n+\n+\n+    Example\n+    -------\n+\n+    .. code-block:: python\n+\n+        import torch\n+        from tvm_ffi import Module\n+        import tvm_ffi.cpp\n+\n+        # define the cpp source code\n+        cpp_source = '''\n+             void add_one_cpu(tvm::ffi::Tensor x, tvm::ffi::Tensor y) {\n+               // implementation of a library function\n+               TVM_FFI_ICHECK(x->ndim == 1) << \"x must be a 1D tensor\";\n+               DLDataType f32_dtype{kDLFloat, 32, 1};\n+               TVM_FFI_ICHECK(x->dtype == f32_dtype) << \"x must be a float tensor\";\n+               TVM_FFI_ICHECK(y->ndim == 1) << \"y must be a 1D tensor\";\n+               TVM_FFI_ICHECK(y->dtype == f32_dtype) << \"y must be a float tensor\";\n+               TVM_FFI_ICHECK(x->shape[0] == y->shape[0]) << \"x and y must have the same shape\";\n+               for (int i = 0; i < x->shape[0]; ++i) {\n+                 static_cast<float*>(y->data)[i] = static_cast<float*>(x->data)[i] + 1;\n+               }\n+             }\n+        '''\n+\n+        # compile the cpp source code and load the module\n+        mod: Module = tvm_ffi.cpp.load_inline(\n+            name='hello',\n+            cpp_sources=cpp_source,\n+            functions='add_one_cpu'\n+        )\n+\n+        # use the function from the loaded module to perform\n+        x = torch.tensor([1, 2, 3, 4, 5], dtype=torch.float32)\n+        y = torch.empty_like(x)\n+        mod.add_one_cpu(x, y)\n+        torch.testing.assert_close(x + 1, y)\n+\n+    \"\"\"\n+    return load_module(\n+        build_inline(\n+            name=name,\n+            cpp_sources=cpp_sources,\n+            cuda_sources=cuda_sources,\n+            functions=functions,\n+            extra_cflags=extra_cflags,\n+            extra_cuda_cflags=extra_cuda_cflags,\n+            extra_ldflags=extra_ldflags,\n+            extra_include_paths=extra_include_paths,\n+            build_directory=build_directory,\n+        )\n+    )\ndiff --git a/tests/python/test_build_inline.py b/tests/python/test_build_inline.py\nnew file mode 100644\nindex 0000000..d436271\n--- /dev/null\n+++ b/tests/python/test_build_inline.py\n@@ -0,0 +1,52 @@\n+# Licensed to the Apache Software Foundation (ASF) under one\n+# or more contributor license agreements.  See the NOTICE file\n+# distributed with this work for additional information\n+# regarding copyright ownership.  The ASF licenses this file\n+# to you under the Apache License, Version 2.0 (the\n+# \"License\"); you may not use this file except in compliance\n+# with the License.  You may obtain a copy of the License at\n+#\n+#   http://www.apache.org/licenses/LICENSE-2.0\n+#\n+# Unless required by applicable law or agreed to in writing,\n+# software distributed under the License is distributed on an\n+# \"AS IS\" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY\n+# KIND, either express or implied.  See the License for the\n+# specific language governing permissions and limitations\n+# under the License.\n+import numpy\n+import pytest\n+import tvm_ffi.cpp\n+from tvm_ffi.module import Module\n+\n+\n+def test_build_inline_cpp() -> None:\n+    output_lib_path = tvm_ffi.cpp.build_inline(\n+        name=\"hello\",\n+        cpp_sources=r\"\"\"\n+            void add_one_cpu(tvm::ffi::Tensor x, tvm::ffi::Tensor y) {\n+              // implementation of a library function\n+              TVM_FFI_ICHECK(x->ndim == 1) << \"x must be a 1D tensor\";\n+              DLDataType f32_dtype{kDLFloat, 32, 1};\n+              TVM_FFI_ICHECK(x->dtype == f32_dtype) << \"x must be a float tensor\";\n+              TVM_FFI_ICHECK(y->ndim == 1) << \"y must be a 1D tensor\";\n+              TVM_FFI_ICHECK(y->dtype == f32_dtype) << \"y must be a float tensor\";\n+              TVM_FFI_ICHECK(x->shape[0] == y->shape[0]) << \"x and y must have the same shape\";\n+              for (int i = 0; i < x->shape[0]; ++i) {\n+                static_cast<float*>(y->data)[i] = static_cast<float*>(x->data)[i] + 1;\n+              }\n+            }\n+        \"\"\",\n+        functions=[\"add_one_cpu\"],\n+    )\n+\n+    mod: Module = tvm_ffi.load_module(output_lib_path)\n+\n+    x = numpy.array([1, 2, 3, 4, 5], dtype=numpy.float32)\n+    y = numpy.empty_like(x)\n+    mod.add_one_cpu(x, y)\n+    numpy.testing.assert_equal(x + 1, y)\n+\n+\n+if __name__ == \"__main__\":\n+    pytest.main([__file__])",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".md",
+      ".py",
+      ".rst"
+    ],
+    "scopes_guess": [
+      "docs",
+      "python",
+      "tests"
+    ]
+  }
+}

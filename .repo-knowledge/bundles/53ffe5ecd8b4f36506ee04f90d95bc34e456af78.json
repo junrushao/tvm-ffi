@@ -1,0 +1,39 @@
+{
+  "sha": "53ffe5ecd8b4f36506ee04f90d95bc34e456af78",
+  "sha7": "53ffe5e",
+  "author_name": "Kathryn (Jinqi) Chen",
+  "author_email": "65606304+Kathryn-cat@users.noreply.github.com",
+  "date_iso": "2025-09-18T12:14:59-07:00",
+  "subject": "[Fix] Restrict stride normalization to 1D tensors on export (#23)",
+  "body":
+      "see [issue](https://github.com/pytorch/pytorch/issues/163274) on this\n\nCo-authored-by: Kathryn-cat <kathrync@nvidia.com>",
+  "is_merge": false,
+  "parents": [
+    "929effa05c65d52f1608723c96efc9fdd24de746"
+  ],
+  "name_status": [
+    [
+      "M",
+      "python/tvm_ffi/_optional_torch_c_dlpack.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "python/tvm_ffi/_optional_torch_c_dlpack.py",
+      "additions": 2,
+      "deletions": 19
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/python/tvm_ffi/_optional_torch_c_dlpack.py b/python/tvm_ffi/_optional_torch_c_dlpack.py\nindex b227c46..2501607 100644\n--- a/python/tvm_ffi/_optional_torch_c_dlpack.py\n+++ b/python/tvm_ffi/_optional_torch_c_dlpack.py\n@@ -210,30 +210,13 @@ template <class T>\n T* toDLPackImpl(const Tensor& src) {\n   auto view = src;\n \n-  bool need_normalize_strides = false;\n-  int64_t expected_stride = 1;\n-  for (int i = src.dim() - 1; i >= 0; i--) {\n-    // detect if we do not meet continuous pattern\n-    // and the size is 1, so there is opportunity to normalize\n-    if (src.stride(i) != expected_stride && src.size(i) == 1) {\n-      need_normalize_strides = true;\n-      break;\n-    }\n-    expected_stride *= src.size(i);\n-  }\n-\n+  bool need_normalize_strides = src.ndim() == 1 && src.size(0) == 1 && src.stride(0) != 1;\n   // less common case, try normalizing the strides\n   if (need_normalize_strides) {\n     // create a new tensor with possibly normalized strides\n     // gh-83069\n     auto shape = src.sizes();\n-    auto strides = src.strides().vec();\n-    for (int i = 0; i < src.dim(); i++) {\n-      if (shape[i] < 2) {\n-        strides[i] = 1;\n-      }\n-    }\n-    view = src.as_strided(shape, strides, src.storage_offset());\n+    view = src.as_strided(shape, {1}, src.storage_offset());\n   }\n \n   ATenDLMTensor<T>* atDLMTensor(new ATenDLMTensor<T>);",
+  "heuristics": {
+    "tags": [],
+    "extensions": [
+      ".py"
+    ],
+    "scopes_guess": [
+      "python"
+    ]
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "sha": "9d547555043e7cddc30be757bcf3572f45b2ea7c",
+  "sha7": "9d54755",
+  "author_name": "Junru Shao",
+  "author_email": "junrushao@apache.org",
+  "date_iso": "2025-10-16T11:18:22-07:00",
+  "subject": "chore(release): Test wheel building on every `main` commit (#149)",
+  "body": "",
+  "is_merge": false,
+  "parents": [
+    "42e0612838b231570864474ed3e1a8b1b0ebdfca"
+  ],
+  "name_status": [
+    [
+      "M",
+      ".github/workflows/publish_wheel.yml"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": ".github/workflows/publish_wheel.yml",
+      "additions": 7,
+      "deletions": 3
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/.github/workflows/publish_wheel.yml b/.github/workflows/publish_wheel.yml\nindex 5930e77..5979feb 100644\n--- a/.github/workflows/publish_wheel.yml\n+++ b/.github/workflows/publish_wheel.yml\n@@ -18,10 +18,12 @@\n name: Publish wheel\n \n on:\n+  push:\n+    branches: [main]        # <-- build on every commit to main\n   workflow_dispatch:\n     inputs:\n       branch:\n-        description: \"Branch or tag publish\"\n+        description: \"Branch or tag to publish (manual run)\"\n         required: true\n \n jobs:\n@@ -42,7 +44,8 @@ jobs:\n \n       - uses: actions/checkout@v4\n         with:\n-          ref: ${{ github.event.inputs.ref }}\n+          # Use the input only for manual runs; otherwise use the triggering ref\n+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.branch || github.ref }}\n           submodules: recursive\n \n       - uses: ./.github/actions/detect-env-vars\n@@ -84,6 +87,7 @@ jobs:\n     steps:\n       - uses: actions/checkout@v4\n         with:\n+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.branch || github.ref }}\n           submodules: recursive\n \n       - uses: astral-sh/setup-uv@v4\n@@ -106,7 +110,7 @@ jobs:\n     permissions:\n       id-token: write\n       attestations: write\n-    if: github.event_name == 'workflow_dispatch'\n+    if: github.event_name == 'workflow_dispatch'   # <-- publish only on manual trigger\n     steps:\n       - uses: actions/download-artifact@v4\n         with:",
+  "heuristics": {
+    "tags": [
+      "ci"
+    ],
+    "extensions": [
+      ".yml"
+    ],
+    "scopes_guess": []
+  }
+}

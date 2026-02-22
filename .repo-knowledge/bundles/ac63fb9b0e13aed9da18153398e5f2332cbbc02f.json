@@ -1,0 +1,135 @@
+{
+  "sha": "ac63fb9b0e13aed9da18153398e5f2332cbbc02f",
+  "sha7": "ac63fb9",
+  "author_name": "Junru Shao",
+  "author_email": "junrushao@apache.org",
+  "date_iso": "2025-10-26T16:26:19-07:00",
+  "subject": "chore(build): Introduce `setuptools_scm` for better versioning (#154)",
+  "body":
+      "This PR introduces `setuptools_scm` and a linter to make versioning\neasier for Python, C++ and Rust package.\n\nMore specifically, \n- versioning of Python package is in full control of `setuptools_scm`,\nwhich is guaranteed to be correct.\n- C++ and Rust versioning is checked by a `setuptools_scm`-based linter,\nwhich is run per commit.\n\nThe tool can be used standalone as:\n\n```python\n>>> python tests/lint/check_version.py --cpp --rust\nProject version: 0.1.1.dev9+g43f0820f6.d20251021\n  major: 0\n  minor: 1\n  micro: 1\n  pre: None\n  dev: 9\n  local: g43f0820f6.d20251021\n  post: None\n  base_version: 0.1.1\n  release: (0, 1, 1)\n  public: 0.1.1.dev9\n  is_prerelease: True\n  is_postrelease: False\n  is_devrelease: True\n[C++] include/tvm/ffi/c_api.h: Macro version mismatch: found 0.1.0, expected 0.1.1.\n[Rust] rust/tvm-ffi/Cargo.toml: version not compatible with project version. Allowed: ['0.1.1']; got: 0.1.0-alpha.0.\n[Rust] rust/tvm-ffi-macros/Cargo.toml: version not compatible with project version. Allowed: ['0.1.1']; got: 0.1.0-alpha.0.\n[Rust] rust/tvm-ffi-sys/Cargo.toml: version not compatible with project version. Allowed: ['0.1.1']; got: 0.1.0-alpha.0.\n```",
+  "is_merge": false,
+  "parents": [
+    "af898a2c32f053806064ef7b679682f94b5569c1"
+  ],
+  "name_status": [
+    [
+      "M",
+      ".github/actions/detect-skip-ci/action.yaml"
+    ],
+    [
+      "M",
+      ".github/workflows/ci_test.yml"
+    ],
+    [
+      "M",
+      ".github/workflows/publish_wheel.yml"
+    ],
+    [
+      "M",
+      ".gitignore"
+    ],
+    [
+      "M",
+      ".pre-commit-config.yaml"
+    ],
+    [
+      "M",
+      "docs/conf.py"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/c_api.h"
+    ],
+    [
+      "M",
+      "pyproject.toml"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/__init__.py"
+    ],
+    [
+      "M",
+      "tests/lint/check_version.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": ".github/actions/detect-skip-ci/action.yaml",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": ".github/workflows/ci_test.yml",
+      "additions": 13,
+      "deletions": 5
+    },
+    {
+      "path": ".github/workflows/publish_wheel.yml",
+      "additions": 6,
+      "deletions": 2
+    },
+    {
+      "path": ".gitignore",
+      "additions": 3,
+      "deletions": 0
+    },
+    {
+      "path": ".pre-commit-config.yaml",
+      "additions": 7,
+      "deletions": 4
+    },
+    {
+      "path": "docs/conf.py",
+      "additions": 4,
+      "deletions": 5
+    },
+    {
+      "path": "include/tvm/ffi/c_api.h",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "pyproject.toml",
+      "additions": 9,
+      "deletions": 2
+    },
+    {
+      "path": "python/tvm_ffi/__init__.py",
+      "additions": 8,
+      "deletions": 1
+    },
+    {
+      "path": "tests/lint/check_version.py",
+      "additions": 161,
+      "deletions": 57
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/.github/actions/detect-skip-ci/action.yaml b/.github/actions/detect-skip-ci/action.yaml\nindex f487949..36d9b54 100644\n--- a/.github/actions/detect-skip-ci/action.yaml\n+++ b/.github/actions/detect-skip-ci/action.yaml\n@@ -35,7 +35,7 @@ runs:\n   using: \"composite\"\n   steps:\n     - name: Checkout code\n-      uses: actions/checkout@v4\n+      uses: actions/checkout@v5\n       with:\n         fetch-depth: 0\n \ndiff --git a/.github/workflows/ci_test.yml b/.github/workflows/ci_test.yml\nindex b463682..380e97e 100644\n--- a/.github/workflows/ci_test.yml\n+++ b/.github/workflows/ci_test.yml\n@@ -34,9 +34,10 @@ jobs:\n       should_skip_ci_commit: ${{ steps.detect.outputs.should_skip_ci_commit }}\n       should_skip_ci_docs_only: ${{ steps.detect.outputs.should_skip_ci_docs_only }}\n     steps:\n-      - uses: actions/checkout@v4\n+      - uses: actions/checkout@v5\n         with:\n-          fetch-depth: 2\n+          fetch-depth: 0\n+          fetch-tags: true\n       - name: Detect skip ci and docs changes\n         id: detect\n         uses: ./.github/actions/detect-skip-ci\n@@ -49,16 +50,21 @@ jobs:\n     needs: [prepare]\n     runs-on: ubuntu-latest\n     steps:\n-      - uses: actions/checkout@v4\n+      - uses: actions/checkout@v5\n+        with:\n+          fetch-depth: 0\n+          fetch-tags: true\n       - uses: pre-commit/action@2c7b3805fd2a0fd8c1884dcaebf91fc102a13ecd  # v3.0.1\n \n   doc:\n     needs: [lint, prepare]\n     runs-on: ubuntu-latest\n     steps:\n-      - uses: actions/checkout@v4\n+      - uses: actions/checkout@v5\n         with:\n           submodules: recursive\n+          fetch-depth: 0\n+          fetch-tags: true\n       - name: Set up uv\n         uses: astral-sh/setup-uv@b75a909f75acd358c2196fb9a5f1299a9a8868a4  # v6.7.0\n         with:\n@@ -85,9 +91,11 @@ jobs:\n           - {os: macos-14, arch: arm64, python_version: '3.13'}\n \n     steps:\n-      - uses: actions/checkout@v4\n+      - uses: actions/checkout@v5\n         with:\n           submodules: recursive\n+          fetch-depth: 0\n+          fetch-tags: true\n       - name: Print current commit\n         run: git log -1 --oneline\n \ndiff --git a/.github/workflows/publish_wheel.yml b/.github/workflows/publish_wheel.yml\nindex 6c6ea86..f337834 100644\n--- a/.github/workflows/publish_wheel.yml\n+++ b/.github/workflows/publish_wheel.yml\n@@ -52,11 +52,13 @@ jobs:\n       - uses: astral-sh/setup-uv@b75a909f75acd358c2196fb9a5f1299a9a8868a4\n         if: matrix.os != 'macOS' || matrix.arch != 'arm64'\n \n-      - uses: actions/checkout@v4\n+      - uses: actions/checkout@v5\n         with:\n           # Use the input only for manual runs; otherwise use the triggering ref\n           ref: ${{ github.event_name == 'workflow_dispatch' && inputs.branch || github.ref }}\n           submodules: recursive\n+          fetch-depth: 0\n+          fetch-tags: true\n \n       - uses: ./.github/actions/detect-env-vars\n         id: env_vars\n@@ -97,10 +99,12 @@ jobs:\n     name: Build source distribution\n     runs-on: ubuntu-latest\n     steps:\n-      - uses: actions/checkout@v4\n+      - uses: actions/checkout@v5\n         with:\n           ref: ${{ github.event_name == 'workflow_dispatch' && inputs.branch || github.ref }}\n           submodules: recursive\n+          fetch-depth: 0\n+          fetch-tags: true\n \n       - uses: astral-sh/setup-uv@b75a909f75acd358c2196fb9a5f1299a9a8868a4  # v6.7.0\n \ndiff --git a/.gitignore b/.gitignore\nindex ae2591b..b97498d 100644\n--- a/.gitignore\n+++ b/.gitignore\n@@ -1,3 +1,6 @@\n+# version file is auto-generated\n+python/tvm_ffi/_version.py\n+\n /tmp/\n *.bak\n # Byte-compiled / optimized / DLL files\ndiff --git a/.pre-commit-config.yaml b/.pre-commit-config.yaml\nindex be42c58..3c2c43d 100644\n--- a/.pre-commit-config.yaml\n+++ b/.pre-commit-config.yaml\n@@ -38,14 +38,17 @@ repos:\n         verbose: false\n   - repo: local\n     hooks:\n-      - id: check-version\n-        name: check version\n-        entry: python tests/lint/check_version.py\n+      - id: check-version-consistency\n+        name: check version consistency\n+        entry: python tests/lint/check_version.py --cpp  # TODO: add `--rust` once Rust binding matures\n         language: python\n         language_version: python3\n+        additional_dependencies:\n+          - setuptools-scm\n+          - packaging\n+          - tomli\n         pass_filenames: false\n         verbose: false\n-        additional_dependencies: [tomli]\n   - repo: https://github.com/pre-commit/pre-commit-hooks\n     rev: v5.0.0\n     hooks:\ndiff --git a/docs/conf.py b/docs/conf.py\nindex befe7c1..7118b41 100644\n--- a/docs/conf.py\n+++ b/docs/conf.py\n@@ -27,8 +27,8 @@ import subprocess\n import sys\n from pathlib import Path\n \n+import setuptools_scm\n import sphinx\n-import tomli\n \n os.environ[\"TVM_FFI_BUILD_DOCS\"] = \"1\"\n \n@@ -43,10 +43,9 @@ _DOCS_DIR = Path(__file__).resolve().parent\n _RUST_DIR = _DOCS_DIR.parent / \"rust\"\n \n # -- General configuration ------------------------------------------------\n-# Load version from pyproject.toml\n-with Path(\"../pyproject.toml\").open(\"rb\") as f:\n-    pyproject_data = tomli.load(f)\n-__version__ = pyproject_data[\"project\"][\"version\"]\n+# Determine version without reading pyproject.toml\n+# Always use setuptools_scm (assumed available in docs env)\n+__version__ = setuptools_scm.get_version(root=\"..\")\n \n project = \"tvm-ffi\"\n \ndiff --git a/include/tvm/ffi/c_api.h b/include/tvm/ffi/c_api.h\nindex 5e16ed1..240dd76 100644\n--- a/include/tvm/ffi/c_api.h\n+++ b/include/tvm/ffi/c_api.h\n@@ -61,7 +61,7 @@\n /*! \\brief TVM FFI minor version. */\n #define TVM_FFI_VERSION_MINOR 1\n /*! \\brief TVM FFI patch version. */\n-#define TVM_FFI_VERSION_PATCH 0\n+#define TVM_FFI_VERSION_PATCH 1\n \n #ifdef __cplusplus\n extern \"C\" {\ndiff --git a/pyproject.toml b/pyproject.toml\nindex 92e1fce..57de316 100644\n--- a/pyproject.toml\n+++ b/pyproject.toml\n@@ -17,7 +17,7 @@\n \n [project]\n name = \"apache-tvm-ffi\"\n-version = \"0.1.0\"\n+dynamic = [\"version\"]\n description = \"tvm ffi\"\n \n authors = [{ name = \"TVM FFI team\" }]\n@@ -61,6 +61,8 @@ dev = [\n   \"cython\",\n   \"cmake\",\n   \"scikit-build-core\",\n+  \"tomli\",\n+  \"setuptools-scm\",\n ]\n docs = [\n   \"autodocsumm\",\n@@ -85,6 +87,7 @@ docs = [\n   \"sphinxcontrib-napoleon\",\n   \"sphinxcontrib_httpdomain\",\n   \"setuptools\",\n+  \"setuptools-scm\",\n   \"tomli\",\n   \"urllib3\",\n ]\n@@ -94,10 +97,11 @@ tvm-ffi-config = \"tvm_ffi.config:__main__\"\n tvm-ffi-stubgen = \"tvm_ffi.stub.stubgen:__main__\"\n \n [build-system]\n-requires = [\"scikit-build-core>=0.10.0\", \"cython\", \"cmake>=3.18\", \"ninja\"]\n+requires = [\"scikit-build-core>=0.10.0\", \"cython\", \"setuptools-scm\"]\n build-backend = \"scikit_build_core.build\"\n \n [tool.scikit-build]\n+metadata.version.provider = \"scikit_build_core.metadata.setuptools_scm\"\n wheel.py-api = \"cp312\"\n minimum-version = \"build-system.requires\"\n ninja.version = \">=1.11\"\n@@ -142,6 +146,7 @@ sdist.include = [\n   \"/python/tvm_ffi/**/*.pyx\",\n   \"/python/tvm_ffi/**/*.pyi\",\n   \"/python/tvm_ffi/py.typed\",\n+  \"/python/tvm_ffi/_version.py\",\n \n   # Third party files\n   \"/3rdparty/libbacktrace/**/*\",\n@@ -267,3 +272,5 @@ ignore_missing_imports = true\n docs = { requires-python = \">=3.13\" }\n \n [tool.setuptools_scm]\n+version_file = \"python/tvm_ffi/_version.py\"\n+write_to = \"python/tvm_ffi/_version.py\"\ndiff --git a/python/tvm_ffi/__init__.py b/python/tvm_ffi/__init__.py\nindex 8043524..79f81a1 100644\n--- a/python/tvm_ffi/__init__.py\n+++ b/python/tvm_ffi/__init__.py\n@@ -18,7 +18,6 @@\n \n # order matters here so we need to skip isort here\n # isort: skip_file\n-__version__ = \"0.1.0\"\n \n # HACK: try importing torch first, to avoid a potential\n # symbol conflict when both torch and tvm_ffi are imported.\n@@ -61,6 +60,13 @@ from . import cpp\n # optional module to speedup dlpack conversion\n from . import _optional_torch_c_dlpack\n \n+\n+try:\n+    from ._version import __version__, __version_tuple__  # type: ignore[import-not-found]\n+except ImportError:\n+    __version__ = \"0.0.0.dev0\"\n+    __version_tuple__ = (0, 0, 0, \"dev0\", \"7d34eb8ab.d20250913\")\n+\n __all__ = [\n     \"Array\",\n     \"DLDeviceType\",\n@@ -74,6 +80,7 @@ __all__ = [\n     \"StreamContext\",\n     \"Tensor\",\n     \"__version__\",\n+    \"__version_tuple__\",\n     \"access_path\",\n     \"convert\",\n     \"cpp\",\ndiff --git a/tests/lint/check_version.py b/tests/lint/check_version.py\nindex 10aca3b..f7c19e0 100644\n--- a/tests/lint/check_version.py\n+++ b/tests/lint/check_version.py\n@@ -14,76 +14,180 @@\n # KIND, either express or implied.  See the License for the\n # specific language governing permissions and limitations\n # under the License.\n-\"\"\"Helper tool to check version consistency between pyproject.toml and __init__.py.\"\"\"\n+\"\"\"Version consistency linter across Python, C++, and Rust.\n+\n+This script checks that:\n+  1) C++ version macros in headers are internally consistent and match the\n+     canonical project version (major/minor/micro) derived from setuptools_scm.\n+  2) Rust crate versions are internally consistent and compatible with\n+     the canonical project version.\n+\n+Usage: python tests/lint/check_version.py [--cpp] [--rust]\n+\"\"\"\n \n from __future__ import annotations\n \n+import argparse\n import re\n import sys\n from pathlib import Path\n+from typing import Any\n \n+import setuptools_scm\n import tomli\n-\n-\n-def read_pyproject_version(pyproject_path: Path) -> str | None:\n-    \"\"\"Read version from pyproject.toml.\"\"\"\n-    with pyproject_path.open(\"rb\") as f:\n-        data = tomli.load(f)\n-\n-    return data.get(\"project\", {}).get(\"version\")\n-\n-\n-def read_init_version(init_path: Path) -> str | None:\n-    \"\"\"Read __version__ from __init__.py.\"\"\"\n-    with init_path.open(encoding=\"utf-8\") as f:\n-        content = f.read()\n-\n-    # Look for __version__ = \"...\" pattern\n-    match = re.search(r'__version__\\s*=\\s*[\"\\']([^\"\\']+)[\"\\']', content)\n-    if match:\n-        return match.group(1)\n-    return None\n-\n-\n-def update_init_version(init_path: Path, new_version: str) -> bool:\n-    \"\"\"Update __version__ in __init__.py.\"\"\"\n-    with init_path.open(encoding=\"utf-8\") as f:\n-        content = f.read()\n-\n-    # Replace the version line\n-    new_content = re.sub(\n-        r'__version__\\s*=\\s*[\"\\'][^\"\\']+[\"\\']', f'__version__ = \"{new_version}\"', content\n+from packaging.version import Version as packaging_version\n+\n+RE_MAJOR = re.compile(r\"^\\s*#\\s*define\\s+TVM_FFI_VERSION_MAJOR\\s+(\\d+)\\b\")\n+RE_MINOR = re.compile(r\"^\\s*#\\s*define\\s+TVM_FFI_VERSION_MINOR\\s+(\\d+)\\b\")\n+RE_PATCH = re.compile(r\"^\\s*#\\s*define\\s+TVM_FFI_VERSION_PATCH\\s+(\\d+)\\b\")\n+\n+\n+def _version_info() -> dict[str, Any]:\n+    \"\"\"Return project version information using setuptools_scm.\"\"\"\n+    version = setuptools_scm.get_version()\n+    v = packaging_version(version)\n+\n+    return {\n+        \"full\": version,\n+        \"major\": v.major,\n+        \"minor\": v.minor,\n+        \"micro\": v.micro,\n+        \"pre\": v.pre,\n+        \"dev\": v.dev,\n+        \"local\": v.local,\n+        \"post\": v.post,\n+        \"release\": v.release,\n+        \"is_prerelease\": v.is_prerelease,\n+        \"is_postrelease\": v.is_postrelease,\n+        \"is_devrelease\": v.is_devrelease,\n+        \"base_version\": v.base_version,\n+        \"public\": v.public,\n+    }\n+\n+\n+def _map_pep440_pre_to_semver(pre: tuple[str, int] | None) -> str | None:\n+    if pre is None:\n+        return None\n+    tag, num = pre\n+    tag = tag.lower()\n+    if tag in {\"a\", \"alpha\"}:\n+        tag = \"alpha\"\n+    elif tag in {\"b\", \"beta\"}:\n+        tag = \"beta\"\n+    elif tag in {\"rc\", \"c\"}:\n+        tag = \"rc\"\n+    else:\n+        return None\n+    return f\"{tag}.{num}\"\n+\n+\n+def _check_cpp(version_info: dict) -> list[str]:\n+    errors: list[str] = []\n+    c_api_path = Path(\"include\") / \"tvm\" / \"ffi\" / \"c_api.h\"\n+    if not c_api_path.exists():\n+        errors.append(f\"[C++] Missing expected header file: {c_api_path}\")\n+        return errors\n+\n+    def _scan_cpp_macros() -> tuple[int, int, int]:\n+        file = c_api_path\n+        major = minor = patch = None\n+        for line in file.read_text(encoding=\"utf-8\").splitlines():\n+            if m := RE_MAJOR.match(line):\n+                major = int(m.group(1))\n+            if m := RE_MINOR.match(line):\n+                minor = int(m.group(1))\n+            if m := RE_PATCH.match(line):\n+                patch = int(m.group(1))\n+        return major, minor, patch\n+\n+    (major, minor, patch) = _scan_cpp_macros()\n+\n+    if major is None or minor is None or patch is None:\n+        errors.append(f\"[C++] {c_api_path}: No version macros found: {major=}, {minor=}, {patch=}.\")\n+        return errors\n+\n+    exp_major, exp_minor, exp_patch = (\n+        version_info[\"major\"],\n+        version_info[\"minor\"],\n+        version_info[\"micro\"],\n     )\n-\n-    with init_path.open(\"w\", encoding=\"utf-8\") as f:\n-        f.write(new_content)\n-\n-    return True\n+    if (major, minor, patch) != (exp_major, exp_minor, exp_patch):\n+        errors.append(\n+            f\"[C++] {c_api_path}: Macro version mismatch: found {major}.{minor}.{patch}, \"\n+            f\"expected {exp_major}.{exp_minor}.{exp_patch}.\"\n+        )\n+    return errors\n+\n+\n+def _check_rust(version_info: dict) -> list[str]:\n+    errors: list[str] = []\n+    rust_dir = Path(\"rust\")\n+    found_versions: dict[Path, str] = {}\n+    for path in [\n+        rust_dir / \"tvm-ffi\" / \"Cargo.toml\",\n+        rust_dir / \"tvm-ffi-macros\" / \"Cargo.toml\",\n+        rust_dir / \"tvm-ffi-sys\" / \"Cargo.toml\",\n+    ]:\n+        found_versions[path] = tomli.loads(path.read_text(encoding=\"utf-8\"))[\"package\"][\"version\"]\n+\n+    if not found_versions:\n+        # No crates found, skip silently\n+        return errors\n+\n+    # 1) All crates must agree on a single version\n+    unique_versions = set(found_versions.values())\n+    if len(unique_versions) > 1:\n+        errors.append(\n+            \"[Rust] Crates have inconsistent versions: \"\n+            + \", \".join(f\"{p} -> {v}\" for p, v in sorted(found_versions.items()))\n+        )\n+\n+    # 2) Optionally enforce compatibility with Python version\n+    base = version_info[\"base_version\"]\n+    allowed: set[str] = {base}\n+    pre = _map_pep440_pre_to_semver(version_info.get(\"pre\"))\n+    if pre:\n+        allowed.add(f\"{base}-{pre}\")\n+    allowed = sorted(allowed)\n+    for path, v in found_versions.items():\n+        if v not in allowed:\n+            errors.append(\n+                f\"[Rust] {path}: version not compatible with project version. Allowed: {allowed}; got: {v}.\"\n+            )\n+    return errors\n \n \n def main() -> int:\n-    \"\"\"Execute the main function.\"\"\"\n-    # Hardcoded paths\n-    pyproject_path = Path(\"pyproject.toml\")\n-    init_path = Path(\"python/tvm_ffi/__init__.py\")\n-\n-    # Read versions\n-    pyproject_version = read_pyproject_version(pyproject_path)\n-    init_version = read_init_version(init_path)\n-\n-    if pyproject_version is None or init_version is None:\n-        return 1\n-\n-    if pyproject_version == init_version:\n-        print(\"Version check passed!\")\n-        return 0\n-    else:\n-        print(\"Version check failed!\")\n-        print(f\"pyproject.toml version: {pyproject_version}\")\n-        print(f\"__init__.py version: {init_version}\")\n-        print(\"Run precommit locally to fix the version.\")\n-        update_init_version(init_path, pyproject_version)\n+    parser = argparse.ArgumentParser(description=\"Check version consistency across languages\")\n+    parser.add_argument(\"--cpp\", action=\"store_true\", help=\"Check C++ version macros\")\n+    parser.add_argument(\"--rust\", action=\"store_true\", help=\"Check Rust crate versions\")\n+    args = parser.parse_args()\n+    info = _version_info()\n+    print(\n+        f\"Project version: {info['full']}\\n\"\n+        f\"  major: {info['major']}\\n\"\n+        f\"  minor: {info['minor']}\\n\"\n+        f\"  micro: {info['micro']}\\n\"\n+        f\"  pre: {info['pre']}\\n\"\n+        f\"  dev: {info['dev']}\\n\"\n+        f\"  local: {info['local']}\\n\"\n+        f\"  post: {info['post']}\\n\"\n+        f\"  base_version: {info['base_version']}\\n\"\n+        f\"  release: {info['release']}\\n\"\n+        f\"  public: {info['public']}\\n\"\n+        f\"  is_prerelease: {info['is_prerelease']}\\n\"\n+        f\"  is_postrelease: {info['is_postrelease']}\\n\"\n+        f\"  is_devrelease: {info['is_devrelease']}\"\n+    )\n+    errors: list[str] = []\n+    if args.cpp:\n+        errors += _check_cpp(info)\n+    if args.rust:\n+        errors += _check_rust(info)\n+    if errors:\n+        print(\"\\n\".join(errors))\n         return 1\n+    return 0\n \n \n if __name__ == \"__main__\":",
+  "heuristics": {
+    "tags": [
+      "build",
+      "ci",
+      "test"
+    ],
+    "extensions": [
+      "",
+      ".h",
+      ".py",
+      ".toml",
+      ".yaml",
+      ".yml"
+    ],
+    "scopes_guess": [
+      ".gitignore",
+      ".pre-commit-config.yaml",
+      "docs",
+      "include",
+      "pyproject.toml",
+      "python",
+      "tests"
+    ]
+  }
+}

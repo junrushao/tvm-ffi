@@ -1,0 +1,83 @@
+{
+  "sha": "13436f01111bc4218feb440a29a2e421bc148cc4",
+  "sha7": "13436f0",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-09-25T20:16:31-04:00",
+  "subject": "[FFI][ABI] TVMFFIObject ABI to further align with torch intrusive_ptr (#57)",
+  "body":
+      "This PR updates the TVMFFIObject ABI to use\nstrong_ref_count/weak_ref_count\ninto u32 and which can be packed into the first u64 field in the object\nheader.\n\nThis change will open up further optimizations that combines weak/strong\ninto\na single u64 atomic that skips the need of extra atomic reading of weak\nvalue\nduring deletion. The technique was recently in torch\n\nWe also reordered the counter to be first since most rc ops are frequent\nand\nit would be more cache friendly. We do give up the same type_index first\nlocation\nwith TVMFFIAny, which is OK as they optimize for different goals.",
+  "is_merge": false,
+  "parents": [
+    "bdad2184551353e49a9b6882f7b9a75a258862bb"
+  ],
+  "name_status": [
+    [
+      "M",
+      "docs/concepts/abi_overview.md"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/c_api.h"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/object.h"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/cython/base.pxi"
+    ],
+    [
+      "D",
+      "tests/cpp/test_c_ffi_abi.cc"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "docs/concepts/abi_overview.md",
+      "additions": 5,
+      "deletions": 4
+    },
+    {
+      "path": "include/tvm/ffi/c_api.h",
+      "additions": 13,
+      "deletions": 9
+    },
+    {
+      "path": "include/tvm/ffi/object.h",
+      "additions": 12,
+      "deletions": 12
+    },
+    {
+      "path": "python/tvm_ffi/cython/base.pxi",
+      "additions": 3,
+      "deletions": 1
+    },
+    {
+      "path": "tests/cpp/test_c_ffi_abi.cc",
+      "additions": 0,
+      "deletions": 31
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/docs/concepts/abi_overview.md b/docs/concepts/abi_overview.md\nindex d134e6b..b93397a 100644\n--- a/docs/concepts/abi_overview.md\n+++ b/docs/concepts/abi_overview.md\n@@ -191,9 +191,10 @@ we adopt a unified object storage format, defined as follows:\n \n ```c++\n typedef struct TVMFFIObject {\n-  int32_t type_index;\n+  uint32_t strong_ref_count;\n   uint32_t weak_ref_count;\n-  uint64_t strong_ref_count;\n+  int32_t type_index;\n+  uint32_t __padding;\n   union {\n     void (*deleter)(struct TVMFFIObject* self, int flags);\n     int64_t __ensure_align;\n@@ -203,9 +204,9 @@ typedef struct TVMFFIObject {\n \n `TVMFFIObject` defines a common 24-byte intrusive header that all in-memory objects share:\n \n-- `type_index` helps us identify the type being stored, which is consistent with `TVMFFIAny.type_index`.\n-- `weak_ref_count` stores the weak atomic reference counter of the object.\n - `strong_ref_count` stores the strong atomic reference counter of the object.\n+- `weak_ref_count` stores the weak atomic reference counter of the object.\n+- `type_index` helps us identify the type being stored, which is consistent with `TVMFFIAny.type_index`.\n - `deleter` should be called when either the strong or weak ref counter goes to zero.\n   - The flags are set to indicate the event of either weak or strong going to zero, or both.\n   - When `strong_ref_count` gets to zero, the deleter needs to call the destructor of the object.\ndiff --git a/include/tvm/ffi/c_api.h b/include/tvm/ffi/c_api.h\nindex 62d9001..d2b9fab 100644\n--- a/include/tvm/ffi/c_api.h\n+++ b/include/tvm/ffi/c_api.h\n@@ -217,22 +217,26 @@ typedef enum {\n \n /*!\n  * \\brief C-based type of all FFI object header that allocates on heap.\n- * \\note TVMFFIObject and TVMFFIAny share the common type_index header\n  */\n typedef struct {\n+  // Ref counter goes first to align ABI with most intrusive ptr designs.\n+  // It is also likely more efficient as rc operations can be quite common\n+  // ABI note: Strong ref counter and weak ref counter can be packed into a single 64-bit field\n+  // Hopefully in future being able to use 64bit atomic that avoids extra reading of\n+  // weak counter during deletion.\n+  /*! \\brief Strong reference counter of the object. */\n+  uint32_t strong_ref_count;\n+  /*!\n+   * \\brief Weak reference counter of the object, for compatiblity with weak_ptr design.\n+   */\n+  uint32_t weak_ref_count;\n   /*!\n    * \\brief type index of the object.\n    * \\note The type index of Object and Any are shared in FFI.\n    */\n   int32_t type_index;\n-  /*!\n-   * \\brief Weak reference counter of the object, for compatiblity with weak_ptr design.\n-   * \\note Use u32 to ensure that overall object stays within 24-byte boundary, usually\n-   *       manipulation of weak counter is less common than strong counter.\n-   */\n-  uint32_t weak_ref_count;\n-  /*! \\brief Strong reference counter of the object. */\n-  uint64_t strong_ref_count;\n+  /*! \\brief Extra padding to ensure 8 bytes alignment. */\n+  uint32_t __padding;\n #if !defined(TVM_FFI_DOXYGEN_MODE)\n   union {\n #endif\ndiff --git a/include/tvm/ffi/object.h b/include/tvm/ffi/object.h\nindex 64db8d7..e5f955c 100644\n--- a/include/tvm/ffi/object.h\n+++ b/include/tvm/ffi/object.h\n@@ -250,7 +250,7 @@ class Object {\n   int32_t use_count() const {\n     // only need relaxed load of counters\n #ifdef _MSC_VER\n-    return (reinterpret_cast<const volatile __int64*>(&header_.strong_ref_count))[0];  // NOLINT(*)\n+    return (reinterpret_cast<const volatile long*>(&header_.strong_ref_count))[0];  // NOLINT(*)\n #else\n     return __atomic_load_n(&(header_.strong_ref_count), __ATOMIC_RELAXED);\n #endif\n@@ -293,8 +293,8 @@ class Object {\n   /*! \\brief increase strong reference count, the caller must already hold a strong reference */\n   void IncRef() {\n #ifdef _MSC_VER\n-    _InterlockedIncrement64(\n-        reinterpret_cast<volatile __int64*>(&header_.strong_ref_count));  // NOLINT(*)\n+    _InterlockedIncrement(\n+        reinterpret_cast<volatile long*>(&header_.strong_ref_count));  // NOLINT(*)\n #else\n     __atomic_fetch_add(&(header_.strong_ref_count), 1, __ATOMIC_RELAXED);\n #endif\n@@ -306,12 +306,12 @@ class Object {\n    */\n   bool TryPromoteWeakPtr() {\n #ifdef _MSC_VER\n-    uint64_t old_count =\n-        (reinterpret_cast<const volatile __int64*>(&header_.strong_ref_count))[0];  // NOLINT(*)\n+    uint32_t old_count =\n+        (reinterpret_cast<const volatile long*>(&header_.strong_ref_count))[0];  // NOLINT(*)\n     while (old_count > 0) {\n-      uint64_t new_count = old_count + 1;\n-      uint64_t old_count_loaded = _InterlockedCompareExchange64(\n-          reinterpret_cast<volatile __int64*>(&header_.strong_ref_count), new_count, old_count);\n+      uint32_t new_count = old_count + 1;\n+      uint32_t old_count_loaded = _InterlockedCompareExchange(\n+          reinterpret_cast<volatile long*>(&header_.strong_ref_count), new_count, old_count);\n       if (old_count == old_count_loaded) {\n         return true;\n       }\n@@ -319,12 +319,12 @@ class Object {\n     }\n     return false;\n #else\n-    uint64_t old_count = __atomic_load_n(&(header_.strong_ref_count), __ATOMIC_RELAXED);\n+    uint32_t old_count = __atomic_load_n(&(header_.strong_ref_count), __ATOMIC_RELAXED);\n     while (old_count > 0) {\n       // must do CAS to ensure that we are the only one that increases the reference count\n       // avoid condition when two threads tries to promote weak to strong at same time\n       // or when strong deletion happens between the load and the CAS\n-      uint64_t new_count = old_count + 1;\n+      uint32_t new_count = old_count + 1;\n       if (__atomic_compare_exchange_n(&(header_.strong_ref_count), &old_count, new_count, true,\n                                       __ATOMIC_ACQ_REL, __ATOMIC_RELAXED)) {\n         return true;\n@@ -347,8 +347,8 @@ class Object {\n   void DecRef() {\n #ifdef _MSC_VER\n     // use simpler impl in windows to ensure correctness\n-    if (_InterlockedDecrement64(                                                     //\n-            reinterpret_cast<volatile __int64*>(&header_.strong_ref_count)) == 0) {  // NOLINT(*)\n+    if (_InterlockedDecrement(                                                    //\n+            reinterpret_cast<volatile long*>(&header_.strong_ref_count)) == 0) {  // NOLINT(*)\n       // full barrrier is implicit in InterlockedDecrement\n       if (header_.deleter != nullptr) {\n         header_.deleter(&(this->header_), kTVMFFIObjectDeleterFlagBitMaskStrong);\ndiff --git a/python/tvm_ffi/cython/base.pxi b/python/tvm_ffi/cython/base.pxi\nindex 5c1ba1e..ff532ea 100644\n--- a/python/tvm_ffi/cython/base.pxi\n+++ b/python/tvm_ffi/cython/base.pxi\n@@ -111,8 +111,10 @@ cdef extern from \"tvm/ffi/c_api.h\":\n     ctypedef void* TVMFFIObjectHandle\n \n     ctypedef struct TVMFFIObject:\n+        uint32_t strong_ref_count\n+        uint32_t weak_ref_count\n         int32_t type_index\n-        int32_t ref_counter\n+        int32_t __padding\n         void (*deleter)(TVMFFIObject* self)\n \n     ctypedef struct TVMFFIAny:\ndiff --git a/tests/cpp/test_c_ffi_abi.cc b/tests/cpp/test_c_ffi_abi.cc\ndeleted file mode 100644\nindex e6c6116..0000000\n--- a/tests/cpp/test_c_ffi_abi.cc\n+++ /dev/null\n@@ -1,31 +0,0 @@\n-/*\n- * Licensed to the Apache Software Foundation (ASF) under one\n- * or more contributor license agreements.  See the NOTICE file\n- * distributed with this work for additional information\n- * regarding copyright ownership.  The ASF licenses this file\n- * to you under the Apache License, Version 2.0 (the\n- * \"License\"); you may not use this file except in compliance\n- * with the License.  You may obtain a copy of the License at\n- *\n- *   http://www.apache.org/licenses/LICENSE-2.0\n- *\n- * Unless required by applicable law or agreed to in writing,\n- * software distributed under the License is distributed on an\n- * \"AS IS\" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY\n- * KIND, either express or implied.  See the License for the\n- * specific language governing permissions and limitations\n- * under the License.\n- */\n-#include <gtest/gtest.h>\n-#include <tvm/ffi/c_api.h>\n-\n-namespace {\n-\n-TEST(ABIHeaderAlignment, Default) {\n-  TVMFFIObject value;\n-  value.type_index = 10;\n-  EXPECT_EQ(reinterpret_cast<TVMFFIAny*>(&value)->type_index, 10);\n-  static_assert(sizeof(TVMFFIObject) == 24);\n-}\n-\n-}  // namespace",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".cc",
+      ".h",
+      ".md",
+      ".pxi"
+    ],
+    "scopes_guess": [
+      "docs",
+      "include",
+      "python",
+      "tests"
+    ]
+  }
+}

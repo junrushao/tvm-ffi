@@ -1,0 +1,38 @@
+{
+  "sha": "38fc6474d1bb203dea055864cec6ef53c43a6ca5",
+  "sha7": "38fc647",
+  "author_name": "Junru Shao",
+  "author_email": "junrushao@apache.org",
+  "date_iso": "2025-12-11T14:29:02-08:00",
+  "subject": "fix: Error message when numpy is missing (#332)",
+  "body": "",
+  "is_merge": false,
+  "parents": [
+    "6ccbdb6b48ca0bcf44db61cb705a960d359d6cf6"
+  ],
+  "name_status": [
+    [
+      "M",
+      "python/tvm_ffi/cython/dtype.pxi"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "python/tvm_ffi/cython/dtype.pxi",
+      "additions": 1,
+      "deletions": 1
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/python/tvm_ffi/cython/dtype.pxi b/python/tvm_ffi/cython/dtype.pxi\nindex 3f3e460..3b8530a 100644\n--- a/python/tvm_ffi/cython/dtype.pxi\n+++ b/python/tvm_ffi/cython/dtype.pxi\n@@ -252,5 +252,5 @@ if numpy is not None:\n         cdef DLDataType cdtype = NUMPY_DTYPE_TO_DL_DATA_TYPE[numpy_dtype]\n         return make_dtype_from_dl_data_type(cdtype)\n else:\n-    def _convert_torch_dtype_to_ffi_dtype(torch_dtype):\n+    def _convert_numpy_dtype_to_ffi_dtype(numpy_dtype):\n         raise ValueError(\"numpy not found\")",
+  "heuristics": {
+    "tags": [],
+    "extensions": [
+      ".pxi"
+    ],
+    "scopes_guess": [
+      "python"
+    ]
+  }
+}

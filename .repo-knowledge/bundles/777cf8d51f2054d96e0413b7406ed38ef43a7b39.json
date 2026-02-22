@@ -1,0 +1,94 @@
+{
+  "sha": "777cf8d51f2054d96e0413b7406ed38ef43a7b39",
+  "sha7": "777cf8d",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-08-30T10:30:25-04:00",
+  "subject": "[FFI][ABI] ABI Updates to for future metadata and complex ordering (#18254)",
+  "body":
+      "This PR updates the ABI to enable potential future need\nfor getting metadata from a dynamically loaded module.\n\nOrders the current static object into simple objects that have C\nABI and more complex one that may need c++.\n\nThese items changes ABI to be future compact before we freeze.",
+  "is_merge": false,
+  "parents": [
+    "ad8e5d2c3345c4cca1a9ce50a24238c0cafcb05e"
+  ],
+  "name_status": [
+    [
+      "M",
+      "include/tvm/ffi/c_api.h"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/extra/module.h"
+    ],
+    [
+      "M",
+      "pyproject.toml"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/cython/base.pxi"
+    ],
+    [
+      "M",
+      "scripts/run_tests.sh"
+    ],
+    [
+      "M",
+      "src/ffi/extra/module.cc"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "include/tvm/ffi/c_api.h",
+      "additions": 13,
+      "deletions": 10
+    },
+    {
+      "path": "include/tvm/ffi/extra/module.h",
+      "additions": 14,
+      "deletions": 0
+    },
+    {
+      "path": "pyproject.toml",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "python/tvm_ffi/cython/base.pxi",
+      "additions": 5,
+      "deletions": 4
+    },
+    {
+      "path": "scripts/run_tests.sh",
+      "additions": 3,
+      "deletions": 1
+    },
+    {
+      "path": "src/ffi/extra/module.cc",
+      "additions": 18,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/include/tvm/ffi/c_api.h b/include/tvm/ffi/c_api.h\nindex b1107c4..f099898 100644\n--- a/include/tvm/ffi/c_api.h\n+++ b/include/tvm/ffi/c_api.h\n@@ -126,19 +126,22 @@ typedef enum {\n   kTVMFFIError = 67,\n   /*! \\brief Function object. */\n   kTVMFFIFunction = 68,\n-  /*! \\brief Array object. */\n-  kTVMFFIArray = 69,\n-  /*! \\brief Map object. */\n-  kTVMFFIMap = 70,\n   /*!\n    * \\brief Shape object, layout = { TVMFFIObject, { const int64_t*, size_t }, ... }\n    */\n-  kTVMFFIShape = 71,\n+  kTVMFFIShape = 69,\n   /*!\n    * \\brief NDArray object, layout = { TVMFFIObject, DLTensor, ... }\n    */\n-  kTVMFFINDArray = 72,\n-  /*! \\brief Runtime module object. */\n+  kTVMFFINDArray = 70,\n+  /*! \\brief Array object. */\n+  kTVMFFIArray = 71,\n+  //----------------------------------------------------------------\n+  // more complex objects\n+  //----------------------------------------------------------------\n+  /*! \\brief Map object. */\n+  kTVMFFIMap = 72,\n+  /*! \\brief Runtime dynamic loaded module object. */\n   kTVMFFIModule = 73,\n   kTVMFFIStaticObjectEnd,\n   // [Section] Dynamic Boxed: [kTVMFFIDynObjectBegin, +oo)\n@@ -763,11 +766,11 @@ typedef struct TVMFFITypeInfo {\n  *\n  * \\param name The name of the function.\n  * \\param f The function to be registered.\n- * \\param override Whether allow override already registered function.\n+ * \\param allow_override Whether allow override already registered function.\n  * \\return 0 when success, nonzero when failure happens\n  */\n TVM_FFI_DLL int TVMFFIFunctionSetGlobal(const TVMFFIByteArray* name, TVMFFIObjectHandle f,\n-                                        int override);\n+                                        int allow_override);\n \n /*!\n  * \\brief Register the function to runtime's global table with method info.\n@@ -780,7 +783,7 @@ TVM_FFI_DLL int TVMFFIFunctionSetGlobal(const TVMFFIByteArray* name, TVMFFIObjec\n  * \\return 0 when success, nonzero when failure happens\n  */\n TVM_FFI_DLL int TVMFFIFunctionSetGlobalFromMethodInfo(const TVMFFIMethodInfo* method_info,\n-                                                      int override);\n+                                                      int allow_override);\n \n /*!\n  * \\brief Register type field information for runtime reflection.\ndiff --git a/include/tvm/ffi/extra/module.h b/include/tvm/ffi/extra/module.h\nindex f220c58..bc7dff1 100644\n--- a/include/tvm/ffi/extra/module.h\n+++ b/include/tvm/ffi/extra/module.h\n@@ -68,6 +68,12 @@ class TVM_FFI_EXTRA_CXX_API ModuleObj : public Object {\n    * \\return True if the module implements the function, false otherwise.\n    */\n   virtual bool ImplementsFunction(const String& name) { return GetFunction(name).defined(); }\n+  /*!\n+   * \\brief Get the metadata of the function, if available.\n+   * \\param name The name of the function.\n+   * \\return The metadata stored in json string format.\n+   */\n+  virtual Optional<String> GetFunctionMetadata(const String& name) { return std::nullopt; }\n   /*!\n    * \\brief Write the current module to file with given format (for further compilation).\n    *\n@@ -121,6 +127,12 @@ class TVM_FFI_EXTRA_CXX_API ModuleObj : public Object {\n    * \\return True if the module implements the function, false otherwise.\n    */\n   bool ImplementsFunction(const String& name, bool query_imports);\n+  /*!\n+   * \\brief Get the function metadata of the function if available.\n+   * \\param name The name of the function.\n+   * \\return The function metadata of the function in json format.\n+   */\n+  Optional<String> GetFunctionMetadata(const String& name, bool query_imports);\n   /*!\n    * \\brief Get the imports of the module.\n    * \\return The imports of the module.\n@@ -215,6 +227,8 @@ namespace symbol {\n constexpr const char* tvm_ffi_library_ctx = \"__tvm_ffi_library_ctx\";\n /*! \\brief Global variable to store binary data alongside a library module. */\n constexpr const char* tvm_ffi_library_bin = \"__tvm_ffi_library_bin\";\n+/*! \\brief Optional metadata prefix of a symbol. */\n+constexpr const char* tvm_ffi_metadata_prefix = \"__tvm_ffi_metadata_\";\n /*! \\brief Default entry function of a library module. */\n constexpr const char* tvm_ffi_main = \"__tvm_ffi_main__\";\n }  // namespace symbol\ndiff --git a/pyproject.toml b/pyproject.toml\nindex 60fdb27..3efa1d9 100644\n--- a/pyproject.toml\n+++ b/pyproject.toml\n@@ -17,7 +17,7 @@\n \n [project]\n name = \"apache-tvm-ffi\"\n-version = \"0.1.0a2\"\n+version = \"0.1.0a3\"\n description = \"tvm ffi\"\n \n authors = [{ name = \"TVM FFI team\" }]\ndiff --git a/python/tvm_ffi/cython/base.pxi b/python/tvm_ffi/cython/base.pxi\nindex 4caecc1..14b3d97 100644\n--- a/python/tvm_ffi/cython/base.pxi\n+++ b/python/tvm_ffi/cython/base.pxi\n@@ -48,12 +48,13 @@ cdef extern from \"tvm/ffi/c_api.h\":\n         kTVMFFIBytes = 66\n         kTVMFFIError = 67\n         kTVMFFIFunction = 68\n-        kTVMFFIArray = 69\n-        kTVMFFIMap = 70\n-        kTVMFFIShape = 71\n-        kTVMFFINDArray = 72\n+        kTVMFFIShape = 69\n+        kTVMFFINDArray = 70\n+        kTVMFFIArray = 71\n+        kTVMFFIMap = 72\n         kTVMFFIModule = 73\n \n+\n     ctypedef void* TVMFFIObjectHandle\n \n     ctypedef struct DLDataType:\ndiff --git a/scripts/run_tests.sh b/scripts/run_tests.sh\nindex 1181625..27795cc 100755\n--- a/scripts/run_tests.sh\n+++ b/scripts/run_tests.sh\n@@ -17,7 +17,9 @@\n # under the License.\n set -euxo pipefail\n \n-BUILD_TYPE=Release\n+BUILD_TYPE=RelWithDebugInfo\n+\n+rm -rf build/CMakeCache.txt\n \n cmake -G Ninja -S . -B build -DTVM_FFI_BUILD_TESTS=ON -DCMAKE_BUILD_TYPE=${BUILD_TYPE} \\\n   -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DCMAKE_CXX_COMPILER_LAUNCHER=ccache\ndiff --git a/src/ffi/extra/module.cc b/src/ffi/extra/module.cc\nindex d8ec77f..9450917 100644\n--- a/src/ffi/extra/module.cc\n+++ b/src/ffi/extra/module.cc\n@@ -44,6 +44,20 @@ Optional<Function> ModuleObj::GetFunction(const String& name, bool query_imports\n   return std::nullopt;\n }\n \n+Optional<String> ModuleObj::GetFunctionMetadata(const String& name, bool query_imports) {\n+  if (auto opt_metadata = this->GetFunctionMetadata(name)) {\n+    return opt_metadata;\n+  }\n+  if (query_imports) {\n+    for (const Any& import : imports_) {\n+      if (auto opt_metadata = import.cast<Module>()->GetFunctionMetadata(name, query_imports)) {\n+        return *opt_metadata;\n+      }\n+    }\n+  }\n+  return std::nullopt;\n+}\n+\n void ModuleObj::ImportModule(const Module& other) {\n   std::unordered_set<const ModuleObj*> visited{other.operator->()};\n   std::vector<const ModuleObj*> stack{other.operator->()};\n@@ -115,6 +129,10 @@ TVM_FFI_STATIC_INIT_BLOCK({\n                   [](Module mod, String name, bool query_imports) {\n                     return mod->ImplementsFunction(name, query_imports);\n                   })\n+      .def_method(\"ffi.ModuleGetFunctionMetadata\",\n+                  [](Module mod, String name, bool query_imports) {\n+                    return mod->GetFunctionMetadata(name, query_imports);\n+                  })\n       .def_method(\"ffi.ModuleGetFunction\",\n                   [](Module mod, String name, bool query_imports) {\n                     return mod->GetFunction(name, query_imports);",
+  "heuristics": {
+    "tags": [
+      "build"
+    ],
+    "extensions": [
+      ".cc",
+      ".h",
+      ".pxi",
+      ".sh",
+      ".toml"
+    ],
+    "scopes_guess": [
+      "include",
+      "pyproject.toml",
+      "python",
+      "scripts",
+      "src"
+    ]
+  }
+}

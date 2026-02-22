@@ -1,0 +1,39 @@
+{
+  "sha": "33b37685fdbef6cbecea19160fe784f9fbe83fd8",
+  "sha7": "33b3768",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-10-15T20:31:59-04:00",
+  "subject": "[CMAKE] Hide symbols from libbacktrace (#139)",
+  "body":
+      "This PR updates the cmake to hide symbols from\nlibbacktrace given it is only used internally",
+  "is_merge": false,
+  "parents": [
+    "78d3c42b104b2b5109cf2c4c53bbfdf493ea3f67"
+  ],
+  "name_status": [
+    [
+      "M",
+      "cmake/Utils/AddLibbacktrace.cmake"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "cmake/Utils/AddLibbacktrace.cmake",
+      "additions": 7,
+      "deletions": 1
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/cmake/Utils/AddLibbacktrace.cmake b/cmake/Utils/AddLibbacktrace.cmake\nindex 17b9c8a..82ece97 100644\n--- a/cmake/Utils/AddLibbacktrace.cmake\n+++ b/cmake/Utils/AddLibbacktrace.cmake\n@@ -37,6 +37,12 @@ function (_libbacktrace_compile)\n   file(MAKE_DIRECTORY ${libbacktrace_prefix}/lib)\n   detect_target_triple(TVM_FFI_MACHINE_NAME)\n   message(STATUS \"Detected target triple: ${TVM_FFI_MACHINE_NAME}\")\n+\n+  # Add symbol hiding flags for GCC, Clang, and AppleClang\n+  set(symbol_hiding_flags \"\")\n+  if (CMAKE_C_COMPILER_ID MATCHES \"GNU|Clang|AppleClang\")\n+    set(symbol_hiding_flags \"-fvisibility=hidden -fvisibility-inlines-hidden\")\n+  endif ()\n   ExternalProject_Add(\n     project_libbacktrace\n     PREFIX libbacktrace\n@@ -50,7 +56,7 @@ function (_libbacktrace_compile)\n       \"--with-pic\" #\n       \"CC=${cmake_c_compiler}\" #\n       \"CPP=${cmake_c_compiler} -E\" #\n-      \"CFLAGS=${CMAKE_C_FLAGS}\" #\n+      \"CFLAGS=${CMAKE_C_FLAGS} ${symbol_hiding_flags}\" #\n       \"LDFLAGS=${CMAKE_EXE_LINKER_FLAGS}\" #\n       \"NM=${CMAKE_NM}\" #\n       \"STRIP=${CMAKE_STRIP}\" #",
+  "heuristics": {
+    "tags": [],
+    "extensions": [
+      ".cmake"
+    ],
+    "scopes_guess": [
+      "cmake"
+    ]
+  }
+}

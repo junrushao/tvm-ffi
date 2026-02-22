@@ -1,0 +1,39 @@
+{
+  "sha": "55edee051c780af1831d7d04a40ddb8960ce01ed",
+  "sha7": "55edee0",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-08-06T15:40:44-04:00",
+  "subject": "[FFI][REFACTOR] Phase out getattr based attribute handling (#18189)",
+  "body":
+      "[REFACTOR] Phase out getattr based attribute handling\n\nThis PR phases out getattar based attribute handling as they are slower\nand introduces extra code path.\n\nThis does mean that if an Object is not explicitly registered\nin python side, we will no longer be able to access the field by name.\nLikely this is also desirable as we would like to enable faster use that\nupdates the python end and do not rely on these behavior.",
+  "is_merge": false,
+  "parents": [
+    "7cb92736b2ed95852ac71543937511acc7a3feec"
+  ],
+  "name_status": [
+    [
+      "M",
+      "src/ffi/extra/serialization.cc"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "src/ffi/extra/serialization.cc",
+      "additions": 12,
+      "deletions": 1
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/src/ffi/extra/serialization.cc b/src/ffi/extra/serialization.cc\nindex 8d9df03..ea9a96b 100644\n--- a/src/ffi/extra/serialization.cc\n+++ b/src/ffi/extra/serialization.cc\n@@ -408,9 +408,20 @@ class ObjectGraphDeserializer {\n \n Any FromJSONGraph(const json::Value& value) { return ObjectGraphDeserializer::Deserialize(value); }\n \n+// string version of the api\n+Any FromJSONGraphString(const String& value) { return FromJSONGraph(json::Parse(value)); }\n+\n+String ToJSONGraphString(const Any& value, const Any& metadata) {\n+  return json::Stringify(ToJSONGraph(value, metadata));\n+}\n+\n TVM_FFI_STATIC_INIT_BLOCK({\n   namespace refl = tvm::ffi::reflection;\n-  refl::GlobalDef().def(\"ffi.ToJSONGraph\", ToJSONGraph).def(\"ffi.FromJSONGraph\", FromJSONGraph);\n+  refl::GlobalDef()\n+      .def(\"ffi.ToJSONGraph\", ToJSONGraph)\n+      .def(\"ffi.ToJSONGraphString\", ToJSONGraphString)\n+      .def(\"ffi.FromJSONGraph\", FromJSONGraph)\n+      .def(\"ffi.FromJSONGraphString\", FromJSONGraphString);\n   refl::EnsureTypeAttrColumn(\"__data_to_json__\");\n   refl::EnsureTypeAttrColumn(\"__data_from_json__\");\n });",
+  "heuristics": {
+    "tags": [],
+    "extensions": [
+      ".cc"
+    ],
+    "scopes_guess": [
+      "src"
+    ]
+  }
+}

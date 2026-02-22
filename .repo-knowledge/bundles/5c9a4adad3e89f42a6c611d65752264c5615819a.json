@@ -1,0 +1,61 @@
+{
+  "sha": "5c9a4adad3e89f42a6c611d65752264c5615819a",
+  "sha7": "5c9a4ad",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-09-13T21:39:15-04:00",
+  "subject": "[TEST] Move script location to be consistent (#3)",
+  "body": "This PR migrates the script location into the test folder.",
+  "is_merge": false,
+  "parents": [
+    "ab5bc02a7a00f9642b0a6108315f9b2712166428"
+  ],
+  "name_status": [
+    [
+      "M",
+      ".asf.yaml"
+    ],
+    [
+      "R099",
+      "tests/scripts/benchmark_dlpack.py"
+    ],
+    [
+      "R100",
+      "tests/scripts/task_cpp_tests.sh"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": ".asf.yaml",
+      "additions": 7,
+      "deletions": 0
+    },
+    {
+      "path": "{scripts => tests/scripts}/benchmark_dlpack.py",
+      "additions": 0,
+      "deletions": 1
+    },
+    {
+      "path": "scripts/run_tests.sh => tests/scripts/task_cpp_tests.sh",
+      "additions": 0,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/.asf.yaml b/.asf.yaml\nindex 79666ef..4893631 100644\n--- a/.asf.yaml\n+++ b/.asf.yaml\n@@ -37,12 +37,19 @@ github:\n     # enable squash button:\n     squash:  true\n     # default commit message when merging with a squash commit\n+    # can either be: DEFAULT | PR_TITLE | PR_TITLE_AND_COMMIT_DETAILS | PR_TITLE_AND_DESC\n     squash_commit_message: DEFAULT\n     # enable merge button:\n     merge:   false\n+    # default commit message when merging with a merge commit\n+    # can either be: DEFAULT | PR_TITLE | PR_TITLE_AND_DESC\n+    merge_commit_message: DEFAULT\n     # disable rebase button:\n     rebase:  false\n \n notifications:\n   commits: commits@tvm.apache.org\n   issues: discuss-archive@tvm.apache.org\n+  pullrequests: discuss-archive@tvm.apache.org\n+  jobs: discuss-archive@tvm.apache.org\n+  discussions: discuss-archive@tvm.apache.org\ndiff --git a/scripts/benchmark_dlpack.py b/tests/scripts/benchmark_dlpack.py\nsimilarity index 99%\nrename from scripts/benchmark_dlpack.py\nrename to tests/scripts/benchmark_dlpack.py\nindex 6052a6c..954598c 100644\n--- a/scripts/benchmark_dlpack.py\n+++ b/tests/scripts/benchmark_dlpack.py\n@@ -36,7 +36,6 @@ Summary of some takeaways:\n -\n \n \"\"\"\n-import os\n import time\n \n import numpy as np\ndiff --git a/scripts/run_tests.sh b/tests/scripts/task_cpp_tests.sh\nsimilarity index 100%\nrename from scripts/run_tests.sh\nrename to tests/scripts/task_cpp_tests.sh",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".py",
+      ".sh",
+      ".yaml"
+    ],
+    "scopes_guess": [
+      ".asf.yaml",
+      "tests"
+    ]
+  }
+}

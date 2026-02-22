@@ -1,0 +1,39 @@
+{
+  "sha": "07546c750337c73e1d74cf4e1a29c32fbee0c139",
+  "sha7": "07546c7",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2026-02-20T10:03:16-05:00",
+  "subject": "[COMPACT][TEMP] Array compact temp fix  (#467)",
+  "body":
+      "In the 0.1.19 patch, we changed the operator[] to return T(from const\nT). This is the right change. However, flashinfer depends on an sutble\nimplicit conversion rule that requires const T behavior (which is also\nnot desirable). There is a patch in flashinfer to fx this issue.\n\nThis PR is a temp workaround so 0.1.19 release won't block flashinfer.\nWe can reland this in next release as flashinfer's change gets into a\nrelease.",
+  "is_merge": false,
+  "parents": [
+    "35cbc3274cf4b02d8d2e34d2510be5b34d0046ea"
+  ],
+  "name_status": [
+    [
+      "M",
+      "include/tvm/ffi/container/array.h"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "include/tvm/ffi/container/array.h",
+      "additions": 1,
+      "deletions": 1
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/include/tvm/ffi/container/array.h b/include/tvm/ffi/container/array.h\nindex b59b173..523aee2 100644\n--- a/include/tvm/ffi/container/array.h\n+++ b/include/tvm/ffi/container/array.h\n@@ -376,7 +376,7 @@ class Array : public ObjectRef {\n    * \\param i The index\n    * \\return the i-th element.\n    */\n-  T operator[](int64_t i) const {\n+  const T operator[](int64_t i) const {\n     ArrayObj* p = GetArrayObj();\n     if (p == nullptr) {\n       TVM_FFI_THROW(IndexError) << \"cannot index a null array\";",
+  "heuristics": {
+    "tags": [],
+    "extensions": [
+      ".h"
+    ],
+    "scopes_guess": [
+      "include"
+    ]
+  }
+}

@@ -1,0 +1,70 @@
+{
+  "sha": "a5241e5e5edf5f8e7b1250a945c816cc1b3169c4",
+  "sha7": "a5241e5",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-11-04T21:36:29-05:00",
+  "subject": "[ADDON] Fix import issue (#227)",
+  "body":
+      "This PR fixes an import issue of the torch_c_dlpack_ext so prebuild can\nbe properly used here.",
+  "is_merge": false,
+  "parents": [
+    "b9a2b9231aa94464d8228a1b2dfbb725941a0eea"
+  ],
+  "name_status": [
+    [
+      "M",
+      "addons/torch_c_dlpack_ext/build_backend.py"
+    ],
+    [
+      "M",
+      "addons/torch_c_dlpack_ext/pyproject.toml"
+    ],
+    [
+      "M",
+      "addons/torch_c_dlpack_ext/torch_c_dlpack_ext/__init__.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/_optional_torch_c_dlpack.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "addons/torch_c_dlpack_ext/build_backend.py",
+      "additions": 2,
+      "deletions": 0
+    },
+    {
+      "path": "addons/torch_c_dlpack_ext/pyproject.toml",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "addons/torch_c_dlpack_ext/torch_c_dlpack_ext/__init__.py",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "python/tvm_ffi/_optional_torch_c_dlpack.py",
+      "additions": 2,
+      "deletions": 4
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/addons/torch_c_dlpack_ext/build_backend.py b/addons/torch_c_dlpack_ext/build_backend.py\nindex 8a14388..4301e43 100644\n--- a/addons/torch_c_dlpack_ext/build_backend.py\n+++ b/addons/torch_c_dlpack_ext/build_backend.py\n@@ -18,6 +18,7 @@\n \n from __future__ import annotations\n \n+import os\n import subprocess\n import sys\n from pathlib import Path\n@@ -83,5 +84,6 @@ def build_wheel(\n                     \"--build-with-cuda\" if torch.cuda.is_available() else \"\",\n                 ],\n                 check=True,\n+                env={**os.environ, \"TVM_FFI_DISABLE_TORCH_C_DLPACK\": \"1\"},\n             )\n     return orig.build_wheel(wheel_directory, config_settings, metadata_directory)\ndiff --git a/addons/torch_c_dlpack_ext/pyproject.toml b/addons/torch_c_dlpack_ext/pyproject.toml\nindex 549dc85..3cf0138 100644\n--- a/addons/torch_c_dlpack_ext/pyproject.toml\n+++ b/addons/torch_c_dlpack_ext/pyproject.toml\n@@ -17,7 +17,7 @@\n \n [project]\n name = \"torch_c_dlpack_ext\"\n-version = \"0.1.0\"\n+version = \"0.1.1\"\n requires-python = \">=3.9\"\n description = \"torch c dlpack ext\"\n dependencies = [\"torch\"]\ndiff --git a/addons/torch_c_dlpack_ext/torch_c_dlpack_ext/__init__.py b/addons/torch_c_dlpack_ext/torch_c_dlpack_ext/__init__.py\nindex cbde1de..9cb6f9f 100644\n--- a/addons/torch_c_dlpack_ext/torch_c_dlpack_ext/__init__.py\n+++ b/addons/torch_c_dlpack_ext/torch_c_dlpack_ext/__init__.py\n@@ -16,4 +16,4 @@\n # under the License.\n \"\"\"torch c dlpack ext pakcage.\"\"\"\n \n-import core\n+from . import core\ndiff --git a/python/tvm_ffi/_optional_torch_c_dlpack.py b/python/tvm_ffi/_optional_torch_c_dlpack.py\nindex 4c5e024..302a29c 100644\n--- a/python/tvm_ffi/_optional_torch_c_dlpack.py\n+++ b/python/tvm_ffi/_optional_torch_c_dlpack.py\n@@ -57,14 +57,12 @@ def load_torch_c_dlpack_extension() -> Any:\n     try:\n         import torch_c_dlpack_ext  # type: ignore  # noqa: PLC0415, F401\n \n-        return None\n+        if hasattr(torch.Tensor, \"__c_dlpack_exchange_api__\"):\n+            return None\n     except ImportError:\n         pass\n \n     try:\n-        # todo: check whether a prebuilt package is installed, if so, use it.\n-        ...\n-\n         # check whether a JIT shared library is built in cache\n         cache_dir = Path(os.environ.get(\"TVM_FFI_CACHE_DIR\", \"~/.cache/tvm-ffi\")).expanduser()\n         addon_output_dir = cache_dir",
+  "heuristics": {
+    "tags": [
+      "build"
+    ],
+    "extensions": [
+      ".py",
+      ".toml"
+    ],
+    "scopes_guess": [
+      "addons",
+      "python"
+    ]
+  }
+}

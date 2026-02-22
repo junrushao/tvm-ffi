@@ -1,0 +1,39 @@
+{
+  "sha": "395db3cef62f430831eb9e927357334ed3fdfade",
+  "sha7": "395db3c",
+  "author_name": "Yuhong Guo",
+  "author_email": "yuhong.gyh@antgroup.com",
+  "date_iso": "2026-02-14T04:54:45+08:00",
+  "subject": "Add Support for NVIDIA Ampere GPUs in _get_cuda_target (#440)",
+  "body":
+      "I'm using SGLang, which relies on TVM-FFI, on a machine equipped with an\nNVIDIA A10 GPU. We encountered the following error:\n<img width=\"2864\" height=\"2180\" alt=\"image\"\nsrc=\"https://github.com/user-attachments/assets/d014ed35-7940-44b1-bf36-6950a9d6d14f\"\n/>\n\nThis issue is commonly observed on NVIDIA Ampere-generation GPUs (e.g.,\nA10, A100) — see related discussion:\nhttps://github.com/sgl-project/sglang/issues/18108 ,\nhttps://github.com/sgl-project/sglang/pull/18496 ,\nhttps://github.com/apache/tvm-ffi/issues/430.\n\nThe root cause is that older NVIDIA drivers (commonly deployed on Ampere\nsystems) do not support the compute_cap query field in nvidia-smi. As a\nresult, _get_cuda_target fails when trying to auto-detect the CUDA\ncompute capability.\n\n<img width=\"862\" height=\"66\" alt=\"image\"\nsrc=\"https://github.com/user-attachments/assets/66af252d-baeb-48f7-af1a-539e27d62899\"\n/>\nTo address this, we fall back to querying the GPU name via:\n\n```bash\nnvidia-smi --query-gpu=name --format=csv,noheader\n```\n\n\n<img width=\"728\" height=\"96\" alt=\"image\"\nsrc=\"https://github.com/user-attachments/assets/102c58f4-69ba-4649-ad06-17faaf686699\"\n/>\n\nand then map known Ampere GPU names (e.g., \"NVIDIA A10\") to their\ncorresponding compute capabilities (e.g., 8.6).\n\nThis change enables robust GPU detection on Ampere devices with legacy\ndrivers while maintaining backward compatibility.\n\n---------\n\nCo-authored-by: gemini-code-assist[bot] <176961590+gemini-code-assist[bot]@users.noreply.github.com>",
+  "is_merge": false,
+  "parents": [
+    "0f45528277dd024cd0a9abdeb6dcf1b97ebf8c42"
+  ],
+  "name_status": [
+    [
+      "M",
+      "python/tvm_ffi/cpp/extension.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "python/tvm_ffi/cpp/extension.py",
+      "additions": 21,
+      "deletions": 2
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/python/tvm_ffi/cpp/extension.py b/python/tvm_ffi/cpp/extension.py\nindex e988a77..b558fb0 100644\n--- a/python/tvm_ffi/cpp/extension.py\n+++ b/python/tvm_ffi/cpp/extension.py\n@@ -154,8 +154,27 @@ def _get_cuda_target() -> str:\n             major, minor = compute_cap.split(\".\")\n             return f\"-gencode=arch=compute_{major}{minor},code=sm_{major}{minor}\"\n         except Exception:\n-            # fallback to a reasonable default\n-            return \"-gencode=arch=compute_70,code=sm_70\"\n+            try:\n+                # For old drivers, there is no compute_cap, but we can use the GPU name to determine the architecture.\n+                ampere_arch_map = {\n+                    \"A100\": (\"8\", \"0\"),\n+                    \"A10\": (\"8\", \"6\"),\n+                }\n+                status = subprocess.run(\n+                    args=[\"nvidia-smi\", \"--query-gpu=name\", \"--format=csv,noheader\"],\n+                    capture_output=True,\n+                    check=True,\n+                    text=True,\n+                )\n+                gpu_name = status.stdout.strip().split(\"\\n\")[0]\n+                for gpu_key, (major, minor) in ampere_arch_map.items():\n+                    if gpu_key in gpu_name:\n+                        return f\"-gencode=arch=compute_{major}{minor},code=sm_{major}{minor}\"\n+            except (subprocess.CalledProcessError, FileNotFoundError):\n+                pass\n+            raise RuntimeError(\n+                \"Could not detect CUDA compute_cap automatically. Please set TVM_FFI_CUDA_ARCH_LIST environment variable.\"\n+            )\n \n \n def _run_command_in_dev_prompt(",
+  "heuristics": {
+    "tags": [],
+    "extensions": [
+      ".py"
+    ],
+    "scopes_guess": [
+      "python"
+    ]
+  }
+}

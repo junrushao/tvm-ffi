@@ -1,0 +1,73 @@
+{
+  "sha": "8786670af20e9005ec1dd50d7872ee9e2b8b89cd",
+  "sha7": "8786670",
+  "author_name": "Junru Shao",
+  "author_email": "junrushao@apache.org",
+  "date_iso": "2026-01-10T09:29:52-08:00",
+  "subject": "feat: Add `tvm_ffi.Function.__init__` (#395)",
+  "body":
+      "This change enables us to convert Python functions directly to\n`tvm_ffi.Function` using its constructor. Example:\n\n```python\ndef add(a: int, b: int) -> int:\n    return a + b\n\nfunc = tvm_ffi.Function(add)\nassert isinstance(func, tvm_ffi.Function)\nassert func(1, 2) == 3\n```",
+  "is_merge": false,
+  "parents": [
+    "38914fa7a13fce9eb32462d649b0d2f1d11553d1"
+  ],
+  "name_status": [
+    [
+      "M",
+      "include/tvm/ffi/base_details.h"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/core.pyi"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/cython/function.pxi"
+    ],
+    [
+      "M",
+      "tests/python/test_function.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "include/tvm/ffi/base_details.h",
+      "additions": 12,
+      "deletions": 4
+    },
+    {
+      "path": "python/tvm_ffi/core.pyi",
+      "additions": 1,
+      "deletions": 0
+    },
+    {
+      "path": "python/tvm_ffi/cython/function.pxi",
+      "additions": 21,
+      "deletions": 0
+    },
+    {
+      "path": "tests/python/test_function.py",
+      "additions": 9,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/include/tvm/ffi/base_details.h b/include/tvm/ffi/base_details.h\nindex 7224ac1..a00d4a4 100644\n--- a/include/tvm/ffi/base_details.h\n+++ b/include/tvm/ffi/base_details.h\n@@ -86,6 +86,7 @@\n #else\n #define TVM_FFI_FUNC_SIG __func__\n #endif\n+/// \\endcond\n \n #if defined(__GNUC__)\n // gcc and clang and attribute constructor\n@@ -114,14 +115,22 @@\n     return 0;                                          \\\n   }();                                                 \\\n   static void FnName()\n-\n+/// \\endcond\n+/*!\n+ * \\brief Macro that defines a block that will be called during static initialization.\n+ *\n+ * \\code{.cpp}\n+ * TVM_FFI_STATIC_INIT_BLOCK() {\n+ *   RegisterFunctions();\n+ * }\n+ * \\endcode\n+ */\n #define TVM_FFI_STATIC_INIT_BLOCK()                                                       \\\n   TVM_FFI_STATIC_INIT_BLOCK_DEF_(TVM_FFI_STR_CONCAT(__TVMFFIStaticInitFunc, __COUNTER__), \\\n                                  TVM_FFI_STR_CONCAT(__TVMFFIStaticInitReg, __COUNTER__))\n-/// \\endcond\n #endif\n \n-/*\n+/*!\n  * \\brief Define the default copy/move constructor and assign operator\n  * \\param TypeName The class typename.\n  */\n@@ -313,5 +322,4 @@ using TypeSchema = TypeSchemaImpl<std::remove_const_t<std::remove_reference_t<T>\n }  // namespace details\n }  // namespace ffi\n }  // namespace tvm\n-/// \\endcond\n #endif  // TVM_FFI_BASE_DETAILS_H_\ndiff --git a/python/tvm_ffi/core.pyi b/python/tvm_ffi/core.pyi\nindex 2cee79c..1c3a3da 100644\n--- a/python/tvm_ffi/core.pyi\n+++ b/python/tvm_ffi/core.pyi\n@@ -184,6 +184,7 @@ class DLTensorTestWrapper:\n def _dltensor_test_wrapper_c_dlpack_from_pyobject_as_intptr() -> int: ...\n \n class Function(Object):\n+    def __init__(self, func: Callable[..., Any]) -> None: ...\n     @property\n     def release_gil(self) -> bool: ...\n     @release_gil.setter\ndiff --git a/python/tvm_ffi/cython/function.pxi b/python/tvm_ffi/cython/function.pxi\nindex 01a3366..67429ea 100644\n--- a/python/tvm_ffi/cython/function.pxi\n+++ b/python/tvm_ffi/cython/function.pxi\n@@ -889,6 +889,27 @@ cdef class Function(Object):\n     def __cinit__(self) -> None:\n         self.c_release_gil = _RELEASE_GIL_BY_DEFAULT\n \n+    def __init__(self, func: Callable[..., Any]) -> None:\n+        \"\"\"Initialize a Function from a Python callable.\n+\n+        This constructor allows creating a `tvm_ffi.Function` directly\n+        from a Python function or another `tvm_ffi.Function` instance.\n+\n+        Parameters\n+        ----------\n+        func : Callable[..., Any]\n+            The Python callable to wrap.\n+        \"\"\"\n+        cdef TVMFFIObjectHandle chandle = NULL\n+        if not callable(func):\n+            raise TypeError(f\"func must be callable, got {type(func)}\")\n+        if isinstance(func, Function):\n+            chandle = (<Object>func).chandle\n+            TVMFFIObjectIncRef(chandle)\n+        else:\n+            _convert_to_ffi_func_handle(func, &chandle)\n+        self.chandle = chandle\n+\n     property release_gil:\n         \"\"\"Whether calls release the Python GIL while executing.\"\"\"\n \ndiff --git a/tests/python/test_function.py b/tests/python/test_function.py\nindex 8a494fb..34d3bdc 100644\n--- a/tests/python/test_function.py\n+++ b/tests/python/test_function.py\n@@ -153,6 +153,15 @@ def test_pyfunc_convert() -> None:\n     assert fapply(add, 1, 3.3) == 4.3\n \n \n+def test_pyfunc_init() -> None:\n+    def add(a: int, b: int) -> int:\n+        return a + b\n+\n+    fadd = tvm_ffi.Function(add)\n+    assert isinstance(fadd, tvm_ffi.Function)\n+    assert fadd(1, 2) == 3\n+\n+\n def test_global_func() -> None:\n     @tvm_ffi.register_global_func(\"mytest.echo\")\n     def echo(x: Any) -> Any:",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".h",
+      ".pxi",
+      ".py",
+      ".pyi"
+    ],
+    "scopes_guess": [
+      "include",
+      "python",
+      "tests"
+    ]
+  }
+}

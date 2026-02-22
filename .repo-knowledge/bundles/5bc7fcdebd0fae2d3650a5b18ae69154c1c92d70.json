@@ -1,0 +1,80 @@
+{
+  "sha": "5bc7fcdebd0fae2d3650a5b18ae69154c1c92d70",
+  "sha7": "5bc7fcd",
+  "author_name": "Guan-Ming (Wesley) Chiu",
+  "author_email": "105915352+guan404ming@users.noreply.github.com",
+  "date_iso": "2026-01-02T16:52:24+08:00",
+  "subject": "feat: add array __contains__ support (#377)",
+  "body":
+      "## Why\n\nPython arrays lack native in operator support, requiring manual\niteration to check if a value exists.\n\n## How\n\n- Add `ffi.ArrayContains` C++ FFI function\n- Implement `__contains__` method in Python Array class\n- Add tests and type stub for Python",
+  "is_merge": false,
+  "parents": [
+    "e54d15d71c64da72e84cc831def06dc525e31e18"
+  ],
+  "name_status": [
+    [
+      "M",
+      "python/tvm_ffi/_ffi_api.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/container.py"
+    ],
+    [
+      "M",
+      "src/ffi/container.cc"
+    ],
+    [
+      "M",
+      "tests/cpp/test_array.cc"
+    ],
+    [
+      "M",
+      "tests/python/test_container.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "python/tvm_ffi/_ffi_api.py",
+      "additions": 2,
+      "deletions": 0
+    },
+    {
+      "path": "python/tvm_ffi/container.py",
+      "additions": 4,
+      "deletions": 0
+    },
+    {
+      "path": "src/ffi/container.cc",
+      "additions": 6,
+      "deletions": 0
+    },
+    {
+      "path": "tests/cpp/test_array.cc",
+      "additions": 20,
+      "deletions": 0
+    },
+    {
+      "path": "tests/python/test_container.py",
+      "additions": 21,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/python/tvm_ffi/_ffi_api.py b/python/tvm_ffi/_ffi_api.py\nindex 49fbf68..9678fd0 100644\n--- a/python/tvm_ffi/_ffi_api.py\n+++ b/python/tvm_ffi/_ffi_api.py\n@@ -38,6 +38,7 @@ if TYPE_CHECKING:\n     def Array(*args: Any) -> Any: ...\n     def ArrayGetItem(_0: Sequence[Any], _1: int, /) -> Any: ...\n     def ArraySize(_0: Sequence[Any], /) -> int: ...\n+    def ArrayContains(_0: Sequence[Any], _1: Any, /) -> bool: ...\n     def Bytes(_0: bytes, /) -> bytes: ...\n     def FromJSONGraph(_0: Any, /) -> Any: ...\n     def FromJSONGraphString(_0: str, /) -> Any: ...\n@@ -81,6 +82,7 @@ if TYPE_CHECKING:\n __all__ = [\n     # tvm-ffi-stubgen(begin): __all__\n     \"Array\",\n+    \"ArrayContains\",\n     \"ArrayGetItem\",\n     \"ArraySize\",\n     \"Bytes\",\ndiff --git a/python/tvm_ffi/container.py b/python/tvm_ffi/container.py\nindex bda4c57..d2aff29 100644\n--- a/python/tvm_ffi/container.py\n+++ b/python/tvm_ffi/container.py\n@@ -188,6 +188,10 @@ class Array(core.Object, Sequence[T]):\n             return type(self).__name__ + \"(chandle=None)\"\n         return \"[\" + \", \".join([x.__repr__() for x in self]) + \"]\"\n \n+    def __contains__(self, value: object) -> bool:\n+        \"\"\"Check if the array contains a value.\"\"\"\n+        return _ffi_api.ArrayContains(self, value)\n+\n     def __add__(self, other: Iterable[T]) -> Array[T]:\n         \"\"\"Concatenate two arrays.\"\"\"\n         return type(self)(itertools.chain(self, other))\ndiff --git a/src/ffi/container.cc b/src/ffi/container.cc\nindex 57eda37..dd1d004 100644\n--- a/src/ffi/container.cc\n+++ b/src/ffi/container.cc\n@@ -70,6 +70,12 @@ TVM_FFI_STATIC_INIT_BLOCK() {\n       .def(\"ffi.ArrayGetItem\", [](const ffi::ArrayObj* n, int64_t i) -> Any { return n->at(i); })\n       .def(\"ffi.ArraySize\",\n            [](const ffi::ArrayObj* n) -> int64_t { return static_cast<int64_t>(n->size()); })\n+      .def(\"ffi.ArrayContains\",\n+           [](const ffi::ArrayObj* n, const Any& value) -> bool {\n+             AnyEqual eq;\n+             return std::any_of(n->begin(), n->end(),\n+                                [&](const Any& elem) { return eq(elem, value); });\n+           })\n       .def_packed(\"ffi.Map\",\n                   [](ffi::PackedArgs args, Any* ret) {\n                     TVM_FFI_ICHECK_EQ(args.size() % 2, 0);\ndiff --git a/tests/cpp/test_array.cc b/tests/cpp/test_array.cc\nindex 0204aa1..a86cc29 100644\n--- a/tests/cpp/test_array.cc\n+++ b/tests/cpp/test_array.cc\n@@ -19,6 +19,7 @@\n #include <gtest/gtest.h>\n #include <tvm/ffi/container/array.h>\n #include <tvm/ffi/function.h>\n+#include <tvm/ffi/string.h>\n \n #include \"./testing_object.h\"\n \n@@ -292,4 +293,23 @@ TEST(Array, Upcast) {\n   static_assert(details::type_contains_v<Any, Array<float>>);\n }\n \n+TEST(Array, Contains) {\n+  Function f = Function::GetGlobalRequired(\"ffi.ArrayContains\");\n+\n+  Array<int> arr = {1, 2, 3, 4, 5};\n+  EXPECT_TRUE(f(arr, 3).cast<bool>());\n+  EXPECT_TRUE(f(arr, 1).cast<bool>());\n+  EXPECT_TRUE(f(arr, 5).cast<bool>());\n+  EXPECT_FALSE(f(arr, 10).cast<bool>());\n+  EXPECT_FALSE(f(arr, 0).cast<bool>());\n+\n+  Array<int> empty_arr;\n+  EXPECT_FALSE(f(empty_arr, 1).cast<bool>());\n+\n+  Array<String> str_arr = {String(\"hello\"), String(\"world\")};\n+  EXPECT_TRUE(f(str_arr, String(\"hello\")).cast<bool>());\n+  EXPECT_TRUE(f(str_arr, String(\"world\")).cast<bool>());\n+  EXPECT_FALSE(f(str_arr, String(\"foo\")).cast<bool>());\n+}\n+\n }  // namespace\ndiff --git a/tests/python/test_container.py b/tests/python/test_container.py\nindex e15f00b..8650e08 100644\n--- a/tests/python/test_container.py\n+++ b/tests/python/test_container.py\n@@ -14,6 +14,8 @@\n # KIND, either express or implied.  See the License for the\n # specific language governing permissions and limitations\n # under the License.\n+from __future__ import annotations\n+\n import pickle\n import sys\n from typing import Any\n@@ -206,3 +208,22 @@ def test_large_map_get() -> None:\n     amap = tvm_ffi.convert({k: k**2 for k in range(100)})\n     assert amap.get(101) is None\n     assert amap.get(3) == 9\n+\n+\n+@pytest.mark.parametrize(\n+    \"arr, value, expected\",\n+    [\n+        ([1, 2, 3, 4, 5], 3, True),\n+        ([1, 2, 3, 4, 5], 1, True),\n+        ([1, 2, 3, 4, 5], 5, True),\n+        ([1, 2, 3, 4, 5], 10, False),\n+        ([1, 2, 3, 4, 5], 0, False),\n+        ([], 1, False),\n+        ([\"hello\", \"world\"], \"hello\", True),\n+        ([\"hello\", \"world\"], \"world\", True),\n+        ([\"hello\", \"world\"], \"foo\", False),\n+    ],\n+)\n+def test_array_contains(arr: list[Any], value: Any, expected: bool) -> None:\n+    a = tvm_ffi.convert(arr)\n+    assert (value in a) == expected",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".cc",
+      ".py"
+    ],
+    "scopes_guess": [
+      "python",
+      "src",
+      "tests"
+    ]
+  }
+}

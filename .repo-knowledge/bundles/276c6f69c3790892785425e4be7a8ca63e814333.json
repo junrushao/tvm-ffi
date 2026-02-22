@@ -1,0 +1,40 @@
+{
+  "sha": "276c6f69c3790892785425e4be7a8ca63e814333",
+  "sha7": "276c6f6",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-10-29T20:53:17-04:00",
+  "subject": "[DOCS] add author (#207)",
+  "body": "This PR adds author to the conf.py so docs can render authors correctly",
+  "is_merge": false,
+  "parents": [
+    "70577053dcbd3c88e8352e137232d5c085997fb3"
+  ],
+  "name_status": [
+    [
+      "M",
+      "docs/conf.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "docs/conf.py",
+      "additions": 2,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/docs/conf.py b/docs/conf.py\nindex 7118b41..ef0f399 100644\n--- a/docs/conf.py\n+++ b/docs/conf.py\n@@ -49,6 +49,8 @@ __version__ = setuptools_scm.get_version(root=\"..\")\n \n project = \"tvm-ffi\"\n \n+author = \"Apache TVM FFI contributors\"\n+\n version = __version__\n release = __version__\n ",
+  "heuristics": {
+    "tags": [
+      "docs"
+    ],
+    "extensions": [
+      ".py"
+    ],
+    "scopes_guess": [
+      "docs"
+    ]
+  }
+}

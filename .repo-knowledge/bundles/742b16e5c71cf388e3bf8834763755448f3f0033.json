@@ -1,0 +1,90 @@
+{
+  "sha": "742b16e5c71cf388e3bf8834763755448f3f0033",
+  "sha7": "742b16e",
+  "author_name": "Yaoyao Ding",
+  "author_email": "dingyaoyao.cs@gmail.com",
+  "date_iso": "2025-09-14T15:22:36-04:00",
+  "subject": "add documentation for tvm_ffi.cpp.load_inline (#12)",
+  "body": "Signed-off-by: Yaoyao Ding <dingyaoyao.cs@gmail.com>",
+  "is_merge": false,
+  "parents": [
+    "240ea44afe7e06bf7e9759201a2e436710995914"
+  ],
+  "name_status": [
+    [
+      "M",
+      "docs/guides/python_guide.md"
+    ],
+    [
+      "A",
+      "docs/reference/python/cpp/index.rst"
+    ],
+    [
+      "M",
+      "docs/reference/python/index.rst"
+    ],
+    [
+      "M",
+      "examples/inline_module/main.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/cpp/load_inline.py"
+    ],
+    [
+      "M",
+      "tests/python/test_load_inline.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "docs/guides/python_guide.md",
+      "additions": 41,
+      "deletions": 0
+    },
+    {
+      "path": "docs/reference/python/cpp/index.rst",
+      "additions": 10,
+      "deletions": 0
+    },
+    {
+      "path": "docs/reference/python/index.rst",
+      "additions": 9,
+      "deletions": 0
+    },
+    {
+      "path": "examples/inline_module/main.py",
+      "additions": 3,
+      "deletions": 3
+    },
+    {
+      "path": "python/tvm_ffi/cpp/load_inline.py",
+      "additions": 63,
+      "deletions": 21
+    },
+    {
+      "path": "tests/python/test_load_inline.py",
+      "additions": 9,
+      "deletions": 9
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/docs/guides/python_guide.md b/docs/guides/python_guide.md\nindex 0ab56eb..fdf03a5 100644\n--- a/docs/guides/python_guide.md\n+++ b/docs/guides/python_guide.md\n@@ -139,6 +139,47 @@ assert map_obj[\"b\"] == 2\n When container values are returned from FFI functions, they are also stored in these\n types respectively.\n \n+## Inline Module\n+\n+You can also load a _inline module_ where the C++/CUDA code is directly embedded in the Python script and then compiled\n+on the fly. For example, we can define a simple kernel that adds one to each element of an array as follows:\n+\n+```python\n+import torch\n+from tvm_ffi import Module\n+import tvm_ffi.cpp\n+\n+# define the cpp source code\n+cpp_source = '''\n+     void add_one_cpu(tvm::ffi::Tensor x, tvm::ffi::Tensor y) {\n+       // implementation of a library function\n+       TVM_FFI_ICHECK(x->ndim == 1) << \"x must be a 1D tensor\";\n+       DLDataType f32_dtype{kDLFloat, 32, 1};\n+       TVM_FFI_ICHECK(x->dtype == f32_dtype) << \"x must be a float tensor\";\n+       TVM_FFI_ICHECK(y->ndim == 1) << \"y must be a 1D tensor\";\n+       TVM_FFI_ICHECK(y->dtype == f32_dtype) << \"y must be a float tensor\";\n+       TVM_FFI_ICHECK(x->shape[0] == y->shape[0]) << \"x and y must have the same shape\";\n+       for (int i = 0; i < x->shape[0]; ++i) {\n+         static_cast<float*>(y->data)[i] = static_cast<float*>(x->data)[i] + 1;\n+       }\n+     }\n+'''\n+\n+# compile the cpp source code and load the module\n+mod: Module = tvm_ffi.cpp.load_inline(\n+    name='hello', cpp_sources=cpp_source, functions='add_one_cpu'\n+)\n+\n+# use the function from the loaded module to perform\n+x = torch.tensor([1, 2, 3, 4, 5], dtype=torch.float32)\n+y = torch.empty_like(x)\n+mod.add_one_cpu(x, y)\n+torch.testing.assert_close(x + 1, y)\n+```\n+\n+The above code defines a C++ function `add_one_cpu` in Python script, compiles it on the fly and then loads the compiled\n+{py:class}`tvm_ffi.Module` object via {py:func}`tvm_ffi.cpp.load_inline`. You can then call the function `add_one_cpu` \n+from the module as usual.\n \n ## Error Handling\n \ndiff --git a/docs/reference/python/cpp/index.rst b/docs/reference/python/cpp/index.rst\nnew file mode 100644\nindex 0000000..8737633\n--- /dev/null\n+++ b/docs/reference/python/cpp/index.rst\n@@ -0,0 +1,10 @@\n+tvm_ffi.cpp\n+-----------\n+\n+.. automodule:: tvm_ffi.cpp\n+  :no-members:\n+\n+.. autosummary::\n+  :toctree: generated/\n+\n+  load_inline\ndiff --git a/docs/reference/python/index.rst b/docs/reference/python/index.rst\nindex b357420..482c19d 100644\n--- a/docs/reference/python/index.rst\n+++ b/docs/reference/python/index.rst\n@@ -66,3 +66,12 @@ Containers\n \n   Array\n   Map\n+\n+\n+Utility\n+-------\n+\n+.. toctree::\n+  :maxdepth: 1\n+\n+  cpp/index.rst\ndiff --git a/examples/inline_module/main.py b/examples/inline_module/main.py\nindex da94fb5..98b939e 100644\n--- a/examples/inline_module/main.py\n+++ b/examples/inline_module/main.py\n@@ -25,7 +25,7 @@ def main():\n     mod: Module = tvm_ffi.cpp.load_inline(\n         name=\"hello\",\n         cpp_sources=r\"\"\"\n-            void add_one_cpu(DLTensor* x, DLTensor* y) {\n+            void add_one_cpu(tvm::ffi::Tensor x, tvm::ffi::Tensor y) {\n               // implementation of a library function\n               TVM_FFI_ICHECK(x->ndim == 1) << \"x must be a 1D tensor\";\n               DLDataType f32_dtype{kDLFloat, 32, 1};\n@@ -38,7 +38,7 @@ def main():\n               }\n             }\n \n-            void add_one_cuda(DLTensor* x, DLTensor* y);\n+            void add_one_cuda(tvm::ffi::Tensor x, tvm::ffi::Tensor y);\n         \"\"\",\n         cuda_sources=r\"\"\"\n             __global__ void AddOneKernel(float* x, float* y, int n) {\n@@ -48,7 +48,7 @@ def main():\n               }\n             }\n \n-            void add_one_cuda(DLTensor* x, DLTensor* y) {\n+            void add_one_cuda(tvm::ffi::Tensor x, tvm::ffi::Tensor y) {\n               // implementation of a library function\n               TVM_FFI_ICHECK(x->ndim == 1) << \"x must be a 1D tensor\";\n               DLDataType f32_dtype{kDLFloat, 32, 1};\ndiff --git a/python/tvm_ffi/cpp/load_inline.py b/python/tvm_ffi/cpp/load_inline.py\nindex c836205..3c3c8d3 100644\n--- a/python/tvm_ffi/cpp/load_inline.py\n+++ b/python/tvm_ffi/cpp/load_inline.py\n@@ -263,6 +263,7 @@ def _build_ninja(build_dir: str) -> None:\n def _decorate_with_tvm_ffi(source: str, functions: Mapping[str, str]) -> str:\n     \"\"\"Decorate the given source code with TVM FFI export macros.\"\"\"\n     sources = [\n+        \"#include <tvm/ffi/container/tensor.h>\",\n         \"#include <tvm/ffi/dtype.h>\",\n         \"#include <tvm/ffi/error.h>\",\n         \"#include <tvm/ffi/extra/c_env_api.h>\",\n@@ -292,33 +293,34 @@ def load_inline(\n     extra_include_paths: Sequence[str] | None = None,\n     build_directory: Optional[str] = None,\n ) -> Module:\n-    \"\"\"Compile and load a C++/CUDA tvm ffi module from inline source code.\n+    \"\"\"Compile and load a C++/CUDA module from inline source code.\n \n-    This function compiles the given C++ and/or CUDA source code into a shared library. Both cpp_sources and\n-    cuda_sources are compiled to an object file, and then linked together into a shared library. It's possible to only\n+    This function compiles the given C++ and/or CUDA source code into a shared library. Both ``cpp_sources`` and\n+    ``cuda_sources`` are compiled to an object file, and then linked together into a shared library. It's possible to only\n     provide cpp_sources or cuda_sources.\n \n-    The `functions` parameter is used to specify which functions in the source code should be exported to the tvm ffi module.\n-    It can be a mapping, a sequence, or a single string. When a mapping is given, the keys are the names of the exported\n-    functions, and the values are docstrings for the functions. When a sequence or a single string is given, they are the\n-    functions needed to be exported, and the docstrings are set to empty strings. A single function name can also be given\n-    as a string, indicating that only one function is to be exported.\n+    The ``functions`` parameter is used to specify which functions in the source code should be exported to the tvm ffi\n+    module. It can be a mapping, a sequence, or a single string. When a mapping is given, the keys are the names of the\n+    exported functions, and the values are docstrings for the functions. When a sequence of string is given, they are\n+    the function names needed to be exported, and the docstrings are set to empty strings. A single function name can\n+    also be given as a string, indicating that only one function is to be exported.\n \n-    Extra compiler and linker flags can be provided via the `extra_cflags`, `extra_cuda_cflags`, and `extra_ldflags`\n+    Extra compiler and linker flags can be provided via the ``extra_cflags``, ``extra_cuda_cflags``, and ``extra_ldflags``\n     parameters. The default flags are generally sufficient for most use cases, but you may need to provide additional\n     flags for your specific use case.\n \n-    The include dir of tvm ffi and dlpack are used by default for linker to find the headers. Thus, you can include\n-    any header from tvm ffi and dlpack in your source code. You can also provide additional include paths via the\n-    `extra_include_paths` parameter and include custom headers in your source code.\n+    The include dir of tvm ffi and dlpack are used by default for the compiler to find the headers. Thus, you can\n+    include any header from tvm ffi in your source code. You can also provide additional include paths via the\n+    ``extra_include_paths`` parameter and include custom headers in your source code.\n \n     The compiled shared library is cached in a cache directory to avoid recompilation. The `build_directory` parameter\n     is provided to specify the build directory. If not specified, a default tvm ffi cache directory will be used.\n     The default cache directory can be specified via the `TVM_FFI_CACHE_DIR` environment variable. If not specified,\n-    the default cache directory is `~/.cache/tvm-ffi`.\n+    the default cache directory is ``~/.cache/tvm-ffi``.\n \n     Parameters\n     ----------\n+\n     name: str\n         The name of the tvm ffi module.\n     cpp_sources: Sequence[str] | str, optional\n@@ -335,31 +337,71 @@ def load_inline(\n     extra_cflags: Sequence[str], optional\n         The extra compiler flags for C++ compilation.\n         The default flags are:\n+\n         - On Linux/macOS: ['-std=c++17', '-fPIC', '-O2']\n-        - On Windows: ['/std:c++17']\n-    extra_cuda_cflags:\n+        - On Windows: ['/std:c++17', '/O2']\n+\n+    extra_cuda_cflags: Sequence[str], optional\n         The extra compiler flags for CUDA compilation.\n-        The default flags are:\n-        - On Linux/macOS: ['-Xcompiler', '-fPIC', '-std=c++17', '-O2']\n-        - On Windows: ['-Xcompiler', '/std:c++17', '/O2']\n+\n     extra_ldflags: Sequence[str], optional\n         The extra linker flags.\n         The default flags are:\n+\n         - On Linux/macOS: ['-shared']\n         - On Windows: ['/DLL']\n+\n     extra_include_paths: Sequence[str], optional\n         The extra include paths.\n-        The default include paths are:\n-        - The include path of tvm ffi\n+\n     build_directory: str, optional\n         The build directory. If not specified, a default tvm ffi cache directory will be used. By default, the\n-        cache directory is `~/.cache/tvm-ffi`. You can also set the `TVM_FFI_CACHE_DIR` environment variable to\n+        cache directory is ``~/.cache/tvm-ffi``. You can also set the ``TVM_FFI_CACHE_DIR`` environment variable to\n         specify the cache directory.\n \n     Returns\n     -------\n     mod: Module\n         The loaded tvm ffi module.\n+\n+\n+    Example\n+    -------\n+\n+    .. code-block:: python\n+\n+        import torch\n+        from tvm_ffi import Module\n+        import tvm_ffi.cpp\n+\n+        # define the cpp source code\n+        cpp_source = '''\n+             void add_one_cpu(tvm::ffi::Tensor x, tvm::ffi::Tensor y) {\n+               // implementation of a library function\n+               TVM_FFI_ICHECK(x->ndim == 1) << \"x must be a 1D tensor\";\n+               DLDataType f32_dtype{kDLFloat, 32, 1};\n+               TVM_FFI_ICHECK(x->dtype == f32_dtype) << \"x must be a float tensor\";\n+               TVM_FFI_ICHECK(y->ndim == 1) << \"y must be a 1D tensor\";\n+               TVM_FFI_ICHECK(y->dtype == f32_dtype) << \"y must be a float tensor\";\n+               TVM_FFI_ICHECK(x->shape[0] == y->shape[0]) << \"x and y must have the same shape\";\n+               for (int i = 0; i < x->shape[0]; ++i) {\n+                 static_cast<float*>(y->data)[i] = static_cast<float*>(x->data)[i] + 1;\n+               }\n+             }\n+        '''\n+\n+        # compile the cpp source code and load the module\n+        mod: Module = tvm_ffi.cpp.load_inline(\n+            name='hello',\n+            cpp_sources=cpp_source,\n+            functions='add_one_cpu'\n+        )\n+\n+        # use the function from the loaded module to perform\n+        x = torch.tensor([1, 2, 3, 4, 5], dtype=torch.float32)\n+        y = torch.empty_like(x)\n+        mod.add_one_cpu(x, y)\n+        torch.testing.assert_close(x + 1, y)\n     \"\"\"\n     if cpp_sources is None:\n         cpp_sources = []\ndiff --git a/tests/python/test_load_inline.py b/tests/python/test_load_inline.py\nindex 7ecc100..d72bfa7 100644\n--- a/tests/python/test_load_inline.py\n+++ b/tests/python/test_load_inline.py\n@@ -34,7 +34,7 @@ def test_load_inline_cpp():\n     mod: Module = tvm_ffi.cpp.load_inline(\n         name=\"hello\",\n         cpp_sources=r\"\"\"\n-            void add_one_cpu(DLTensor* x, DLTensor* y) {\n+            void add_one_cpu(tvm::ffi::Tensor x, tvm::ffi::Tensor y) {\n               // implementation of a library function\n               TVM_FFI_ICHECK(x->ndim == 1) << \"x must be a 1D tensor\";\n               DLDataType f32_dtype{kDLFloat, 32, 1};\n@@ -61,7 +61,7 @@ def test_load_inline_cpp_with_docstrings():\n     mod: Module = tvm_ffi.cpp.load_inline(\n         name=\"hello\",\n         cpp_sources=r\"\"\"\n-            void add_one_cpu(DLTensor* x, DLTensor* y) {\n+            void add_one_cpu(tvm::ffi::Tensor x, tvm::ffi::Tensor y) {\n               // implementation of a library function\n               TVM_FFI_ICHECK(x->ndim == 1) << \"x must be a 1D tensor\";\n               DLDataType f32_dtype{kDLFloat, 32, 1};\n@@ -89,7 +89,7 @@ def test_load_inline_cpp_multiple_sources():\n         name=\"hello\",\n         cpp_sources=[\n             r\"\"\"\n-            void add_one_cpu(DLTensor* x, DLTensor* y) {\n+            void add_one_cpu(tvm::ffi::Tensor x, tvm::ffi::Tensor y) {\n               // implementation of a library function\n               TVM_FFI_ICHECK(x->ndim == 1) << \"x must be a 1D tensor\";\n               DLDataType f32_dtype{kDLFloat, 32, 1};\n@@ -103,7 +103,7 @@ def test_load_inline_cpp_multiple_sources():\n             }\n         \"\"\",\n             r\"\"\"\n-            void add_two_cpu(DLTensor* x, DLTensor* y) {\n+            void add_two_cpu(tvm::ffi::Tensor x, tvm::ffi::Tensor y) {\n               // implementation of a library function\n               TVM_FFI_ICHECK(x->ndim == 1) << \"x must be a 1D tensor\";\n               DLDataType f32_dtype{kDLFloat, 32, 1};\n@@ -131,7 +131,7 @@ def test_load_inline_cpp_build_dir():\n     mod: Module = tvm_ffi.cpp.load_inline(\n         name=\"hello\",\n         cpp_sources=r\"\"\"\n-            void add_one_cpu(DLTensor* x, DLTensor* y) {\n+            void add_one_cpu(tvm::ffi::Tensor x, tvm::ffi::Tensor y) {\n               // implementation of a library function\n               TVM_FFI_ICHECK(x->ndim == 1) << \"x must be a 1D tensor\";\n               DLDataType f32_dtype{kDLFloat, 32, 1};\n@@ -168,7 +168,7 @@ def test_load_inline_cuda():\n               }\n             }\n \n-            void add_one_cuda(DLTensor* x, DLTensor* y) {\n+            void add_one_cuda(tvm::ffi::Tensor x, tvm::ffi::Tensor y) {\n               // implementation of a library function\n               TVM_FFI_ICHECK(x->ndim == 1) << \"x must be a 1D tensor\";\n               DLDataType f32_dtype{kDLFloat, 32, 1};\n@@ -249,7 +249,7 @@ def test_load_inline_both():\n     mod: Module = tvm_ffi.cpp.load_inline(\n         name=\"hello\",\n         cpp_sources=r\"\"\"\n-            void add_one_cpu(DLTensor* x, DLTensor* y) {\n+            void add_one_cpu(tvm::ffi::Tensor x, tvm::ffi::Tensor y) {\n               // implementation of a library function\n               TVM_FFI_ICHECK(x->ndim == 1) << \"x must be a 1D tensor\";\n               DLDataType f32_dtype{kDLFloat, 32, 1};\n@@ -262,7 +262,7 @@ def test_load_inline_both():\n               }\n             }\n \n-            void add_one_cuda(DLTensor* x, DLTensor* y);\n+            void add_one_cuda(tvm::ffi::Tensor x, tvm::ffi::Tensor y);\n         \"\"\",\n         cuda_sources=r\"\"\"\n             __global__ void AddOneKernel(float* x, float* y, int n) {\n@@ -272,7 +272,7 @@ def test_load_inline_both():\n               }\n             }\n \n-            void add_one_cuda(DLTensor* x, DLTensor* y) {\n+            void add_one_cuda(tvm::ffi::Tensor x, tvm::ffi::Tensor y) {\n               // implementation of a library function\n               TVM_FFI_ICHECK(x->ndim == 1) << \"x must be a 1D tensor\";\n               DLDataType f32_dtype{kDLFloat, 32, 1};",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".md",
+      ".py",
+      ".rst"
+    ],
+    "scopes_guess": [
+      "docs",
+      "examples",
+      "python",
+      "tests"
+    ]
+  }
+}

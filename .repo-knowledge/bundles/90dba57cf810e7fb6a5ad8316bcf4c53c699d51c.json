@@ -1,0 +1,51 @@
+{
+  "sha": "90dba57cf810e7fb6a5ad8316bcf4c53c699d51c",
+  "sha7": "90dba57",
+  "author_name": "Junru Shao",
+  "author_email": "junrushao@apache.org",
+  "date_iso": "2025-09-23T16:01:42-07:00",
+  "subject": "fix(Array): Make array slicing behavior to return list (#50)",
+  "body":
+      "This PR fixes a behavioral inconsistency between existing TVM stack and\nthe latest `main`.\n\nOriginally, slicing a `tvm_ffi.Array[T]` always returns `list[T]`. This\nbehavior was altered by PR #37, which instead returns `Array[T]`,\nbreaking a few unittests.",
+  "is_merge": false,
+  "parents": [
+    "54f527f4d3d1ae1b950e0fe1a52ccb7bfc6df249"
+  ],
+  "name_status": [
+    [
+      "M",
+      "python/tvm_ffi/container.py"
+    ],
+    [
+      "M",
+      "tests/python/test_container.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "python/tvm_ffi/container.py",
+      "additions": 3,
+      "deletions": 5
+    },
+    {
+      "path": "tests/python/test_container.py",
+      "additions": 1,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/python/tvm_ffi/container.py b/python/tvm_ffi/container.py\nindex f179fc9..d4aa24f 100644\n--- a/python/tvm_ffi/container.py\n+++ b/python/tvm_ffi/container.py\n@@ -117,14 +117,12 @@ class Array(core.Object, Sequence[T]):\n     def __getitem__(self, idx: SupportsIndex, /) -> T: ...\n \n     @overload\n-    def __getitem__(self, idx: slice, /) -> Array[T]: ...\n+    def __getitem__(self, idx: slice, /) -> list[T]: ...\n \n-    def __getitem__(self, idx: SupportsIndex | slice, /) -> T | Array[T]:\n-        \"\"\"Return one element or a new :class:`Array` for a slice.\"\"\"\n+    def __getitem__(self, idx: SupportsIndex | slice, /) -> T | list[T]:\n+        \"\"\"Return one element or a list for a slice.\"\"\"\n         length = len(self)\n         result = getitem_helper(self, _ffi_api.ArrayGetItem, length, idx)\n-        if isinstance(result, list):\n-            return cast(Array[T], type(self)(result))\n         return result\n \n     def __len__(self) -> int:\ndiff --git a/tests/python/test_container.py b/tests/python/test_container.py\nindex 54b41b7..3f3465e 100644\n--- a/tests/python/test_container.py\n+++ b/tests/python/test_container.py\n@@ -28,6 +28,7 @@ def test_array() -> None:\n     assert len(a) == 3\n     assert a[-1] == 3\n     a_slice = a[-3:-1]\n+    assert isinstance(a_slice, list)  # TVM array slicing returns a list[T] instead of Array[T]\n     assert (a_slice[0], a_slice[1]) == (1, 2)\n \n ",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".py"
+    ],
+    "scopes_guess": [
+      "python",
+      "tests"
+    ]
+  }
+}

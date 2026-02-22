@@ -1,0 +1,50 @@
+{
+  "sha": "1ce0f6fa8f7ed99e2972daaf9b69598c630f4244",
+  "sha7": "1ce0f6f",
+  "author_name": "Yaoyao Ding",
+  "author_email": "dingyaoyao.cs@gmail.com",
+  "date_iso": "2025-09-12T16:50:37-04:00",
+  "subject": "[FFI] Update `load_inline` interface (#18307)",
+  "body": "update load_inline interface",
+  "is_merge": false,
+  "parents": [
+    "f81ab9c25ae4d2a42706747c50c5c410c51d6cdd"
+  ],
+  "name_status": [
+    [
+      "M",
+      "python/tvm_ffi/cpp/load_inline.py"
+    ],
+    [
+      "M",
+      "tests/python/test_load_inline.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "python/tvm_ffi/cpp/load_inline.py",
+      "additions": 14,
+      "deletions": 6
+    },
+    {
+      "path": "tests/python/test_load_inline.py",
+      "additions": 0,
+      "deletions": 3
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/python/tvm_ffi/cpp/load_inline.py b/python/tvm_ffi/cpp/load_inline.py\nindex 111dee8..3bc0fc4 100644\n--- a/python/tvm_ffi/cpp/load_inline.py\n+++ b/python/tvm_ffi/cpp/load_inline.py\n@@ -326,10 +326,12 @@ def load_inline(\n     cuda_sources: Sequence[str] | str, optional\n         The CUDA source code. It can be a list of sources or a single source.\n     functions: Mapping[str, str] | Sequence[str] | str, optional\n-        The functions in cpp_sources that will be exported to the tvm ffi module. When a mapping is given, the keys\n-        are the names of the exported functions, and the values are docstrings for the functions. When a sequence or a\n-        single string is given, they are the functions needed to be exported, and the docstrings are set to empty\n-        strings. A single function name can also be given as a string.\n+        The functions in cpp_sources or cuda_source that will be exported to the tvm ffi module. When a mapping is\n+        given, the keys are the names of the exported functions, and the values are docstrings for the functions. When\n+        a sequence or a single string is given, they are the functions needed to be exported, and the docstrings are set\n+        to empty strings. A single function name can also be given as a string. When cpp_sources is given, the functions\n+        must be declared (not necessarily defined) in the cpp_sources. When cpp_sources is not given, the functions\n+        must be defined in the cuda_sources. If not specified, no function will be exported.\n     extra_cflags: Sequence[str], optional\n         The extra compiler flags for C++ compilation.\n         The default flags are:\n@@ -369,6 +371,7 @@ def load_inline(\n     elif isinstance(cuda_sources, str):\n         cuda_sources = [cuda_sources]\n     cuda_source = \"\\n\".join(cuda_sources)\n+    with_cpp = len(cpp_sources) > 0\n     with_cuda = len(cuda_sources) > 0\n \n     extra_ldflags = extra_ldflags or []\n@@ -381,8 +384,13 @@ def load_inline(\n         functions = {functions: \"\"}\n     elif isinstance(functions, Sequence):\n         functions = {name: \"\" for name in functions}\n-    cpp_source = _decorate_with_tvm_ffi(cpp_source, functions)\n-    cuda_source = _decorate_with_tvm_ffi(cuda_source, {})\n+\n+    if with_cpp:\n+        cpp_source = _decorate_with_tvm_ffi(cpp_source, functions)\n+        cuda_source = _decorate_with_tvm_ffi(cuda_source, {})\n+    else:\n+        cpp_source = _decorate_with_tvm_ffi(cpp_source, {})\n+        cuda_source = _decorate_with_tvm_ffi(cuda_source, functions)\n \n     # determine the cache dir for the built module\n     if build_directory is None:\ndiff --git a/tests/python/test_load_inline.py b/tests/python/test_load_inline.py\nindex 89f00b1..2aa01a6 100644\n--- a/tests/python/test_load_inline.py\n+++ b/tests/python/test_load_inline.py\n@@ -159,9 +159,6 @@ def test_load_inline_cpp_build_dir():\n def test_load_inline_cuda():\n     mod: Module = tvm_ffi.cpp.load_inline(\n         name=\"hello\",\n-        cpp_sources=r\"\"\"\n-            void add_one_cuda(DLTensor* x, DLTensor* y);\n-        \"\"\",\n         cuda_sources=r\"\"\"\n             __global__ void AddOneKernel(float* x, float* y, int n) {\n               int idx = blockIdx.x * blockDim.x + threadIdx.x;",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".py"
+    ],
+    "scopes_guess": [
+      "python",
+      "tests"
+    ]
+  }
+}

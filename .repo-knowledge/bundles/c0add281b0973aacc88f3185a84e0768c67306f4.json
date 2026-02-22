@@ -1,0 +1,72 @@
+{
+  "sha": "c0add281b0973aacc88f3185a84e0768c67306f4",
+  "sha7": "c0add28",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-09-22T11:23:53-04:00",
+  "subject": "[FIX] Fix device type override (#40)",
+  "body":
+      "This pr fixes the behavior of device so device type override works\ncorrectly, added an unittest.",
+  "is_merge": false,
+  "parents": [
+    "6f020c11c304ef11ac5d0dad904d41ebe42a3ffd"
+  ],
+  "name_status": [
+    [
+      "M",
+      "pyproject.toml"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/_tensor.py"
+    ],
+    [
+      "M",
+      "tests/python/test_device.py"
+    ],
+    [
+      "M",
+      "tests/python/test_tensor.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "pyproject.toml",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "python/tvm_ffi/_tensor.py",
+      "additions": 3,
+      "deletions": 3
+    },
+    {
+      "path": "tests/python/test_device.py",
+      "additions": 12,
+      "deletions": 0
+    },
+    {
+      "path": "tests/python/test_tensor.py",
+      "additions": 18,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/pyproject.toml b/pyproject.toml\nindex 1e97de7..d2fd897 100644\n--- a/pyproject.toml\n+++ b/pyproject.toml\n@@ -17,7 +17,7 @@\n \n [project]\n name = \"apache-tvm-ffi\"\n-version = \"0.1.0b5\"\n+version = \"0.1.0b6\"\n description = \"tvm ffi\"\n \n authors = [{ name = \"TVM FFI team\" }]\ndiff --git a/python/tvm_ffi/_tensor.py b/python/tvm_ffi/_tensor.py\nindex 8d06bd2..0cc09f1 100644\n--- a/python/tvm_ffi/_tensor.py\n+++ b/python/tvm_ffi/_tensor.py\n@@ -21,9 +21,8 @@\n from numbers import Integral\n from typing import Any, Optional, Union\n \n-from . import _ffi_api, registry\n+from . import _ffi_api, core, registry\n from .core import (\n-    _CLASS_DEVICE,\n     Device,\n     DLDeviceType,\n     PyNativeObject,\n@@ -86,7 +85,8 @@ def device(device_type: Union[str, int, DLDeviceType], index: Optional[int] = No\n       assert tvm_ffi.device(\"cpu:0\") == tvm_ffi.device(\"cpu\", 0)\n \n     \"\"\"\n-    return _CLASS_DEVICE(device_type, index)\n+    # must refer to core._CLASS_DEVICE so we pick up override here\n+    return core._CLASS_DEVICE(device_type, index)\n \n \n __all__ = [\"DLDeviceType\", \"Device\", \"Tensor\", \"device\", \"from_dlpack\"]\ndiff --git a/tests/python/test_device.py b/tests/python/test_device.py\nindex 30c964a..9441c9f 100644\n--- a/tests/python/test_device.py\n+++ b/tests/python/test_device.py\n@@ -95,3 +95,15 @@ def test_device_pickle() -> None:\n     device_pickled = pickle.loads(pickle.dumps(device))\n     assert device_pickled.dlpack_device_type() == device.dlpack_device_type()\n     assert device_pickled.index == device.index\n+\n+\n+def test_device_class_override() -> None:\n+    class MyDevice(tvm_ffi.Device):\n+        pass\n+\n+    old_device = tvm_ffi.core._CLASS_DEVICE\n+    tvm_ffi.core._set_class_device(MyDevice)\n+\n+    device = tvm_ffi.device(\"cuda\", 0)\n+    assert isinstance(device, MyDevice)\n+    tvm_ffi.core._set_class_device(old_device)\ndiff --git a/tests/python/test_tensor.py b/tests/python/test_tensor.py\nindex 6d1da26..4c2e9a8 100644\n--- a/tests/python/test_tensor.py\n+++ b/tests/python/test_tensor.py\n@@ -66,3 +66,21 @@ def test_tensor_auto_dlpack() -> None:\n     assert y.shape == x.shape\n     assert y.device == x.device\n     np.testing.assert_equal(y.numpy(), x.numpy())\n+\n+\n+def test_tensor_class_override() -> None:\n+    class MyTensor(tvm_ffi.Tensor):\n+        pass\n+\n+    old_tensor = tvm_ffi.core._CLASS_TENSOR\n+    tvm_ffi.core._set_class_tensor(MyTensor)\n+\n+    data = np.zeros((10, 8, 4, 2), dtype=\"int16\")\n+    if not hasattr(data, \"__dlpack__\"):\n+        return\n+    x = tvm_ffi.from_dlpack(data)\n+\n+    fecho = tvm_ffi.get_global_func(\"testing.echo\")\n+    y = fecho(x)\n+    assert isinstance(y, MyTensor)\n+    tvm_ffi.core._set_class_tensor(old_tensor)",
+  "heuristics": {
+    "tags": [
+      "build",
+      "test"
+    ],
+    "extensions": [
+      ".py",
+      ".toml"
+    ],
+    "scopes_guess": [
+      "pyproject.toml",
+      "python",
+      "tests"
+    ]
+  }
+}

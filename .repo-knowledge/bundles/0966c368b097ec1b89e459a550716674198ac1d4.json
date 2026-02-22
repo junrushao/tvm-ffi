@@ -1,0 +1,75 @@
+{
+  "sha": "0966c368b097ec1b89e459a550716674198ac1d4",
+  "sha7": "0966c36",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-07-01T07:19:23-04:00",
+  "subject": "[REFACTOR] Formalize namespace for all objects (#18101)",
+  "body":
+      "This PR formalizes the namespace for all object registered so\nwe do not have object that sits on root namespace\n\nAlso fixes the Visitor style in TensorMapNode",
+  "is_merge": false,
+  "parents": [
+    "f7311e495820859fba26d19010fc5bda0275293d"
+  ],
+  "name_status": [
+    [
+      "M",
+      "include/tvm/ffi/container/array.h"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/container/map.h"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/error.h"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/function.h"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/object.h"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "include/tvm/ffi/container/array.h",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "include/tvm/ffi/container/map.h",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "include/tvm/ffi/error.h",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "include/tvm/ffi/function.h",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "include/tvm/ffi/object.h",
+      "additions": 9,
+      "deletions": 5
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/include/tvm/ffi/container/array.h b/include/tvm/ffi/container/array.h\nindex 97fe591..7483fd7 100644\n--- a/include/tvm/ffi/container/array.h\n+++ b/include/tvm/ffi/container/array.h\n@@ -156,7 +156,7 @@ class ArrayObj : public Object, public details::InplaceArrayBase<ArrayObj, TVMFF\n   }\n \n   static constexpr const int32_t _type_index = TypeIndex::kTVMFFIArray;\n-  static constexpr const char* _type_key = \"object.Array\";\n+  static constexpr const char* _type_key = StaticTypeKey::kTVMFFIArray;\n   static const constexpr bool _type_final = true;\n   TVM_FFI_DECLARE_STATIC_OBJECT_INFO(ArrayObj, Object);\n \ndiff --git a/include/tvm/ffi/container/map.h b/include/tvm/ffi/container/map.h\nindex 2cc6bf0..2adff16 100644\n--- a/include/tvm/ffi/container/map.h\n+++ b/include/tvm/ffi/container/map.h\n@@ -68,7 +68,7 @@ class MapObj : public Object {\n   static_assert(sizeof(KVType) == 32, \"sizeof(KVType) incorrect\");\n \n   static constexpr const int32_t _type_index = TypeIndex::kTVMFFIMap;\n-  static constexpr const char* _type_key = \"object.Map\";\n+  static constexpr const char* _type_key = StaticTypeKey::kTVMFFIMap;\n   static const constexpr bool _type_final = true;\n   TVM_FFI_DECLARE_STATIC_OBJECT_INFO(MapObj, Object);\n \ndiff --git a/include/tvm/ffi/error.h b/include/tvm/ffi/error.h\nindex de754bd..77a7fe9 100644\n--- a/include/tvm/ffi/error.h\n+++ b/include/tvm/ffi/error.h\n@@ -86,7 +86,7 @@ struct EnvErrorAlreadySet : public std::exception {};\n class ErrorObj : public Object, public TVMFFIErrorCell {\n  public:\n   static constexpr const int32_t _type_index = TypeIndex::kTVMFFIError;\n-  static constexpr const char* _type_key = \"object.Error\";\n+  static constexpr const char* _type_key = \"ffi.Error\";\n \n   TVM_FFI_DECLARE_STATIC_OBJECT_INFO(ErrorObj, Object);\n };\ndiff --git a/include/tvm/ffi/function.h b/include/tvm/ffi/function.h\nindex 0f5b708..88dfbea 100644\n--- a/include/tvm/ffi/function.h\n+++ b/include/tvm/ffi/function.h\n@@ -93,7 +93,7 @@ class FunctionObj : public Object, public TVMFFIFunctionCell {\n   }\n \n   static constexpr const uint32_t _type_index = TypeIndex::kTVMFFIFunction;\n-  static constexpr const char* _type_key = \"object.Function\";\n+  static constexpr const char* _type_key = StaticTypeKey::kTVMFFIFunction;\n \n   TVM_FFI_DECLARE_STATIC_OBJECT_INFO(FunctionObj, Object);\n \ndiff --git a/include/tvm/ffi/object.h b/include/tvm/ffi/object.h\nindex d032cc1..164c4e2 100644\n--- a/include/tvm/ffi/object.h\n+++ b/include/tvm/ffi/object.h\n@@ -52,10 +52,14 @@ struct StaticTypeKey {\n   static constexpr const char* kTVMFFIRawStr = \"const char*\";\n   static constexpr const char* kTVMFFIByteArrayPtr = \"TVMFFIByteArray*\";\n   static constexpr const char* kTVMFFIObjectRValueRef = \"ObjectRValueRef\";\n-  static constexpr const char* kTVMFFIBytes = \"object.Bytes\";\n-  static constexpr const char* kTVMFFIStr = \"object.String\";\n-  static constexpr const char* kTVMFFIShape = \"object.Shape\";\n-  static constexpr const char* kTVMFFINDArray = \"object.NDArray\";\n+  static constexpr const char* kTVMFFIBytes = \"ffi.Bytes\";\n+  static constexpr const char* kTVMFFIStr = \"ffi.String\";\n+  static constexpr const char* kTVMFFIShape = \"ffi.Shape\";\n+  static constexpr const char* kTVMFFINDArray = \"ffi.NDArray\";\n+  static constexpr const char* kTVMFFIObject = \"ffi.Object\";\n+  static constexpr const char* kTVMFFIFunction = \"ffi.Function\";\n+  static constexpr const char* kTVMFFIArray = \"ffi.Array\";\n+  static constexpr const char* kTVMFFIMap = \"ffi.Map\";\n };\n \n /*!\n@@ -197,7 +201,7 @@ class Object {\n   }\n \n   // Information about the object\n-  static constexpr const char* _type_key = \"object.Object\";\n+  static constexpr const char* _type_key = StaticTypeKey::kTVMFFIObject;\n \n   // Default object type properties for sub-classes\n   static constexpr bool _type_final = false;",
+  "heuristics": {
+    "tags": [],
+    "extensions": [
+      ".h"
+    ],
+    "scopes_guess": [
+      "include"
+    ]
+  }
+}

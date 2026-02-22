@@ -1,0 +1,51 @@
+{
+  "sha": "943289686340fc04bc15ec3b377bff22a1839bab",
+  "sha7": "9432896",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-09-16T21:09:39-04:00",
+  "subject": "[CMAKE] Fix packaging 3rdparty (#18)",
+  "body": "This PR fixes packaging for 3rdparty",
+  "is_merge": false,
+  "parents": [
+    "89e0b88e7e821b52b9208bc5158ccfc907ac4073"
+  ],
+  "name_status": [
+    [
+      "M",
+      "CMakeLists.txt"
+    ],
+    [
+      "M",
+      "pyproject.toml"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "CMakeLists.txt",
+      "additions": 2,
+      "deletions": 2
+    },
+    {
+      "path": "pyproject.toml",
+      "additions": 1,
+      "deletions": 1
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/CMakeLists.txt b/CMakeLists.txt\nindex 2767669..9580f20 100644\n--- a/CMakeLists.txt\n+++ b/CMakeLists.txt\n@@ -231,10 +231,10 @@ if (TVM_FFI_BUILD_PYTHON_MODULE)\n \n   ########## Installing the source ##########\n   install(\n-    DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/dlpack/include DESTINATION 3rdparty/dlpack/include\n+    DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/dlpack/include/ DESTINATION 3rdparty/dlpack/include/\n   )\n   install(\n-    DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/libbacktrace DESTINATION 3rdparty/libbacktrace\n+    DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/libbacktrace/ DESTINATION 3rdparty/libbacktrace/\n     PATTERN \".git\" EXCLUDE\n     PATTERN \".git*\" EXCLUDE\n     PATTERN \"*.tmp\" EXCLUDE\ndiff --git a/pyproject.toml b/pyproject.toml\nindex 6c0c490..e047529 100644\n--- a/pyproject.toml\n+++ b/pyproject.toml\n@@ -17,7 +17,7 @@\n \n [project]\n name = \"apache-tvm-ffi\"\n-version = \"0.1.0b2\"\n+version = \"0.1.0b3\"\n description = \"tvm ffi\"\n \n authors = [{ name = \"TVM FFI team\" }]",
+  "heuristics": {
+    "tags": [
+      "build"
+    ],
+    "extensions": [
+      ".toml",
+      ".txt"
+    ],
+    "scopes_guess": [
+      "CMakeLists.txt",
+      "pyproject.toml"
+    ]
+  }
+}

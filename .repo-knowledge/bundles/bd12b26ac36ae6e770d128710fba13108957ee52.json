@@ -1,0 +1,62 @@
+{
+  "sha": "bd12b26ac36ae6e770d128710fba13108957ee52",
+  "sha7": "bd12b26",
+  "author_name": "Guan-Ming (Wesley) Chiu",
+  "author_email": "105915352+guan404ming@users.noreply.github.com",
+  "date_iso": "2026-01-07T00:50:35+08:00",
+  "subject": "feat: add find and substr methods to String (#383)",
+  "body":
+      "## Why\n\nString class lacks essential string manipulation methods that are\ncommonly expected in standard library equivalents, requiring users to\nconvert to std::string for basic operations like substring search and\nextraction.\n\n## How\n\n- Add find() method with three overloads (String, const char*, const\nchar* with count) to search for substrings\n- Add substr() method to extract substrings with bounds checking",
+  "is_merge": false,
+  "parents": [
+    "5bf7e8ce20fae0df47dd0adf7b39919ac6fafa11"
+  ],
+  "name_status": [
+    [
+      "M",
+      "include/tvm/ffi/string.h"
+    ],
+    [
+      "M",
+      "tests/cpp/test_string.cc"
+    ],
+    [
+      "M",
+      "tests/python/test_string.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "include/tvm/ffi/string.h",
+      "additions": 44,
+      "deletions": 0
+    },
+    {
+      "path": "tests/cpp/test_string.cc",
+      "additions": 37,
+      "deletions": 0
+    },
+    {
+      "path": "tests/python/test_string.py",
+      "additions": 18,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/include/tvm/ffi/string.h b/include/tvm/ffi/string.h\nindex b18e690..b93c3a9 100644\n--- a/include/tvm/ffi/string.h\n+++ b/include/tvm/ffi/string.h\n@@ -611,6 +611,50 @@ class String {\n     }\n   }\n \n+  /*! \\brief Value returned by find() when no match is found */\n+  static constexpr size_t npos = static_cast<size_t>(-1);\n+\n+  /*!\n+   * \\brief Find the first occurrence of a substring\n+   * \\param str The substring to search for\n+   * \\param pos The position at which to start the search\n+   * \\return The position of the first character of the first match, or npos if not found\n+   */\n+  size_t find(const String& str, size_t pos = 0) const { return find(str.data(), pos, str.size()); }\n+\n+  /*!\n+   * \\brief Find the first occurrence of a substring\n+   * \\param str The substring to search for\n+   * \\param pos The position at which to start the search\n+   * \\return The position of the first character of the first match, or npos if not found\n+   */\n+  size_t find(const char* str, size_t pos = 0) const { return find(str, pos, std::strlen(str)); }\n+\n+  /*!\n+   * \\brief Find the first occurrence of a substring\n+   * \\param str The substring to search for\n+   * \\param pos The position at which to start the search\n+   * \\param count The length of the substring\n+   * \\return The position of the first character of the first match, or npos if not found\n+   */\n+  size_t find(const char* str, size_t pos, size_t count) const {\n+    return std::string_view(data(), size()).find(std::string_view(str, count), pos);\n+  }\n+\n+  /*!\n+   * \\brief Returns a substring [pos, pos+count)\n+   * \\param pos The position of the first character to include\n+   * \\param count The length of the substring (default: until end of string)\n+   * \\return A string containing the substring\n+   */\n+  String substr(size_t pos = 0, size_t count = size_t(-1)) const {\n+    if (pos > size()) {\n+      throw std::out_of_range(\"tvm::String substr index out of bounds\");\n+    }\n+    size_t rcount = std::min(count, size() - pos);\n+    return String(data() + pos, rcount);\n+  }\n+\n   /*!\n    * \\brief Convert String to an std::string object\n    *\ndiff --git a/tests/cpp/test_string.cc b/tests/cpp/test_string.cc\nindex 072c5cd..afcb651 100644\n--- a/tests/cpp/test_string.cc\n+++ b/tests/cpp/test_string.cc\n@@ -445,4 +445,41 @@ TEST(String, StdHash) {\n   EXPECT_EQ(std::hash<Bytes>()(s3), std::hash<Bytes>()(s4));\n }\n \n+TEST(String, Find) {\n+  String s{\"hello world\"};\n+  EXPECT_EQ(s.find(\"world\"), 6);\n+  EXPECT_EQ(s.find(\"hello\"), 0);\n+  EXPECT_EQ(s.find(\"o\"), 4);\n+  EXPECT_EQ(s.find(\"o\", 5), 7);\n+  EXPECT_EQ(s.find(\"notfound\"), String::npos);\n+  EXPECT_EQ(s.find(\"\"), 0);\n+  EXPECT_EQ(s.find(\"\", 5), 5);\n+  EXPECT_EQ(s.find(\"\", 11), 11);\n+  EXPECT_EQ(s.find(\"\", 20), String::npos);\n+\n+  String pattern{\"world\"};\n+  EXPECT_EQ(s.find(pattern), 6);\n+\n+  String empty{\"\"};\n+  EXPECT_EQ(empty.find(\"x\"), String::npos);\n+  EXPECT_EQ(empty.find(\"\"), 0);\n+}\n+\n+TEST(String, Substr) {\n+  String s{\"hello world\"};\n+  EXPECT_EQ(s.substr(0, 5), \"hello\");\n+  EXPECT_EQ(s.substr(6, 5), \"world\");\n+  EXPECT_EQ(s.substr(6), \"world\");\n+  EXPECT_EQ(s.substr(0), \"hello world\");\n+  EXPECT_EQ(s.substr(11), \"\");\n+  EXPECT_EQ(s.substr(0, 0), \"\");\n+\n+  EXPECT_THROW(s.substr(12), std::out_of_range);\n+  EXPECT_THROW(s.substr(100), std::out_of_range);\n+\n+  String empty{\"\"};\n+  EXPECT_EQ(empty.substr(0), \"\");\n+  EXPECT_THROW(empty.substr(1), std::out_of_range);\n+}\n+\n }  // namespace\ndiff --git a/tests/python/test_string.py b/tests/python/test_string.py\nindex 5dd06f4..499270b 100644\n--- a/tests/python/test_string.py\n+++ b/tests/python/test_string.py\n@@ -53,3 +53,21 @@ def test_bytes() -> None:\n     b5 = pickle.loads(pickle.dumps(b))\n     assert b5 == b\"hello\"\n     assert isinstance(b5, tvm_ffi.core.Bytes)\n+\n+\n+def test_string_find_substr() -> None:\n+    s = tvm_ffi.core.String(\"hello world\")\n+    assert s.find(\"world\") == 6\n+    assert s.find(\"hello\") == 0\n+    assert s.find(\"o\") == 4\n+    assert s.find(\"o\", 5) == 7\n+    assert s.find(\"notfound\") == -1\n+    assert s.find(\"\") == 0\n+    assert s.find(\"\", 5) == 5\n+    assert s.find(\"\", 11) == 11\n+    assert s.find(\"\", 20) == -1\n+\n+    assert s[6:11] == \"world\"\n+    assert s[0:5] == \"hello\"\n+    assert s[6:] == \"world\"\n+    assert s[:5] == \"hello\"",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".cc",
+      ".h",
+      ".py"
+    ],
+    "scopes_guess": [
+      "include",
+      "tests"
+    ]
+  }
+}

@@ -1,0 +1,41 @@
+{
+  "sha": "89cb6066d1d8851e61e6201ca0782d78a4ed8160",
+  "sha7": "89cb606",
+  "author_name": "Junru Shao",
+  "author_email": "junrushao@apache.org",
+  "date_iso": "2026-02-11T17:58:14-08:00",
+  "subject": "fix(build): Broken Wheel Testing (#444)",
+  "body":
+      "Wheel testing has been broken by\nhttps://github.com/apache/tvm-ffi/pull/441, which moves `test` from\noptional-dependency to dependency-group. This PR fixes this bug.",
+  "is_merge": false,
+  "parents": [
+    "e08dd6839a10d77d05ddef649840bcea99659d2f"
+  ],
+  "name_status": [
+    [
+      "M",
+      "pyproject.toml"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "pyproject.toml",
+      "additions": 1,
+      "deletions": 1
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/pyproject.toml b/pyproject.toml\nindex 0a5b0c8..c1a8f76 100644\n--- a/pyproject.toml\n+++ b/pyproject.toml\n@@ -238,7 +238,7 @@ test-skip = [\"cp38-*\", \"cp39-*\", \"cp310-*\", \"cp311-*\"]\n # focus on testing abi3 wheel\n build-frontend = \"build[uv]\"\n test-command = \"pytest {package}/tests/python -vvs\"\n-test-extras = [\"test\"]\n+test-groups = [\"test\"]\n \n [tool.cibuildwheel.linux]\n archs = [\"x86_64\", \"aarch64\"]",
+  "heuristics": {
+    "tags": [
+      "build"
+    ],
+    "extensions": [
+      ".toml"
+    ],
+    "scopes_guess": [
+      "pyproject.toml"
+    ]
+  }
+}

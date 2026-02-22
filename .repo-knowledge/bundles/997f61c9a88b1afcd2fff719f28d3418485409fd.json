@@ -1,0 +1,103 @@
+{
+  "sha": "997f61c9a88b1afcd2fff719f28d3418485409fd",
+  "sha7": "997f61c",
+  "author_name": "yifeifang",
+  "author_email": "Deweyfang@gmail.com",
+  "date_iso": "2025-10-31T15:49:51-07:00",
+  "subject":
+      "[Docs][Examples] Add CUDA C++ loading example and improve development documentation (#209)",
+  "body":
+      "This PR enhances the documentation and examples for C++ developers,\nparticularly focusing on CUDA usage and development environment\n  setup.\n\n  ### Changes\n\n  #### New Examples\n- **Add `examples/quickstart/load/load_cuda.cc`**: New C++ example\ndemonstrating how to load and execute CUDA FFI functions using custom\n  CUDA memory allocators\n- **Update `examples/quickstart/raw_compile.sh`**: Add Example 4 showing\ncompilation and execution of the CUDA loading example with\n  proper CUDA include/library paths\n\n  #### Documentation Improvements\n- **`docs/guides/cpp_guide.md`**: Add comprehensive \"Distribution and\nABI Compatibility\" section\n    - Explains glibc versioning challenges for kernel distributors\n- Documents the manylinux approach for cross-platform binary\ndistribution\n- Provides practical guidance for building compatible C++ and CUDA\nlibraries\n    - Includes verification commands and recommended Docker images\n    - Addresses the producer/consumer perspective on ABI compatibility\n\n  - **`CONTRIBUTING.md`**: Add \"Setting Up Pre-commit Hooks\" section\n- Installation instructions with minimum version requirements\n(pre-commit 2.18.0+)\n    - Complete list of all pre-commit hooks with exact versions\n    - Troubleshooting guide for common issues\n    - Documents all hook dependencies and configuration details\n\n  #### Infrastructure\n- **`tests/docker/Dockerfile`**: Upgrade pip to latest version in\ndevelopment container\n\n  ### Motivation\n\n1. **CUDA Examples**: The existing examples showed Python CUDA usage\n(`load_cupy.py`, `load_pytorch.py`) and CPU C++ usage\n(`load_cpp.cc`), but lacked a pure C++ CUDA example. This addition\nprovides a complete picture of FFI usage patterns.\n\n2. **ABI Documentation**: Based on discussions about glibc compatibility\nissues when distributing kernels, this documentation\nhelps kernel authors understand and avoid common pitfalls when building\ncross-platform binaries. **The original issue encountered is when\nbuilding FFI from source with a newer glibc which caused FFI symbol has\ndependency on certain new version of glibc**\n\n3. **Development Setup**: Contributors were encountering pre-commit\nversion issues (2.17.0 vs 2.18.0+). This documentation prevents such\nissues and provides a comprehensive reference for all tooling\nrequirements.\n\n  ### Testing\n\n  - All pre-commit hooks pass\n- CUDA example compiles successfully in the Docker development\nenvironment\n  - Documentation follows markdown linting rules\n\n---------\n\nCo-authored-by: Yifei Fang <yifeif@nvidia.com>",
+  "is_merge": false,
+  "parents": [
+    "a06d0dfa2df9bbc3921d6ba6e6a67dd98ac5510a"
+  ],
+  "name_status": [
+    [
+      "M",
+      "CONTRIBUTING.md"
+    ],
+    [
+      "M",
+      "docs/guides/build_from_source.md"
+    ],
+    [
+      "A",
+      "docs/guides/cpp_packaging.md"
+    ],
+    [
+      "M",
+      "docs/index.rst"
+    ],
+    [
+      "A",
+      "examples/quickstart/load/load_cuda.cc"
+    ],
+    [
+      "M",
+      "examples/quickstart/raw_compile.sh"
+    ],
+    [
+      "M",
+      "tests/docker/Dockerfile"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "CONTRIBUTING.md",
+      "additions": 80,
+      "deletions": 4
+    },
+    {
+      "path": "docs/guides/build_from_source.md",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "docs/guides/cpp_packaging.md",
+      "additions": 90,
+      "deletions": 0
+    },
+    {
+      "path": "docs/index.rst",
+      "additions": 1,
+      "deletions": 0
+    },
+    {
+      "path": "examples/quickstart/load/load_cuda.cc",
+      "additions": 112,
+      "deletions": 0
+    },
+    {
+      "path": "examples/quickstart/raw_compile.sh",
+      "additions": 22,
+      "deletions": 0
+    },
+    {
+      "path": "tests/docker/Dockerfile",
+      "additions": 3,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/CONTRIBUTING.md b/CONTRIBUTING.md\nindex e62a1d6..12d5edc 100644\n--- a/CONTRIBUTING.md\n+++ b/CONTRIBUTING.md\n@@ -31,6 +31,81 @@ pip install --no-build-isolation -e . -v\n ```\n \n We recommend using the `--no-build-isolation` flag to ensure compatibility with your existing environment.\n+\n+## Setting Up Pre-commit Hooks\n+\n+This project uses [pre-commit](https://pre-commit.com/) to maintain code quality and consistency.\n+Pre-commit hooks automatically check your code for common issues before you commit changes.\n+\n+### Installing Pre-commit\n+\n+First, install pre-commit (requires version 2.18.0 or later):\n+\n+```bash\n+pip install pre-commit\n+```\n+\n+### Installing the Git Hooks\n+\n+After cloning the repository, install the pre-commit hooks:\n+\n+```bash\n+cd tvm-ffi\n+pre-commit install\n+```\n+\n+This configures git to automatically run the hooks before each commit.\n+\n+### Running Hooks Manually\n+\n+You can run the hooks manually on all files:\n+\n+```bash\n+pre-commit run --all-files\n+```\n+\n+Or run them only on staged files:\n+\n+```bash\n+pre-commit run\n+```\n+\n+### What the Hooks Check\n+\n+The pre-commit configuration includes checks for:\n+\n+- **License headers**: Ensures all files have proper Apache Software Foundation headers\n+- **Code formatting**: Runs clang-format (C++), ruff (Python), shfmt (Shell scripts)\n+- **Linting**: Runs clang-tidy, ruff, shellcheck, markdownlint, yamllint, and more\n+- **Type checking**: Runs mypy for Python type annotations\n+- **File quality**: Checks for trailing whitespace, file sizes, merge conflicts, etc.\n+\n+### Troubleshooting\n+\n+If you encounter errors:\n+\n+1. **Version issues**: Ensure you have pre-commit 2.18.0 or later:\n+\n+   ```bash\n+   pre-commit --version\n+   pip install --upgrade pre-commit\n+   ```\n+\n+2. **Cache issues**: Clean the pre-commit cache:\n+\n+   ```bash\n+   pre-commit clean\n+   ```\n+\n+3. **Hook failures**: Most formatting hooks will automatically fix issues. Review the changes and stage them:\n+\n+   ```bash\n+   git add -u\n+   git commit\n+   ```\n+\n+## Contributing Workflow\n+\n You can contribute to the repo through the following steps.\n \n - Fork the repository and create a new branch for your work.\n@@ -72,14 +147,15 @@ Inside the container you can install the project in editable mode and run the qu\n start example exactly as described in `examples/quick_start/README.md`:\n \n ```bash\n-# In /workspace/tvm-ffi/\n-pip install -ve .\n+# In /workspace/tvm-ffi/ see https://tvm.apache.org/ffi/guides/build_from_source.html for reference\n+pip install --force-reinstall --verbose -e . \\\n+  --config-settings cmake.define.TVM_FFI_ATTACH_DEBUG_SYMBOLS=ON\n \n # Change working directory to sample\n-cd examples/quick_start\n+cd examples/quickstart\n \n # Install dependency, Build and run all examples\n-bash run_example.sh\n+bash raw_compile.sh\n ```\n \n All build artifacts are written to the mounted workspace on the host machine, so you\ndiff --git a/docs/guides/build_from_source.md b/docs/guides/build_from_source.md\nindex ab46e50..f5ba145 100644\n--- a/docs/guides/build_from_source.md\n+++ b/docs/guides/build_from_source.md\n@@ -51,7 +51,7 @@ Always clone with ``--recursive`` to pull submodules. If you already cloned with\n Follow the instruction below to build the Python package with scikit-build-core, which drives CMake to compile the C++ core and Cython extension.\n \n ```bash\n-pip install --reinstall --verbose -e . \\\n+pip install --force-reinstall --verbose -e . \\\n   --config-settings cmake.define.TVM_FFI_ATTACH_DEBUG_SYMBOLS=ON\n ```\n \ndiff --git a/docs/guides/cpp_packaging.md b/docs/guides/cpp_packaging.md\nnew file mode 100644\nindex 0000000..585536f\n--- /dev/null\n+++ b/docs/guides/cpp_packaging.md\n@@ -0,0 +1,90 @@\n+<!--- Licensed to the Apache Software Foundation (ASF) under one -->\n+<!--- or more contributor license agreements.  See the NOTICE file -->\n+<!--- distributed with this work for additional information -->\n+<!--- regarding copyright ownership.  The ASF licenses this file -->\n+<!--- to you under the Apache License, Version 2.0 (the -->\n+<!--- \"License\"); you may not use this file except in compliance -->\n+<!--- with the License.  You may obtain a copy of the License at -->\n+\n+<!---   http://www.apache.org/licenses/LICENSE-2.0 -->\n+\n+<!--- Unless required by applicable law or agreed to in writing, -->\n+<!--- software distributed under the License is distributed on an -->\n+<!--- \"AS IS\" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY -->\n+<!--- KIND, either express or implied.  See the License for the -->\n+<!--- specific language governing permissions and limitations -->\n+<!--- under the License. -->\n+# C++ Packaging and Distribution\n+\n+This guide explains how to package and distribute C++ libraries that use tvm-ffi, with a focus on ABI compatibility and cross-platform distribution.\n+\n+## Distribution and ABI Compatibility\n+\n+When distributing kernels or libraries that use tvm-ffi, it's important to understand the ABI compatibility challenges that arise from glibc versioning. This section provides guidance for kernel authors and library distributors.\n+\n+### Understanding the ABI Challenge\n+\n+While tvm-ffi uses a C ABI at the interface level (through DLTensor, TVMFFISafeCallType, etc.), the tvm-ffi library itself is written in C++ and depends on specific versions of glibc and the C++ standard library. This creates potential compatibility issues from two perspectives:\n+\n+**Consumer Perspective:**\n+Applications that link against `libtvm_ffi.so` must use a compatible glibc version. If the glibc version mismatches, STL and glibc function symbols may be incompatible, leading to runtime errors or undefined behavior.\n+\n+**Producer/Kernel Distributor Perspective:**\n+Even when kernel authors expose their functionality through the tvm-ffi interface (which solves cross-framework ABI issues like tensor representation), if their compiled `kernel.so` shared library contains ANY glibc or tvm_ffi symbols, consumers with different glibc versions may encounter undefined symbol errors at load time.\n+\n+### The manylinux Solution\n+\n+The recommended solution is to use the [manylinux](https://github.com/pypa/manylinux) approach, which is the standard way Python packages handle cross-platform binary distribution. The key principle is to build on an old glibc version and run on newer versions.\n+\n+Since glibc maintains forward compatibility (mostly), libraries built against an older glibc version will work on systems with newer glibc versions. The `apache-tvm-ffi` Python wheel is already built using manylinux-compatible environments.\n+\n+### Practical Guidance for Kernel Distributors\n+\n+#### For Pure C++ Library Distribution\n+\n+If you're distributing C++ libraries or CUDA kernels:\n+\n+1. **Use a Docker image with an old glibc version** for building:\n+\n+   ```bash\n+   # See CONTRIBUTING.md for pre-built Docker images\n+   # Or use manylinux Docker images as a base\n+   docker pull quay.io/pypa/manylinux2014_x86_64\n+   ```\n+\n+2. **For CUDA kernels**, ensure both your host launching code and the kernel are built in this environment:\n+\n+   ```bash\n+   # Inside the container\n+   nvcc -shared -Xcompiler -fPIC your_cuda_kernel.cu -o kernel.so \\\n+       $(tvm-ffi-config --cxxflags) \\\n+       $(tvm-ffi-config --ldflags) \\\n+       $(tvm-ffi-config --libs)\n+   ```\n+\n+3. **Link against manylinux-compatible tvm_ffi.so**: Use the tvm-ffi library from the `apache-tvm-ffi` wheel, which is already manylinux-compatible.\n+\n+#### Build System Considerations\n+\n+- **Containerized builds**: Many C++ projects use containerized build systems. Adapt your existing Docker setup to use manylinux base images or images with older glibc versions.\n+- **CI/CD pipelines**: Configure your continuous integration to build in manylinux environments. GitHub Actions and other CI services support Docker-based builds.\n+- **Testing**: Always test your distributed binaries on multiple Linux distributions to verify compatibility.\n+\n+### Verification\n+\n+To check the glibc version your binary depends on:\n+\n+```bash\n+objdump -T your_kernel.so | grep GLIBC_\n+```\n+\n+This shows the minimum glibc version required. Ensure it's compatible with your target deployment environments.\n+\n+### Summary\n+\n+- **Build on old glibc** (via manylinux or old Linux distributions)\n+- **Run on new glibc** (forward compatibility guaranteed)\n+- **Use containerized builds** for reproducible environments\n+- **Test across distributions** to verify compatibility\n+\n+For more details on setting up development environments, see `CONTRIBUTING.md`.\ndiff --git a/docs/index.rst b/docs/index.rst\nindex 14ec2ee..fd859a7 100644\n--- a/docs/index.rst\n+++ b/docs/index.rst\n@@ -47,6 +47,7 @@ Table of Contents\n    :caption: Guides\n \n    guides/python_packaging.md\n+   guides/cpp_packaging.md\n    guides/cpp_guide.md\n    guides/python_guide.md\n    guides/rust_guide.md\ndiff --git a/examples/quickstart/load/load_cuda.cc b/examples/quickstart/load/load_cuda.cc\nnew file mode 100644\nindex 0000000..8e2e55f\n--- /dev/null\n+++ b/examples/quickstart/load/load_cuda.cc\n@@ -0,0 +1,112 @@\n+/*\n+ * Licensed to the Apache Software Foundation (ASF) under one\n+ * or more contributor license agreements.  See the NOTICE file\n+ * distributed with this work for additional information\n+ * regarding copyright ownership.  The ASF licenses this file\n+ * to you under the Apache License, Version 2.0 (the\n+ * \"License\"); you may not use this file except in compliance\n+ * with the License.  You may obtain a copy of the License at\n+ *\n+ *   http://www.apache.org/licenses/LICENSE-2.0\n+ *\n+ * Unless required by applicable law or agreed to in writing,\n+ * software distributed under the License is distributed on an\n+ * \"AS IS\" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY\n+ * KIND, either express or implied.  See the License for the\n+ * specific language governing permissions and limitations\n+ * under the License.\n+ */\n+// [main.begin]\n+// File: load/load_cuda.cc\n+#include <tvm/ffi/container/tensor.h>\n+#include <tvm/ffi/extra/module.h>\n+\n+namespace {\n+namespace ffi = tvm::ffi;\n+/*!\n+ * \\brief Main logics of library loading and function calling with CUDA tensors.\n+ * \\param x The input tensor on CUDA device.\n+ * \\param y The output tensor on CUDA device.\n+ */\n+void Run(tvm::ffi::TensorView x, tvm::ffi::TensorView y) {\n+  // Load shared library `build/add_one_cuda.so`\n+  ffi::Module mod = ffi::Module::LoadFromFile(\"build/add_one_cuda.so\");\n+  // Look up `add_one_cuda` function\n+  ffi::Function add_one_cuda = mod->GetFunction(\"add_one_cuda\").value();\n+  // Call the function with CUDA tensors\n+  add_one_cuda(x, y);\n+}\n+}  // namespace\n+// [main.end]\n+/************* Auxiliary Logics *************/\n+// [aux.begin]\n+#include <cuda_runtime.h>\n+#include <tvm/ffi/error.h>\n+\n+#include <iostream>\n+#include <vector>\n+\n+struct CUDANDAlloc {\n+  void AllocData(DLTensor* tensor) {\n+    size_t data_size = ffi::GetDataSize(*tensor);\n+    void* ptr = nullptr;\n+    cudaError_t err = cudaMalloc(&ptr, data_size);\n+    TVM_FFI_ICHECK_EQ(err, cudaSuccess) << \"cudaMalloc failed: \" << cudaGetErrorString(err);\n+    tensor->data = ptr;\n+  }\n+\n+  void FreeData(DLTensor* tensor) {\n+    if (tensor->data != nullptr) {\n+      cudaError_t err = cudaFree(tensor->data);\n+      TVM_FFI_ICHECK_EQ(err, cudaSuccess) << \"cudaFree failed: \" << cudaGetErrorString(err);\n+      tensor->data = nullptr;\n+    }\n+  }\n+};\n+\n+/*!\n+ * \\brief Allocate a CUDA tensor with the given shape and data type.\n+ * \\param shape The shape of the tensor.\n+ * \\param dtype The data type of the tensor.\n+ * \\param device The CUDA device.\n+ * \\return The allocated CUDA tensor.\n+ */\n+inline ffi::Tensor Empty(ffi::Shape shape, DLDataType dtype, DLDevice device) {\n+  return ffi::Tensor::FromNDAlloc(CUDANDAlloc(), shape, dtype, device);\n+}\n+\n+int main() {\n+  DLDataType f32_dtype{kDLFloat, 32, 1};\n+  DLDevice cuda_device{kDLCUDA, 0};\n+\n+  constexpr int ARRAY_SIZE = 5;\n+\n+  ffi::Tensor x = Empty({ARRAY_SIZE}, f32_dtype, cuda_device);\n+  ffi::Tensor y = Empty({ARRAY_SIZE}, f32_dtype, cuda_device);\n+\n+  std::vector<float> host_x(ARRAY_SIZE);\n+  for (int i = 0; i < ARRAY_SIZE; ++i) {\n+    host_x[i] = static_cast<float>(i + 1);\n+  }\n+\n+  size_t nbytes = host_x.size() * sizeof(float);\n+  cudaError_t err = cudaMemcpy(x.data_ptr(), host_x.data(), nbytes, cudaMemcpyHostToDevice);\n+  TVM_FFI_ICHECK_EQ(err, cudaSuccess)\n+      << \"cudaMemcpy host to device failed: \" << cudaGetErrorString(err);\n+\n+  Run(x, y);\n+\n+  std::vector<float> host_y(host_x.size());\n+  err = cudaMemcpy(host_y.data(), y.data_ptr(), nbytes, cudaMemcpyDeviceToHost);\n+  TVM_FFI_ICHECK_EQ(err, cudaSuccess)\n+      << \"cudaMemcpy device to host failed: \" << cudaGetErrorString(err);\n+\n+  std::cout << \"[ \";\n+  for (float value : host_y) {\n+    std::cout << value << \" \";\n+  }\n+  std::cout << \"]\" << std::endl;\n+\n+  return 0;\n+}\n+// [aux.end]\ndiff --git a/examples/quickstart/raw_compile.sh b/examples/quickstart/raw_compile.sh\nindex d0fcbcc..5a44dc5 100755\n--- a/examples/quickstart/raw_compile.sh\n+++ b/examples/quickstart/raw_compile.sh\n@@ -59,3 +59,25 @@ g++ -fvisibility=hidden -O3                 \\\n build/load_cpp\n # [load_cpp.end]\n fi\n+\n+# Example 4. Load and run `add_one_cuda.so` in C++\n+# Before run this example, make sure you have a CUDA-capable GPU and the CUDA toolkit installed.\n+# See CONTRIBUTING.md to use a pre-built Docker image with CUDA support.\n+\n+# if [ -f \"$BUILD_DIR/add_one_cuda.so\" ] && command -v nvcc >/dev/null 2>&1; then\n+# # [load_cuda.begin]\n+# g++ -fvisibility=hidden -O3                 \\\n+#     load/load_cuda.cc                       \\\n+#     $(tvm-ffi-config --cxxflags)            \\\n+#     $(tvm-ffi-config --ldflags)             \\\n+#     $(tvm-ffi-config --libs)                \\\n+#     -I/usr/local/cuda/include               \\\n+#     -L/usr/local/cuda/lib64                 \\\n+#     -lcudart                                \\\n+#     -Wl,-rpath,$(tvm-ffi-config --libdir)   \\\n+#     -Wl,-rpath,/usr/local/cuda/lib64        \\\n+#     -o build/load_cuda\n+\n+# build/load_cuda\n+# # [load_cuda.end]\n+# fi\ndiff --git a/tests/docker/Dockerfile b/tests/docker/Dockerfile\nindex 1fd6e66..10b3f06 100644\n--- a/tests/docker/Dockerfile\n+++ b/tests/docker/Dockerfile\n@@ -62,6 +62,9 @@ RUN apt-get update \\\n         zip \\\n     && rm -rf /var/lib/apt/lists/*\n \n+# Upgrade pip to the latest version\n+RUN python3 -m pip install --upgrade pip\n+\n # Provide a working directory for the project\n WORKDIR /workspace\n ",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      "",
+      ".cc",
+      ".md",
+      ".rst",
+      ".sh"
+    ],
+    "scopes_guess": [
+      "CONTRIBUTING.md",
+      "docs",
+      "examples",
+      "tests"
+    ]
+  }
+}

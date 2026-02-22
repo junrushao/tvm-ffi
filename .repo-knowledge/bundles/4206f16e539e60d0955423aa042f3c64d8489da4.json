@@ -1,0 +1,39 @@
+{
+  "sha": "4206f16e539e60d0955423aa042f3c64d8489da4",
+  "sha7": "4206f16",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-10-15T14:08:50-04:00",
+  "subject": "[CORE] Use new for singleton to prevent de-alloc order issues (#133)",
+  "body":
+      "This PR updates the logic to use new for singleton to prevent potential\nde-alloc order issues during program shutdown",
+  "is_merge": false,
+  "parents": [
+    "d183a9577dec6bf838d6bbe855ca28da1192d088"
+  ],
+  "name_status": [
+    [
+      "M",
+      "src/ffi/object.cc"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "src/ffi/object.cc",
+      "additions": 6,
+      "deletions": 2
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/src/ffi/object.cc b/src/ffi/object.cc\nindex b58231a..df668d2 100644\n--- a/src/ffi/object.cc\n+++ b/src/ffi/object.cc\n@@ -306,8 +306,12 @@ class TypeTable {\n   }\n \n   static TypeTable* Global() {\n-    static TypeTable inst;\n-    return &inst;\n+    // deliberately create a new instance via raw new\n+    // to ensure table lives longer in case unloading\n+    // still need the table info\n+    // memory will be recycled by the OS at program exit\n+    static TypeTable* inst = new TypeTable();\n+    return inst;\n   }\n \n  private:",
+  "heuristics": {
+    "tags": [],
+    "extensions": [
+      ".cc"
+    ],
+    "scopes_guess": [
+      "src"
+    ]
+  }
+}

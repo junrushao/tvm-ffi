@@ -1,0 +1,50 @@
+{
+  "sha": "c665fa362a2ffd4c6d5c919a2ef49d6961acdc70",
+  "sha7": "c665fa3",
+  "author_name": "tqchen",
+  "author_email": "tianqi.tchen@gmail.com",
+  "date_iso": "2025-09-13T18:18:06-04:00",
+  "subject": "[REFACTOR] Update torch to optionally depend on cuda",
+  "body": "This commit updates torch to optionally depend on cuda",
+  "is_merge": false,
+  "parents": [
+    "5304752c05e7db3c24d9b029835145533be13ee3"
+  ],
+  "name_status": [
+    [
+      "M",
+      "python/tvm_ffi/_optional_torch_c_dlpack.py"
+    ],
+    [
+      "M",
+      "tests/python/test_load_inline.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "python/tvm_ffi/_optional_torch_c_dlpack.py",
+      "additions": 15,
+      "deletions": 3
+    },
+    {
+      "path": "tests/python/test_load_inline.py",
+      "additions": 12,
+      "deletions": 29
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/python/tvm_ffi/_optional_torch_c_dlpack.py b/python/tvm_ffi/_optional_torch_c_dlpack.py\nindex d14ccfb..6ff77cc 100644\n--- a/python/tvm_ffi/_optional_torch_c_dlpack.py\n+++ b/python/tvm_ffi/_optional_torch_c_dlpack.py\n@@ -40,7 +40,10 @@ def load_torch_c_dlpack_extension():\n #include <dlpack/dlpack.h>\n #include <ATen/DLConvertor.h>\n #include <ATen/Functions.h>\n+\n+#ifdef BUILD_WITH_CUDA\n #include <c10/cuda/CUDAStream.h>\n+#endif\n \n using namespace std;\n namespace at {\n@@ -318,9 +321,11 @@ int TorchDLPackFromPyObject(void* py_obj, DLManagedTensorVersioned** out, void**\n   try {\n     py::handle handle(static_cast<PyObject*>(py_obj));\n     at::Tensor tensor = handle.cast<at::Tensor>();\n+#ifdef BUILD_WITH_CUDA\n     if (env_stream != nullptr && tensor.is_cuda()) {\n       *env_stream = at::cuda::getCurrentCUDAStream(tensor.device().index()).stream();\n     }\n+#endif\n     *out = at::toDLPackImpl<DLManagedTensorVersioned>(tensor);\n     return 0;\n   } catch (const std::exception& e) {\n@@ -375,16 +380,23 @@ int64_t TorchDLPackTensorAllocatorPtr() {\n         import torch\n         from torch.utils import cpp_extension\n \n+        include_paths = libinfo.include_paths()\n+        extra_cflags = [\"-O3\"]\n+\n+        if torch.cuda.is_available():\n+            include_paths += cpp_extension.include_paths(\"cuda\")\n+            extra_cflags += [\"-DBUILD_WITH_CUDA\"]\n+\n         mod = cpp_extension.load_inline(\n-            name=\"to_dlpack\",\n+            name=\"c_dlpack\",\n             cpp_sources=cpp_source,\n             functions=[\n                 \"TorchDLPackFromPyObjectPtr\",\n                 \"TorchDLPackToPyObjectPtr\",\n                 \"TorchDLPackTensorAllocatorPtr\",\n             ],\n-            extra_cflags=[\"-O3\"],\n-            extra_include_paths=libinfo.include_paths() + cpp_extension.include_paths(\"cuda\"),\n+            extra_cflags=extra_cflags,\n+            extra_include_paths=include_paths,\n         )\n         # set the dlpack related flags\n         torch.Tensor.__c_dlpack_from_pyobject__ = mod.TorchDLPackFromPyObjectPtr()\ndiff --git a/tests/python/test_load_inline.py b/tests/python/test_load_inline.py\nindex fbb8f0c..7ecc100 100644\n--- a/tests/python/test_load_inline.py\n+++ b/tests/python/test_load_inline.py\n@@ -200,25 +200,17 @@ def test_load_inline_cuda():\n         torch.testing.assert_close(x_cuda + 1, y_cuda)\n \n \n-@pytest.mark.skipif(\n-    torch is None or not torch.cuda.is_available(), reason=\"Requires torch and CUDA\"\n-)\n-def test_load_inline_cuda_with_env_tensor_allocator():\n+@pytest.mark.skipif(torch is None, reason=\"Requires torch\")\n+def test_load_inline_with_env_tensor_allocator():\n     if not hasattr(torch.Tensor, \"__c_dlpack_tensor_allocator__\"):\n         pytest.skip(\"Torch does not support __c_dlpack_tensor_allocator__\")\n     mod: Module = tvm_ffi.cpp.load_inline(\n         name=\"hello\",\n-        cuda_sources=r\"\"\"\n+        cpp_sources=r\"\"\"\n             #include <tvm/ffi/container/tensor.h>\n             #include <tvm/ffi/container/tuple.h>\n             #include <tvm/ffi/container/map.h>\n \n-            __global__ void AddOneKernel(float* x, float* y, int n) {\n-              int idx = blockIdx.x * blockDim.x + threadIdx.x;\n-              if (idx < n) {\n-                y[idx] = x[idx] + 1;\n-              }\n-            }\n             namespace ffi = tvm::ffi;\n \n             ffi::Tensor return_add_one(ffi::Map<ffi::String, ffi::Tuple<ffi::Tensor>> kwargs) {\n@@ -232,31 +224,22 @@ def test_load_inline_cuda_with_env_tensor_allocator():\n               ffi::Tensor y = ffi::Tensor::FromDLPackAlloc(\n                 TVMFFIEnvGetTensorAllocator(), ffi::Shape({x->shape[0]}), f32_dtype, x->device);\n               int64_t n = x->shape[0];\n-              int64_t nthread_per_block = 256;\n-              int64_t nblock = (n + nthread_per_block - 1) / nthread_per_block;\n-              // Obtain the current stream from the environment\n-              // it will be set to torch.cuda.current_stream() when calling the function\n-              // with torch.Tensors\n-              cudaStream_t stream = static_cast<cudaStream_t>(\n-                  TVMFFIEnvGetStream(x->device.device_type, x->device.device_id));\n-              // launch the kernel\n-              AddOneKernel<<<nblock, nthread_per_block, 0, stream>>>(static_cast<float*>(x->data),\n-                                                                     static_cast<float*>(y->data), n);\n+              for (int i = 0; i < n; ++i) {\n+                static_cast<float*>(y->data)[i] = static_cast<float*>(x->data)[i] + 1;\n+              }\n               return y;\n             }\n         \"\"\",\n         functions=[\"return_add_one\"],\n     )\n-\n     if torch is not None:\n-        x_cuda = torch.asarray([1, 2, 3, 4, 5], dtype=torch.float32, device=\"cuda\")\n+        x_cpu = torch.asarray([1, 2, 3, 4, 5], dtype=torch.float32, device=\"cpu\")\n         # test support for nested container passing\n-        y_cuda = mod.return_add_one({\"x\": [x_cuda]})\n-        assert isinstance(y_cuda, torch.Tensor)\n-        assert y_cuda.shape == (5,)\n-        assert y_cuda.dtype == torch.float32\n-        torch.testing.assert_close(x_cuda + 1, y_cuda)\n-        assert y_cuda.is_cuda\n+        y_cpu = mod.return_add_one({\"x\": [x_cpu]})\n+        assert isinstance(y_cpu, torch.Tensor)\n+        assert y_cpu.shape == (5,)\n+        assert y_cpu.dtype == torch.float32\n+        torch.testing.assert_close(x_cpu + 1, y_cpu)\n \n \n @pytest.mark.skipif(",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".py"
+    ],
+    "scopes_guess": [
+      "python",
+      "tests"
+    ]
+  }
+}

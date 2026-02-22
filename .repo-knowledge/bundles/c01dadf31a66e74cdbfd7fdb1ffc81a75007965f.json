@@ -1,0 +1,101 @@
+{
+  "sha": "c01dadf31a66e74cdbfd7fdb1ffc81a75007965f",
+  "sha7": "c01dadf",
+  "author_name": "Junru Shao",
+  "author_email": "junrushao@apache.org",
+  "date_iso": "2025-09-21T04:27:24-07:00",
+  "subject": "feat: Introduce `tvm_ffi::reflection::init<>` (#32)",
+  "body":
+      "This PR introduces `tvm_ffi::reflection::init<ObjectType, Args...>`,\nwhich can be used to simplify registration of `__init__` method.",
+  "is_merge": false,
+  "parents": [
+    "fc0f5f5e3295a974a4c52619c6535669f7a4d9ad"
+  ],
+  "name_status": [
+    [
+      "M",
+      "include/tvm/ffi/object.h"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/reflection/registry.h"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/cython/type_info.pxi"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/testing.py"
+    ],
+    [
+      "M",
+      "src/ffi/extra/testing.cc"
+    ],
+    [
+      "M",
+      "tests/cpp/test_reflection.cc"
+    ],
+    [
+      "M",
+      "tests/python/test_object.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "include/tvm/ffi/object.h",
+      "additions": 2,
+      "deletions": 2
+    },
+    {
+      "path": "include/tvm/ffi/reflection/registry.h",
+      "additions": 33,
+      "deletions": 0
+    },
+    {
+      "path": "python/tvm_ffi/cython/type_info.pxi",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "python/tvm_ffi/testing.py",
+      "additions": 9,
+      "deletions": 0
+    },
+    {
+      "path": "src/ffi/extra/testing.cc",
+      "additions": 1,
+      "deletions": 2
+    },
+    {
+      "path": "tests/cpp/test_reflection.cc",
+      "additions": 30,
+      "deletions": 2
+    },
+    {
+      "path": "tests/python/test_object.py",
+      "additions": 6,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/include/tvm/ffi/object.h b/include/tvm/ffi/object.h\nindex 6dcc30e..1ebd3d7 100644\n--- a/include/tvm/ffi/object.h\n+++ b/include/tvm/ffi/object.h\n@@ -960,7 +960,7 @@ struct ObjectPtrEqual {\n   using __PtrType = std::conditional_t<ObjectName::_type_mutable, ObjectName*, const ObjectName*>; \\\n   __PtrType operator->() const { return static_cast<__PtrType>(data_.get()); }                     \\\n   __PtrType get() const { return static_cast<__PtrType>(data_.get()); }                            \\\n-  static constexpr bool _type_is_nullable = true;                                                  \\\n+  [[maybe_unused]] static constexpr bool _type_is_nullable = true;                                 \\\n   using ContainerType = ObjectName\n \n /*!\n@@ -976,7 +976,7 @@ struct ObjectPtrEqual {\n   using __PtrType = std::conditional_t<ObjectName::_type_mutable, ObjectName*, const ObjectName*>; \\\n   __PtrType operator->() const { return static_cast<__PtrType>(data_.get()); }                     \\\n   __PtrType get() const { return static_cast<__PtrType>(data_.get()); }                            \\\n-  static constexpr bool _type_is_nullable = false;                                                 \\\n+  [[maybe_unused]] static constexpr bool _type_is_nullable = false;                                \\\n   using ContainerType = ObjectName\n \n namespace details {\ndiff --git a/include/tvm/ffi/reflection/registry.h b/include/tvm/ffi/reflection/registry.h\nindex c0d984f..f72fd3c 100644\n--- a/include/tvm/ffi/reflection/registry.h\n+++ b/include/tvm/ffi/reflection/registry.h\n@@ -558,6 +558,39 @@ inline void EnsureTypeAttrColumn(std::string_view name) {\n                                                  reinterpret_cast<const TVMFFIAny*>(&any_view)));\n }\n \n+/*!\n+ * \\brief Invokes the constructor of a particular object type and returns an `ObjectRef`.\n+ * \\tparam T The object type to be constructed.\n+ * \\tparam Args The argument types.\n+ * \\param args The arguments to be passed to the constructor.\n+ * \\return The constructed object wrapped in an `ObjectRef`.\n+ * \\note This is usually used in FFI reflection boundary to register `__init__` methods.\n+ *\n+ * Example\n+ *\n+ * \\code\n+ *\n+ *   class ExampleObject : public Object {\n+ *    public:\n+ *      int64_t v_i64;\n+ *      int32_t v_i32;\n+ *\n+ *      ExampleObject(int64_t v_i64, int32_t v_i32) : v_i64(v_i64), v_i32(v_i32) {}\n+ *      TVM_FFI_DECLARE_OBJECT_INFO(\"example.ExampleObject\", ExampleObject, Object);\n+ *   };\n+ *   refl::ObjectDef<ExampleObject>()\n+ *      .def_static(\"__init__\", refl::init<ExampleObject, int64_t, int32_t>);\n+ */\n+template <typename T, typename... Args>\n+inline ObjectRef init(Args&&... args) {\n+  if constexpr (std::is_base_of_v<Object, T>) {\n+    return ObjectRef(ffi::make_object<T>(std::forward<Args>(args)...));\n+  } else {\n+    using U = typename T::ContainerType;\n+    return ObjectRef(ffi::make_object<U>(std::forward<Args>(args)...));\n+  }\n+}\n+\n }  // namespace reflection\n }  // namespace ffi\n }  // namespace tvm\ndiff --git a/python/tvm_ffi/cython/type_info.pxi b/python/tvm_ffi/cython/type_info.pxi\nindex 2abb204..bde25be 100644\n--- a/python/tvm_ffi/cython/type_info.pxi\n+++ b/python/tvm_ffi/cython/type_info.pxi\n@@ -73,7 +73,7 @@ class TypeField:\n         assert self.setter is not None\n         assert self.getter is not None\n \n-    def as_property(self, cls: type) -> property:\n+    def as_property(self, cls: type):\n         \"\"\"Create a Python ``property`` object for this field on ``cls``.\"\"\"\n         name = self.name\n         fget = self.getter\ndiff --git a/python/tvm_ffi/testing.py b/python/tvm_ffi/testing.py\nindex e58c115..3215d8a 100644\n--- a/python/tvm_ffi/testing.py\n+++ b/python/tvm_ffi/testing.py\n@@ -28,6 +28,15 @@ class TestObjectBase(Object):\n     \"\"\"Test object base class.\"\"\"\n \n \n+@register_object(\"testing.TestIntPair\")\n+class TestIntPair(Object):\n+    \"\"\"Test Int Pair.\"\"\"\n+\n+    def __init__(self, a: int, b: int) -> None:\n+        \"\"\"Construct the object.\"\"\"\n+        self.__init_handle_by_constructor__(TestIntPair.__ffi_init__, a, b)\n+\n+\n @register_object(\"testing.TestObjectDerived\")\n class TestObjectDerived(TestObjectBase):\n     \"\"\"Test object derived class.\"\"\"\ndiff --git a/src/ffi/extra/testing.cc b/src/ffi/extra/testing.cc\nindex 3d9501d..9c3a019 100644\n--- a/src/ffi/extra/testing.cc\n+++ b/src/ffi/extra/testing.cc\n@@ -60,8 +60,7 @@ TVM_FFI_STATIC_INIT_BLOCK() {\n   refl::ObjectDef<TestIntPairObj>()\n       .def_ro(\"a\", &TestIntPairObj::a)\n       .def_ro(\"b\", &TestIntPairObj::b)\n-      .def_static(\"__create__\",\n-                  [](int64_t a, int64_t b) -> TestIntPair { return TestIntPair(a, b); });\n+      .def_static(\"__ffi_init__\", refl::init<TestIntPairObj, int64_t, int64_t>);\n }\n \n class TestObjectBase : public Object {\ndiff --git a/tests/cpp/test_reflection.cc b/tests/cpp/test_reflection.cc\nindex c9aa500..89b7ccd 100644\n--- a/tests/cpp/test_reflection.cc\n+++ b/tests/cpp/test_reflection.cc\n@@ -36,6 +36,7 @@ using namespace tvm::ffi::testing;\n struct TestObjA : public Object {\n   int64_t x;\n   int64_t y;\n+  TestObjA(int64_t x, int64_t y) : x(x), y(y) {}\n \n   static constexpr bool _type_mutable = true;\n   TVM_FFI_DECLARE_OBJECT_INFO(\"test.TestObjA\", TestObjA, Object);\n@@ -43,9 +44,14 @@ struct TestObjA : public Object {\n \n struct TestObjADerived : public TestObjA {\n   int64_t z;\n+  TestObjADerived(int64_t x, int64_t y, int64_t z) : TestObjA(x, y), z(z) {}\n   TVM_FFI_DECLARE_OBJECT_INFO_FINAL(\"test.TestObjADerived\", TestObjADerived, TestObjA);\n };\n \n+struct TestObjRefADerived : public ObjectRef {\n+  TVM_FFI_DEFINE_OBJECT_REF_METHODS_NULLABLE(TestObjRefADerived, ObjectRef, TestObjADerived);\n+};\n+\n TVM_FFI_STATIC_INIT_BLOCK() {\n   namespace refl = tvm::ffi::reflection;\n \n@@ -56,8 +62,13 @@ TVM_FFI_STATIC_INIT_BLOCK() {\n   TFuncObj::RegisterReflection();\n   TCustomFuncObj::RegisterReflection();\n \n-  refl::ObjectDef<TestObjA>().def_ro(\"x\", &TestObjA::x).def_rw(\"y\", &TestObjA::y);\n-  refl::ObjectDef<TestObjADerived>().def_ro(\"z\", &TestObjADerived::z);\n+  refl::ObjectDef<TestObjA>()\n+      .def_static(\"__ffi_init__\", refl::init<TestObjA, int64_t, int64_t>)\n+      .def_ro(\"x\", &TestObjA::x)\n+      .def_rw(\"y\", &TestObjA::y);\n+  refl::ObjectDef<TestObjADerived>()\n+      .def_static(\"__ffi_init__\", refl::init<TestObjRefADerived, int64_t, int64_t, int64_t>)\n+      .def_ro(\"z\", &TestObjADerived::z);\n }\n \n TEST(Reflection, GetFieldByteOffset) {\n@@ -131,6 +142,23 @@ TEST(Reflection, CallMethod) {\n   EXPECT_EQ(prim_expr_sub(TPrimExpr(\"float\", 1), 2.0).cast<double>(), -1.0);\n }\n \n+TEST(Reflection, InitFunction_Base) {\n+  Function int_init = reflection::GetMethod(\"test.TestObjA\", \"__ffi_init__\");\n+  Any obj_a = int_init(1, 2);\n+  EXPECT_TRUE(obj_a.as<TestObjA>() != nullptr);\n+  EXPECT_EQ(obj_a.as<TestObjA>()->x, 1);\n+  EXPECT_EQ(obj_a.as<TestObjA>()->y, 2);\n+}\n+\n+TEST(Reflection, InitFunction_Derived) {\n+  Function derived_init = reflection::GetMethod(\"test.TestObjADerived\", \"__ffi_init__\");\n+  Any obj_derived = derived_init(1, 2, 3);\n+  EXPECT_TRUE(obj_derived.as<TestObjADerived>() != nullptr);\n+  EXPECT_EQ(obj_derived.as<TestObjADerived>()->x, 1);\n+  EXPECT_EQ(obj_derived.as<TestObjADerived>()->y, 2);\n+  EXPECT_EQ(obj_derived.as<TestObjADerived>()->z, 3);\n+}\n+\n TEST(Reflection, ForEachFieldInfo) {\n   const TypeInfo* info = TVMFFIGetTypeInfo(TestObjADerived::RuntimeTypeIndex());\n   Map<String, int> field_name_to_offset;\ndiff --git a/tests/python/test_object.py b/tests/python/test_object.py\nindex bcfb52e..ea54adf 100644\n--- a/tests/python/test_object.py\n+++ b/tests/python/test_object.py\n@@ -29,6 +29,12 @@ def test_make_object() -> None:\n     assert obj0.v_str == \"hello\"\n \n \n+def test_make_object_via_init() -> None:\n+    obj0 = tvm_ffi.testing.TestIntPair(1, 2)\n+    assert obj0.a == 1\n+    assert obj0.b == 2\n+\n+\n def test_method() -> None:\n     obj0 = tvm_ffi.testing.create_object(\"testing.TestObjectBase\", v_i64=12)\n     assert obj0.add_i64(1) == 13",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".cc",
+      ".h",
+      ".pxi",
+      ".py"
+    ],
+    "scopes_guess": [
+      "include",
+      "python",
+      "src",
+      "tests"
+    ]
+  }
+}

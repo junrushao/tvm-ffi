@@ -1,0 +1,74 @@
+{
+  "sha": "ebea4dc8bd023187a7549321e2360af4f7d684b2",
+  "sha7": "ebea4dc",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-09-26T21:33:39-04:00",
+  "subject": "[VERSION] Expose version (#62)",
+  "body":
+      "This PR exposes the version. Because we need version to communicate\nchanges, so we still rely on manual management for now based on\npyproject.toml\n\nAdded a precheck hook so the version stays synced and use pyproject.toml\nas source of truth.",
+  "is_merge": false,
+  "parents": [
+    "9b3be5d12df257bef9a75e46ae8086b55b8cad49"
+  ],
+  "name_status": [
+    [
+      "M",
+      ".pre-commit-config.yaml"
+    ],
+    [
+      "M",
+      "pyproject.toml"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/__init__.py"
+    ],
+    [
+      "A",
+      "tests/lint/check_version.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": ".pre-commit-config.yaml",
+      "additions": 10,
+      "deletions": 0
+    },
+    {
+      "path": "pyproject.toml",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "python/tvm_ffi/__init__.py",
+      "additions": 4,
+      "deletions": 0
+    },
+    {
+      "path": "tests/lint/check_version.py",
+      "additions": 89,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/.pre-commit-config.yaml b/.pre-commit-config.yaml\nindex db2d35f..8e842f3 100644\n--- a/.pre-commit-config.yaml\n+++ b/.pre-commit-config.yaml\n@@ -40,6 +40,16 @@ repos:\n         language_version: python3\n         pass_filenames: false\n         verbose: false\n+  - repo: local\n+    hooks:\n+      - id: check-version\n+        name: check version\n+        entry: python tests/lint/check_version.py\n+        language: python\n+        language_version: python3\n+        pass_filenames: false\n+        verbose: false\n+        additional_dependencies: [tomli]\n   - repo: https://github.com/pre-commit/pre-commit-hooks\n     rev: v5.0.0\n     hooks:\ndiff --git a/pyproject.toml b/pyproject.toml\nindex 8166de4..66323e6 100644\n--- a/pyproject.toml\n+++ b/pyproject.toml\n@@ -17,7 +17,7 @@\n \n [project]\n name = \"apache-tvm-ffi\"\n-version = \"0.1.0b8\"\n+version = \"0.1.0b9\"\n description = \"tvm ffi\"\n \n authors = [{ name = \"TVM FFI team\" }]\ndiff --git a/python/tvm_ffi/__init__.py b/python/tvm_ffi/__init__.py\nindex c742ee2..31cda06 100644\n--- a/python/tvm_ffi/__init__.py\n+++ b/python/tvm_ffi/__init__.py\n@@ -16,6 +16,9 @@\n # under the License.\n \"\"\"TVM FFI Python package.\"\"\"\n \n+# version\n+__version__ = \"0.1.0b9\"\n+\n # order matters here so we need to skip isort here\n # isort: skip_file\n # base always go first to load the libtvm_ffi\n@@ -60,6 +63,7 @@ __all__ = [\n     \"ObjectConvertible\",\n     \"Shape\",\n     \"Tensor\",\n+    \"__version__\",\n     \"access_path\",\n     \"convert\",\n     \"dataclasses\",\ndiff --git a/tests/lint/check_version.py b/tests/lint/check_version.py\nnew file mode 100644\nindex 0000000..f853d9e\n--- /dev/null\n+++ b/tests/lint/check_version.py\n@@ -0,0 +1,89 @@\n+# Licensed to the Apache Software Foundation (ASF) under one\n+# or more contributor license agreements.  See the NOTICE file\n+# distributed with this work for additional information\n+# regarding copyright ownership.  The ASF licenses this file\n+# to you under the Apache License, Version 2.0 (the\n+# \"License\"); you may not use this file except in compliance\n+# with the License.  You may obtain a copy of the License at\n+#\n+#   http://www.apache.org/licenses/LICENSE-2.0\n+#\n+# Unless required by applicable law or agreed to in writing,\n+# software distributed under the License is distributed on an\n+# \"AS IS\" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY\n+# KIND, either express or implied.  See the License for the\n+# specific language governing permissions and limitations\n+# under the License.\n+\"\"\"Helper tool to check version consistency between pyproject.toml and __init__.py.\"\"\"\n+\n+import re\n+import sys\n+from pathlib import Path\n+from typing import Optional\n+\n+import tomli\n+\n+\n+def read_pyproject_version(pyproject_path: Path) -> Optional[str]:\n+    \"\"\"Read version from pyproject.toml.\"\"\"\n+    with pyproject_path.open(\"rb\") as f:\n+        data = tomli.load(f)\n+\n+    return data.get(\"project\", {}).get(\"version\")\n+\n+\n+def read_init_version(init_path: Path) -> Optional[str]:\n+    \"\"\"Read __version__ from __init__.py.\"\"\"\n+    with init_path.open(encoding=\"utf-8\") as f:\n+        content = f.read()\n+\n+    # Look for __version__ = \"...\" pattern\n+    match = re.search(r'__version__\\s*=\\s*[\"\\']([^\"\\']+)[\"\\']', content)\n+    if match:\n+        return match.group(1)\n+    return None\n+\n+\n+def update_init_version(init_path: Path, new_version: str) -> bool:\n+    \"\"\"Update __version__ in __init__.py.\"\"\"\n+    with init_path.open(encoding=\"utf-8\") as f:\n+        content = f.read()\n+\n+    # Replace the version line\n+    new_content = re.sub(\n+        r'__version__\\s*=\\s*[\"\\'][^\"\\']+[\"\\']', f'__version__ = \"{new_version}\"', content\n+    )\n+\n+    with init_path.open(\"w\", encoding=\"utf-8\") as f:\n+        f.write(new_content)\n+\n+    return True\n+\n+\n+def main() -> int:\n+    \"\"\"Execute the main function.\"\"\"\n+    # Hardcoded paths\n+    pyproject_path = Path(\"pyproject.toml\")\n+    init_path = Path(\"python/tvm_ffi/__init__.py\")\n+\n+    # Read versions\n+    pyproject_version = read_pyproject_version(pyproject_path)\n+    init_version = read_init_version(init_path)\n+\n+    if pyproject_version is None or init_version is None:\n+        return 1\n+\n+    if pyproject_version == init_version:\n+        print(\"Version check passed!\")\n+        return 0\n+    else:\n+        print(\"Version check failed!\")\n+        print(f\"pyproject.toml version: {pyproject_version}\")\n+        print(f\"__init__.py version: {init_version}\")\n+        print(\"Run precommit locally to fix the version.\")\n+        update_init_version(init_path, pyproject_version)\n+        return 1\n+\n+\n+if __name__ == \"__main__\":\n+    sys.exit(main())",
+  "heuristics": {
+    "tags": [
+      "build",
+      "test"
+    ],
+    "extensions": [
+      ".py",
+      ".toml",
+      ".yaml"
+    ],
+    "scopes_guess": [
+      ".pre-commit-config.yaml",
+      "pyproject.toml",
+      "python",
+      "tests"
+    ]
+  }
+}

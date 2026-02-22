@@ -1,0 +1,51 @@
+{
+  "sha": "ae06434d8363c9a668a63152bd35cb878209da9f",
+  "sha7": "ae06434",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-09-29T10:17:58-04:00",
+  "subject": "[ERROR] Place ErrorKind second in error handling (#70)",
+  "body": "This PR updates TVM_FFI_CHECK to place error kind after cond.",
+  "is_merge": false,
+  "parents": [
+    "327e8cc63c9517df7ec9f1abc5f9c599c1b78c4d"
+  ],
+  "name_status": [
+    [
+      "M",
+      "include/tvm/ffi/error.h"
+    ],
+    [
+      "M",
+      "tests/cpp/test_error.cc"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "include/tvm/ffi/error.h",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "tests/cpp/test_error.cc",
+      "additions": 4,
+      "deletions": 4
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/include/tvm/ffi/error.h b/include/tvm/ffi/error.h\nindex c22747e..f46517f 100644\n--- a/include/tvm/ffi/error.h\n+++ b/include/tvm/ffi/error.h\n@@ -362,7 +362,7 @@ TVM_FFI_CHECK_FUNC(_NE, !=)\n #define TVM_FFI_ICHECK(x) \\\n   if (!(x)) TVM_FFI_THROW(InternalError) << \"Check failed: (\" #x << \") is false: \"\n \n-#define TVM_FFI_CHECK(ErrorKind, cond) \\\n+#define TVM_FFI_CHECK(cond, ErrorKind) \\\n   if (!(cond)) TVM_FFI_THROW(ErrorKind) << \"Check failed: (\" #cond << \") is false: \"\n \n #define TVM_FFI_ICHECK_LT(x, y) TVM_FFI_ICHECK_BINARY_OP(_LT, <, x, y)\ndiff --git a/tests/cpp/test_error.cc b/tests/cpp/test_error.cc\nindex f224af4..46ffe7c 100644\n--- a/tests/cpp/test_error.cc\n+++ b/tests/cpp/test_error.cc\n@@ -66,7 +66,7 @@ TEST(CheckError, ValueError) {\n   EXPECT_THROW(\n       {\n         try {\n-          TVM_FFI_CHECK(ValueError, value >= 0) << \"Value must be non-negative, got \" << value;\n+          TVM_FFI_CHECK(value >= 0, ValueError) << \"Value must be non-negative, got \" << value;\n         } catch (const Error& error) {\n           EXPECT_EQ(error.kind(), \"ValueError\");\n           std::string what = error.what();\n@@ -85,7 +85,7 @@ TEST(CheckError, IndexError) {\n   EXPECT_THROW(\n       {\n         try {\n-          TVM_FFI_CHECK(IndexError, index < array_size)\n+          TVM_FFI_CHECK(index < array_size, IndexError)\n               << \"Index \" << index << \" out of bounds for array of size \" << array_size;\n         } catch (const Error& error) {\n           EXPECT_EQ(error.kind(), \"IndexError\");\n@@ -101,8 +101,8 @@ TEST(CheckError, IndexError) {\n \n TEST(CheckError, PassingCondition) {\n   // This should not throw\n-  EXPECT_NO_THROW(TVM_FFI_CHECK(ValueError, true));\n-  EXPECT_NO_THROW(TVM_FFI_CHECK(IndexError, 5 < 10));\n+  EXPECT_NO_THROW(TVM_FFI_CHECK(true, ValueError));\n+  EXPECT_NO_THROW(TVM_FFI_CHECK(5 < 10, IndexError));\n }\n \n TEST(Error, AnyConvert) {",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".cc",
+      ".h"
+    ],
+    "scopes_guess": [
+      "include",
+      "tests"
+    ]
+  }
+}

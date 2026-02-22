@@ -1,0 +1,143 @@
+{
+  "sha": "8b4683385fd60b5b89f23cc8d4ab53d3a7c1aebb",
+  "sha7": "8b46833",
+  "author_name": "Junru Shao",
+  "author_email": "junrushao@apache.org",
+  "date_iso": "2025-12-12T11:24:54-08:00",
+  "subject": "chore(lint): Update pre-commit hooks; Enable docstring formatter (#339)",
+  "body": "",
+  "is_merge": false,
+  "parents": [
+    "262ca30aad858d818b919d5e670e80b7a57b89e4"
+  ],
+  "name_status": [
+    [
+      "M",
+      ".pre-commit-config.yaml"
+    ],
+    [
+      "M",
+      "pyproject.toml"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/_convert.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/_dtype.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/_tensor.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/cpp/extension.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/dataclasses/c_class.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/dataclasses/field.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/error.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/module.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/registry.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/utils/embed_cubin.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": ".pre-commit-config.yaml",
+      "additions": 9,
+      "deletions": 9
+    },
+    {
+      "path": "pyproject.toml",
+      "additions": 2,
+      "deletions": 2
+    },
+    {
+      "path": "python/tvm_ffi/_convert.py",
+      "additions": 1,
+      "deletions": 0
+    },
+    {
+      "path": "python/tvm_ffi/_dtype.py",
+      "additions": 3,
+      "deletions": 1
+    },
+    {
+      "path": "python/tvm_ffi/_tensor.py",
+      "additions": 1,
+      "deletions": 0
+    },
+    {
+      "path": "python/tvm_ffi/cpp/extension.py",
+      "additions": 8,
+      "deletions": 8
+    },
+    {
+      "path": "python/tvm_ffi/dataclasses/c_class.py",
+      "additions": 2,
+      "deletions": 0
+    },
+    {
+      "path": "python/tvm_ffi/dataclasses/field.py",
+      "additions": 1,
+      "deletions": 0
+    },
+    {
+      "path": "python/tvm_ffi/error.py",
+      "additions": 2,
+      "deletions": 0
+    },
+    {
+      "path": "python/tvm_ffi/module.py",
+      "additions": 6,
+      "deletions": 1
+    },
+    {
+      "path": "python/tvm_ffi/registry.py",
+      "additions": 7,
+      "deletions": 0
+    },
+    {
+      "path": "python/tvm_ffi/utils/embed_cubin.py",
+      "additions": 19,
+      "deletions": 10
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/.pre-commit-config.yaml b/.pre-commit-config.yaml\nindex 3c2c43d..99fa44e 100644\n--- a/.pre-commit-config.yaml\n+++ b/.pre-commit-config.yaml\n@@ -50,7 +50,7 @@ repos:\n         pass_filenames: false\n         verbose: false\n   - repo: https://github.com/pre-commit/pre-commit-hooks\n-    rev: v5.0.0\n+    rev: v6.0.0\n     hooks:\n       - id: check-added-large-files\n       - id: check-case-conflict\n@@ -63,7 +63,7 @@ repos:\n       - id: check-yaml\n       - id: check-toml\n   - repo: https://github.com/adrienverge/yamllint\n-    rev: v1.35.1\n+    rev: v1.37.1\n     hooks:\n       - id: yamllint\n         args:\n@@ -74,7 +74,7 @@ repos:\n     hooks:\n       - id: taplo-format\n   - repo: https://github.com/astral-sh/ruff-pre-commit\n-    rev: v0.12.3\n+    rev: v0.14.9\n     hooks:\n       - id: ruff-check\n         types_or: [python, pyi, jupyter]\n@@ -82,11 +82,11 @@ repos:\n       - id: ruff-format\n         types_or: [python, pyi, jupyter]\n   - repo: https://github.com/pre-commit/mirrors-clang-format\n-    rev: \"v20.1.8\"\n+    rev: \"v21.1.7\"\n     hooks:\n       - id: clang-format\n   - repo: https://github.com/MarcoGorelli/cython-lint\n-    rev: v0.16.7\n+    rev: v0.18.1\n     hooks:\n       - id: cython-lint\n         args: [--max-line-length=120]\n@@ -97,15 +97,15 @@ repos:\n       - id: shfmt\n         args: [--indent=2]\n   - repo: https://github.com/shellcheck-py/shellcheck-py\n-    rev: v0.10.0.1\n+    rev: v0.11.0.1\n     hooks:\n       - id: shellcheck\n   - repo: https://github.com/DavidAnson/markdownlint-cli2\n-    rev: v0.14.0\n+    rev: v0.20.0\n     hooks:\n       - id: markdownlint-cli2\n   - repo: https://github.com/rstcheck/rstcheck\n-    rev: v6.2.4\n+    rev: v6.2.5\n     hooks:\n       - id: rstcheck\n         additional_dependencies:\n@@ -114,7 +114,7 @@ repos:\n           - --config\n           - docs/.rstcheck.cfg\n   - repo: https://github.com/pre-commit/mirrors-mypy\n-    rev: \"v1.18.2\"\n+    rev: \"v1.19.0\"\n     hooks:\n       - id: mypy\n         name: mypy\ndiff --git a/pyproject.toml b/pyproject.toml\nindex 95c4f44..13ef672 100644\n--- a/pyproject.toml\n+++ b/pyproject.toml\n@@ -227,8 +227,8 @@ quote-style = \"double\"\n indent-style = \"space\"\n skip-magic-trailing-comma = false\n line-ending = \"auto\"\n-docstring-code-format = false\n-docstring-code-line-length = \"dynamic\"\n+docstring-code-format = true\n+docstring-code-line-length = 80\n \n [tool.cibuildwheel]\n build-verbosity = 1\ndiff --git a/python/tvm_ffi/_convert.py b/python/tvm_ffi/_convert.py\nindex 59783f6..d35ad90 100644\n--- a/python/tvm_ffi/_convert.py\n+++ b/python/tvm_ffi/_convert.py\n@@ -81,6 +81,7 @@ def convert(value: Any) -> Any:  # noqa: PLR0911,PLR0912\n \n         # Array libraries that support DLPack export can be converted to Tensor\n         import numpy as np\n+\n         x = tvm_ffi.convert(np.arange(4, dtype=\"int32\"))\n         assert isinstance(x, tvm_ffi.Tensor)\n \ndiff --git a/python/tvm_ffi/_dtype.py b/python/tvm_ffi/_dtype.py\nindex 65ecad2..dcc4d07 100644\n--- a/python/tvm_ffi/_dtype.py\n+++ b/python/tvm_ffi/_dtype.py\n@@ -226,7 +226,9 @@ class dtype(str):\n             # The type code is an integer following DLPack conventions\n             assert isinstance(f32.type_code, int)\n             # Consistent with constructing from an explicit (code, bits, lanes)\n-            assert f32.type_code == tvm_ffi.dtype.from_dlpack_data_type((2, 32, 1)).type_code\n+            assert (\n+                f32.type_code == tvm_ffi.dtype.from_dlpack_data_type((2, 32, 1)).type_code\n+            )\n \n         See Also\n         --------\ndiff --git a/python/tvm_ffi/_tensor.py b/python/tvm_ffi/_tensor.py\nindex 5005bc6..bb60882 100644\n--- a/python/tvm_ffi/_tensor.py\n+++ b/python/tvm_ffi/_tensor.py\n@@ -96,6 +96,7 @@ def device(device_type: str | int | DLDeviceType, index: int | None = None) -> D\n     .. code-block:: python\n \n       import tvm_ffi\n+\n       assert tvm_ffi.device(\"cuda:0\") == tvm_ffi.device(\"cuda\", 0)\n       assert tvm_ffi.device(\"cpu:0\") == tvm_ffi.device(\"cpu\", 0)\n \ndiff --git a/python/tvm_ffi/cpp/extension.py b/python/tvm_ffi/cpp/extension.py\nindex 761f0dd..e988a77 100644\n--- a/python/tvm_ffi/cpp/extension.py\n+++ b/python/tvm_ffi/cpp/extension.py\n@@ -661,9 +661,9 @@ def build_inline(\n \n         # compile the cpp source code and load the module\n         lib_path: str = tvm_ffi.cpp.build_inline(\n-            name='hello',\n+            name=\"hello\",\n             cpp_sources=cpp_source,\n-            functions='add_one_cpu'\n+            functions=\"add_one_cpu\",\n         )\n \n         # load the module\n@@ -876,9 +876,9 @@ def load_inline(  # noqa: PLR0913\n \n         # compile the cpp source code and load the module\n         mod: Module = tvm_ffi.cpp.load_inline(\n-            name='hello',\n+            name=\"hello\",\n             cpp_sources=cpp_source,\n-            functions='add_one_cpu'\n+            functions=\"add_one_cpu\",\n         )\n \n         # use the function from the loaded module to perform\n@@ -1017,8 +1017,8 @@ def build(\n \n         # compile the cpp source file and get the library path\n         lib_path: str = tvm_ffi.cpp.build(\n-            name='my_ops',\n-            cpp_files='my_ops.cpp'\n+            name=\"my_ops\",\n+            cpp_files=\"my_ops.cpp\",\n         )\n \n         # load the module\n@@ -1165,8 +1165,8 @@ def load(\n \n         # compile the cpp source file and load the module\n         mod: Module = tvm_ffi.cpp.load(\n-            name='my_ops',\n-            cpp_files='my_ops.cpp'\n+            name=\"my_ops\",\n+            cpp_files=\"my_ops.cpp\",\n         )\n \n         # use the function from the loaded module\ndiff --git a/python/tvm_ffi/dataclasses/c_class.py b/python/tvm_ffi/dataclasses/c_class.py\nindex 0bc273c..8c2706b 100644\n--- a/python/tvm_ffi/dataclasses/c_class.py\n+++ b/python/tvm_ffi/dataclasses/c_class.py\n@@ -103,6 +103,7 @@ def c_class(\n \n         from tvm_ffi.dataclasses import c_class, field\n \n+\n         @c_class(\"example.MyClass\")\n         class MyClass:\n             v_i64: int\n@@ -110,6 +111,7 @@ def c_class(\n             v_f64: float = field(default=0.0)\n             v_f32: float = field(default_factory=lambda: 1.0)\n \n+\n         obj = MyClass(v_i64=4, v_i32=8)\n         obj.v_f64 = 3.14  # transparently forwards to the underlying C++ object\n \ndiff --git a/python/tvm_ffi/dataclasses/field.py b/python/tvm_ffi/dataclasses/field.py\nindex b1d7d78..95618cd 100644\n--- a/python/tvm_ffi/dataclasses/field.py\n+++ b/python/tvm_ffi/dataclasses/field.py\n@@ -114,6 +114,7 @@ def field(\n             v_i64: int\n             v_i32: int = field(default=16)\n \n+\n         obj = PyBase(v_i64=4)\n         obj.v_i32  # -> 16\n \ndiff --git a/python/tvm_ffi/error.py b/python/tvm_ffi/error.py\nindex 9a0a23a..3c4eaf0 100644\n--- a/python/tvm_ffi/error.py\n+++ b/python/tvm_ffi/error.py\n@@ -227,11 +227,13 @@ def register_error(\n \n         import tvm_ffi\n \n+\n         # Register a custom Python exception so tvm_ffi.Error maps to it\n         @tvm_ffi.error.register_error\n         class MyError(RuntimeError):\n             pass\n \n+\n         # Convert a Python exception to an FFI Error and back\n         ffi_err = tvm_ffi.convert(MyError(\"boom\"))\n         py_err = ffi_err.py_error()\ndiff --git a/python/tvm_ffi/module.py b/python/tvm_ffi/module.py\nindex 0c04d21..d863ae9 100644\n--- a/python/tvm_ffi/module.py\n+++ b/python/tvm_ffi/module.py\n@@ -92,12 +92,15 @@ class Module(core.Object):\n             # ... do something with the tensor\n             tensor = mod.func_create_and_return_tensor(x)\n \n+\n         def good_pattern(x):\n             # Good: `tensor` is freed before `mod` goes out of scope\n             mod = tvm_ffi.load_module(\"path/to/library.so\")\n+\n             def run_some_tests():\n                 tensor = mod.func_create_and_return_tensor(x)\n                 # ... do something with the tensor\n+\n             run_some_tests()\n \n     \"\"\"\n@@ -419,7 +422,9 @@ def system_lib(symbol_prefix: str = \"\") -> Module:\n \n         import tvm_ffi\n \n-        mod: tvm_ffi.Module = tvm_ffi.system_lib(\"testing.\")  # symbols prefixed with `__tvm_ffi_testing.`\n+        mod: tvm_ffi.Module = tvm_ffi.system_lib(\n+            \"testing.\"\n+        )  # symbols prefixed with `__tvm_ffi_testing.`\n         func: tvm_ffi.Function = mod[\"add_one\"]  # looks up `__tvm_ffi_testing.add_one`\n         assert func(10) == 11\n \ndiff --git a/python/tvm_ffi/registry.py b/python/tvm_ffi/registry.py\nindex 74f56cb..5b484cd 100644\n--- a/python/tvm_ffi/registry.py\n+++ b/python/tvm_ffi/registry.py\n@@ -112,10 +112,13 @@ def register_global_func(\n \n         import tvm_ffi\n \n+\n         # we can use decorator to register a function\n         @tvm_ffi.register_global_func(\"mytest.echo\")\n         def echo(x):\n             return x\n+\n+\n         # After registering, we can get the function by its name\n         f = tvm_ffi.get_global_func(\"mytest.echo\")\n         assert f(1) == 1\n@@ -177,10 +180,12 @@ def get_global_func(name: str, allow_missing: bool = False) -> core.Function | N\n \n         import tvm_ffi\n \n+\n         @tvm_ffi.register_global_func(\"demo.echo\")\n         def echo(x):\n             return x\n \n+\n         f = tvm_ffi.get_global_func(\"demo.echo\")\n         assert f(123) == 123\n \n@@ -220,10 +225,12 @@ def remove_global_func(name: str) -> None:\n \n         import tvm_ffi\n \n+\n         @tvm_ffi.register_global_func(\"my.temp\")\n         def temp():\n             return 42\n \n+\n         assert tvm_ffi.get_global_func(\"my.temp\", allow_missing=True) is not None\n         tvm_ffi.remove_global_func(\"my.temp\")\n         assert tvm_ffi.get_global_func(\"my.temp\", allow_missing=True) is None\ndiff --git a/python/tvm_ffi/utils/embed_cubin.py b/python/tvm_ffi/utils/embed_cubin.py\nindex de70d2a..904b3a2 100644\n--- a/python/tvm_ffi/utils/embed_cubin.py\n+++ b/python/tvm_ffi/utils/embed_cubin.py\n@@ -92,16 +92,25 @@ def embed_cubin(  # noqa: PLR0912, PLR0915\n \n     Examples\n     --------\n-    >>> embed_cubin(\n-    ...     Path(\"kernel.cubin\"),\n-    ...     Path(\"old.o\"),\n-    ...     Path(\"new.o\"),\n-    ...     \"my_kernels\"\n-    ... )\n-\n-    Then in C++ code (in the source that was compiled to old.o):\n-    >>> TVM_FFI_EMBED_CUBIN(my_kernels);\n-    >>> auto kernel = TVM_FFI_EMBED_CUBIN_GET_KERNEL(my_kernels, \"kernel_name\");\n+    In Python,\n+\n+    ```python\n+    embed_cubin(\n+        Path(\"kernel.cubin\"),\n+        Path(\"old.o\"),\n+        Path(\"new.o\"),\n+        \"my_kernels\",\n+    )\n+    ```\n+\n+    Then in C++ code,\n+\n+    ```C++\n+    TVM_FFI_EMBED_CUBIN(my_kernels);\n+    auto kernel = TVM_FFI_EMBED_CUBIN_GET_KERNEL(my_kernels, \"kernel_name\");\n+    ```\n+\n+    (in the source that was compiled to old.o).\n \n     \"\"\"\n     if not cubin_path.exists():",
+  "heuristics": {
+    "tags": [
+      "build"
+    ],
+    "extensions": [
+      ".py",
+      ".toml",
+      ".yaml"
+    ],
+    "scopes_guess": [
+      ".pre-commit-config.yaml",
+      "pyproject.toml",
+      "python"
+    ]
+  }
+}

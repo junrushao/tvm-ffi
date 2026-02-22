@@ -1,0 +1,71 @@
+{
+  "sha": "8fcd9245186df3d6570e641dfc1c84239a9f9a40",
+  "sha7": "8fcd924",
+  "author_name": "Junru Shao",
+  "author_email": "junrushao@apache.org",
+  "date_iso": "2025-11-09T15:03:01-08:00",
+  "subject": "feat: Introduce `tvm.registry.get_registered_type_keys()` (#249)",
+  "body":
+      "This API is going to be useful for library stub generation, where we\nneed to query objects registered on C++ end.",
+  "is_merge": false,
+  "parents": [
+    "4628f06baaeb9f880c3522388ab33cc8b0736304"
+  ],
+  "name_status": [
+    [
+      "M",
+      "python/tvm_ffi/_ffi_api.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/registry.py"
+    ],
+    [
+      "M",
+      "src/ffi/object.cc"
+    ],
+    [
+      "M",
+      "tests/python/test_object.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "python/tvm_ffi/_ffi_api.py",
+      "additions": 1,
+      "deletions": 0
+    },
+    {
+      "path": "python/tvm_ffi/registry.py",
+      "additions": 15,
+      "deletions": 2
+    },
+    {
+      "path": "src/ffi/object.cc",
+      "additions": 21,
+      "deletions": 0
+    },
+    {
+      "path": "tests/python/test_object.py",
+      "additions": 29,
+      "deletions": 1
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/python/tvm_ffi/_ffi_api.py b/python/tvm_ffi/_ffi_api.py\nindex 5a957d6..316a6fb 100644\n--- a/python/tvm_ffi/_ffi_api.py\n+++ b/python/tvm_ffi/_ffi_api.py\n@@ -42,6 +42,7 @@ if TYPE_CHECKING:\n     def FunctionRemoveGlobal(_0: str, /) -> bool: ...\n     def GetFirstStructuralMismatch(_0: Any, _1: Any, _2: bool, _3: bool, /) -> tuple[AccessPath, AccessPath] | None: ...\n     def GetGlobalFuncMetadata(_0: str, /) -> str: ...\n+    def GetRegisteredTypeKeys() -> Sequence[str]: ...\n     def MakeObjectFromPackedArgs(*args: Any) -> Any: ...\n     def Map(*args: Any) -> Any: ...\n     def MapCount(_0: Mapping[Any, Any], _1: Any, /) -> int: ...\ndiff --git a/python/tvm_ffi/registry.py b/python/tvm_ffi/registry.py\nindex ce1d15f..74f56cb 100644\n--- a/python/tvm_ffi/registry.py\n+++ b/python/tvm_ffi/registry.py\n@@ -20,7 +20,7 @@ from __future__ import annotations\n \n import json\n import sys\n-from typing import Any, Callable, Literal, TypeVar, overload\n+from typing import Any, Callable, Literal, Sequence, TypeVar, overload\n \n from . import core\n from .core import TypeInfo\n@@ -268,7 +268,7 @@ def get_global_func_metadata(name: str) -> dict[str, Any]:\n         Register a Python callable as a global FFI function.\n \n     \"\"\"\n-    return json.loads(get_global_func(\"ffi.GetGlobalFuncMetadata\")(name))\n+    return json.loads(get_global_func(\"ffi.GetGlobalFuncMetadata\")(name) or \"{}\")\n \n \n def init_ffi_api(namespace: str, target_module_name: str | None = None) -> None:\n@@ -346,9 +346,22 @@ def __init__invalid(self: Any, *args: Any, **kwargs: Any) -> None:\n     raise RuntimeError(\"The __init__ method of this class is not implemented.\")\n \n \n+def get_registered_type_keys() -> Sequence[str]:\n+    \"\"\"Get the list of valid type keys registered to TVM-FFI.\n+\n+    Returns\n+    -------\n+    type_keys\n+        List of valid type keys.\n+\n+    \"\"\"\n+    return get_global_func(\"ffi.GetRegisteredTypeKeys\")()\n+\n+\n __all__ = [\n     \"get_global_func\",\n     \"get_global_func_metadata\",\n+    \"get_registered_type_keys\",\n     \"init_ffi_api\",\n     \"list_global_func_names\",\n     \"register_global_func\",\ndiff --git a/src/ffi/object.cc b/src/ffi/object.cc\nindex 1671ba8..e8a232d 100644\n--- a/src/ffi/object.cc\n+++ b/src/ffi/object.cc\n@@ -21,6 +21,7 @@\n  * \\brief Registry to record dynamic types\n  */\n #include <tvm/ffi/c_api.h>\n+#include <tvm/ffi/container/array.h>\n #include <tvm/ffi/container/map.h>\n #include <tvm/ffi/error.h>\n #include <tvm/ffi/function.h>\n@@ -193,6 +194,16 @@ class TypeTable {\n     return entry;\n   }\n \n+  Array<String> GetRegisteredTypeKeys() const {\n+    Array<String> ret;\n+    for (const auto& entry : type_table_) {\n+      if (entry) {\n+        ret.push_back(entry->type_key_data);\n+      }\n+    }\n+    return ret;\n+  }\n+\n   void RegisterTypeField(int32_t type_index, const TVMFFIFieldInfo* info) {\n     Entry* entry = GetTypeEntry(type_index);\n     TVMFFIFieldInfo field_data = *info;\n@@ -537,3 +548,13 @@ int TVMFFIBytesFromByteArray(const TVMFFIByteArray* input, TVMFFIAny* out) {\n   tvm::ffi::TypeTraits<tvm::ffi::Bytes>::MoveToAny(tvm::ffi::Bytes(input->data, input->size), out);\n   TVM_FFI_SAFE_CALL_END();\n }\n+\n+namespace {\n+TVM_FFI_STATIC_INIT_BLOCK() {\n+  using namespace tvm::ffi;\n+  namespace refl = tvm::ffi::reflection;\n+  refl::GlobalDef().def_method(\"ffi.GetRegisteredTypeKeys\", []() -> Array<String> {\n+    return tvm::ffi::TypeTable::Global()->GetRegisteredTypeKeys();\n+  });\n+}\n+}  // namespace\ndiff --git a/tests/python/test_object.py b/tests/python/test_object.py\nindex c39b0be..e49d3ec 100644\n--- a/tests/python/test_object.py\n+++ b/tests/python/test_object.py\n@@ -17,7 +17,7 @@\n from __future__ import annotations\n \n import sys\n-from typing import Any\n+from typing import Any, Sequence\n \n import pytest\n import tvm_ffi\n@@ -228,3 +228,31 @@ def test_type_info_attachment(test_cls: type, type_key: str, parent_cls: type |\n         assert parent_type_info.type_cls is parent_cls, (\n             f\"Expected parent type {parent_cls}, but got {parent_type_info.type_cls}\"\n         )\n+\n+\n+def test_get_registered_type_keys() -> None:\n+    keys = tvm_ffi.registry.get_registered_type_keys()\n+    assert isinstance(keys, Sequence)\n+    assert all(isinstance(k, str) for k in keys)\n+    keys = set(keys)\n+    assert \"ffi.Object\" in keys\n+    assert \"ffi.String\" in keys\n+    for ty in [\n+        \"None\",\n+        \"int\",\n+        \"bool\",\n+        \"float\",\n+        \"void*\",\n+        \"DataType\",\n+        \"Device\",\n+        \"DLTensor*\",\n+        \"const char*\",\n+        \"TVMFFIByteArray*\",\n+        \"ObjectRValueRef\",\n+    ]:\n+        assert ty in keys, f\"Expected to find `{ty}` in registered type keys, but it was not found.\"\n+        keys.remove(ty)\n+    for ty in keys:\n+        assert ty.startswith(\"ffi.\") or ty.startswith(\"testing.\"), (\n+            f\"Expected type key `{ty}` to start with `ffi.` or `testing.`\"\n+        )",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".cc",
+      ".py"
+    ],
+    "scopes_guess": [
+      "python",
+      "src",
+      "tests"
+    ]
+  }
+}

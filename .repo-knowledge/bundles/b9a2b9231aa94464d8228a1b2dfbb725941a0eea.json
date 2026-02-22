@@ -1,0 +1,38 @@
+{
+  "sha": "b9a2b9231aa94464d8228a1b2dfbb725941a0eea",
+  "sha7": "b9a2b92",
+  "author_name": "Yichen Yan",
+  "author_email": "wenji.yyc@alibaba-inc.com",
+  "date_iso": "2025-11-05T09:49:24+08:00",
+  "subject": "fix: More fix of `ml_dtypes<0.5` (#222)",
+  "body": "This is a followup of #198 of a missing fix.",
+  "is_merge": false,
+  "parents": [
+    "c897e4c9c2ed6f86cf5ef470a78e453eb040fb60"
+  ],
+  "name_status": [
+    [
+      "M",
+      "python/tvm_ffi/_dtype.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "python/tvm_ffi/_dtype.py",
+      "additions": 2,
+      "deletions": 1
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/python/tvm_ffi/_dtype.py b/python/tvm_ffi/_dtype.py\nindex 5079226..ebc2585 100644\n--- a/python/tvm_ffi/_dtype.py\n+++ b/python/tvm_ffi/_dtype.py\n@@ -314,7 +314,8 @@ try:\n     dtype._NUMPY_DTYPE_TO_STR[np.dtype(ml_dtypes.bfloat16)] = \"bfloat16\"\n     dtype._NUMPY_DTYPE_TO_STR[np.dtype(ml_dtypes.float8_e4m3fn)] = \"float8_e4m3fn\"\n     dtype._NUMPY_DTYPE_TO_STR[np.dtype(ml_dtypes.float8_e5m2)] = \"float8_e5m2\"\n-    dtype._NUMPY_DTYPE_TO_STR[np.dtype(ml_dtypes.float4_e2m1fn)] = \"float4_e2m1fn\"\n+    if hasattr(ml_dtypes, \"float4_e2m1fn\"):  # ml_dtypes >= 0.5.0\n+        dtype._NUMPY_DTYPE_TO_STR[np.dtype(ml_dtypes.float4_e2m1fn)] = \"float4_e2m1fn\"\n except ImportError:\n     pass\n ",
+  "heuristics": {
+    "tags": [],
+    "extensions": [
+      ".py"
+    ],
+    "scopes_guess": [
+      "python"
+    ]
+  }
+}

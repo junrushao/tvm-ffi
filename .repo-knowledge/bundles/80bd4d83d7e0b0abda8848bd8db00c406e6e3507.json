@@ -1,0 +1,38 @@
+{
+  "sha": "80bd4d83d7e0b0abda8848bd8db00c406e6e3507",
+  "sha7": "80bd4d8",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-10-13T15:19:51-04:00",
+  "subject": "[TORCH] Patch cuda stream protocol for older torch (#110)",
+  "body": "This PR add patch to update torch to include cuda stream protocol for\nolder version.",
+  "is_merge": false,
+  "parents": [
+    "b0537f045b30334a12bf3365438aedb2c3bc7285"
+  ],
+  "name_status": [
+    [
+      "M",
+      "python/tvm_ffi/_optional_torch_c_dlpack.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "python/tvm_ffi/_optional_torch_c_dlpack.py",
+      "additions": 21,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/python/tvm_ffi/_optional_torch_c_dlpack.py b/python/tvm_ffi/_optional_torch_c_dlpack.py\nindex 94bb3d7..c08f82d 100644\n--- a/python/tvm_ffi/_optional_torch_c_dlpack.py\n+++ b/python/tvm_ffi/_optional_torch_c_dlpack.py\n@@ -607,3 +607,24 @@ int64_t TorchDLPackExchangeAPIPtr() {\n \n # keep alive\n _mod = load_torch_c_dlpack_extension()\n+\n+\n+def patch_torch_cuda_stream_protocol() -> Any:\n+    \"\"\"Load the torch cuda stream protocol for older versions of torch.\"\"\"\n+    try:\n+        import torch  # noqa: PLC0415\n+\n+        if not torch.cuda.is_available():\n+            return\n+        if not hasattr(torch.cuda.Stream, \"__cuda_stream__\"):\n+\n+            def __torch_cuda_stream__(self: torch.cuda.Stream) -> tuple[int, torch.cuda.Stream]:\n+                \"\"\"Return the version number and the cuda stream.\"\"\"\n+                return (0, self.cuda_stream)\n+\n+            setattr(torch.cuda.Stream, \"__cuda_stream__\", __torch_cuda_stream__)\n+    except ImportError:\n+        pass\n+\n+\n+patch_torch_cuda_stream_protocol()",
+  "heuristics": {
+    "tags": [],
+    "extensions": [
+      ".py"
+    ],
+    "scopes_guess": [
+      "python"
+    ]
+  }
+}

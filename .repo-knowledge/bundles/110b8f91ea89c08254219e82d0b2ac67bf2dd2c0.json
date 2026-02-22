@@ -1,0 +1,133 @@
+{
+  "sha": "110b8f91ea89c08254219e82d0b2ac67bf2dd2c0",
+  "sha7": "110b8f9",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-05-07T13:12:38-04:00",
+  "subject": "[REFACTOR][FFI] Cleanup PackedFunc related redirection (#17923)",
+  "body": "",
+  "is_merge": false,
+  "parents": [
+    "7d34eb8abfe987bf0031e4d4ff479895d867a966"
+  ],
+  "name_status": [
+    [
+      "M",
+      "include/tvm/ffi/function.h"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/function_details.h"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/rvalue_ref.h"
+    ],
+    [
+      "M",
+      "src/ffi/container.cc"
+    ],
+    [
+      "M",
+      "src/ffi/function.cc"
+    ],
+    [
+      "M",
+      "tests/cpp/test_array.cc"
+    ],
+    [
+      "M",
+      "tests/cpp/test_function.cc"
+    ],
+    [
+      "M",
+      "tests/cpp/test_map.cc"
+    ],
+    [
+      "M",
+      "tests/cpp/test_rvalue_ref.cc"
+    ],
+    [
+      "M",
+      "tests/cpp/test_tuple.cc"
+    ],
+    [
+      "M",
+      "tests/cpp/test_variant.cc"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "include/tvm/ffi/function.h",
+      "additions": 28,
+      "deletions": 28
+    },
+    {
+      "path": "include/tvm/ffi/function_details.h",
+      "additions": 2,
+      "deletions": 2
+    },
+    {
+      "path": "include/tvm/ffi/rvalue_ref.h",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "src/ffi/container.cc",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "src/ffi/function.cc",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "tests/cpp/test_array.cc",
+      "additions": 1,
+      "deletions": 2
+    },
+    {
+      "path": "tests/cpp/test_function.cc",
+      "additions": 8,
+      "deletions": 8
+    },
+    {
+      "path": "tests/cpp/test_map.cc",
+      "additions": 3,
+      "deletions": 3
+    },
+    {
+      "path": "tests/cpp/test_rvalue_ref.cc",
+      "additions": 4,
+      "deletions": 4
+    },
+    {
+      "path": "tests/cpp/test_tuple.cc",
+      "additions": 2,
+      "deletions": 2
+    },
+    {
+      "path": "tests/cpp/test_variant.cc",
+      "additions": 3,
+      "deletions": 3
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/include/tvm/ffi/function.h b/include/tvm/ffi/function.h\nindex 708495b..bdcca7b 100644\n--- a/include/tvm/ffi/function.h\n+++ b/include/tvm/ffi/function.h\n@@ -127,7 +127,7 @@ class FunctionObjImpl : public FunctionObj {\n   /*! \\brief The type of derived object class */\n   using TSelf = FunctionObjImpl<TCallable>;\n   /*!\n-   * \\brief Derived object class for constructing PackedFuncObj.\n+   * \\brief Derived object class for constructing ffi::FunctionObj.\n    * \\param callable The type-erased callable object.\n    */\n   explicit FunctionObjImpl(TCallable callable) : callable_(callable) {\n@@ -292,7 +292,7 @@ class PackedArgs {\n \n /*!\n  * \\brief ffi::Function  is a type-erased function.\n- *  The arguments are passed by packed format.\n+ *  The arguments are passed by \"packed format\" via AnyView\n  */\n class Function : public ObjectRef {\n  public:\n@@ -300,7 +300,7 @@ class Function : public ObjectRef {\n   Function(std::nullptr_t) : ObjectRef(nullptr) {}  // NOLINT(*)\n   /*!\n    * \\brief Constructing a packed function from a callable type\n-   *        whose signature is consistent with `PackedFunc`\n+   *        whose signature is consistent with `ffi::Function`\n    * \\param packed_call The packed function signature\n    * \\note legacy purpose, should change to Function::FromPacked for mostfuture use.\n    */\n@@ -310,7 +310,7 @@ class Function : public ObjectRef {\n   }\n   /*!\n    * \\brief Constructing a packed function from a callable type\n-   *        whose signature is consistent with `PackedFunc`\n+   *        whose signature is consistent with `ffi::Function`\n    * \\param packed_call The packed function signature\n    */\n   template <typename TCallable>\n@@ -462,7 +462,7 @@ class Function : public ObjectRef {\n    * \\param callable the internal container of packed function.\n    */\n   template <typename TCallable>\n-  static Function FromUnpacked(TCallable callable) {\n+  static Function FromTyped(TCallable callable) {\n     using FuncInfo = details::FunctionInfo<TCallable>;\n     auto call_packed = [callable](const AnyView* args, int32_t num_args, Any* rv) mutable -> void {\n       details::unpack_call<typename FuncInfo::RetType>(\n@@ -477,7 +477,7 @@ class Function : public ObjectRef {\n    * \\param name optional name attacked to the function.\n    */\n   template <typename TCallable>\n-  static Function FromUnpacked(TCallable callable, std::string name) {\n+  static Function FromTyped(TCallable callable, std::string name) {\n     using FuncInfo = details::FunctionInfo<TCallable>;\n     auto call_packed = [callable, name](const AnyView* args, int32_t num_args,\n                                         Any* rv) mutable -> void {\n@@ -540,7 +540,7 @@ class Function : public ObjectRef {\n  private:\n   /*!\n    * \\brief Constructing a packed function from a callable type\n-   *        whose signature is consistent with `PackedFunc`\n+   *        whose signature is consistent with `ffi::Function`\n    * \\param packed_call The packed function signature\n    */\n   template <typename TCallable>\n@@ -560,16 +560,16 @@ class TypedFunction;\n \n /*!\n  * \\anchor TypedFunctionAnchor\n- * \\brief A PackedFunc wrapper to provide typed function signature.\n- * It is backed by a PackedFunc internally.\n+ * \\brief A ffi::Function wrapper to provide typed function signature.\n+ * It is backed by a ffi::Function internally.\n  *\n  * TypedFunction enables compile time type checking.\n  * TypedFunction works with the runtime system:\n- * - It can be passed as an argument of PackedFunc.\n- * - It can be assigned to TVMRetValue.\n- * - It can be directly converted to a type-erased PackedFunc.\n+ * - It can be passed as an argument of ffi::Function.\n+ * - It can be assigned to ffi::Any.\n+ * - It can be directly converted to a type-erased ffi::Function.\n  *\n- * Developers should prefer TypedFunction over PackedFunc in C++ code\n+ * Developers should prefer TypedFunction over ffi::Function in C++ code\n  * as it enables compile time checking.\n  * We can construct a TypedFunction from a lambda function\n  * with the same signature.\n@@ -584,8 +584,8 @@ class TypedFunction;\n  *  TypedFunction<int(int)> ftyped(addone);\n  *  // invoke the function.\n  *  int y = ftyped(1);\n- *  // Can be directly converted to PackedFunc\n- *  PackedFunc packed = ftype;\n+ *  // Can be directly converted to ffi::Function\n+ *  ffi::Function packed = ftype;\n  * \\endcode\n  * \\tparam R The return value of the function.\n  * \\tparam Args The argument signature of the function.\n@@ -623,7 +623,7 @@ class TypedFunction<R(Args...)> {\n   template <typename FLambda, typename = typename std::enable_if<std::is_convertible<\n                                   FLambda, std::function<R(Args...)>>::value>::type>\n   TypedFunction(FLambda typed_lambda, std::string name) {  // NOLINT(*)\n-    packed_ = Function::FromUnpacked(typed_lambda, name);\n+    packed_ = Function::FromTyped(typed_lambda, name);\n   }\n   /*!\n    * \\brief construct from a lambda function with the same signature.\n@@ -646,7 +646,7 @@ class TypedFunction<R(Args...)> {\n   template <typename FLambda, typename = typename std::enable_if<std::is_convertible<\n                                   FLambda, std::function<R(Args...)>>::value>::type>\n   TypedFunction(const FLambda& typed_lambda) {  // NOLINT(*)\n-    packed_ = Function::FromUnpacked(typed_lambda);\n+    packed_ = Function::FromTyped(typed_lambda);\n   }\n   /*!\n    * \\brief copy assignment operator from typed lambda\n@@ -668,11 +668,11 @@ class TypedFunction<R(Args...)> {\n                                   std::is_convertible<FLambda,\n                                                       std::function<R(Args...)>>::value>::type>\n   TSelf& operator=(FLambda typed_lambda) {  // NOLINT(*)\n-    packed_ = Function::FromUnpacked(typed_lambda);\n+    packed_ = Function::FromTyped(typed_lambda);\n     return *this;\n   }\n   /*!\n-   * \\brief copy assignment operator from PackedFunc.\n+   * \\brief copy assignment operator from ffi::Function.\n    * \\param packed The packed function.\n    * \\returns reference to self.\n    */\n@@ -698,16 +698,16 @@ class TypedFunction<R(Args...)> {\n     }\n   }\n   /*!\n-   * \\brief convert to PackedFunc\n-   * \\return the internal PackedFunc\n+   * \\brief convert to ffi::Function\n+   * \\return the internal ffi::Function\n    */\n   operator Function() const { return packed(); }\n   /*!\n-   * \\return reference the internal PackedFunc\n+   * \\return reference the internal ffi::Function\n    */\n   const Function& packed() const& { return packed_; }\n   /*!\n-   * \\return r-value reference the internal PackedFunc\n+   * \\return r-value reference the internal ffi::Function\n    */\n   constexpr Function&& packed() && { return std::move(packed_); }\n   /*! \\return Whether the packed function is nullptr */\n@@ -797,7 +797,7 @@ class Function::Registry {\n    */\n   template <typename FLambda>\n   Registry& set_body_typed(FLambda f) {\n-    return Register(Function::FromUnpacked(f, name_));\n+    return Register(Function::FromTyped(f, name_));\n   }\n \n   /*!\n@@ -838,14 +838,14 @@ class Function::Registry {\n         // call method pointer\n         return (target.*f)(params...);\n       };\n-      return Register(ffi::Function::FromUnpacked(fwrap, name_));\n+      return Register(ffi::Function::FromTyped(fwrap, name_));\n     }\n     if constexpr (std::is_base_of_v<Object, T>) {\n       auto fwrap = [f](const T* target, Args... params) -> R {\n         // call method pointer\n         return (const_cast<T*>(target)->*f)(params...);\n       };\n-      return Register(ffi::Function::FromUnpacked(fwrap, name_));\n+      return Register(ffi::Function::FromTyped(fwrap, name_));\n     }\n     return *this;\n   }\n@@ -859,14 +859,14 @@ class Function::Registry {\n         // call method pointer\n         return (target.*f)(params...);\n       };\n-      return Register(ffi::Function::FromUnpacked(fwrap, name_));\n+      return Register(ffi::Function::FromTyped(fwrap, name_));\n     }\n     if constexpr (std::is_base_of_v<Object, T>) {\n       auto fwrap = [f](const T* target, Args... params) -> R {\n         // call method pointer\n         return (target->*f)(params...);\n       };\n-      return Register(ffi::Function::FromUnpacked(fwrap, name_));\n+      return Register(ffi::Function::FromTyped(fwrap, name_));\n     }\n     return *this;\n   }\ndiff --git a/include/tvm/ffi/function_details.h b/include/tvm/ffi/function_details.h\nindex f47a253..3e7f9be 100644\n--- a/include/tvm/ffi/function_details.h\n+++ b/include/tvm/ffi/function_details.h\n@@ -73,7 +73,7 @@ struct FuncFunctorImpl {\n   static constexpr size_t num_args = sizeof...(Args);\n   // MSVC is not that friendly to in-template nested bool evaluation\n #ifndef _MSC_VER\n-  /*! \\brief Whether this function can be converted to ffi::Function via FromUnpacked */\n+  /*! \\brief Whether this function can be converted to ffi::Function via FromTyped */\n   static constexpr bool unpacked_supported = (ArgSupported<Args> && ...) && (RetSupported<R>);\n #endif\n \n@@ -108,7 +108,7 @@ struct FunctionInfo<R(Args...)> : FuncFunctorImpl<R, Args...> {};\n template <typename R, typename... Args>\n struct FunctionInfo<R (*)(Args...)> : FuncFunctorImpl<R, Args...> {};\n \n-/*! \\brief Using static function to output TypedPackedFunc signature */\n+/*! \\brief Using static function to output typed function signature */\n typedef std::string (*FGetFuncSignature)();\n \n /*!\ndiff --git a/include/tvm/ffi/rvalue_ref.h b/include/tvm/ffi/rvalue_ref.h\nindex a4a363f..b300436 100644\n--- a/include/tvm/ffi/rvalue_ref.h\n+++ b/include/tvm/ffi/rvalue_ref.h\n@@ -53,7 +53,7 @@ namespace ffi {\n  * \\code\n  *\n  * void Example() {\n- *   auto append = Function::FromUnpacked([](RValueRef<Array<int>> ref, int val) -> Array<int> {\n+ *   auto append = Function::FromTyped([](RValueRef<Array<int>> ref, int val) -> Array<int> {\n  *     Array<int> arr = *std::move(ref);\n  *     assert(arr.unique());\n  *     arr.push_back(val);\ndiff --git a/src/ffi/container.cc b/src/ffi/container.cc\nindex 563505b..0ca2034 100644\n--- a/src/ffi/container.cc\n+++ b/src/ffi/container.cc\n@@ -88,7 +88,7 @@ class MapForwardIterFunctor {\n \n TVM_FFI_REGISTER_GLOBAL(\"ffi.MapForwardIterFunctor\")\n     .set_body_typed([](const ffi::MapObj* n) -> ffi::Function {\n-      return ffi::Function::FromUnpacked(MapForwardIterFunctor(n->begin(), n->end()));\n+      return ffi::Function::FromTyped(MapForwardIterFunctor(n->begin(), n->end()));\n     });\n \n }  // namespace ffi\ndiff --git a/src/ffi/function.cc b/src/ffi/function.cc\nindex ed10ea5..594d3e0 100644\n--- a/src/ffi/function.cc\n+++ b/src/ffi/function.cc\n@@ -279,7 +279,7 @@ TVM_FFI_REGISTER_GLOBAL(\"ffi.FunctionListGlobalNamesFunctor\").set_body_typed([](\n       return names[i];\n     }\n   };\n-  return tvm::ffi::Function::FromUnpacked(return_functor);\n+  return tvm::ffi::Function::FromTyped(return_functor);\n });\n \n TVM_FFI_REGISTER_GLOBAL(\"ffi.String\").set_body_typed([](tvm::ffi::String val) -> tvm::ffi::String {\ndiff --git a/tests/cpp/test_array.cc b/tests/cpp/test_array.cc\nindex bb0b062..cb42f32 100644\n--- a/tests/cpp/test_array.cc\n+++ b/tests/cpp/test_array.cc\n@@ -185,8 +185,7 @@ TEST(Array, InsertEraseRange) {\n }\n \n TEST(Array, FuncArrayAnyArg) {\n-  Function fadd_one =\n-      Function::FromUnpacked([](Array<Any> a) -> Any { return a[0].cast<int>() + 1; });\n+  Function fadd_one = Function::FromTyped([](Array<Any> a) -> Any { return a[0].cast<int>() + 1; });\n   EXPECT_EQ(fadd_one(Array<Any>{1}).cast<int>(), 2);\n }\n \ndiff --git a/tests/cpp/test_function.cc b/tests/cpp/test_function.cc\nindex fbdc580..526e1ad 100644\n--- a/tests/cpp/test_function.cc\n+++ b/tests/cpp/test_function.cc\n@@ -72,9 +72,9 @@ TEST(Func, PackedArgs) {\n   EXPECT_EQ(data[2].cast<TInt>()->value, 12);\n }\n \n-TEST(Func, FromUnpacked) {\n+TEST(Func, FromTyped) {\n   // try decution\n-  Function fadd1 = Function::FromUnpacked([](const int32_t& a) -> int { return a + 1; });\n+  Function fadd1 = Function::FromTyped([](const int32_t& a) -> int { return a + 1; });\n   int b = fadd1(1).cast<int>();\n   EXPECT_EQ(b, 2);\n \n@@ -109,14 +109,14 @@ TEST(Func, FromUnpacked) {\n       ::tvm::ffi::Error);\n \n   // try decution\n-  Function fpass_and_return = Function::FromUnpacked(\n+  Function fpass_and_return = Function::FromTyped(\n       [](TInt x, int value, AnyView z) -> Function {\n         EXPECT_EQ(x.use_count(), 2);\n         EXPECT_EQ(x->value, value);\n         if (auto opt = z.as<int>()) {\n           EXPECT_EQ(value, *opt);\n         }\n-        return Function::FromUnpacked([value](int x) -> int { return x + value; });\n+        return Function::FromTyped([value](int x) -> int { return x + value; });\n       },\n       \"fpass_and_return\");\n   TInt a(11);\n@@ -139,18 +139,18 @@ TEST(Func, FromUnpacked) {\n       ::tvm::ffi::Error);\n \n   Function fconcact =\n-      Function::FromUnpacked([](const String& a, const String& b) -> String { return a + b; });\n+      Function::FromTyped([](const String& a, const String& b) -> String { return a + b; });\n   EXPECT_EQ(fconcact(\"abc\", \"def\").cast<String>(), \"abcdef\");\n }\n \n TEST(Func, PassReturnAny) {\n-  Function fadd_one = Function::FromUnpacked([](Any a) -> Any { return a.cast<int>() + 1; });\n+  Function fadd_one = Function::FromTyped([](Any a) -> Any { return a.cast<int>() + 1; });\n   EXPECT_EQ(fadd_one(1).cast<int>(), 2);\n }\n \n TEST(Func, Global) {\n   Function::SetGlobal(\"testing.add1\",\n-                      Function::FromUnpacked([](const int32_t& a) -> int { return a + 1; }));\n+                      Function::FromTyped([](const int32_t& a) -> int { return a + 1; }));\n   auto fadd1 = Function::GetGlobalRequired(\"testing.add1\");\n   int b = fadd1(1).cast<int>();\n   EXPECT_EQ(b, 2);\n@@ -199,7 +199,7 @@ TEST(Func, TypedFunctionAsAnyView) {\n TEST(Func, ObjectRefWithFallbackTraits) {\n   // test cases to test automatic type conversion via ObjectRefWithFallbackTraits\n   // through TPrimExpr\n-  Function freturn_primexpr = Function::FromUnpacked([](TPrimExpr a) -> TPrimExpr { return a; });\n+  Function freturn_primexpr = Function::FromTyped([](TPrimExpr a) -> TPrimExpr { return a; });\n \n   auto result_int = freturn_primexpr(1).cast<TPrimExpr>();\n   EXPECT_EQ(result_int->dtype, \"int64\");\ndiff --git a/tests/cpp/test_map.cc b/tests/cpp/test_map.cc\nindex 1c43230..bd0b58b 100644\n--- a/tests/cpp/test_map.cc\n+++ b/tests/cpp/test_map.cc\n@@ -243,9 +243,9 @@ TEST(Map, AnyConvertCheck) {\n       ::tvm::ffi::Error);\n }\n \n-TEST(Map, PackedFuncGetItem) {\n-  Function f = Function::FromUnpacked([](const MapObj* n, const Any& k) -> Any { return n->at(k); },\n-                                      \"map_get_item\");\n+TEST(Map, ffi::FunctionGetItem) {\n+  Function f = Function::FromTyped([](const MapObj* n, const Any& k) -> Any { return n->at(k); },\n+                                   \"map_get_item\");\n   Map<String, int64_t> map{{\"x\", 1}, {\"y\", 2}};\n   Any k(\"x\");\n   Any v = f(map, k);\ndiff --git a/tests/cpp/test_rvalue_ref.cc b/tests/cpp/test_rvalue_ref.cc\nindex ac81208..7cbd5c6 100644\n--- a/tests/cpp/test_rvalue_ref.cc\n+++ b/tests/cpp/test_rvalue_ref.cc\n@@ -31,7 +31,7 @@ using namespace tvm::ffi::testing;\n \n TEST(RValueRef, Basic) {\n   auto append =\n-      Function::FromUnpacked([](RValueRef<Array<int>> ref, int val, bool is_unique) -> Array<int> {\n+      Function::FromTyped([](RValueRef<Array<int>> ref, int val, bool is_unique) -> Array<int> {\n         Array<int> arr = *std::move(ref);\n         EXPECT_EQ(arr.unique(), is_unique);\n         arr.push_back(val);\n@@ -48,7 +48,7 @@ TEST(RValueRef, Basic) {\n \n TEST(RValueRef, ParamChecking) {\n   // try decution\n-  Function fadd1 = Function::FromUnpacked([](TInt a) -> int64_t { return a->value + 1; });\n+  Function fadd1 = Function::FromTyped([](TInt a) -> int64_t { return a->value + 1; });\n \n   // convert that triggers error\n   EXPECT_THROW(\n@@ -65,7 +65,7 @@ TEST(RValueRef, ParamChecking) {\n       },\n       ::tvm::ffi::Error);\n \n-  Function fadd2 = Function::FromUnpacked([](RValueRef<Array<int>> a) -> int {\n+  Function fadd2 = Function::FromTyped([](RValueRef<Array<int>> a) -> int {\n     Array<int> arr = *std::move(a);\n     return arr[0] + 1;\n   });\n@@ -86,7 +86,7 @@ TEST(RValueRef, ParamChecking) {\n       },\n       ::tvm::ffi::Error);\n   // triggered a rvalue based conversion\n-  Function func3 = Function::FromUnpacked([](RValueRef<TPrimExpr> a) -> String {\n+  Function func3 = Function::FromTyped([](RValueRef<TPrimExpr> a) -> String {\n     TPrimExpr expr = *std::move(a);\n     return expr->dtype;\n   });\ndiff --git a/tests/cpp/test_tuple.cc b/tests/cpp/test_tuple.cc\nindex 42c8e6a..79eeb48 100644\n--- a/tests/cpp/test_tuple.cc\n+++ b/tests/cpp/test_tuple.cc\n@@ -84,9 +84,9 @@ TEST(Tuple, AnyConvert) {\n   EXPECT_EQ(tuple2.get<1>()->value, 2);\n }\n \n-TEST(Tuple, FromUnpacked) {\n+TEST(Tuple, FromTyped) {\n   // try decution\n-  Function fadd1 = Function::FromUnpacked([](const Tuple<int, TPrimExpr>& a) -> int {\n+  Function fadd1 = Function::FromTyped([](const Tuple<int, TPrimExpr>& a) -> int {\n     return a.get<0>() + static_cast<int>(a.get<1>()->value);\n   });\n   int b = fadd1(Tuple<int, float>(1, 2)).cast<int>();\ndiff --git a/tests/cpp/test_variant.cc b/tests/cpp/test_variant.cc\nindex 94cbcd4..ee49ac7 100644\n--- a/tests/cpp/test_variant.cc\n+++ b/tests/cpp/test_variant.cc\n@@ -72,9 +72,9 @@ TEST(Variant, ObjectPtrHashEqual) {\n   EXPECT_TRUE(!ObjectPtrEqual()(v0, v2));\n }\n \n-TEST(Variant, FromUnpacked) {\n+TEST(Variant, FromTyped) {\n   // try decution\n-  Function fadd1 = Function::FromUnpacked([](const Variant<int, TInt>& a) -> int64_t {\n+  Function fadd1 = Function::FromTyped([](const Variant<int, TInt>& a) -> int64_t {\n     if (auto opt_int = a.as<int>()) {\n       return opt_int.value() + 1;\n     } else {\n@@ -100,7 +100,7 @@ TEST(Variant, FromUnpacked) {\n       },\n       ::tvm::ffi::Error);\n \n-  Function fadd2 = Function::FromUnpacked([](const Array<Variant<int, TInt>>& a) -> int64_t {\n+  Function fadd2 = Function::FromTyped([](const Array<Variant<int, TInt>>& a) -> int64_t {\n     if (auto opt_int = a[0].as<int>()) {\n       return opt_int.value() + 1;\n     } else {",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".cc",
+      ".h"
+    ],
+    "scopes_guess": [
+      "include",
+      "src",
+      "tests"
+    ]
+  }
+}

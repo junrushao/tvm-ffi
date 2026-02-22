@@ -1,0 +1,180 @@
+{
+  "sha": "a08fa6eb0d7a67de9f5a4354d9a1fe41c0dfa806",
+  "sha7": "a08fa6e",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-09-09T07:33:41-04:00",
+  "subject": "[FFI][REFACTOR] Streamline Object Declare Macros (#18289)",
+  "body": "",
+  "is_merge": false,
+  "parents": [
+    "4ffbc88b60f659a74619035e699986792c071e8d"
+  ],
+  "name_status": [
+    [
+      "M",
+      "docs/guides/cpp_guide.md"
+    ],
+    [
+      "M",
+      "docs/guides/python_guide.md"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/container/array.h"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/container/map.h"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/container/shape.h"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/container/tensor.h"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/error.h"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/extra/module.h"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/function.h"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/object.h"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/reflection/access_path.h"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/string.h"
+    ],
+    [
+      "M",
+      "src/ffi/extra/testing.cc"
+    ],
+    [
+      "M",
+      "tests/cpp/test_example.cc"
+    ],
+    [
+      "M",
+      "tests/cpp/test_reflection.cc"
+    ],
+    [
+      "M",
+      "tests/cpp/testing_object.h"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "docs/guides/cpp_guide.md",
+      "additions": 2,
+      "deletions": 4
+    },
+    {
+      "path": "docs/guides/python_guide.md",
+      "additions": 2,
+      "deletions": 3
+    },
+    {
+      "path": "include/tvm/ffi/container/array.h",
+      "additions": 1,
+      "deletions": 2
+    },
+    {
+      "path": "include/tvm/ffi/container/map.h",
+      "additions": 1,
+      "deletions": 2
+    },
+    {
+      "path": "include/tvm/ffi/container/shape.h",
+      "additions": 2,
+      "deletions": 3
+    },
+    {
+      "path": "include/tvm/ffi/container/tensor.h",
+      "additions": 2,
+      "deletions": 3
+    },
+    {
+      "path": "include/tvm/ffi/error.h",
+      "additions": 2,
+      "deletions": 3
+    },
+    {
+      "path": "include/tvm/ffi/extra/module.h",
+      "additions": 3,
+      "deletions": 3
+    },
+    {
+      "path": "include/tvm/ffi/function.h",
+      "additions": 2,
+      "deletions": 3
+    },
+    {
+      "path": "include/tvm/ffi/object.h",
+      "additions": 48,
+      "deletions": 58
+    },
+    {
+      "path": "include/tvm/ffi/reflection/access_path.h",
+      "additions": 4,
+      "deletions": 6
+    },
+    {
+      "path": "include/tvm/ffi/string.h",
+      "additions": 2,
+      "deletions": 4
+    },
+    {
+      "path": "src/ffi/extra/testing.cc",
+      "additions": 4,
+      "deletions": 7
+    },
+    {
+      "path": "tests/cpp/test_example.cc",
+      "additions": 2,
+      "deletions": 3
+    },
+    {
+      "path": "tests/cpp/test_reflection.cc",
+      "additions": 2,
+      "deletions": 5
+    },
+    {
+      "path": "tests/cpp/testing_object.h",
+      "additions": 14,
+      "deletions": 22
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/docs/guides/cpp_guide.md b/docs/guides/cpp_guide.md\nindex 6b976dd..a27fe2d 100644\n--- a/docs/guides/cpp_guide.md\n+++ b/docs/guides/cpp_guide.md\n@@ -105,9 +105,7 @@ class MyIntPairObj : public tvm::ffi::Object {\n \n   // Required: declare type information\n   // to register a dynamic type index through the system\n-  static constexpr const char* _type_key = \"example.MyIntPair\";\n-  // This macro registers the class with the FFI system to set up the right type index\n-  TVM_FFI_DECLARE_FINAL_OBJECT_INFO(MyIntPairObj, tvm::ffi::Object);\n+TVM_FFI_DECLARE_OBJECT_INFO_FINAL(\"example.MyIntPair\", MyIntPairObj, tvm::ffi::Object);\n };\n \n void ExampleObjectPtr() {\n@@ -138,7 +136,7 @@ class MyIntPair : public tvm::ffi::ObjectRef {\n \n   // Required: define object reference methods\n   // This macro provides the necessary methods for ObjectRef functionality\n-  TVM_FFI_DEFINE_OBJECT_REF_METHODS(MyIntPair, tvm::ffi::ObjectRef, MyIntPairObj);\n+  TVM_FFI_DEFINE_OBJECT_REF_METHODS_NULLABLE(MyIntPair, tvm::ffi::ObjectRef, MyIntPairObj);\n };\n \n void ExampleObjectRef() {\ndiff --git a/docs/guides/python_guide.md b/docs/guides/python_guide.md\nindex b993c3c..b7cff50 100644\n--- a/docs/guides/python_guide.md\n+++ b/docs/guides/python_guide.md\n@@ -188,8 +188,7 @@ public:\n   TestIntPairObj(int64_t a, int64_t b) : a(a), b(b) {}\n \n   // Required: declare type information\n-  static constexpr const char* _type_key = \"testing.TestIntPair\";\n-  TVM_FFI_DECLARE_FINAL_OBJECT_INFO(TestIntPairObj, tvm::ffi::Object);\n+TVM_FFI_DECLARE_OBJECT_INFO_FINAL(\"testing.TestIntPair\", TestIntPairObj, tvm::ffi::Object);\n };\n \n // Step 2: Define the reference wrapper (user-facing interface)\n@@ -201,7 +200,7 @@ public:\n   }\n \n   // Required: define object reference methods\n-  TVM_FFI_DEFINE_OBJECT_REF_METHODS(TestIntPair, tvm::ffi::ObjectRef, TestIntPairObj);\n+  TVM_FFI_DEFINE_OBJECT_REF_METHODS_NULLABLE(TestIntPair, tvm::ffi::ObjectRef, TestIntPairObj);\n };\n \n TVM_FFI_STATIC_INIT_BLOCK({\ndiff --git a/include/tvm/ffi/container/array.h b/include/tvm/ffi/container/array.h\nindex 8fab30b..db025c0 100644\n--- a/include/tvm/ffi/container/array.h\n+++ b/include/tvm/ffi/container/array.h\n@@ -157,9 +157,8 @@ class ArrayObj : public Object, public details::InplaceArrayBase<ArrayObj, TVMFF\n \n   /// \\cond Doxygen_Suppress\n   static constexpr const int32_t _type_index = TypeIndex::kTVMFFIArray;\n-  static constexpr const char* _type_key = StaticTypeKey::kTVMFFIArray;\n   static const constexpr bool _type_final = true;\n-  TVM_FFI_DECLARE_STATIC_OBJECT_INFO(ArrayObj, Object);\n+  TVM_FFI_DECLARE_OBJECT_INFO_STATIC(StaticTypeKey::kTVMFFIArray, ArrayObj, Object);\n   /// \\endcond\n \n  private:\ndiff --git a/include/tvm/ffi/container/map.h b/include/tvm/ffi/container/map.h\nindex bea2688..4719045 100644\n--- a/include/tvm/ffi/container/map.h\n+++ b/include/tvm/ffi/container/map.h\n@@ -73,9 +73,8 @@ class MapObj : public Object {\n \n   /// \\cond Doxygen_Suppress\n   static constexpr const int32_t _type_index = TypeIndex::kTVMFFIMap;\n-  static constexpr const char* _type_key = StaticTypeKey::kTVMFFIMap;\n   static const constexpr bool _type_final = true;\n-  TVM_FFI_DECLARE_STATIC_OBJECT_INFO(MapObj, Object);\n+  TVM_FFI_DECLARE_OBJECT_INFO_STATIC(StaticTypeKey::kTVMFFIMap, MapObj, Object);\n   /// \\endcond\n \n   /*!\ndiff --git a/include/tvm/ffi/container/shape.h b/include/tvm/ffi/container/shape.h\nindex f5e88d6..de24a44 100644\n--- a/include/tvm/ffi/container/shape.h\n+++ b/include/tvm/ffi/container/shape.h\n@@ -53,8 +53,7 @@ class ShapeObj : public Object, public TVMFFIShapeCell {\n \n   /// \\cond Doxygen_Suppress\n   static constexpr const uint32_t _type_index = TypeIndex::kTVMFFIShape;\n-  static constexpr const char* _type_key = StaticTypeKey::kTVMFFIShape;\n-  TVM_FFI_DECLARE_STATIC_OBJECT_INFO(ShapeObj, Object);\n+  TVM_FFI_DECLARE_OBJECT_INFO_STATIC(StaticTypeKey::kTVMFFIShape, ShapeObj, Object);\n   /// \\endcond\n };\n \n@@ -212,7 +211,7 @@ class Shape : public ObjectRef {\n   int64_t Product() const { return get()->Product(); }\n \n   /// \\cond Doxygen_Suppress\n-  TVM_FFI_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(Shape, ObjectRef, ShapeObj);\n+  TVM_FFI_DEFINE_OBJECT_REF_METHODS_NOTNULLABLE(Shape, ObjectRef, ShapeObj);\n   /// \\endcond\n \n  private:\ndiff --git a/include/tvm/ffi/container/tensor.h b/include/tvm/ffi/container/tensor.h\nindex 21c67de..4d652e2 100644\n--- a/include/tvm/ffi/container/tensor.h\n+++ b/include/tvm/ffi/container/tensor.h\n@@ -121,8 +121,7 @@ class TensorObj : public Object, public DLTensor {\n  public:\n   /// \\cond Doxygen_Suppress\n   static constexpr const uint32_t _type_index = TypeIndex::kTVMFFITensor;\n-  static constexpr const char* _type_key = StaticTypeKey::kTVMFFITensor;\n-  TVM_FFI_DECLARE_STATIC_OBJECT_INFO(TensorObj, Object);\n+  TVM_FFI_DECLARE_OBJECT_INFO_STATIC(StaticTypeKey::kTVMFFITensor, TensorObj, Object);\n   /// \\endcond\n \n   /*!\n@@ -363,7 +362,7 @@ class Tensor : public ObjectRef {\n   DLManagedTensorVersioned* ToDLPackVersioned() const { return get_mutable()->ToDLPackVersioned(); }\n \n   /// \\cond Doxygen_Suppress\n-  TVM_FFI_DEFINE_OBJECT_REF_METHODS(Tensor, ObjectRef, TensorObj);\n+  TVM_FFI_DEFINE_OBJECT_REF_METHODS_NULLABLE(Tensor, ObjectRef, TensorObj);\n   /// \\endcond\n \n  protected:\ndiff --git a/include/tvm/ffi/error.h b/include/tvm/ffi/error.h\nindex 78dfe5e..261b69e 100644\n--- a/include/tvm/ffi/error.h\n+++ b/include/tvm/ffi/error.h\n@@ -87,8 +87,7 @@ class ErrorObj : public Object, public TVMFFIErrorCell {\n  public:\n   /// \\cond Doxygen_Suppress\n   static constexpr const int32_t _type_index = TypeIndex::kTVMFFIError;\n-  static constexpr const char* _type_key = \"ffi.Error\";\n-  TVM_FFI_DECLARE_STATIC_OBJECT_INFO(ErrorObj, Object);\n+  TVM_FFI_DECLARE_OBJECT_INFO_STATIC(\"ffi.Error\", ErrorObj, Object);\n   /// \\endcond\n };\n \n@@ -196,7 +195,7 @@ class Error : public ObjectRef, public std::exception {\n   }\n \n   /// \\cond Doxygen_Suppress\n-  TVM_FFI_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(Error, ObjectRef, ErrorObj);\n+  TVM_FFI_DEFINE_OBJECT_REF_METHODS_NOTNULLABLE(Error, ObjectRef, ErrorObj);\n   /// \\endcond\n };\n \ndiff --git a/include/tvm/ffi/extra/module.h b/include/tvm/ffi/extra/module.h\nindex a1dc91e..fd6bf19 100644\n--- a/include/tvm/ffi/extra/module.h\n+++ b/include/tvm/ffi/extra/module.h\n@@ -146,9 +146,9 @@ class TVM_FFI_EXTRA_CXX_API ModuleObj : public Object {\n \n   /// \\cond Doxygen_Suppress\n   static constexpr const int32_t _type_index = TypeIndex::kTVMFFIModule;\n-  static constexpr const char* _type_key = StaticTypeKey::kTVMFFIModule;\n+  static constexpr const bool _type_mutable = true;\n   static const constexpr bool _type_final = true;\n-  TVM_FFI_DECLARE_STATIC_OBJECT_INFO(ModuleObj, Object);\n+  TVM_FFI_DECLARE_OBJECT_INFO_STATIC(StaticTypeKey::kTVMFFIModule, ModuleObj, Object);\n   /// \\endcond\n \n  protected:\n@@ -234,7 +234,7 @@ class Module : public ObjectRef {\n       const ffi::TypedFunction<void(String, void*)>& callback);\n \n   /// \\cond Doxygen_Suppress\n-  TVM_FFI_DEFINE_MUTABLE_NOTNULLABLE_OBJECT_REF_METHODS(Module, ObjectRef, ModuleObj);\n+  TVM_FFI_DEFINE_OBJECT_REF_METHODS_NOTNULLABLE(Module, ObjectRef, ModuleObj);\n   /// \\endcond\n };\n \ndiff --git a/include/tvm/ffi/function.h b/include/tvm/ffi/function.h\nindex d27cfc0..0706fdc 100644\n--- a/include/tvm/ffi/function.h\n+++ b/include/tvm/ffi/function.h\n@@ -116,8 +116,7 @@ class FunctionObj : public Object, public TVMFFIFunctionCell {\n   }\n   /// \\cond Doxygen_Suppress\n   static constexpr const uint32_t _type_index = TypeIndex::kTVMFFIFunction;\n-  static constexpr const char* _type_key = StaticTypeKey::kTVMFFIFunction;\n-  TVM_FFI_DECLARE_STATIC_OBJECT_INFO(FunctionObj, Object);\n+  TVM_FFI_DECLARE_OBJECT_INFO_STATIC(StaticTypeKey::kTVMFFIFunction, FunctionObj, Object);\n   /// \\endcond\n \n  protected:\n@@ -594,7 +593,7 @@ class Function : public ObjectRef {\n   TVM_FFI_INLINE bool operator!=(std::nullptr_t) const { return data_ != nullptr; }\n \n   /// \\cond Doxygen_Suppress\n-  TVM_FFI_DEFINE_OBJECT_REF_METHODS(Function, ObjectRef, FunctionObj);\n+  TVM_FFI_DEFINE_OBJECT_REF_METHODS_NULLABLE(Function, ObjectRef, FunctionObj);\n   /// \\endcond\n \n   class Registry;\ndiff --git a/include/tvm/ffi/object.h b/include/tvm/ffi/object.h\nindex 478bb27..6dcc30e 100644\n--- a/include/tvm/ffi/object.h\n+++ b/include/tvm/ffi/object.h\n@@ -154,7 +154,7 @@ TVM_FFI_INLINE bool IsObjectInstance(int32_t object_type_index);\n  *       The unique string identifier of the type.\n  * - _type_final:\n  *       Whether the type is terminal type(there is no subclass of the type in the object system).\n- *       This field is automatically set by macro TVM_DECLARE_FINAL_OBJECT_INFO\n+ *       This field is automatically set by macro TVM_FFI_DECLARE_OBJECT_INFO_FINAL\n  *       It is still OK to sub-class a terminal object type T and construct it using make_object.\n  *       But IsInstance check will only show that the object type is T(instead of the sub-class).\n  * - _type_mutable:\n@@ -177,8 +177,8 @@ TVM_FFI_INLINE bool IsObjectInstance(int32_t object_type_index);\n  *       Recommendation: set to false for optimal runtime speed if we know exact number of children.\n  *\n  * Two macros are used to declare helper functions in the object:\n- * - Use TVM_FFI_DECLARE_BASE_OBJECT_INFO for object classes that can be sub-classed.\n- * - Use TVM_FFI_DECLARE_FINAL_OBJECT_INFO for object classes that cannot be sub-classed.\n+ * - Use TVM_FFI_DECLARE_OBJECT_INFO for object classes that can be sub-classed.\n+ * - Use TVM_FFI_DECLARE_OBJECT_INFO_FINAL for object classes that cannot be sub-classed.\n  *\n  * New objects can be created using make_object function.\n  * Which will automatically populate the type_index and deleter of the object.\n@@ -276,7 +276,7 @@ class Object {\n   /*! \\brief The structural equality and hash kind of the type */\n   static constexpr TVMFFISEqHashKind _type_s_eq_hash_kind = kTVMFFISEqHashKindUnsupported;\n   // The following functions are provided by macro\n-  // TVM_FFI_DECLARE_BASE_OBJECT_INFO and TVM_DECLARE_FINAL_OBJECT_INFO\n+  // TVM_FFI_DECLARE_OBJECT_INFO and TVM_FFI_DECLARE_OBJECT_INFO_FINAL\n   /*!\n    * \\brief Get the runtime allocated type index of the type\n    * \\note Getting this information may need dynamic calls into a global table.\n@@ -885,20 +885,24 @@ struct ObjectPtrEqual {\n /// \\endcond\n \n /*!\n- * \\brief Helper macro to declare a object that comes with static type index.\n+ * \\brief Helper macro to declare object information with static type index.\n+ *\n+ * \\param TypeKey The type key of the current type.\n  * \\param TypeName The name of the current type.\n  * \\param ParentType The name of the ParentType\n  */\n-#define TVM_FFI_DECLARE_STATIC_OBJECT_INFO(TypeName, ParentType)      \\\n-  static int32_t RuntimeTypeIndex() { return TypeName::_type_index; } \\\n+#define TVM_FFI_DECLARE_OBJECT_INFO_STATIC(TypeKey, TypeName, ParentType) \\\n+  static constexpr const char* _type_key = TypeKey;                       \\\n+  static int32_t RuntimeTypeIndex() { return TypeName::_type_index; }     \\\n   TVM_FFI_REGISTER_STATIC_TYPE_INFO(TypeName, ParentType)\n \n /*!\n- * \\brief helper macro to declare a base object type that can be inherited.\n+ * \\brief Helper macro to declare object information with type key already defined in class.\n+ *\n  * \\param TypeName The name of the current type.\n  * \\param ParentType The name of the ParentType\n  */\n-#define TVM_FFI_DECLARE_BASE_OBJECT_INFO(TypeName, ParentType)                                \\\n+#define TVM_FFI_DECLARE_OBJECT_INFO_PREDEFINED_TYPE_KEY(TypeName, ParentType)                 \\\n   static constexpr int32_t _type_depth = ParentType::_type_depth + 1;                         \\\n   static int32_t _GetOrAllocRuntimeTypeIndex() {                                              \\\n     static_assert(!ParentType::_type_final, \"ParentType marked as final\");                    \\\n@@ -916,14 +920,27 @@ struct ObjectPtrEqual {\n   static inline int32_t _type_index = _GetOrAllocRuntimeTypeIndex()\n \n /*!\n- * \\brief helper macro to declare type information in a final class.\n+ * \\brief Helper macro to declare object information with dynamic type index.\n+ *\n+ * \\param TypeKey The type key of the current type.\n  * \\param TypeName The name of the current type.\n  * \\param ParentType The name of the ParentType\n  */\n-#define TVM_FFI_DECLARE_FINAL_OBJECT_INFO(TypeName, ParentType)      \\\n-  static const constexpr int _type_child_slots [[maybe_unused]] = 0; \\\n-  static const constexpr bool _type_final [[maybe_unused]] = true;   \\\n-  TVM_FFI_DECLARE_BASE_OBJECT_INFO(TypeName, ParentType)\n+#define TVM_FFI_DECLARE_OBJECT_INFO(TypeKey, TypeName, ParentType) \\\n+  static constexpr const char* _type_key = TypeKey;                \\\n+  TVM_FFI_DECLARE_OBJECT_INFO_PREDEFINED_TYPE_KEY(TypeName, ParentType)\n+\n+/*!\n+ * \\brief Helper macro to declare object information with dynamic type index and is final.\n+ *\n+ * \\param TypeKey The type key of the current type.\n+ * \\param TypeName The name of the current type.\n+ * \\param ParentType The name of the ParentType\n+ */\n+#define TVM_FFI_DECLARE_OBJECT_INFO_FINAL(TypeKey, TypeName, ParentType) \\\n+  static const constexpr int _type_child_slots [[maybe_unused]] = 0;     \\\n+  static const constexpr bool _type_final [[maybe_unused]] = true;       \\\n+  TVM_FFI_DECLARE_OBJECT_INFO(TypeKey, TypeName, ParentType)\n \n /*!\n  * \\brief Define object reference methods.\n@@ -935,13 +952,15 @@ struct ObjectPtrEqual {\n  * \\note This macro also defines the default constructor that puts the ObjectRef\n  *       in undefined state initially.\n  */\n-#define TVM_FFI_DEFINE_OBJECT_REF_METHODS(TypeName, ParentType, ObjectName)                    \\\n-  TypeName() = default;                                                                        \\\n-  explicit TypeName(::tvm::ffi::ObjectPtr<ObjectName> n) : ParentType(n) {}                    \\\n-  explicit TypeName(::tvm::ffi::UnsafeInit tag) : ParentType(tag) {}                           \\\n-  TVM_FFI_DEFINE_DEFAULT_COPY_MOVE_AND_ASSIGN(TypeName)                                        \\\n-  const ObjectName* operator->() const { return static_cast<const ObjectName*>(data_.get()); } \\\n-  const ObjectName* get() const { return operator->(); }                                       \\\n+#define TVM_FFI_DEFINE_OBJECT_REF_METHODS_NULLABLE(TypeName, ParentType, ObjectName)               \\\n+  TypeName() = default;                                                                            \\\n+  explicit TypeName(::tvm::ffi::ObjectPtr<ObjectName> n) : ParentType(n) {}                        \\\n+  explicit TypeName(::tvm::ffi::UnsafeInit tag) : ParentType(tag) {}                               \\\n+  TVM_FFI_DEFINE_DEFAULT_COPY_MOVE_AND_ASSIGN(TypeName)                                            \\\n+  using __PtrType = std::conditional_t<ObjectName::_type_mutable, ObjectName*, const ObjectName*>; \\\n+  __PtrType operator->() const { return static_cast<__PtrType>(data_.get()); }                     \\\n+  __PtrType get() const { return static_cast<__PtrType>(data_.get()); }                            \\\n+  static constexpr bool _type_is_nullable = true;                                                  \\\n   using ContainerType = ObjectName\n \n /*!\n@@ -951,46 +970,17 @@ struct ObjectPtrEqual {\n  * \\param ParentType The parent type of the objectref\n  * \\param ObjectName The type name of the object.\n  */\n-#define TVM_FFI_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(TypeName, ParentType, ObjectName)        \\\n-  explicit TypeName(::tvm::ffi::UnsafeInit tag) : ParentType(tag) {}                           \\\n-  TVM_FFI_DEFINE_DEFAULT_COPY_MOVE_AND_ASSIGN(TypeName)                                        \\\n-  const ObjectName* operator->() const { return static_cast<const ObjectName*>(data_.get()); } \\\n-  const ObjectName* get() const { return operator->(); }                                       \\\n-  static constexpr bool _type_is_nullable = false;                                             \\\n-  using ContainerType = ObjectName\n-\n-/*!\n- * \\brief Define object reference methods of whose content is mutable.\n- * \\param TypeName The object type name\n- * \\param ParentType The parent type of the objectref\n- * \\param ObjectName The type name of the object.\n- * \\note We recommend making objects immutable when possible.\n- *       This macro is only reserved for objects that stores runtime states.\n- */\n-#define TVM_FFI_DEFINE_MUTABLE_OBJECT_REF_METHODS(TypeName, ParentType, ObjectName) \\\n-  TypeName() = default;                                                             \\\n-  explicit TypeName(::tvm::ffi::UnsafeInit tag) : ParentType(tag) {}                \\\n-  TVM_FFI_DEFINE_DEFAULT_COPY_MOVE_AND_ASSIGN(TypeName)                             \\\n-  explicit TypeName(::tvm::ffi::ObjectPtr<ObjectName> n) : ParentType(n) {}         \\\n-  ObjectName* operator->() const { return static_cast<ObjectName*>(data_.get()); }  \\\n-  using ContainerType = ObjectName\n-\n-/*!\n- * \\brief Define object reference methods that is both not nullable and mutable.\n- *\n- * \\param TypeName The object type name\n- * \\param ParentType The parent type of the objectref\n- * \\param ObjectName The type name of the object.\n- */\n-#define TVM_FFI_DEFINE_MUTABLE_NOTNULLABLE_OBJECT_REF_METHODS(TypeName, ParentType, ObjectName) \\\n-  explicit TypeName(::tvm::ffi::UnsafeInit tag) : ParentType(tag) {}                            \\\n-  TVM_FFI_DEFINE_DEFAULT_COPY_MOVE_AND_ASSIGN(TypeName)                                         \\\n-  ObjectName* operator->() const { return static_cast<ObjectName*>(data_.get()); }              \\\n-  ObjectName* get() const { return operator->(); }                                              \\\n-  static constexpr bool _type_is_nullable = false;                                              \\\n+#define TVM_FFI_DEFINE_OBJECT_REF_METHODS_NOTNULLABLE(TypeName, ParentType, ObjectName)            \\\n+  explicit TypeName(::tvm::ffi::UnsafeInit tag) : ParentType(tag) {}                               \\\n+  TVM_FFI_DEFINE_DEFAULT_COPY_MOVE_AND_ASSIGN(TypeName)                                            \\\n+  using __PtrType = std::conditional_t<ObjectName::_type_mutable, ObjectName*, const ObjectName*>; \\\n+  __PtrType operator->() const { return static_cast<__PtrType>(data_.get()); }                     \\\n+  __PtrType get() const { return static_cast<__PtrType>(data_.get()); }                            \\\n+  static constexpr bool _type_is_nullable = false;                                                 \\\n   using ContainerType = ObjectName\n \n namespace details {\n+\n template <typename TargetType>\n TVM_FFI_INLINE bool IsObjectInstance(int32_t object_type_index) {\n   static_assert(std::is_base_of_v<Object, TargetType>);\ndiff --git a/include/tvm/ffi/reflection/access_path.h b/include/tvm/ffi/reflection/access_path.h\nindex e7aed0a..ea102e1 100644\n--- a/include/tvm/ffi/reflection/access_path.h\n+++ b/include/tvm/ffi/reflection/access_path.h\n@@ -92,9 +92,8 @@ class AccessStepObj : public Object {\n   inline bool StepEqual(const AccessStep& other) const;\n \n   /// \\cond Doxygen_Suppress\n-  static constexpr const char* _type_key = \"ffi.reflection.AccessStep\";\n   static constexpr TVMFFISEqHashKind _type_s_eq_hash_kind = kTVMFFISEqHashKindConstTreeNode;\n-  TVM_FFI_DECLARE_FINAL_OBJECT_INFO(AccessStepObj, Object);\n+  TVM_FFI_DECLARE_OBJECT_INFO_FINAL(\"ffi.reflection.AccessStep\", AccessStepObj, Object);\n   /// \\endcond\n };\n \n@@ -162,7 +161,7 @@ class AccessStep : public ObjectRef {\n   }\n \n   /// \\cond Doxygen_Suppress\n-  TVM_FFI_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(AccessStep, ObjectRef, AccessStepObj);\n+  TVM_FFI_DEFINE_OBJECT_REF_METHODS_NOTNULLABLE(AccessStep, ObjectRef, AccessStepObj);\n   /// \\endcond\n };\n \n@@ -286,9 +285,8 @@ class AccessPathObj : public Object {\n   inline bool IsPrefixOf(const AccessPath& other) const;\n \n   /// \\cond Doxygen_Suppress\n-  static constexpr const char* _type_key = \"ffi.reflection.AccessPath\";\n   static constexpr TVMFFISEqHashKind _type_s_eq_hash_kind = kTVMFFISEqHashKindConstTreeNode;\n-  TVM_FFI_DECLARE_FINAL_OBJECT_INFO(AccessPathObj, Object);\n+  TVM_FFI_DECLARE_OBJECT_INFO_FINAL(\"ffi.reflection.AccessPath\", AccessPathObj, Object);\n   /// \\endcond\n \n  private:\n@@ -358,7 +356,7 @@ class AccessPath : public ObjectRef {\n   }\n \n   /// \\cond Doxygen_Suppress\n-  TVM_FFI_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(AccessPath, ObjectRef, AccessPathObj);\n+  TVM_FFI_DEFINE_OBJECT_REF_METHODS_NOTNULLABLE(AccessPath, ObjectRef, AccessPathObj);\n   /// \\endcond\n \n  private:\ndiff --git a/include/tvm/ffi/string.h b/include/tvm/ffi/string.h\nindex 41720d0..a1529d7 100644\n--- a/include/tvm/ffi/string.h\n+++ b/include/tvm/ffi/string.h\n@@ -61,18 +61,16 @@ class BytesObjBase : public Object, public TVMFFIByteArray {};\n class BytesObj : public BytesObjBase {\n  public:\n   static constexpr const uint32_t _type_index = TypeIndex::kTVMFFIBytes;\n-  static constexpr const char* _type_key = StaticTypeKey::kTVMFFIBytes;\n   static const constexpr bool _type_final = true;\n-  TVM_FFI_DECLARE_STATIC_OBJECT_INFO(BytesObj, Object);\n+  TVM_FFI_DECLARE_OBJECT_INFO_STATIC(StaticTypeKey::kTVMFFIBytes, BytesObj, Object);\n };\n \n /*! \\brief An object representing string. This is a POD type. */\n class StringObj : public BytesObjBase {\n  public:\n   static constexpr const uint32_t _type_index = TypeIndex::kTVMFFIStr;\n-  static constexpr const char* _type_key = StaticTypeKey::kTVMFFIStr;\n   static const constexpr bool _type_final = true;\n-  TVM_FFI_DECLARE_STATIC_OBJECT_INFO(StringObj, Object);\n+  TVM_FFI_DECLARE_OBJECT_INFO_STATIC(StaticTypeKey::kTVMFFIStr, StringObj, Object);\n };\n \n // String moved from std::string\ndiff --git a/src/ffi/extra/testing.cc b/src/ffi/extra/testing.cc\nindex 0800d48..1b2862a 100644\n--- a/src/ffi/extra/testing.cc\n+++ b/src/ffi/extra/testing.cc\n@@ -40,8 +40,7 @@ class TestIntPairObj : public tvm::ffi::Object {\n   TestIntPairObj(int64_t a, int64_t b) : a(a), b(b) {}\n \n   // Required: declare type information\n-  static constexpr const char* _type_key = \"testing.TestIntPair\";\n-  TVM_FFI_DECLARE_FINAL_OBJECT_INFO(TestIntPairObj, tvm::ffi::Object);\n+  TVM_FFI_DECLARE_OBJECT_INFO_FINAL(\"testing.TestIntPair\", TestIntPairObj, tvm::ffi::Object);\n };\n \n // Step 2: Define the reference wrapper (user-facing interface)\n@@ -53,7 +52,7 @@ class TestIntPair : public tvm::ffi::ObjectRef {\n   }\n \n   // Required: define object reference methods\n-  TVM_FFI_DEFINE_OBJECT_REF_METHODS(TestIntPair, tvm::ffi::ObjectRef, TestIntPairObj);\n+  TVM_FFI_DEFINE_OBJECT_REF_METHODS_NULLABLE(TestIntPair, tvm::ffi::ObjectRef, TestIntPairObj);\n };\n \n TVM_FFI_STATIC_INIT_BLOCK({\n@@ -76,8 +75,7 @@ class TestObjectBase : public Object {\n   // declare as one slot, with float as overflow\n   static constexpr bool _type_mutable = true;\n   static constexpr uint32_t _type_child_slots = 1;\n-  static constexpr const char* _type_key = \"testing.TestObjectBase\";\n-  TVM_FFI_DECLARE_BASE_OBJECT_INFO(TestObjectBase, Object);\n+  TVM_FFI_DECLARE_OBJECT_INFO(\"testing.TestObjectBase\", TestObjectBase, Object);\n };\n \n class TestObjectDerived : public TestObjectBase {\n@@ -86,8 +84,7 @@ class TestObjectDerived : public TestObjectBase {\n   Array<Any> v_array;\n \n   // declare as one slot, with float as overflow\n-  static constexpr const char* _type_key = \"testing.TestObjectDerived\";\n-  TVM_FFI_DECLARE_FINAL_OBJECT_INFO(TestObjectDerived, TestObjectBase);\n+  TVM_FFI_DECLARE_OBJECT_INFO_FINAL(\"testing.TestObjectDerived\", TestObjectDerived, TestObjectBase);\n };\n \n TVM_FFI_NO_INLINE void TestRaiseError(String kind, String msg) {\ndiff --git a/tests/cpp/test_example.cc b/tests/cpp/test_example.cc\nindex 9808be6..ee450bc 100644\n--- a/tests/cpp/test_example.cc\n+++ b/tests/cpp/test_example.cc\n@@ -243,8 +243,7 @@ class MyIntPairObj : public tvm::ffi::Object {\n   MyIntPairObj(int64_t a, int64_t b) : a(a), b(b) {}\n \n   // Required: declare type information\n-  static constexpr const char* _type_key = \"example.MyIntPair\";\n-  TVM_FFI_DECLARE_FINAL_OBJECT_INFO(MyIntPairObj, tvm::ffi::Object);\n+  TVM_FFI_DECLARE_OBJECT_INFO_FINAL(\"example.MyIntPair\", MyIntPairObj, tvm::ffi::Object);\n };\n \n // Step 2: Define the reference wrapper (user-facing interface)\n@@ -254,7 +253,7 @@ class MyIntPair : public tvm::ffi::ObjectRef {\n   explicit MyIntPair(int64_t a, int64_t b) { data_ = tvm::ffi::make_object<MyIntPairObj>(a, b); }\n \n   // Required: define object reference methods\n-  TVM_FFI_DEFINE_OBJECT_REF_METHODS(MyIntPair, tvm::ffi::ObjectRef, MyIntPairObj);\n+  TVM_FFI_DEFINE_OBJECT_REF_METHODS_NULLABLE(MyIntPair, tvm::ffi::ObjectRef, MyIntPairObj);\n };\n \n void ExampleObjectPtr() {\ndiff --git a/tests/cpp/test_reflection.cc b/tests/cpp/test_reflection.cc\nindex 85da00c..8de408d 100644\n--- a/tests/cpp/test_reflection.cc\n+++ b/tests/cpp/test_reflection.cc\n@@ -37,16 +37,13 @@ struct TestObjA : public Object {\n   int64_t x;\n   int64_t y;\n \n-  static constexpr const char* _type_key = \"test.TestObjA\";\n   static constexpr bool _type_mutable = true;\n-  TVM_FFI_DECLARE_BASE_OBJECT_INFO(TestObjA, Object);\n+  TVM_FFI_DECLARE_OBJECT_INFO(\"test.TestObjA\", TestObjA, Object);\n };\n \n struct TestObjADerived : public TestObjA {\n   int64_t z;\n-\n-  static constexpr const char* _type_key = \"test.TestObjADerived\";\n-  TVM_FFI_DECLARE_FINAL_OBJECT_INFO(TestObjADerived, TestObjA);\n+  TVM_FFI_DECLARE_OBJECT_INFO_FINAL(\"test.TestObjADerived\", TestObjADerived, TestObjA);\n };\n \n TVM_FFI_STATIC_INIT_BLOCK({\ndiff --git a/tests/cpp/testing_object.h b/tests/cpp/testing_object.h\nindex 1f6e678..933ba99 100644\n--- a/tests/cpp/testing_object.h\n+++ b/tests/cpp/testing_object.h\n@@ -46,13 +46,12 @@ class TNumberObj : public BasePad, public Object {\n   // declare as one slot, with float as overflow\n   static constexpr uint32_t _type_child_slots = 1;\n   static constexpr TVMFFISEqHashKind _type_s_eq_hash_kind = kTVMFFISEqHashKindTreeNode;\n-  static constexpr const char* _type_key = \"test.Number\";\n-  TVM_FFI_DECLARE_BASE_OBJECT_INFO(TNumberObj, Object);\n+  TVM_FFI_DECLARE_OBJECT_INFO(\"test.Number\", TNumberObj, Object);\n };\n \n class TNumber : public ObjectRef {\n  public:\n-  TVM_FFI_DEFINE_OBJECT_REF_METHODS(TNumber, ObjectRef, TNumberObj);\n+  TVM_FFI_DEFINE_OBJECT_REF_METHODS_NULLABLE(TNumber, ObjectRef, TNumberObj);\n };\n \n class TIntObj : public TNumberObj {\n@@ -64,11 +63,9 @@ class TIntObj : public TNumberObj {\n \n   int64_t GetValue() const { return value; }\n \n-  static constexpr const char* _type_key = \"test.Int\";\n-\n   inline static void RegisterReflection();\n \n-  TVM_FFI_DECLARE_FINAL_OBJECT_INFO(TIntObj, TNumberObj);\n+  TVM_FFI_DECLARE_OBJECT_INFO_FINAL(\"test.Int\", TIntObj, TNumberObj);\n };\n \n class TInt : public TNumber {\n@@ -77,7 +74,7 @@ class TInt : public TNumber {\n \n   static TInt StaticAdd(TInt lhs, TInt rhs) { return TInt(lhs->value + rhs->value); }\n \n-  TVM_FFI_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(TInt, TNumber, TIntObj);\n+  TVM_FFI_DEFINE_OBJECT_REF_METHODS_NOTNULLABLE(TInt, TNumber, TIntObj);\n };\n \n inline void TIntObj::RegisterReflection() {\n@@ -117,15 +114,14 @@ class TFloatObj : public TNumberObj {\n         .def(\"add\", &TFloatObj::Add, \"add method\");\n   }\n \n-  static constexpr const char* _type_key = \"test.Float\";\n-  TVM_FFI_DECLARE_FINAL_OBJECT_INFO(TFloatObj, TNumberObj);\n+  TVM_FFI_DECLARE_OBJECT_INFO_FINAL(\"test.Float\", TFloatObj, TNumberObj);\n };\n \n class TFloat : public TNumber {\n  public:\n   explicit TFloat(double value) { data_ = make_object<TFloatObj>(value); }\n \n-  TVM_FFI_DEFINE_OBJECT_REF_METHODS(TFloat, TNumber, TFloatObj);\n+  TVM_FFI_DEFINE_OBJECT_REF_METHODS_NULLABLE(TFloat, TNumber, TFloatObj);\n };\n \n class TPrimExprObj : public Object {\n@@ -146,10 +142,9 @@ class TPrimExprObj : public Object {\n         });\n   }\n \n-  static constexpr const char* _type_key = \"test.PrimExpr\";\n   static constexpr TVMFFISEqHashKind _type_s_eq_hash_kind = kTVMFFISEqHashKindTreeNode;\n   static constexpr bool _type_mutable = true;\n-  TVM_FFI_DECLARE_FINAL_OBJECT_INFO(TPrimExprObj, Object);\n+  TVM_FFI_DECLARE_OBJECT_INFO_FINAL(\"test.PrimExpr\", TPrimExprObj, Object);\n };\n \n class TPrimExpr : public ObjectRef {\n@@ -158,7 +153,7 @@ class TPrimExpr : public ObjectRef {\n     data_ = make_object<TPrimExprObj>(dtype, value);\n   }\n \n-  TVM_FFI_DEFINE_OBJECT_REF_METHODS(TPrimExpr, ObjectRef, TPrimExprObj);\n+  TVM_FFI_DEFINE_OBJECT_REF_METHODS_NULLABLE(TPrimExpr, ObjectRef, TPrimExprObj);\n };\n \n class TVarObj : public Object {\n@@ -175,16 +170,15 @@ class TVarObj : public Object {\n                                       refl::AttachFieldFlag::SEqHashIgnore());\n   }\n \n-  static constexpr const char* _type_key = \"test.Var\";\n   static constexpr TVMFFISEqHashKind _type_s_eq_hash_kind = kTVMFFISEqHashKindFreeVar;\n-  TVM_FFI_DECLARE_FINAL_OBJECT_INFO(TVarObj, Object);\n+  TVM_FFI_DECLARE_OBJECT_INFO_FINAL(\"test.Var\", TVarObj, Object);\n };\n \n class TVar : public ObjectRef {\n  public:\n   explicit TVar(std::string name) { data_ = make_object<TVarObj>(name); }\n \n-  TVM_FFI_DEFINE_OBJECT_REF_METHODS(TVar, ObjectRef, TVarObj);\n+  TVM_FFI_DEFINE_OBJECT_REF_METHODS_NULLABLE(TVar, ObjectRef, TVarObj);\n };\n \n class TFuncObj : public Object {\n@@ -206,9 +200,8 @@ class TFuncObj : public Object {\n         .def_ro(\"comment\", &TFuncObj::comment, refl::AttachFieldFlag::SEqHashIgnore());\n   }\n \n-  static constexpr const char* _type_key = \"test.Func\";\n   static constexpr TVMFFISEqHashKind _type_s_eq_hash_kind = kTVMFFISEqHashKindTreeNode;\n-  TVM_FFI_DECLARE_FINAL_OBJECT_INFO(TFuncObj, Object);\n+  TVM_FFI_DECLARE_OBJECT_INFO_FINAL(\"test.Func\", TFuncObj, Object);\n };\n \n class TFunc : public ObjectRef {\n@@ -217,7 +210,7 @@ class TFunc : public ObjectRef {\n     data_ = make_object<TFuncObj>(params, body, comment);\n   }\n \n-  TVM_FFI_DEFINE_OBJECT_REF_METHODS(TFunc, ObjectRef, TFuncObj);\n+  TVM_FFI_DEFINE_OBJECT_REF_METHODS_NULLABLE(TFunc, ObjectRef, TFuncObj);\n };\n \n class TCustomFuncObj : public Object {\n@@ -259,9 +252,8 @@ class TCustomFuncObj : public Object {\n         .def(\"__s_hash__\", &TCustomFuncObj::SHash);\n   }\n \n-  static constexpr const char* _type_key = \"test.CustomFunc\";\n   static constexpr TVMFFISEqHashKind _type_s_eq_hash_kind = kTVMFFISEqHashKindTreeNode;\n-  TVM_FFI_DECLARE_FINAL_OBJECT_INFO(TCustomFuncObj, Object);\n+  TVM_FFI_DECLARE_OBJECT_INFO_FINAL(\"test.CustomFunc\", TCustomFuncObj, Object);\n };\n \n class TCustomFunc : public ObjectRef {\n@@ -270,7 +262,7 @@ class TCustomFunc : public ObjectRef {\n     data_ = make_object<TCustomFuncObj>(params, body, comment);\n   }\n \n-  TVM_FFI_DEFINE_OBJECT_REF_METHODS(TCustomFunc, ObjectRef, TCustomFuncObj);\n+  TVM_FFI_DEFINE_OBJECT_REF_METHODS_NULLABLE(TCustomFunc, ObjectRef, TCustomFuncObj);\n };\n \n }  // namespace testing",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".cc",
+      ".h",
+      ".md"
+    ],
+    "scopes_guess": [
+      "docs",
+      "include",
+      "src",
+      "tests"
+    ]
+  }
+}

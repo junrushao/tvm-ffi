@@ -1,0 +1,40 @@
+{
+  "sha": "9a6ec6eea8237458b27bca97b184ef069fe1e687",
+  "sha7": "9a6ec6e",
+  "author_name": "Yixin Dong",
+  "author_email": "ubospica@gmail.com",
+  "date_iso": "2025-10-18T16:38:06-04:00",
+  "subject": "[Docs] Fix Rust Docs (#172)",
+  "body": "This PR fixes rust docs building by copying to the correct dir.",
+  "is_merge": false,
+  "parents": [
+    "f0058a9e52e0348cd9dfe33fc8e7b4e424ea81a2"
+  ],
+  "name_status": [
+    [
+      "M",
+      "docs/conf.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "docs/conf.py",
+      "additions": 23,
+      "deletions": 7
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/docs/conf.py b/docs/conf.py\nindex 82ec1fb..6d641a0 100644\n--- a/docs/conf.py\n+++ b/docs/conf.py\n@@ -17,6 +17,8 @@\n \"\"\"Sphinx configuration for the tvm-ffi documentation site.\"\"\"\n \n # -*- coding: utf-8 -*-\n+from __future__ import annotations\n+\n import os\n import shutil\n import subprocess\n@@ -37,7 +39,6 @@ is_autobuild = any(\"sphinx-autobuild\" in str(arg) for arg in sys.argv)\n # -- Path constants -------------------------------------------------------\n _DOCS_DIR = Path(__file__).resolve().parent\n _RUST_DIR = _DOCS_DIR.parent / \"rust\"\n-_RUST_OUTPUT_DIR = _DOCS_DIR / \"reference\" / \"rust\" / \"generated\"\n \n # -- General configuration ------------------------------------------------\n # Load version from pyproject.toml\n@@ -201,12 +202,7 @@ def _build_rust_docs() -> None:\n             env={**os.environ, \"RUSTDOCFLAGS\": \"--cfg docsrs\"},\n         )\n \n-        # Copy generated documentation\n-        if _RUST_OUTPUT_DIR.exists():\n-            shutil.rmtree(_RUST_OUTPUT_DIR)\n-        shutil.copytree(target_doc, _RUST_OUTPUT_DIR)\n-\n-        print(f\"Rust documentation built successfully at {_RUST_OUTPUT_DIR}\")\n+        print(f\"Rust documentation built successfully at {target_doc}\")\n     except subprocess.CalledProcessError as e:\n         print(f\"Warning: Failed to build Rust documentation: {e}\")\n     except FileNotFoundError:\n@@ -219,6 +215,25 @@ def _apply_config_overrides(_: object, config: object) -> None:\n     config.build_rust_docs = build_rust_docs\n \n \n+def _copy_rust_docs_to_output(app: sphinx.application.Sphinx, exception: Exception | None) -> None:\n+    \"\"\"Copy Rust documentation to the HTML output directory after build completes.\"\"\"\n+    if exception is not None or not build_rust_docs:\n+        return\n+\n+    src_dir = _RUST_DIR / \"target\" / \"doc\"\n+    dst_dir = Path(app.outdir) / \"reference\" / \"rust\" / \"generated\"\n+\n+    if src_dir.exists():\n+        if dst_dir.exists():\n+            shutil.rmtree(dst_dir)\n+        shutil.copytree(src_dir, dst_dir)\n+        print(f\"Copied Rust documentation from {src_dir} to {dst_dir}\")\n+    else:\n+        print(\n+            f\"Warning: Rust documentation source directory not found at {src_dir}. Skipping copy.\"\n+        )\n+\n+\n def setup(app: sphinx.application.Sphinx) -> None:\n     \"\"\"Register custom Sphinx configuration values.\"\"\"\n     _prepare_stub_files()\n@@ -226,6 +241,7 @@ def setup(app: sphinx.application.Sphinx) -> None:\n     app.add_config_value(\"build_exhale\", build_exhale, \"env\")\n     app.add_config_value(\"build_rust_docs\", build_rust_docs, \"env\")\n     app.connect(\"config-inited\", _apply_config_overrides)\n+    app.connect(\"build-finished\", _copy_rust_docs_to_output)\n \n \n autodoc_mock_imports = [\"torch\"]",
+  "heuristics": {
+    "tags": [
+      "docs"
+    ],
+    "extensions": [
+      ".py"
+    ],
+    "scopes_guess": [
+      "docs"
+    ]
+  }
+}

@@ -1,0 +1,206 @@
+{
+  "sha": "472e10c4086e91fb788ffe1f0eee10df4bcf5db2",
+  "sha7": "472e10c",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-09-08T15:01:28-04:00",
+  "subject": "[FFI][REFACTOR] Introduce UnsafeInit and enhance ObjectRef null safety (#18284)",
+  "body":
+      "This PR enhances the nullptr and general type-safe of ObjectRef types.\nPreviously ObjectRef relies on constructor from ObjectPtr<Object> for casting\nand initialize from nullptr.\n\nWe introduce a tag ffi::UnsafeInit, which explicitly states the intent\nthat the initialization is unsafe and may initialize non-nullable Ref to null.\nSuch tag should only be used in controlled scenarios.\n\nNow the general RefType(ObjectPtr<Object>) is removed.\nWe still keep RefType(ObjectPtr<ContainerType>) for nullable objects,\nbut removes the default definition from non-nullable types, knowing that\nuser can always explicitly add it to class impl (ensuring null checking).",
+  "is_merge": false,
+  "parents": [
+    "1b824e88743a89343ad7493691bbdf5fdf2830c9"
+  ],
+  "name_status": [
+    [
+      "M",
+      "include/tvm/ffi/cast.h"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/container/array.h"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/container/map.h"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/container/shape.h"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/container/tensor.h"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/container/tuple.h"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/container/variant.h"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/extra/module.h"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/function.h"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/function_details.h"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/object.h"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/optional.h"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/reflection/access_path.h"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/reflection/registry.h"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/rvalue_ref.h"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/type_traits.h"
+    ],
+    [
+      "M",
+      "src/ffi/tensor.cc"
+    ],
+    [
+      "M",
+      "tests/cpp/test_object.cc"
+    ],
+    [
+      "M",
+      "tests/cpp/testing_object.h"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "include/tvm/ffi/cast.h",
+      "additions": 6,
+      "deletions": 4
+    },
+    {
+      "path": "include/tvm/ffi/container/array.h",
+      "additions": 4,
+      "deletions": 0
+    },
+    {
+      "path": "include/tvm/ffi/container/map.h",
+      "additions": 4,
+      "deletions": 0
+    },
+    {
+      "path": "include/tvm/ffi/container/shape.h",
+      "additions": 15,
+      "deletions": 2
+    },
+    {
+      "path": "include/tvm/ffi/container/tensor.h",
+      "additions": 2,
+      "deletions": 2
+    },
+    {
+      "path": "include/tvm/ffi/container/tuple.h",
+      "additions": 6,
+      "deletions": 8
+    },
+    {
+      "path": "include/tvm/ffi/container/variant.h",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "include/tvm/ffi/extra/module.h",
+      "additions": 16,
+      "deletions": 1
+    },
+    {
+      "path": "include/tvm/ffi/function.h",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "include/tvm/ffi/function_details.h",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "include/tvm/ffi/object.h",
+      "additions": 52,
+      "deletions": 10
+    },
+    {
+      "path": "include/tvm/ffi/optional.h",
+      "additions": 11,
+      "deletions": 6
+    },
+    {
+      "path": "include/tvm/ffi/reflection/access_path.h",
+      "additions": 4,
+      "deletions": 0
+    },
+    {
+      "path": "include/tvm/ffi/reflection/registry.h",
+      "additions": 10,
+      "deletions": 0
+    },
+    {
+      "path": "include/tvm/ffi/rvalue_ref.h",
+      "additions": 6,
+      "deletions": 3
+    },
+    {
+      "path": "include/tvm/ffi/type_traits.h",
+      "additions": 10,
+      "deletions": 7
+    },
+    {
+      "path": "src/ffi/tensor.cc",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "tests/cpp/test_object.cc",
+      "additions": 8,
+      "deletions": 0
+    },
+    {
+      "path": "tests/cpp/testing_object.h",
+      "additions": 5,
+      "deletions": 5
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/include/tvm/ffi/cast.h b/include/tvm/ffi/cast.h\nindex f70df9f..398953a 100644\n--- a/include/tvm/ffi/cast.h\n+++ b/include/tvm/ffi/cast.h\n@@ -44,18 +44,20 @@ namespace ffi {\n  */\n template <typename RefType, typename ObjectType>\n inline RefType GetRef(const ObjectType* ptr) {\n-  static_assert(std::is_base_of_v<typename RefType::ContainerType, ObjectType>,\n+  using ContainerType = typename RefType::ContainerType;\n+  static_assert(std::is_base_of_v<ContainerType, ObjectType>,\n                 \"Can only cast to the ref of same container type\");\n \n   if constexpr (is_optional_type_v<RefType> || RefType::_type_is_nullable) {\n     if (ptr == nullptr) {\n-      return RefType(ObjectPtr<Object>(nullptr));\n+      return details::ObjectUnsafe::ObjectRefFromObjectPtr<RefType>(nullptr);\n     }\n   } else {\n     TVM_FFI_ICHECK_NOTNULL(ptr);\n   }\n-  return RefType(details::ObjectUnsafe::ObjectPtrFromUnowned<Object>(\n-      const_cast<Object*>(static_cast<const Object*>(ptr))));\n+  return details::ObjectUnsafe::ObjectRefFromObjectPtr<RefType>(\n+      details::ObjectUnsafe::ObjectPtrFromUnowned<Object>(\n+          const_cast<Object*>(static_cast<const Object*>(ptr))));\n }\n \n /*!\ndiff --git a/include/tvm/ffi/container/array.h b/include/tvm/ffi/container/array.h\nindex 7dbcc1f..8fab30b 100644\n--- a/include/tvm/ffi/container/array.h\n+++ b/include/tvm/ffi/container/array.h\n@@ -362,6 +362,10 @@ class Array : public ObjectRef {\n   /*! \\brief The value type of the array */\n   using value_type = T;\n   // constructors\n+  /*!\n+   * \\brief Construct an Array with UnsafeInit\n+   */\n+  explicit Array(UnsafeInit tag) : ObjectRef(tag) {}\n   /*!\n    * \\brief default constructor\n    */\ndiff --git a/include/tvm/ffi/container/map.h b/include/tvm/ffi/container/map.h\nindex 27928d2..bea2688 100644\n--- a/include/tvm/ffi/container/map.h\n+++ b/include/tvm/ffi/container/map.h\n@@ -1381,6 +1381,10 @@ class Map : public ObjectRef {\n   using mapped_type = V;\n   /*! \\brief The iterator type of the map */\n   class iterator;\n+  /*!\n+   * \\brief Construct an Map with UnsafeInit\n+   */\n+  explicit Map(UnsafeInit tag) : ObjectRef(tag) {}\n   /*!\n    * \\brief default constructor\n    */\ndiff --git a/include/tvm/ffi/container/shape.h b/include/tvm/ffi/container/shape.h\nindex 39c3ec2..f5e88d6 100644\n--- a/include/tvm/ffi/container/shape.h\n+++ b/include/tvm/ffi/container/shape.h\n@@ -94,13 +94,13 @@ TVM_FFI_INLINE ObjectPtr<ShapeObj> MakeInplaceShape(IterType begin, IterType end\n   return p;\n }\n \n-TVM_FFI_INLINE ObjectPtr<ShapeObj> MakeStridesFromShape(int64_t ndim, int64_t* shape) {\n+TVM_FFI_INLINE ObjectPtr<ShapeObj> MakeStridesFromShape(const int64_t* data, int64_t ndim) {\n   int64_t* strides_data;\n   ObjectPtr<ShapeObj> strides = details::MakeEmptyShape(ndim, &strides_data);\n   int64_t stride = 1;\n   for (int i = ndim - 1; i >= 0; --i) {\n     strides_data[i] = stride;\n-    stride *= shape[i];\n+    stride *= data[i];\n   }\n   return strides;\n }\n@@ -150,6 +150,16 @@ class Shape : public ObjectRef {\n   Shape(std::vector<int64_t> other)  // NOLINT(*)\n       : ObjectRef(make_object<details::ShapeObjStdImpl>(std::move(other))) {}\n \n+  /*!\n+   * \\brief Create a strides from a shape.\n+   * \\param data The shape data.\n+   * \\param ndim The number of dimensions.\n+   * \\return The strides.\n+   */\n+  static Shape StridesFromShape(const int64_t* data, int64_t ndim) {\n+    return Shape(details::MakeStridesFromShape(data, ndim));\n+  }\n+\n   /*!\n    * \\brief Return the data pointer\n    *\n@@ -204,6 +214,9 @@ class Shape : public ObjectRef {\n   /// \\cond Doxygen_Suppress\n   TVM_FFI_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(Shape, ObjectRef, ShapeObj);\n   /// \\endcond\n+\n+ private:\n+  explicit Shape(ObjectPtr<ShapeObj> ptr) : ObjectRef(ptr) {}\n };\n \n inline std::ostream& operator<<(std::ostream& os, const Shape& shape) {\ndiff --git a/include/tvm/ffi/container/tensor.h b/include/tvm/ffi/container/tensor.h\nindex 99fb29d..21c67de 100644\n--- a/include/tvm/ffi/container/tensor.h\n+++ b/include/tvm/ffi/container/tensor.h\n@@ -203,7 +203,7 @@ class TensorObjFromNDAlloc : public TensorObj {\n     this->ndim = static_cast<int>(shape.size());\n     this->dtype = dtype;\n     this->shape = const_cast<int64_t*>(shape.data());\n-    Shape strides = Shape(details::MakeStridesFromShape(this->ndim, this->shape));\n+    Shape strides = Shape::StridesFromShape(this->shape, this->ndim);\n     this->strides = const_cast<int64_t*>(strides.data());\n     this->byte_offset = 0;\n     this->shape_data_ = std::move(shape);\n@@ -224,7 +224,7 @@ class TensorObjFromDLPack : public TensorObj {\n   explicit TensorObjFromDLPack(TDLPackManagedTensor* tensor) : tensor_(tensor) {\n     *static_cast<DLTensor*>(this) = tensor_->dl_tensor;\n     if (tensor_->dl_tensor.strides == nullptr) {\n-      Shape strides = Shape(details::MakeStridesFromShape(ndim, shape));\n+      Shape strides = Shape::StridesFromShape(tensor_->dl_tensor.shape, tensor_->dl_tensor.ndim);\n       this->strides = const_cast<int64_t*>(strides.data());\n       this->strides_data_ = std::move(strides);\n     }\ndiff --git a/include/tvm/ffi/container/tuple.h b/include/tvm/ffi/container/tuple.h\nindex 0cb80b9..7534240 100644\n--- a/include/tvm/ffi/container/tuple.h\n+++ b/include/tvm/ffi/container/tuple.h\n@@ -47,6 +47,10 @@ class Tuple : public ObjectRef {\n                 \"All types used in Tuple<...> must be compatible with Any\");\n   /*! \\brief Default constructor */\n   Tuple() : ObjectRef(MakeDefaultTupleNode()) {}\n+  /*!\n+   * \\brief Constructor with UnsafeInit\n+   */\n+  explicit Tuple(UnsafeInit tag) : ObjectRef(tag) {}\n   /*! \\brief Copy constructor */\n   Tuple(const Tuple<Types...>& other) : ObjectRef(other) {}\n   /*! \\brief Move constructor */\n@@ -128,13 +132,6 @@ class Tuple : public ObjectRef {\n     return *this;\n   }\n \n-  /*!\n-   * \\brief Constructor ObjectPtr\n-   * \\param ptr The ObjectPtr\n-   * \\tparam The enable_if_t type\n-   */\n-  explicit Tuple(ObjectPtr<Object> ptr) : ObjectRef(ptr) {}\n-\n   /*!\n    * \\brief Get I-th element of the tuple\n    *\n@@ -283,7 +280,8 @@ struct TypeTraits<Tuple<Types...>> : public ObjectRefTypeTraitsBase<Tuple<Types.\n     Array<Any> arr = TypeTraits<Array<Any>>::CopyFromAnyViewAfterCheck(src);\n     Any* ptr = arr.CopyOnWrite()->MutableBegin();\n     if (TryConvertElements<0, Types...>(ptr)) {\n-      return Tuple<Types...>(details::ObjectUnsafe::ObjectPtrFromObjectRef<Object>(arr));\n+      return details::ObjectUnsafe::ObjectRefFromObjectPtr<Tuple<Types...>>(\n+          details::ObjectUnsafe::ObjectPtrFromObjectRef<Object>(arr));\n     }\n     return std::nullopt;\n   }\ndiff --git a/include/tvm/ffi/container/variant.h b/include/tvm/ffi/container/variant.h\nindex 5f66d73..cae5a67 100644\n--- a/include/tvm/ffi/container/variant.h\n+++ b/include/tvm/ffi/container/variant.h\n@@ -68,7 +68,7 @@ class VariantBase<true> : public ObjectRef {\n   explicit VariantBase(const T& other) : ObjectRef(other) {}\n   template <typename T>\n   explicit VariantBase(T&& other) : ObjectRef(std::move(other)) {}\n-  explicit VariantBase(ObjectPtr<Object> ptr) : ObjectRef(ptr) {}\n+  explicit VariantBase(UnsafeInit tag) : ObjectRef(tag) {}\n   explicit VariantBase(Any other)\n       : ObjectRef(details::AnyUnsafe::MoveFromAnyAfterCheck<ObjectRef>(std::move(other))) {}\n \ndiff --git a/include/tvm/ffi/extra/module.h b/include/tvm/ffi/extra/module.h\nindex 89e0c28..a1dc91e 100644\n--- a/include/tvm/ffi/extra/module.h\n+++ b/include/tvm/ffi/extra/module.h\n@@ -36,6 +36,7 @@ class Module;\n \n /*!\n  * \\brief A module that can dynamically load ffi::Functions or exportable source code.\n+ * \\sa Module\n  */\n class TVM_FFI_EXTRA_CXX_API ModuleObj : public Object {\n  public:\n@@ -168,6 +169,16 @@ class TVM_FFI_EXTRA_CXX_API ModuleObj : public Object {\n \n /*!\n  * \\brief Reference to module object.\n+ *\n+ * When invoking a function on a ModuleObj, such as GetFunction,\n+ * use operator-> to get the ModuleObj pointer and invoke the member functions.\n+ *\n+ * \\code\n+ * ffi::Module mod = ffi::Module::LoadFromFile(\"path/to/module.so\");\n+ * ffi::Function func = mod->GetFunction(name);\n+ * \\endcode\n+ *\n+ * \\sa ModuleObj which contains most of the function implementations.\n  */\n class Module : public ObjectRef {\n  public:\n@@ -202,7 +213,11 @@ class Module : public ObjectRef {\n      */\n     kCompilationExportable = 0b100\n   };\n-\n+  /*!\n+   * \\brief Constructor from ObjectPtr<ModuleObj>.\n+   * \\param ptr The object pointer.\n+   */\n+  explicit Module(ObjectPtr<ModuleObj> ptr) : ObjectRef(ptr) { TVM_FFI_ICHECK(ptr != nullptr); }\n   /*!\n    * \\brief Load a module from file.\n    * \\param file_name The name of the host function module.\ndiff --git a/include/tvm/ffi/function.h b/include/tvm/ffi/function.h\nindex 884e46f..d27cfc0 100644\n--- a/include/tvm/ffi/function.h\n+++ b/include/tvm/ffi/function.h\n@@ -403,7 +403,7 @@ class Function : public ObjectRef {\n     TVM_FFI_CHECK_SAFE_CALL(TVMFFIFunctionGetGlobal(&name_arr, &handle));\n     if (handle != nullptr) {\n       return Function(\n-          details::ObjectUnsafe::ObjectPtrFromOwned<Object>(static_cast<Object*>(handle)));\n+          details::ObjectUnsafe::ObjectPtrFromOwned<FunctionObj>(static_cast<Object*>(handle)));\n     } else {\n       return std::nullopt;\n     }\ndiff --git a/include/tvm/ffi/function_details.h b/include/tvm/ffi/function_details.h\nindex d029c19..20ca44c 100644\n--- a/include/tvm/ffi/function_details.h\n+++ b/include/tvm/ffi/function_details.h\n@@ -193,7 +193,7 @@ TVM_FFI_INLINE static Error MoveFromSafeCallRaised() {\n   TVMFFIObjectHandle handle;\n   TVMFFIErrorMoveFromRaised(&handle);\n   // handle is owned by caller\n-  return Error(\n+  return details::ObjectUnsafe::ObjectRefFromObjectPtr<Error>(\n       details::ObjectUnsafe::ObjectPtrFromOwned<Object>(static_cast<TVMFFIObject*>(handle)));\n }\n \ndiff --git a/include/tvm/ffi/object.h b/include/tvm/ffi/object.h\nindex c1ab9d1..478bb27 100644\n--- a/include/tvm/ffi/object.h\n+++ b/include/tvm/ffi/object.h\n@@ -44,6 +44,24 @@ using TypeIndex = TVMFFITypeIndex;\n  */\n using TypeInfo = TVMFFITypeInfo;\n \n+/*!\n+ * \\brief Helper tag to explicitly request unsafe initialization.\n+ *\n+ * Constructing an ObjectRefType with UnsafeInit{} will set the data_ member to nullptr.\n+ *\n+ * When initializing Object fields, ObjectRef fields can be set to UnsafeInit.\n+ * This enables the \"construct with UnsafeInit then set all fields\" pattern\n+ * when the object does not have a default constructor.\n+ *\n+ * Used for initialization in controlled scenarios where such unsafe\n+ * initialization is known to be safe.\n+ *\n+ * Each ObjectRefType should have a constructor that takes an UnsafeInit tag.\n+ *\n+ * \\note As the name suggests, do not use it in normal code paths.\n+ */\n+struct UnsafeInit {};\n+\n /*!\n  * \\brief Known type keys for pre-defined types.\n  */\n@@ -702,6 +720,8 @@ class ObjectRef {\n   ObjectRef& operator=(ObjectRef&& other) = default;\n   /*! \\brief Constructor from existing object ptr */\n   explicit ObjectRef(ObjectPtr<Object> data) : data_(data) {}\n+  /*! \\brief Constructor from UnsafeInit */\n+  explicit ObjectRef(UnsafeInit) : data_(nullptr) {}\n   /*!\n    * \\brief Comparator\n    * \\param other Another object ref.\n@@ -774,7 +794,9 @@ class ObjectRef {\n   TVM_FFI_INLINE std::optional<ObjectRefType> as() const {\n     if (data_ != nullptr) {\n       if (data_->IsInstance<typename ObjectRefType::ContainerType>()) {\n-        return ObjectRefType(data_);\n+        ObjectRefType ref(UnsafeInit{});\n+        ref.data_ = data_;\n+        return ref;\n       } else {\n         return std::nullopt;\n       }\n@@ -782,6 +804,7 @@ class ObjectRef {\n       return std::nullopt;\n     }\n   }\n+\n   /*!\n    * \\brief Get the type index of the ObjectRef\n    * \\return The type index of the ObjectRef\n@@ -914,7 +937,8 @@ struct ObjectPtrEqual {\n  */\n #define TVM_FFI_DEFINE_OBJECT_REF_METHODS(TypeName, ParentType, ObjectName)                    \\\n   TypeName() = default;                                                                        \\\n-  explicit TypeName(::tvm::ffi::ObjectPtr<::tvm::ffi::Object> n) : ParentType(n) {}            \\\n+  explicit TypeName(::tvm::ffi::ObjectPtr<ObjectName> n) : ParentType(n) {}                    \\\n+  explicit TypeName(::tvm::ffi::UnsafeInit tag) : ParentType(tag) {}                           \\\n   TVM_FFI_DEFINE_DEFAULT_COPY_MOVE_AND_ASSIGN(TypeName)                                        \\\n   const ObjectName* operator->() const { return static_cast<const ObjectName*>(data_.get()); } \\\n   const ObjectName* get() const { return operator->(); }                                       \\\n@@ -928,7 +952,7 @@ struct ObjectPtrEqual {\n  * \\param ObjectName The type name of the object.\n  */\n #define TVM_FFI_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(TypeName, ParentType, ObjectName)        \\\n-  explicit TypeName(::tvm::ffi::ObjectPtr<::tvm::ffi::Object> n) : ParentType(n) {}            \\\n+  explicit TypeName(::tvm::ffi::UnsafeInit tag) : ParentType(tag) {}                           \\\n   TVM_FFI_DEFINE_DEFAULT_COPY_MOVE_AND_ASSIGN(TypeName)                                        \\\n   const ObjectName* operator->() const { return static_cast<const ObjectName*>(data_.get()); } \\\n   const ObjectName* get() const { return operator->(); }                                       \\\n@@ -943,11 +967,12 @@ struct ObjectPtrEqual {\n  * \\note We recommend making objects immutable when possible.\n  *       This macro is only reserved for objects that stores runtime states.\n  */\n-#define TVM_FFI_DEFINE_MUTABLE_OBJECT_REF_METHODS(TypeName, ParentType, ObjectName)         \\\n-  TypeName() = default;                                                                     \\\n-  TVM_FFI_DEFINE_DEFAULT_COPY_MOVE_AND_ASSIGN(TypeName)                                     \\\n-  explicit TypeName(::tvm::runtime::ObjectPtr<::tvm::runtime::Object> n) : ParentType(n) {} \\\n-  ObjectName* operator->() const { return static_cast<ObjectName*>(data_.get()); }          \\\n+#define TVM_FFI_DEFINE_MUTABLE_OBJECT_REF_METHODS(TypeName, ParentType, ObjectName) \\\n+  TypeName() = default;                                                             \\\n+  explicit TypeName(::tvm::ffi::UnsafeInit tag) : ParentType(tag) {}                \\\n+  TVM_FFI_DEFINE_DEFAULT_COPY_MOVE_AND_ASSIGN(TypeName)                             \\\n+  explicit TypeName(::tvm::ffi::ObjectPtr<ObjectName> n) : ParentType(n) {}         \\\n+  ObjectName* operator->() const { return static_cast<ObjectName*>(data_.get()); }  \\\n   using ContainerType = ObjectName\n \n /*!\n@@ -958,7 +983,7 @@ struct ObjectPtrEqual {\n  * \\param ObjectName The type name of the object.\n  */\n #define TVM_FFI_DEFINE_MUTABLE_NOTNULLABLE_OBJECT_REF_METHODS(TypeName, ParentType, ObjectName) \\\n-  explicit TypeName(::tvm::ffi::ObjectPtr<::tvm::ffi::Object> n) : ParentType(n) {}             \\\n+  explicit TypeName(::tvm::ffi::UnsafeInit tag) : ParentType(tag) {}                            \\\n   TVM_FFI_DEFINE_DEFAULT_COPY_MOVE_AND_ASSIGN(TypeName)                                         \\\n   ObjectName* operator->() const { return static_cast<ObjectName*>(data_.get()); }              \\\n   ObjectName* get() const { return operator->(); }                                              \\\n@@ -1021,6 +1046,20 @@ struct ObjectUnsafe {\n             reinterpret_cast<int64_t>(&(static_cast<Object*>(nullptr)->header_)));\n   }\n \n+  template <typename T>\n+  TVM_FFI_INLINE static T ObjectRefFromObjectPtr(const ObjectPtr<Object>& ptr) {\n+    T ref(UnsafeInit{});\n+    ref.data_ = ptr;\n+    return ref;\n+  }\n+\n+  template <typename T>\n+  TVM_FFI_INLINE static T ObjectRefFromObjectPtr(ObjectPtr<Object>&& ptr) {\n+    T ref(UnsafeInit{});\n+    ref.data_ = std::move(ptr);\n+    return ref;\n+  }\n+\n   template <typename T>\n   TVM_FFI_INLINE static ObjectPtr<T> ObjectPtrFromObjectRef(const ObjectRef& ref) {\n     if constexpr (std::is_same_v<T, Object>) {\n@@ -1035,7 +1074,10 @@ struct ObjectUnsafe {\n     if constexpr (std::is_same_v<T, Object>) {\n       return std::move(ref.data_);\n     } else {\n-      return tvm::ffi::ObjectPtr<T>(std::move(ref.data_.data_));\n+      ObjectPtr<T> result;\n+      result.data_ = std::move(ref.data_.data_);\n+      ref.data_.data_ = nullptr;\n+      return result;\n     }\n   }\n \ndiff --git a/include/tvm/ffi/optional.h b/include/tvm/ffi/optional.h\nindex f93a0f0..f370a17 100644\n--- a/include/tvm/ffi/optional.h\n+++ b/include/tvm/ffi/optional.h\n@@ -262,7 +262,7 @@ class Optional<T, std::enable_if_t<use_ptr_based_optional_v<T>>> : public Object\n   Optional() = default;\n   Optional(const Optional<T>& other) : ObjectRef(other.data_) {}\n   Optional(Optional<T>&& other) : ObjectRef(std::move(other.data_)) {}\n-  explicit Optional(ObjectPtr<Object> ptr) : ObjectRef(ptr) {}\n+  explicit Optional(ffi::UnsafeInit tag) : ObjectRef(tag) {}\n   // nullopt hanlding\n   Optional(std::nullopt_t) {}  // NOLINT(*)\n \n@@ -300,19 +300,20 @@ class Optional<T, std::enable_if_t<use_ptr_based_optional_v<T>>> : public Object\n     if (data_ == nullptr) {\n       TVM_FFI_THROW(RuntimeError) << \"Back optional access\";\n     }\n-    return T(data_);\n+    return details::ObjectUnsafe::ObjectRefFromObjectPtr<T>(data_);\n   }\n \n   TVM_FFI_INLINE T value() && {\n     if (data_ == nullptr) {\n       TVM_FFI_THROW(RuntimeError) << \"Back optional access\";\n     }\n-    return T(std::move(data_));\n+    return details::ObjectUnsafe::ObjectRefFromObjectPtr<T>(std::move(data_));\n   }\n \n   template <typename U = std::remove_cv_t<T>>\n   TVM_FFI_INLINE T value_or(U&& default_value) const {\n-    return data_ != nullptr ? T(data_) : T(std::forward<U>(default_value));\n+    return data_ != nullptr ? details::ObjectUnsafe::ObjectRefFromObjectPtr<T>(data_)\n+                            : T(std::forward<U>(default_value));\n   }\n \n   TVM_FFI_INLINE explicit operator bool() const { return data_ != nullptr; }\n@@ -324,14 +325,18 @@ class Optional<T, std::enable_if_t<use_ptr_based_optional_v<T>>> : public Object\n    * \\return the const reference to the stored value.\n    * \\note only use this function after checking has_value()\n    */\n-  TVM_FFI_INLINE T operator*() const& noexcept { return T(data_); }\n+  TVM_FFI_INLINE T operator*() const& noexcept {\n+    return details::ObjectUnsafe::ObjectRefFromObjectPtr<T>(data_);\n+  }\n \n   /*!\n    * \\brief Direct access to the value.\n    * \\return the const reference to the stored value.\n    * \\note only use this function  after checking has_value()\n    */\n-  TVM_FFI_INLINE T operator*() && noexcept { return T(std::move(data_)); }\n+  TVM_FFI_INLINE T operator*() && noexcept {\n+    return details::ObjectUnsafe::ObjectRefFromObjectPtr<T>(std::move(data_));\n+  }\n \n   TVM_FFI_INLINE bool operator==(std::nullptr_t) const noexcept { return !has_value(); }\n   TVM_FFI_INLINE bool operator!=(std::nullptr_t) const noexcept { return has_value(); }\ndiff --git a/include/tvm/ffi/reflection/access_path.h b/include/tvm/ffi/reflection/access_path.h\nindex c614d4c..e7aed0a 100644\n--- a/include/tvm/ffi/reflection/access_path.h\n+++ b/include/tvm/ffi/reflection/access_path.h\n@@ -360,6 +360,10 @@ class AccessPath : public ObjectRef {\n   /// \\cond Doxygen_Suppress\n   TVM_FFI_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(AccessPath, ObjectRef, AccessPathObj);\n   /// \\endcond\n+\n+ private:\n+  friend class AccessPathObj;\n+  explicit AccessPath(ObjectPtr<AccessPathObj> ptr) : ObjectRef(ptr) {}\n };\n \n /*!\ndiff --git a/include/tvm/ffi/reflection/registry.h b/include/tvm/ffi/reflection/registry.h\nindex ba723fa..6a1a9b5 100644\n--- a/include/tvm/ffi/reflection/registry.h\n+++ b/include/tvm/ffi/reflection/registry.h\n@@ -148,6 +148,14 @@ class ReflectionDefBase {\n     TVM_FFI_SAFE_CALL_END();\n   }\n \n+  template <typename T>\n+  static int ObjectCreatorUnsafeInit(TVMFFIObjectHandle* result) {\n+    TVM_FFI_SAFE_CALL_BEGIN();\n+    ObjectPtr<T> obj = make_object<T>(UnsafeInit{});\n+    *result = details::ObjectUnsafe::MoveObjectPtrToTVMFFIObjectPtr(std::move(obj));\n+    TVM_FFI_SAFE_CALL_END();\n+  }\n+\n   template <typename T>\n   TVM_FFI_INLINE static void ApplyFieldInfoTrait(TVMFFIFieldInfo* info, const T& value) {\n     if constexpr (std::is_base_of_v<FieldInfoTrait, std::decay_t<T>>) {\n@@ -413,6 +421,8 @@ class ObjectDef : public ReflectionDefBase {\n     info.doc = TVMFFIByteArray{nullptr, 0};\n     if constexpr (std::is_default_constructible_v<Class>) {\n       info.creator = ObjectCreatorDefault<Class>;\n+    } else if constexpr (std::is_constructible_v<Class, UnsafeInit>) {\n+      info.creator = ObjectCreatorUnsafeInit<Class>;\n     }\n     // apply extra info traits\n     ((ApplyExtraInfoTrait(&info, std::forward<ExtraArgs>(extra_args)), ...));\ndiff --git a/include/tvm/ffi/rvalue_ref.h b/include/tvm/ffi/rvalue_ref.h\nindex 7c89038..ebbec58 100644\n--- a/include/tvm/ffi/rvalue_ref.h\n+++ b/include/tvm/ffi/rvalue_ref.h\n@@ -71,15 +71,17 @@ namespace ffi {\n template <typename TObjRef, typename = std::enable_if_t<std::is_base_of_v<ObjectRef, TObjRef>>>\n class RValueRef {\n  public:\n+  /*! \\brief the container type of the rvalue ref */\n+  using ContainerType = typename TObjRef::ContainerType;\n   /*! \\brief only allow move constructor from rvalue of T */\n   explicit RValueRef(TObjRef&& data)\n-      : data_(details::ObjectUnsafe::ObjectPtrFromObjectRef<Object>(std::move(data))) {}\n+      : data_(details::ObjectUnsafe::ObjectPtrFromObjectRef<ContainerType>(std::move(data))) {}\n \n   /*! \\brief return the data as rvalue */\n   TObjRef operator*() && { return TObjRef(std::move(data_)); }\n \n  private:\n-  mutable ObjectPtr<Object> data_;\n+  mutable ObjectPtr<ContainerType> data_;\n \n   template <typename, typename>\n   friend struct TypeTraits;\n@@ -125,7 +127,8 @@ struct TypeTraits<RValueRef<TObjRef>> : public TypeTraitsBase {\n       tmp_any.v_obj = reinterpret_cast<TVMFFIObject*>(rvalue_ref->get());\n       // fast path, storage type matches, direct move the rvalue ref\n       if (TypeTraits<TObjRef>::CheckAnyStrict(&tmp_any)) {\n-        return RValueRef<TObjRef>(TObjRef(std::move(*rvalue_ref)));\n+        return RValueRef<TObjRef>(\n+            details::ObjectUnsafe::ObjectRefFromObjectPtr<TObjRef>(std::move(*rvalue_ref)));\n       }\n       if (std::optional<TObjRef> opt = TypeTraits<TObjRef>::TryCastFromAnyView(&tmp_any)) {\n         // object type does not match up, we need to try to convert the object\ndiff --git a/include/tvm/ffi/type_traits.h b/include/tvm/ffi/type_traits.h\nindex 1812448..0f19719 100644\n--- a/include/tvm/ffi/type_traits.h\n+++ b/include/tvm/ffi/type_traits.h\n@@ -551,34 +551,37 @@ struct ObjectRefTypeTraitsBase : public TypeTraitsBase {\n   TVM_FFI_INLINE static TObjRef CopyFromAnyViewAfterCheck(const TVMFFIAny* src) {\n     if constexpr (TObjRef::_type_is_nullable) {\n       if (src->type_index == TypeIndex::kTVMFFINone) {\n-        return TObjRef(ObjectPtr<Object>(nullptr));\n+        return details::ObjectUnsafe::ObjectRefFromObjectPtr<TObjRef>(nullptr);\n       }\n     }\n-    return TObjRef(details::ObjectUnsafe::ObjectPtrFromUnowned<Object>(src->v_obj));\n+    return details::ObjectUnsafe::ObjectRefFromObjectPtr<TObjRef>(\n+        details::ObjectUnsafe::ObjectPtrFromUnowned<Object>(src->v_obj));\n   }\n \n   TVM_FFI_INLINE static TObjRef MoveFromAnyAfterCheck(TVMFFIAny* src) {\n     if constexpr (TObjRef::_type_is_nullable) {\n       if (src->type_index == TypeIndex::kTVMFFINone) {\n-        return TObjRef(ObjectPtr<Object>(nullptr));\n+        return details::ObjectUnsafe::ObjectRefFromObjectPtr<TObjRef>(nullptr);\n       }\n     }\n     // move out the object pointer\n-    ObjectPtr<Object> obj_ptr = details::ObjectUnsafe::ObjectPtrFromOwned<Object>(src->v_obj);\n+    ObjectPtr<ContainerType> obj_ptr =\n+        details::ObjectUnsafe::ObjectPtrFromOwned<ContainerType>(src->v_obj);\n     // reset the src to nullptr\n     TypeTraits<std::nullptr_t>::MoveToAny(nullptr, src);\n-    return TObjRef(std::move(obj_ptr));\n+    return details::ObjectUnsafe::ObjectRefFromObjectPtr<TObjRef>(std::move(obj_ptr));\n   }\n \n   TVM_FFI_INLINE static std::optional<TObjRef> TryCastFromAnyView(const TVMFFIAny* src) {\n     if constexpr (TObjRef::_type_is_nullable) {\n       if (src->type_index == TypeIndex::kTVMFFINone) {\n-        return TObjRef(ObjectPtr<Object>(nullptr));\n+        return details::ObjectUnsafe::ObjectRefFromObjectPtr<TObjRef>(nullptr);\n       }\n     }\n     if (src->type_index >= TypeIndex::kTVMFFIStaticObjectBegin) {\n       if (details::IsObjectInstance<ContainerType>(src->type_index)) {\n-        return TObjRef(details::ObjectUnsafe::ObjectPtrFromUnowned<Object>(src->v_obj));\n+        return details::ObjectUnsafe::ObjectRefFromObjectPtr<TObjRef>(\n+            details::ObjectUnsafe::ObjectPtrFromUnowned<ContainerType>(src->v_obj));\n       }\n     }\n     return std::nullopt;\ndiff --git a/src/ffi/tensor.cc b/src/ffi/tensor.cc\nindex 7b44e45..c166c29 100644\n--- a/src/ffi/tensor.cc\n+++ b/src/ffi/tensor.cc\n@@ -40,7 +40,7 @@ TVM_FFI_STATIC_INIT_BLOCK({\n         TVM_FFI_THROW(ValueError) << \"Expect shape to take list of int arguments\";\n       }\n     }\n-    *ret = Shape(shape);\n+    *ret = details::ObjectUnsafe::ObjectRefFromObjectPtr<Shape>(shape);\n   });\n });\n \ndiff --git a/tests/cpp/test_object.cc b/tests/cpp/test_object.cc\nindex 1d7de99..ec5c54c 100644\n--- a/tests/cpp/test_object.cc\n+++ b/tests/cpp/test_object.cc\n@@ -97,6 +97,14 @@ TEST(ObjectRef, as) {\n   EXPECT_EQ(b.as<TFloatObj>()->value, 20);\n }\n \n+TEST(ObjectRef, UnsafeInit) {\n+  ObjectRef a(UnsafeInit{});\n+  EXPECT_TRUE(a.get() == nullptr);\n+\n+  TInt b(UnsafeInit{});\n+  EXPECT_TRUE(b.get() == nullptr);\n+}\n+\n TEST(Object, CAPIAccessor) {\n   ObjectRef a = TInt(10);\n   TVMFFIObjectHandle obj = details::ObjectUnsafe::RawObjectPtrFromObjectRef(a);\ndiff --git a/tests/cpp/testing_object.h b/tests/cpp/testing_object.h\nindex fe3ba1b..1f6e678 100644\n--- a/tests/cpp/testing_object.h\n+++ b/tests/cpp/testing_object.h\n@@ -59,8 +59,8 @@ class TIntObj : public TNumberObj {\n  public:\n   int64_t value;\n \n-  TIntObj() = default;\n   TIntObj(int64_t value) : value(value) {}\n+  explicit TIntObj(UnsafeInit) {}\n \n   int64_t GetValue() const { return value; }\n \n@@ -165,9 +165,9 @@ class TVarObj : public Object {\n  public:\n   std::string name;\n \n-  // need default constructor for json serialization\n-  TVarObj() = default;\n   TVarObj(std::string name) : name(name) {}\n+  // need unsafe init constructor for json serialization\n+  explicit TVarObj(UnsafeInit) {}\n \n   static void RegisterReflection() {\n     namespace refl = tvm::ffi::reflection;\n@@ -193,8 +193,8 @@ class TFuncObj : public Object {\n   Array<ObjectRef> body;\n   Optional<String> comment;\n \n-  // need default constructor for json serialization\n-  TFuncObj() = default;\n+  // need unsafe init constructor or default constructor for json serialization\n+  explicit TFuncObj(UnsafeInit) {}\n   TFuncObj(Array<TVar> params, Array<ObjectRef> body, Optional<String> comment)\n       : params(params), body(body), comment(comment) {}\n ",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".cc",
+      ".h"
+    ],
+    "scopes_guess": [
+      "include",
+      "src",
+      "tests"
+    ]
+  }
+}

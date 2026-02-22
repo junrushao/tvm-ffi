@@ -1,0 +1,101 @@
+{
+  "sha": "66778b5e4fc017710d699a146f355ed48f631dca",
+  "sha7": "66778b5",
+  "author_name": "Junru Shao",
+  "author_email": "junrushao@apache.org",
+  "date_iso": "2025-09-22T14:47:40-07:00",
+  "subject": "doc: Enable Sphinx Build Checks in CI (#38)",
+  "body":
+      "This PR adds an additional stage in parallel to stage `lint`, which\nbuilds Python docs via uv + sphinx on every commit and catches any\nwarning from the building process via:\n\n```\nsphinx-build -W --keep-going -b html docs docs/_build/html\n```\n\nA few issues:\n- doc building right now depends on wheel building, which may add some\nunnecessary CI time;\n- tests for C++ doc building is not enabled yet. it seems plenty of\nwarnings there.\n\n<img width=\"980\" height=\"421\" alt=\"image\"\nsrc=\"https://github.com/user-attachments/assets/524bb806-a58d-4592-b632-3d15fd440ff5\"\n/>",
+  "is_merge": false,
+  "parents": [
+    "f5633e92b3149af105c9081844d9405569730b8a"
+  ],
+  "name_status": [
+    [
+      "M",
+      ".github/workflows/ci_test.yml"
+    ],
+    [
+      "A",
+      "docs/_stubs/cpp_index.rst"
+    ],
+    [
+      "M",
+      "docs/conf.py"
+    ],
+    [
+      "M",
+      "docs/reference/cpp/index.rst"
+    ],
+    [
+      "M",
+      "pyproject.toml"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/_tensor.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/module.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": ".github/workflows/ci_test.yml",
+      "additions": 15,
+      "deletions": 0
+    },
+    {
+      "path": "docs/_stubs/cpp_index.rst",
+      "additions": 24,
+      "deletions": 0
+    },
+    {
+      "path": "docs/conf.py",
+      "additions": 30,
+      "deletions": 1
+    },
+    {
+      "path": "docs/reference/cpp/index.rst",
+      "additions": 5,
+      "deletions": 3
+    },
+    {
+      "path": "pyproject.toml",
+      "additions": 1,
+      "deletions": 0
+    },
+    {
+      "path": "python/tvm_ffi/_tensor.py",
+      "additions": 5,
+      "deletions": 5
+    },
+    {
+      "path": "python/tvm_ffi/module.py",
+      "additions": 3,
+      "deletions": 3
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/.github/workflows/ci_test.yml b/.github/workflows/ci_test.yml\nindex 9787d5c..91f6bbd 100644\n--- a/.github/workflows/ci_test.yml\n+++ b/.github/workflows/ci_test.yml\n@@ -52,6 +52,21 @@ jobs:\n       - uses: actions/checkout@v4\n       - uses: pre-commit/action@2c7b3805fd2a0fd8c1884dcaebf91fc102a13ecd # v3.0.1\n \n+  doc:\n+    needs: [lint, prepare]\n+    runs-on: ubuntu-latest\n+    steps:\n+      - uses: actions/checkout@v4\n+        with:\n+          submodules: recursive\n+      - name: Set up uv\n+        uses: astral-sh/setup-uv@b75a909f75acd358c2196fb9a5f1299a9a8868a4 # v6.7.0\n+        with:\n+          python-version: 3.13\n+      - name: Generate docs\n+        run: |\n+          uv run --group docs sphinx-build -W --keep-going -b html docs docs/_build/html\n+\n   test:\n     needs: [lint, prepare]\n     if: >\ndiff --git a/docs/_stubs/cpp_index.rst b/docs/_stubs/cpp_index.rst\nnew file mode 100644\nindex 0000000..766de11\n--- /dev/null\n+++ b/docs/_stubs/cpp_index.rst\n@@ -0,0 +1,24 @@\n+..  Licensed to the Apache Software Foundation (ASF) under one\n+    or more contributor license agreements.  See the NOTICE file\n+    distributed with this work for additional information\n+    regarding copyright ownership.  The ASF licenses this file\n+    to you under the Apache License, Version 2.0 (the\n+    \"License\"); you may not use this file except in compliance\n+    with the License.  You may obtain a copy of the License at\n+\n+..    http://www.apache.org/licenses/LICENSE-2.0\n+\n+..  Unless required by applicable law or agreed to in writing,\n+    software distributed under the License is distributed on an\n+    \"AS IS\" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY\n+    KIND, either express or implied.  See the License for the\n+    specific language governing permissions and limitations\n+    under the License.\n+\n+==============\n+Full API Index\n+==============\n+\n+This page contains stub C++ API indexs to avoid Sphinx warning in CI testing.\n+If you see this page, it means the C++ API docs are not generated via Doxygen.\n+Follow the instructions in `docs/reference/cpp/README.md` to generate the C++ API docs.\ndiff --git a/docs/conf.py b/docs/conf.py\nindex b4188fe..69df5ca 100644\n--- a/docs/conf.py\n+++ b/docs/conf.py\n@@ -20,6 +20,7 @@\n import os\n from pathlib import Path\n \n+import sphinx\n import tomli\n \n os.environ[\"TVM_FFI_BUILD_DOCS\"] = \"1\"\n@@ -124,6 +125,34 @@ intersphinx_mapping = {\n     \"torch\": (\"https://pytorch.org/docs/stable\", None),\n }\n \n+_DOCS_DIR = Path(__file__).resolve().parent\n+_STUBS = {\n+    \"_stubs/cpp_index.rst\": \"reference/cpp/generated/index.rst\",\n+}\n+\n+\n+def _prepare_stub_files() -> None:\n+    \"\"\"Move stub files into place if they do not already exist.\"\"\"\n+    for src, dst in _STUBS.items():\n+        src_path = _DOCS_DIR / src\n+        dst_path = _DOCS_DIR / dst\n+        dst_path.parent.mkdir(parents=True, exist_ok=True)\n+        if not dst_path.exists():\n+            dst_path.write_text(src_path.read_text(encoding=\"utf-8\"), encoding=\"utf-8\")\n+\n+\n+def _apply_config_overrides(_: object, config: object) -> None:\n+    \"\"\"Apply runtime configuration overrides derived from environment variables.\"\"\"\n+    config.build_exhale = build_exhale\n+\n+\n+def setup(app: sphinx.application.Sphinx) -> None:\n+    \"\"\"Register custom Sphinx configuration values.\"\"\"\n+    _prepare_stub_files()\n+    app.add_config_value(\"build_exhale\", build_exhale, \"env\")\n+    app.connect(\"config-inited\", _apply_config_overrides)\n+\n+\n autodoc_mock_imports = [\"torch\"]\n autodoc_default_options = {\n     \"members\": True,\n@@ -143,7 +172,7 @@ source_suffix = {\".rst\": \"restructuredtext\", \".md\": \"markdown\"}\n \n language = \"en\"\n \n-exclude_patterns = [\"_build\", \"Thumbs.db\", \".DS_Store\", \"README.md\"]\n+exclude_patterns = [\"_build\", \"Thumbs.db\", \".DS_Store\", \"README.md\", \"_stubs\"]\n \n # The name of the Pygments (syntax highlighting) style to use.\n pygments_style = \"sphinx\"\ndiff --git a/docs/reference/cpp/index.rst b/docs/reference/cpp/index.rst\nindex ac9b1d7..d35bbfc 100644\n--- a/docs/reference/cpp/index.rst\n+++ b/docs/reference/cpp/index.rst\n@@ -101,7 +101,9 @@ Key Classes\n Full API Index\n --------------\n \n-.. toctree::\n-   :maxdepth: 2\n+.. ifconfig:: build_exhale\n \n-   generated/index.rst\n+   .. toctree::\n+      :maxdepth: 2\n+\n+      generated/index\ndiff --git a/pyproject.toml b/pyproject.toml\nindex 58d394a..c7e43db 100644\n--- a/pyproject.toml\n+++ b/pyproject.toml\n@@ -65,6 +65,7 @@ docs = [\n   \"sphinxcontrib-mermaid\",\n   \"sphinxcontrib-napoleon==0.7\",\n   \"sphinxcontrib_httpdomain==1.8.1\",\n+  \"setuptools<81\",\n   \"tomli\",\n   \"urllib3>=2.5.0\",\n ]\ndiff --git a/python/tvm_ffi/_tensor.py b/python/tvm_ffi/_tensor.py\nindex 0d44994..512ba44 100644\n--- a/python/tvm_ffi/_tensor.py\n+++ b/python/tvm_ffi/_tensor.py\n@@ -36,12 +36,12 @@ from .core import (\n \n @registry.register_object(\"ffi.Shape\")\n class Shape(tuple, PyNativeObject):\n-    \"\"\"Shape tuple that represents `ffi::Shape` returned by a ffi call.\n+    \"\"\"Shape tuple that represents ``ffi::Shape`` returned by an FFI call.\n \n-    Note:\n-    ----\n-    This class subclasses `tuple` so it can be used in most places where\n-    tuple is used in python array apis.\n+    Notes\n+    -----\n+    This class subclasses :class:`tuple` so it can be used in most places where\n+    :class:`tuple` is used in Python array APIs.\n \n     \"\"\"\n \ndiff --git a/python/tvm_ffi/module.py b/python/tvm_ffi/module.py\nindex 768463d..9503900 100644\n--- a/python/tvm_ffi/module.py\n+++ b/python/tvm_ffi/module.py\n@@ -38,8 +38,8 @@ class ModulePropertyMask(IntEnum):\n class Module(core.Object):\n     \"\"\"Module container for dynamically loaded Module.\n \n-    Example:\n-    -------\n+    Examples\n+    --------\n     .. code-block:: python\n \n         import tvm_ffi\n@@ -49,7 +49,7 @@ class Module(core.Object):\n         # you can use mod.func_name to call the exported function\n         mod.func_name(*args)\n \n-    See Also:\n+    See Also\n     --------\n     :py:func:`tvm_ffi.load_module`\n ",
+  "heuristics": {
+    "tags": [
+      "build",
+      "ci"
+    ],
+    "extensions": [
+      ".py",
+      ".rst",
+      ".toml",
+      ".yml"
+    ],
+    "scopes_guess": [
+      "docs",
+      "pyproject.toml",
+      "python"
+    ]
+  }
+}

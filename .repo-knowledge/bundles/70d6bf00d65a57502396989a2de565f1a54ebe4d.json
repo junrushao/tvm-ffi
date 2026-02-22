@@ -1,0 +1,38 @@
+{
+  "sha": "70d6bf00d65a57502396989a2de565f1a54ebe4d",
+  "sha7": "70d6bf0",
+  "author_name": "Siyuan Feng",
+  "author_email": "25500082+Hzfengsy@users.noreply.github.com",
+  "date_iso": "2025-11-17T11:15:35+08:00",
+  "subject": "Add Siyuan Feng's GPG key to KEYS file (#269)",
+  "body": "Add Siyuan Feng's GPG key to KEYS file for release",
+  "is_merge": false,
+  "parents": [
+    "92e150b9cb8222eeadf5469eae2e06400e4af850"
+  ],
+  "name_status": [
+    [
+      "M",
+      "KEYS"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "KEYS",
+      "additions": 59,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/KEYS b/KEYS\nindex 8e3d4e9..9609a60 100644\n--- a/KEYS\n+++ b/KEYS\n@@ -69,3 +69,62 @@ RgBtZDRLv765lAFGtp43sccZ7zfRaKhkVmzh3bAZ62nJyQNGw0TWg96Pf7Kjb0Bv\n ha8fS9ysWDy/Ye65MP4=\n =MSiP\n -----END PGP PUBLIC KEY BLOCK-----\n+pub   rsa4096 2023-05-05 [SC]\n+      664EF29634C05669C3DCF83106D051CA84EF3749\n+uid           [ultimate] Siyuan Feng (CODE SIGNING KEY) <syfeng@apache.org>\n+sig 3        06D051CA84EF3749 2023-05-05  [self-signature]\n+sub   rsa4096 2023-05-05 [E]\n+sig          06D051CA84EF3749 2023-05-05  [self-signature]\n+\n+-----BEGIN PGP PUBLIC KEY BLOCK-----\n+\n+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\n+wS/UuN04NxDy7V6mPXE=\n+=MTba\n+-----END PGP PUBLIC KEY BLOCK-----",
+  "heuristics": {
+    "tags": [],
+    "extensions": [
+      ""
+    ],
+    "scopes_guess": [
+      "KEYS"
+    ]
+  }
+}

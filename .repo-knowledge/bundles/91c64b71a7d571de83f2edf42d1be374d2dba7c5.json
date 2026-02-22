@@ -1,0 +1,38 @@
+{
+  "sha": "91c64b71a7d571de83f2edf42d1be374d2dba7c5",
+  "sha7": "91c64b7",
+  "author_name": "Yichen Yan",
+  "author_email": "wenji.yyc@alibaba-inc.com",
+  "date_iso": "2025-12-08T21:40:19+08:00",
+  "subject": "[Fix] Fix missing int8 for torch<2.6.0 (#323)",
+  "body": "This PR fixes the issue that int8 type is missing for `torch<2.6.0`.",
+  "is_merge": false,
+  "parents": [
+    "3cfc5c577196c44944fc82863c8eb6a8d4757868"
+  ],
+  "name_status": [
+    [
+      "M",
+      "python/tvm_ffi/utils/_build_optional_torch_c_dlpack.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "python/tvm_ffi/utils/_build_optional_torch_c_dlpack.py",
+      "additions": 5,
+      "deletions": 15
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/python/tvm_ffi/utils/_build_optional_torch_c_dlpack.py b/python/tvm_ffi/utils/_build_optional_torch_c_dlpack.py\nindex 4512caf..fd0aff4 100644\n--- a/python/tvm_ffi/utils/_build_optional_torch_c_dlpack.py\n+++ b/python/tvm_ffi/utils/_build_optional_torch_c_dlpack.py\n@@ -72,7 +72,7 @@ DLDataType getDLDataTypeForDLPackv1(const Tensor& t) {\n     case ScalarType::UInt64:\n       dtype.code = DLDataTypeCode::kDLUInt;\n       break;\n-#if TORCH_VERSION_MAJOR >= 2 && TORCH_VERSION_MINOR >= 6\n+#if (TORCH_VERSION_MAJOR > 2) || (TORCH_VERSION_MAJOR == 2 && TORCH_VERSION_MINOR >= 6)\n     case ScalarType::Int1:\n     case ScalarType::Int2:\n     case ScalarType::Int3:\n@@ -80,26 +80,16 @@ DLDataType getDLDataTypeForDLPackv1(const Tensor& t) {\n     case ScalarType::Int5:\n     case ScalarType::Int6:\n     case ScalarType::Int7:\n-    case ScalarType::Char:\n-      dtype.code = DLDataTypeCode::kDLInt;\n-      break;\n #endif\n-    case ScalarType::Double:\n-      dtype.code = DLDataTypeCode::kDLFloat;\n-      break;\n-    case ScalarType::Float:\n-      dtype.code = DLDataTypeCode::kDLFloat;\n-      break;\n+    case ScalarType::Char:\n+    case ScalarType::Short:\n     case ScalarType::Int:\n-      dtype.code = DLDataTypeCode::kDLInt;\n-      break;\n     case ScalarType::Long:\n       dtype.code = DLDataTypeCode::kDLInt;\n       break;\n-    case ScalarType::Short:\n-      dtype.code = DLDataTypeCode::kDLInt;\n-      break;\n     case ScalarType::Half:\n+    case ScalarType::Float:\n+    case ScalarType::Double:\n       dtype.code = DLDataTypeCode::kDLFloat;\n       break;\n     case ScalarType::Bool:",
+  "heuristics": {
+    "tags": [],
+    "extensions": [
+      ".py"
+    ],
+    "scopes_guess": [
+      "python"
+    ]
+  }
+}

@@ -1,0 +1,149 @@
+{
+  "sha": "4523a834e6d7331870230873365a895ce94da050",
+  "sha7": "4523a83",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-08-30T23:12:45-04:00",
+  "subject": "[FFI][DOCS] Wheel Packaging (#18256)",
+  "body":
+      "[FFI] Wheel packaging example\n\nThis PR add an example about wheel packaging.\nAlso fixes various source packaging minor nits.",
+  "is_merge": false,
+  "parents": [
+    "777cf8d51f2054d96e0413b7406ed38ef43a7b39"
+  ],
+  "name_status": [
+    [
+      "M",
+      "CMakeLists.txt"
+    ],
+    [
+      "M",
+      "cmake/tvm_ffi-config.cmake"
+    ],
+    [
+      "M",
+      "examples/get_started/README.md"
+    ],
+    [
+      "A",
+      "examples/packaging/CMakeLists.txt"
+    ],
+    [
+      "A",
+      "examples/packaging/README.md"
+    ],
+    [
+      "A",
+      "examples/packaging/pyproject.toml"
+    ],
+    [
+      "A",
+      "examples/packaging/python/tvm_ffi_extension/__init__.py"
+    ],
+    [
+      "A",
+      "examples/packaging/python/tvm_ffi_extension/_ffi_api.py"
+    ],
+    [
+      "A",
+      "examples/packaging/python/tvm_ffi_extension/base.py"
+    ],
+    [
+      "M",
+      "pyproject.toml"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/cython/function.pxi"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/libinfo.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "CMakeLists.txt",
+      "additions": 2,
+      "deletions": 2
+    },
+    {
+      "path": "cmake/tvm_ffi-config.cmake",
+      "additions": 2,
+      "deletions": 0
+    },
+    {
+      "path": "examples/get_started/README.md",
+      "additions": 3,
+      "deletions": 4
+    },
+    {
+      "path": "examples/packaging/CMakeLists.txt",
+      "additions": 73,
+      "deletions": 0
+    },
+    {
+      "path": "examples/packaging/README.md",
+      "additions": 61,
+      "deletions": 0
+    },
+    {
+      "path": "examples/packaging/pyproject.toml",
+      "additions": 58,
+      "deletions": 0
+    },
+    {
+      "path": "examples/packaging/python/tvm_ffi_extension/__init__.py",
+      "additions": 48,
+      "deletions": 0
+    },
+    {
+      "path": "examples/packaging/python/tvm_ffi_extension/_ffi_api.py",
+      "additions": 24,
+      "deletions": 0
+    },
+    {
+      "path": "examples/packaging/python/tvm_ffi_extension/base.py",
+      "additions": 37,
+      "deletions": 0
+    },
+    {
+      "path": "pyproject.toml",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "python/tvm_ffi/cython/function.pxi",
+      "additions": 3,
+      "deletions": 4
+    },
+    {
+      "path": "python/tvm_ffi/libinfo.py",
+      "additions": 1,
+      "deletions": 1
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/CMakeLists.txt b/CMakeLists.txt\nindex f403136..90f1f89 100644\n--- a/CMakeLists.txt\n+++ b/CMakeLists.txt\n@@ -239,9 +239,9 @@ if (TVM_FFI_BUILD_PYTHON_MODULE)\n     PATTERN \"*.tmp\" EXCLUDE\n   )\n   install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/src/ffi/ DESTINATION src/ffi/)\n-  install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/cmake/Utils/ DESTINATION cmake/Utils/)\n+  install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/cmake/Utils/ DESTINATION cmake/Utils)\n   install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/CMakeLists.txt DESTINATION .)\n-  install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/cmake/tvm_ffi-config.cmake DESTINATION lib/cmake/tvm_ffi/)\n+  install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/cmake/tvm_ffi-config.cmake DESTINATION cmake)\n endif()\n \n ########## Install the related for normal cmake library ##########\ndiff --git a/cmake/tvm_ffi-config.cmake b/cmake/tvm_ffi-config.cmake\nindex 003d6dd..01f60ca 100644\n--- a/cmake/tvm_ffi-config.cmake\n+++ b/cmake/tvm_ffi-config.cmake\n@@ -54,3 +54,5 @@ set_target_properties(\n   tvm_ffi_shared PROPERTIES INTERFACE_INCLUDE_DIRECTORIES\n   \"${tvm_ffi_INCLUDE_DIR};${tvm_ffi_DLPACK_INCLUDE_DIR}\"\n )\n+# extra cmake functions\n+include(${CMAKE_CURRENT_LIST_DIR}/Utils/Library.cmake)\ndiff --git a/examples/get_started/README.md b/examples/get_started/README.md\nindex 746d24a..002d437 100644\n--- a/examples/get_started/README.md\n+++ b/examples/get_started/README.md\n@@ -23,11 +23,10 @@ that can be loaded in different environments.\n The example implements a simple \"add one\" operation that adds 1 to each element\n of an input tensor, showing how to create C++ functions callable from Python.\n \n-\n You can run this quick start example by:\n \n ```bash\n-# ensure you installed tvm-ffi first once\n+# ensure you installed tvm-ffi first\n pip install -e ../..\n \n # Build and run the complete example\n@@ -49,8 +48,8 @@ in Python and C++.\n \n ## Compile without CMake\n \n-You can also compile the modules directly using using\n-flags provided by the `tvm-ffi-config` tool\n+You can also compile the modules directly using\n+flags provided by the `tvm-ffi-config` tool.\n \n ```bash\n g++ -shared -fPIC `tvm-ffi-config --cxxflags`  \\\ndiff --git a/examples/packaging/CMakeLists.txt b/examples/packaging/CMakeLists.txt\nnew file mode 100644\nindex 0000000..47e5040\n--- /dev/null\n+++ b/examples/packaging/CMakeLists.txt\n@@ -0,0 +1,73 @@\n+# Licensed to the Apache Software Foundation (ASF) under one\n+# or more contributor license agreements.  See the NOTICE file\n+# distributed with this work for additional information\n+# regarding copyright ownership.  The ASF licenses this file\n+# to you under the Apache License, Version 2.0 (the\n+# \"License\"); you may not use this file except in compliance\n+# with the License.  You may obtain a copy of the License at\n+#\n+#   http://www.apache.org/licenses/LICENSE-2.0\n+#\n+# Unless required by applicable law or agreed to in writing,\n+# software distributed under the License is distributed on an\n+# \"AS IS\" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY\n+# KIND, either express or implied.  See the License for the\n+# specific language governing permissions and limitations\n+# under the License.\n+\n+cmake_minimum_required(VERSION 3.18)\n+project(tvm_ffi_extension)\n+\n+option(TVM_FFI_EXT_FROM_SOURCE \"Build tvm_ffi from source, useful for cross compilation.\" ON)\n+option(TVM_FFI_EXT_SHIP_DEBUG_SYMBOLS \"Ship debug symbols\" ON)\n+\n+# There are two ways to include tvm_ffi\n+#\n+# 1. Build tvm_ffi from source, which is reasonably cheap since tvm ffi is small\n+# 2. Use the pre-built tvm_ffi shipped from the pip\n+#\n+# This example shows both options, you only need to pick a specific one.\n+#\n+# - For common build cases, using pre-built and link tvm_ffi_shared is sufficient.\n+# - For cases where you may want to cross-compile or bundle part of tvm_ffi_objects directly\n+#   into your project, opt for building tvm_ffi from source path.\n+#   Note that it is always safe to build from source and extra cost of building tvm_ffi is small.\n+#   So when in doubt, you can always choose to the building tvm_ffi from source route.\n+#\n+# In python or other cases when we dynamically load libtvm_ffi_shared. Even when you build\n+# from source, you do not need to ship libtvm_ffi_shared.so built here as they are only\n+# used to supply the linking information.\n+# first find python related components\n+find_package(Python COMPONENTS Interpreter REQUIRED)\n+if (TVM_FFI_BUILD_FROM_SOURCE)\n+  execute_process(\n+    COMMAND \"${Python_EXECUTABLE}\" -m tvm_ffi.config --sourcedir\n+    OUTPUT_STRIP_TRAILING_WHITESPACE OUTPUT_VARIABLE tvm_ffi_ROOT)\n+  message(STATUS \"Building tvm_ffi from source: ${tvm_ffi_ROOT}\")\n+  add_subdirectory(${tvm_ffi_ROOT} tvm_ffi)\n+else()\n+  # call tvm_ffi.config to get the cmake directory and set it to tvm_ffi_ROOT\n+  execute_process(\n+    COMMAND \"${Python_EXECUTABLE}\" -m tvm_ffi.config --cmakedir\n+    OUTPUT_STRIP_TRAILING_WHITESPACE OUTPUT_VARIABLE tvm_ffi_ROOT)\n+  find_package(tvm_ffi CONFIG REQUIRED)\n+endif()\n+\n+# use the projects as usual\n+add_library(tvm_ffi_extension SHARED src/extension.cc)\n+target_link_libraries(tvm_ffi_extension tvm_ffi_header)\n+target_link_libraries(tvm_ffi_extension tvm_ffi_shared)\n+\n+# show as tvm_ffi_extension.so\n+set_target_properties(\n+  tvm_ffi_extension PROPERTIES PREFIX \"\"\n+)\n+\n+if (TVM_FFI_EXT_SHIP_DEBUG_SYMBOLS)\n+  # ship debugging symbols for backtrace on macos\n+  tvm_ffi_add_prefix_map(tvm_ffi_extension ${CMAKE_CURRENT_SOURCE_DIR})\n+  tvm_ffi_add_apple_dsymutil(tvm_ffi_extension)\n+  install(DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/ DESTINATION . FILES_MATCHING PATTERN \"*.dSYM\")\n+endif()\n+\n+install(TARGETS tvm_ffi_extension DESTINATION .)\ndiff --git a/examples/packaging/README.md b/examples/packaging/README.md\nnew file mode 100644\nindex 0000000..9535581\n--- /dev/null\n+++ b/examples/packaging/README.md\n@@ -0,0 +1,61 @@\n+<!--- Licensed to the Apache Software Foundation (ASF) under one -->\n+<!--- or more contributor license agreements.  See the NOTICE file -->\n+<!--- distributed with this work for additional information -->\n+<!--- regarding copyright ownership.  The ASF licenses this file -->\n+<!--- to you under the Apache License, Version 2.0 (the -->\n+<!--- \"License\"); you may not use this file except in compliance -->\n+<!--- with the License.  You may obtain a copy of the License at -->\n+\n+<!---   http://www.apache.org/licenses/LICENSE-2.0 -->\n+\n+<!--- Unless required by applicable law or agreed to in writing, -->\n+<!--- software distributed under the License is distributed on an -->\n+<!--- \"AS IS\" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY -->\n+<!--- KIND, either express or implied.  See the License for the -->\n+<!--- specific language governing permissions and limitations -->\n+<!--- under the License. -->\n+\n+# TVM FFI Packaging Example\n+\n+This is an example project that packages a tvm-ffi based library\n+into a Python ABI-agnostic wheel.\n+\n+This example can also serve as a guideline for general\n+packaging as well.\n+\n+- Source-level build for cross-compilation support in CMake\n+- Registration via global function table\n+\n+## Install the wheel\n+\n+```bash\n+pip install .\n+```\n+\n+### Note on build and auditwheel\n+\n+Note: When running the auditwheel process, make sure to skip\n+`libtvm_ffi_shared.so` as they are shipped via the tvm_ffi package.\n+\n+## Run the example\n+\n+After installing the `tvm_ffi_extension` example package, you can run the following example\n+that invokes the `add_one` function exposed.\n+\n+```bash\n+python run_example.py add_one\n+```\n+\n+You can also run the following command to see how error is raised and propagated\n+across the language boundaries.\n+\n+```python\n+python run_example.py raise_error\n+```\n+\n+When possible, tvm_ffi will try to preserve traceback across language boundary. You will see traceback like\n+```\n+File \"src/extension.cc\", line 45, in void tvm_ffi_extension::RaiseError(tvm::ffi::String)\n+```\n+If you are in an IDE like VSCode, you can click and jump to the C++ lines of error when\n+the debug symbols are preserved.\ndiff --git a/examples/packaging/pyproject.toml b/examples/packaging/pyproject.toml\nnew file mode 100644\nindex 0000000..e38ebec\n--- /dev/null\n+++ b/examples/packaging/pyproject.toml\n@@ -0,0 +1,58 @@\n+# Licensed to the Apache Software Foundation (ASF) under one\n+# or more contributor license agreements.  See the NOTICE file\n+# distributed with this work for additional information\n+# regarding copyright ownership.  The ASF licenses this file\n+# to you under the Apache License, Version 2.0 (the\n+# \"License\"); you may not use this file except in compliance\n+# with the License.  You may obtain a copy of the License at\n+#\n+#   http://www.apache.org/licenses/LICENSE-2.0\n+#\n+# Unless required by applicable law or agreed to in writing,\n+# software distributed under the License is distributed on an\n+# \"AS IS\" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY\n+# KIND, either express or implied.  See the License for the\n+# specific language governing permissions and limitations\n+# under the License.\n+\n+[project]\n+name = \"tvm-ffi-extension\"\n+version = \"0.1.0\"\n+\n+readme = \"README.md\"\n+license = { text = \"Apache 2.0\" }\n+classifiers = [\n+  \"License :: OSI Approved :: Apache Software License\",\n+  \"Development Status :: 4 - Beta\",\n+  \"Intended Audience :: Developers\",\n+  \"Intended Audience :: Education\",\n+  \"Intended Audience :: Science/Research\",\n+]\n+keywords = [\"machine learning\", \"inference\"]\n+requires-python = \">=3.9\"\n+\n+dependencies = [\"apache-tvm-ffi\"]\n+\n+[build-system]\n+requires = [\"scikit-build-core>=0.10.0\", \"apache-tvm-ffi\"]\n+build-backend = \"scikit_build_core.build\"\n+\n+[tool.scikit-build]\n+# the wheel is abi agnostic\n+wheel.py-api = \"py3\"\n+minimum-version = \"build-system.requires\"\n+\n+# Build configuration\n+build-dir = \"build\"\n+build.verbose = true\n+\n+# CMake configuration\n+cmake.version = \"CMakeLists.txt\"\n+cmake.build-type = \"RelWithDebugInfo\"\n+\n+# Logging\n+logging.level = \"INFO\"\n+\n+# Wheel configuration\n+wheel.packages = [\"python/tvm_ffi_extension\"]\n+wheel.install-dir = \"tvm_ffi_extension\"\ndiff --git a/examples/packaging/python/tvm_ffi_extension/__init__.py b/examples/packaging/python/tvm_ffi_extension/__init__.py\nnew file mode 100644\nindex 0000000..4cd4207\n--- /dev/null\n+++ b/examples/packaging/python/tvm_ffi_extension/__init__.py\n@@ -0,0 +1,48 @@\n+# Licensed to the Apache Software Foundation (ASF) under one\n+# or more contributor license agreements.  See the NOTICE file\n+# distributed with this work for additional information\n+# regarding copyright ownership.  The ASF licenses this file\n+# to you under the Apache License, Version 2.0 (the\n+# \"License\"); you may not use this file except in compliance\n+# with the License.  You may obtain a copy of the License at\n+#\n+#   http://www.apache.org/licenses/LICENSE-2.0\n+#\n+# Unless required by applicable law or agreed to in writing,\n+# software distributed under the License is distributed on an\n+# \"AS IS\" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY\n+# KIND, either express or implied.  See the License for the\n+# specific language governing permissions and limitations.\n+from .base import _LIB\n+from . import _ffi_api\n+\n+\n+def add_one(x, y):\n+    \"\"\"\n+    Adds one to the input tensor.\n+\n+    Parameters\n+    ----------\n+    x : Tensor\n+      The input tensor.\n+    y : Tensor\n+      The output tensor.\n+    \"\"\"\n+    return _LIB.add_one(x, y)\n+\n+\n+def raise_error(msg):\n+    \"\"\"\n+    Raises an error with the given message.\n+\n+    Parameters\n+    ----------\n+    msg : str\n+        The message to raise the error with.\n+\n+    Raises\n+    ------\n+    RuntimeError\n+        The error raised by the function.\n+    \"\"\"\n+    return _ffi_api.raise_error(msg)\ndiff --git a/examples/packaging/python/tvm_ffi_extension/_ffi_api.py b/examples/packaging/python/tvm_ffi_extension/_ffi_api.py\nnew file mode 100644\nindex 0000000..1ab9abd\n--- /dev/null\n+++ b/examples/packaging/python/tvm_ffi_extension/_ffi_api.py\n@@ -0,0 +1,24 @@\n+# Licensed to the Apache Software Foundation (ASF) under one\n+# or more contributor license agreements.  See the NOTICE file\n+# distributed with this work for additional information\n+# regarding copyright ownership.  The ASF licenses this file\n+# to you under the Apache License, Version 2.0 (the\n+# \"License\"); you may not use this file except in compliance\n+# with the License.  You may obtain a copy of the License at\n+#\n+#   http://www.apache.org/licenses/LICENSE-2.0\n+#\n+# Unless required by applicable law or agreed to in writing,\n+# software distributed under the License is distributed on an\n+# \"AS IS\" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY\n+# KIND, either express or implied.  See the License for the\n+# specific language governing permissions and limitations.\n+\n+import tvm_ffi\n+\n+# make sure lib is loaded first\n+from .base import _LIB\n+\n+# this is a short cut to register all the global functions\n+# prefixed by `tvm_ffi_extension.` to this module\n+tvm_ffi._init_api(\"tvm_ffi_extension\", __name__)\ndiff --git a/examples/packaging/python/tvm_ffi_extension/base.py b/examples/packaging/python/tvm_ffi_extension/base.py\nnew file mode 100644\nindex 0000000..ed73193\n--- /dev/null\n+++ b/examples/packaging/python/tvm_ffi_extension/base.py\n@@ -0,0 +1,37 @@\n+# Licensed to the Apache Software Foundation (ASF) under one\n+# or more contributor license agreements.  See the NOTICE file\n+# distributed with this work for additional information\n+# regarding copyright ownership.  The ASF licenses this file\n+# to you under the Apache License, Version 2.0 (the\n+# \"License\"); you may not use this file except in compliance\n+# with the License.  You may obtain a copy of the License at\n+#\n+#   http://www.apache.org/licenses/LICENSE-2.0\n+#\n+# Unless required by applicable law or agreed to in writing,\n+# software distributed under the License is distributed on an\n+# \"AS IS\" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY\n+# KIND, either express or implied.  See the License for the\n+# specific language governing permissions and limitations.\n+# Base logic to load library for extension package\n+import tvm_ffi\n+import os\n+import sys\n+\n+\n+def _load_lib():\n+    # first look at the directory of the current file\n+    file_dir = os.path.dirname(os.path.realpath(__file__))\n+\n+    if sys.platform.startswith(\"win32\"):\n+        lib_dll_name = \"tvm_ffi_extension.dll\"\n+    elif sys.platform.startswith(\"darwin\"):\n+        lib_dll_name = \"tvm_ffi_extension.dylib\"\n+    else:\n+        lib_dll_name = \"tvm_ffi_extension.so\"\n+\n+    lib_path = os.path.join(file_dir, lib_dll_name)\n+    return tvm_ffi.load_module(lib_path)\n+\n+\n+_LIB = _load_lib()\ndiff --git a/pyproject.toml b/pyproject.toml\nindex 3efa1d9..8ed9e27 100644\n--- a/pyproject.toml\n+++ b/pyproject.toml\n@@ -17,7 +17,7 @@\n \n [project]\n name = \"apache-tvm-ffi\"\n-version = \"0.1.0a3\"\n+version = \"0.1.0a5\"\n description = \"tvm ffi\"\n \n authors = [{ name = \"TVM FFI team\" }]\ndiff --git a/python/tvm_ffi/cython/function.pxi b/python/tvm_ffi/cython/function.pxi\nindex dcd300c..00a0bb3 100644\n--- a/python/tvm_ffi/cython/function.pxi\n+++ b/python/tvm_ffi/cython/function.pxi\n@@ -56,10 +56,7 @@ def load_torch_get_current_cuda_stream():\n         return fallback_get_current_cuda_stream\n \n \n-if torch is not None:\n-    # when torch is available, jit compile the get_current_cuda_stream function\n-    # the torch caches the extension so second loading is faster\n-    torch_get_current_cuda_stream = load_torch_get_current_cuda_stream()\n+torch_get_current_cuda_stream = None\n \n \n cdef inline object make_ret_small_str(TVMFFIAny result):\n@@ -149,6 +146,8 @@ cdef inline int make_args(tuple py_args, TVMFFIAny* out, list temp_args,\n             if is_cuda and ctx_dev_type != NULL and ctx_dev_type[0] == -1:\n                 ctx_dev_type[0] = temp_dltensor.device.device_type\n                 ctx_dev_id[0] = temp_dltensor.device.device_id\n+                if torch_get_current_cuda_stream is None:\n+                    torch_get_current_cuda_stream = load_torch_get_current_cuda_stream()\n                 temp_ptr = torch_get_current_cuda_stream(temp_dltensor.device.device_id)\n                 ctx_stream[0] = <TVMFFIStreamHandle>temp_ptr\n             temp_args.append(arg)\ndiff --git a/python/tvm_ffi/libinfo.py b/python/tvm_ffi/libinfo.py\nindex 8974574..b449bc1 100644\n--- a/python/tvm_ffi/libinfo.py\n+++ b/python/tvm_ffi/libinfo.py\n@@ -95,7 +95,7 @@ def find_source_path():\n def find_cmake_path():\n     \"\"\"Find the preferred cmake path.\"\"\"\n     candidates = [\n-        os.path.join(os.path.dirname(os.path.realpath(__file__)), \"lib\", \"cmake\"),\n+        os.path.join(os.path.dirname(os.path.realpath(__file__)), \"cmake\"),\n         os.path.join(os.path.dirname(os.path.realpath(__file__)), \"..\", \"..\", \"cmake\"),\n     ]\n     for candidate in candidates:",
+  "heuristics": {
+    "tags": [
+      "build"
+    ],
+    "extensions": [
+      ".cmake",
+      ".md",
+      ".pxi",
+      ".py",
+      ".toml",
+      ".txt"
+    ],
+    "scopes_guess": [
+      "CMakeLists.txt",
+      "cmake",
+      "examples",
+      "pyproject.toml",
+      "python"
+    ]
+  }
+}

@@ -1,0 +1,56 @@
+{
+  "sha": "70caf4cc2bed25288df242e2cbe0080dbe505a8b",
+  "sha7": "70caf4c",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-10-15T01:12:03-04:00",
+  "subject": "[CYTHON] Fix type annotation (#123)",
+  "body": "This PR fixes the cython type annotations of dlpack related functions.",
+  "is_merge": false,
+  "parents": [
+    "5dd60e6bed7ba67d68e989b0423591ebdab92ef6"
+  ],
+  "name_status": [
+    [
+      "M",
+      "python/tvm_ffi/cython/base.pxi"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/cython/function.pxi"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/cython/tensor.pxi"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "python/tvm_ffi/cython/base.pxi",
+      "additions": 4,
+      "deletions": 4
+    },
+    {
+      "path": "python/tvm_ffi/cython/function.pxi",
+      "additions": 8,
+      "deletions": 9
+    },
+    {
+      "path": "python/tvm_ffi/cython/tensor.pxi",
+      "additions": 2,
+      "deletions": 3
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/python/tvm_ffi/cython/base.pxi b/python/tvm_ffi/cython/base.pxi\nindex 4272a20..d7decda 100644\n--- a/python/tvm_ffi/cython/base.pxi\n+++ b/python/tvm_ffi/cython/base.pxi\n@@ -91,23 +91,23 @@ cdef extern from \"dlpack/dlpack.h\":\n     ctypedef int (*DLPackManagedTensorFromPyObjectNoSync)(\n         void* py_object,\n         DLManagedTensorVersioned** out\n-    ) noexcept\n+    ) except -1\n \n     ctypedef int (*DLPackManagedTensorToPyObjectNoSync)(\n         DLManagedTensorVersioned* tensor,\n         void** out_py_object\n-    ) noexcept\n+    ) except -1\n \n     ctypedef int (*DLPackCurrentWorkStream)(\n         int device_type,\n         int32_t device_id,\n         void** out_current_stream\n-    ) noexcept\n+    ) except -1\n \n     ctypedef int (*DLPackDLTensorFromPyObjectNoSync)(\n         void* py_object,\n         DLTensor* out\n-    ) noexcept\n+    ) except -1\n \n     ctypedef struct DLPackExchangeAPIHeader:\n         DLPackVersion version\ndiff --git a/python/tvm_ffi/cython/function.pxi b/python/tvm_ffi/cython/function.pxi\nindex cd35a7e..66cf4b9 100644\n--- a/python/tvm_ffi/cython/function.pxi\n+++ b/python/tvm_ffi/cython/function.pxi\n@@ -183,19 +183,18 @@ cdef int TVMFFIPyArgSetterDLPackExchangeAPI_(\n \n cdef int TorchDLPackToPyObjectFallback_(\n     DLManagedTensorVersioned* dltensor, void** py_obj_out\n-) noexcept:\n+) except -1:\n     # a bit convoluted but ok as a fallback\n     cdef TVMFFIObjectHandle temp_chandle\n     if TVMFFITensorFromDLPackVersioned(dltensor, 0, 0, &temp_chandle) != 0:\n         return -1\n-    try:\n-        tensor = make_tensor_from_chandle(temp_chandle)\n-        torch_tensor = torch.from_dlpack(tensor)\n-        Py_INCREF(torch_tensor)\n-        py_obj_out[0] = <void*>(<PyObject*>torch_tensor)\n-        return 0\n-    except Exception:\n-        return -1\n+\n+    tensor = make_tensor_from_chandle(temp_chandle)\n+    torch_tensor = torch.from_dlpack(tensor)\n+    Py_INCREF(torch_tensor)\n+    py_obj_out[0] = <void*>(<PyObject*>torch_tensor)\n+    return 0\n+\n \n cdef inline const DLPackExchangeAPI* GetTorchFallbackExchangeAPI() noexcept:\n     global _torch_fallback_exchange_api\ndiff --git a/python/tvm_ffi/cython/tensor.pxi b/python/tvm_ffi/cython/tensor.pxi\nindex cfe41a2..220637f 100644\n--- a/python/tvm_ffi/cython/tensor.pxi\n+++ b/python/tvm_ffi/cython/tensor.pxi\n@@ -397,8 +397,7 @@ cdef inline object make_ret_dltensor(TVMFFIAny result):\n cdef inline object make_tensor_from_chandle(\n     TVMFFIObjectHandle chandle, const DLPackExchangeAPI* c_ctx_dlpack_api = NULL\n ):\n-    # TODO: Implement\n-    cdef Tensor tensor\n+    cdef object tensor\n     cdef void* py_obj\n     cdef DLManagedTensorVersioned* dlpack\n \n@@ -409,7 +408,7 @@ cdef inline object make_tensor_from_chandle(\n                 # note that py_obj already holds an extra reference to the tensor\n                 # so we need to decref it after the conversion\n                 c_ctx_dlpack_api.managed_tensor_to_py_object_no_sync(dlpack, &py_obj)\n-                tensor = <Tensor>(<PyObject*>py_obj)\n+                tensor = <object>(<PyObject*>py_obj)\n                 Py_DECREF(tensor)\n                 # decref original handle to prevent leak.\n                 # note that DLManagedTensor also hold a reference to the tensor",
+  "heuristics": {
+    "tags": [],
+    "extensions": [
+      ".pxi"
+    ],
+    "scopes_guess": [
+      "python"
+    ]
+  }
+}

@@ -1,0 +1,88 @@
+{
+  "sha": "729f971f272c7a098d032ed80ffcea1aaf580d66",
+  "sha7": "729f971",
+  "author_name": "Yixin Dong",
+  "author_email": "ubospica@gmail.com",
+  "date_iso": "2025-10-18T08:36:03-04:00",
+  "subject": "[Docs] Add Rust Docs (#160)",
+  "body":
+      "This PR adds Rust API docs and a simple tutorial\n\nThe rust docstrings still have space for enhancement. We can add more\ndocstrings later.",
+  "is_merge": false,
+  "parents": [
+    "1fb25dbaf173b53ca7f52af2c10adac827923890"
+  ],
+  "name_status": [
+    [
+      "M",
+      "docs/README.md"
+    ],
+    [
+      "M",
+      "docs/conf.py"
+    ],
+    [
+      "A",
+      "docs/guides/rust_guide.md"
+    ],
+    [
+      "M",
+      "docs/index.rst"
+    ],
+    [
+      "A",
+      "docs/reference/rust/index.rst"
+    ],
+    [
+      "M",
+      "rust/tvm-ffi-sys/build.rs"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "docs/README.md",
+      "additions": 36,
+      "deletions": 2
+    },
+    {
+      "path": "docs/conf.py",
+      "additions": 54,
+      "deletions": 1
+    },
+    {
+      "path": "docs/guides/rust_guide.md",
+      "additions": 217,
+      "deletions": 0
+    },
+    {
+      "path": "docs/index.rst",
+      "additions": 2,
+      "deletions": 0
+    },
+    {
+      "path": "docs/reference/rust/index.rst",
+      "additions": 40,
+      "deletions": 0
+    },
+    {
+      "path": "rust/tvm-ffi-sys/build.rs",
+      "additions": 30,
+      "deletions": 8
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/docs/README.md b/docs/README.md\nindex f0edc73..d790e07 100644\n--- a/docs/README.md\n+++ b/docs/README.md\n@@ -56,12 +56,45 @@ sudo apt install doxygen    # Linux\n Set `BUILD_CPP_DOCS=1` on the desired build command to enable the extra step:\n \n ```bash\n-# Interactive build\n-BUILD_CPP_DOCS=1 uv run --group docs sphinx-autobuild docs docs/_build/html --ignore docs/reference/cpp/generated\n+# Interactive build with auto-rebuild on C++ header changes\n+BUILD_CPP_DOCS=1 uv run --group docs sphinx-autobuild docs docs/_build/html --ignore docs/reference/cpp/generated --watch include\n # One-off build\n BUILD_CPP_DOCS=1 uv run --group docs sphinx-build -M html docs docs/_build\n ```\n \n+The C++ documentation will automatically rebuild when header files change during `sphinx-autobuild` sessions.\n+\n+### Build with Rust Docs\n+\n+Generating the Rust reference requires `cargo` to be installed:\n+\n+```bash\n+# Install Rust toolchain if not already installed\n+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh\n+```\n+\n+Set `BUILD_RUST_DOCS=1` on the desired build command to enable Rust documentation:\n+\n+```bash\n+# Interactive build with auto-rebuild on Rust source changes\n+BUILD_RUST_DOCS=1 uv run --group docs sphinx-autobuild docs docs/_build/html --ignore docs/reference/rust/generated --watch rust\n+# One-off build (clean rebuild)\n+BUILD_RUST_DOCS=1 uv run --group docs sphinx-build -M html docs docs/_build\n+```\n+\n+The Rust documentation will automatically rebuild when source files change during `sphinx-autobuild` sessions.\n+\n+### Build All Documentation\n+\n+To build documentation with all language references enabled:\n+\n+```bash\n+# Interactive build\n+BUILD_CPP_DOCS=1 BUILD_RUST_DOCS=1 uv run --group docs sphinx-autobuild docs docs/_build/html --ignore docs/reference/cpp/generated --ignore docs/reference/rust/generated --watch include --watch rust\n+# One-off build\n+BUILD_CPP_DOCS=1 BUILD_RUST_DOCS=1 uv run --group docs sphinx-build -M html docs docs/_build\n+```\n+\n ## Cleanup\n \n Remove generated artifacts when they are no longer needed:\n@@ -70,4 +103,5 @@ Remove generated artifacts when they are no longer needed:\n rm -rf docs/_build/\n rm -rf docs/reference/python/generated\n rm -rf docs/reference/cpp/generated\n+rm -rf docs/reference/rust/generated\n ```\ndiff --git a/docs/conf.py b/docs/conf.py\nindex 28f87df..82ec1fb 100644\n--- a/docs/conf.py\n+++ b/docs/conf.py\n@@ -18,6 +18,9 @@\n \n # -*- coding: utf-8 -*-\n import os\n+import shutil\n+import subprocess\n+import sys\n from pathlib import Path\n \n import sphinx\n@@ -26,7 +29,15 @@ import tomli\n os.environ[\"TVM_FFI_BUILD_DOCS\"] = \"1\"\n \n build_exhale = os.environ.get(\"BUILD_CPP_DOCS\", \"0\") == \"1\"\n+build_rust_docs = os.environ.get(\"BUILD_RUST_DOCS\", \"0\") == \"1\"\n \n+# Auto-detect sphinx-autobuild: Check if sphinx-autobuild is in the execution path\n+is_autobuild = any(\"sphinx-autobuild\" in str(arg) for arg in sys.argv)\n+\n+# -- Path constants -------------------------------------------------------\n+_DOCS_DIR = Path(__file__).resolve().parent\n+_RUST_DIR = _DOCS_DIR.parent / \"rust\"\n+_RUST_OUTPUT_DIR = _DOCS_DIR / \"reference\" / \"rust\" / \"generated\"\n \n # -- General configuration ------------------------------------------------\n # Load version from pyproject.toml\n@@ -90,6 +101,7 @@ This page contains the full API index for the C++ API.\n \"\"\"\n \n # Setup the exhale extension\n+\n exhale_args = {\n     \"containmentFolder\": \"reference/cpp/generated\",\n     \"rootFileName\": \"index.rst\",\n@@ -151,7 +163,6 @@ autosummary_filename_map = {\n     \"tvm_ffi.Device\": \"tvm_ffi.Device_class\",\n }\n \n-_DOCS_DIR = Path(__file__).resolve().parent\n _STUBS = {\n     \"_stubs/cpp_index.rst\": \"reference/cpp/generated/index.rst\",\n }\n@@ -167,15 +178,53 @@ def _prepare_stub_files() -> None:\n             dst_path.write_text(src_path.read_text(encoding=\"utf-8\"), encoding=\"utf-8\")\n \n \n+def _build_rust_docs() -> None:\n+    \"\"\"Build Rust documentation using cargo doc.\"\"\"\n+    if not build_rust_docs:\n+        return\n+\n+    print(\"Building Rust documentation...\")\n+    try:\n+        target_doc = _RUST_DIR / \"target\" / \"doc\"\n+\n+        # In auto-reload mode (sphinx-autobuild), keep incremental builds\n+        # Otherwise (CI/production), do clean rebuild\n+        if not is_autobuild and target_doc.exists():\n+            print(\"Clean rebuild: removing old documentation...\")\n+            shutil.rmtree(target_doc)\n+\n+        # Generate documentation (without dependencies)\n+        subprocess.run(\n+            [\"cargo\", \"doc\", \"--no-deps\", \"--workspace\", \"--target-dir\", \"target\"],\n+            check=True,\n+            cwd=_RUST_DIR,\n+            env={**os.environ, \"RUSTDOCFLAGS\": \"--cfg docsrs\"},\n+        )\n+\n+        # Copy generated documentation\n+        if _RUST_OUTPUT_DIR.exists():\n+            shutil.rmtree(_RUST_OUTPUT_DIR)\n+        shutil.copytree(target_doc, _RUST_OUTPUT_DIR)\n+\n+        print(f\"Rust documentation built successfully at {_RUST_OUTPUT_DIR}\")\n+    except subprocess.CalledProcessError as e:\n+        print(f\"Warning: Failed to build Rust documentation: {e}\")\n+    except FileNotFoundError:\n+        print(\"Warning: cargo not found, skipping Rust documentation build\")\n+\n+\n def _apply_config_overrides(_: object, config: object) -> None:\n     \"\"\"Apply runtime configuration overrides derived from environment variables.\"\"\"\n     config.build_exhale = build_exhale\n+    config.build_rust_docs = build_rust_docs\n \n \n def setup(app: sphinx.application.Sphinx) -> None:\n     \"\"\"Register custom Sphinx configuration values.\"\"\"\n     _prepare_stub_files()\n+    _build_rust_docs()\n     app.add_config_value(\"build_exhale\", build_exhale, \"env\")\n+    app.add_config_value(\"build_rust_docs\", build_rust_docs, \"env\")\n     app.connect(\"config-inited\", _apply_config_overrides)\n \n \n@@ -301,4 +350,8 @@ html_context = {\n \n html_static_path = [\"_static\"]\n \n+# Copy Rust documentation to output if enabled\n+html_extra_path = [\"reference/rust/generated\"] if build_rust_docs else []\n+\n+\n html_css_files = [\"custom.css\"]\ndiff --git a/docs/guides/rust_guide.md b/docs/guides/rust_guide.md\nnew file mode 100644\nindex 0000000..a1b7ac7\n--- /dev/null\n+++ b/docs/guides/rust_guide.md\n@@ -0,0 +1,217 @@\n+<!--- Licensed to the Apache Software Foundation (ASF) under one -->\n+<!--- or more contributor license agreements.  See the NOTICE file -->\n+<!--- distributed with this work for additional information -->\n+<!--- regarding copyright ownership.  The ASF licenses this file -->\n+<!--- to you under the Apache License, Version 2.0 (the -->\n+<!--- \"License\"); you may not use this file except in compliance -->\n+<!--- with the License.  You may obtain a copy of the License at -->\n+\n+<!---   http://www.apache.org/licenses/LICENSE-2.0 -->\n+\n+<!--- Unless required by applicable law or agreed to in writing, -->\n+<!--- software distributed under the License is distributed on an -->\n+<!--- \"AS IS\" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY -->\n+<!--- KIND, either express or implied.  See the License for the -->\n+<!--- specific language governing permissions and limitations -->\n+<!--- under the License. -->\n+\n+# Rust Guide\n+\n+```{note}\n+The Rust support is currently in an experimental stage.\n+```\n+\n+This guide demonstrates how to use TVM FFI from Rust applications.\n+\n+## Installation\n+\n+### Prerequisites\n+\n+The Rust support depends on `libtvm_ffi`. First, install the `tvm-ffi` Python package:\n+\n+```bash\n+pip install -v -e .\n+```\n+\n+Confirm that `tvm-ffi-config` is available:\n+\n+```bash\n+tvm-ffi-config --libdir\n+```\n+\n+### Adding to Your Project\n+\n+Add to your `Cargo.toml`:\n+\n+```toml\n+[dependencies]\n+tvm-ffi = { path = \"path/to/tvm-ffi/rust/tvm-ffi\" }\n+```\n+\n+For published versions (when available):\n+\n+```toml\n+[dependencies]\n+tvm-ffi = \"0.1.0-alpha.0\"\n+```\n+\n+### Environment Setup\n+\n+Set the library path so `libtvm_ffi` can be found at runtime:\n+\n+```bash\n+export LD_LIBRARY_PATH=$(tvm-ffi-config --libdir):$LD_LIBRARY_PATH\n+```\n+\n+## Basic Usage\n+\n+### Loading a Module\n+\n+Load a compiled TVM FFI module and call its functions:\n+\n+```rust\n+use tvm_ffi::{Module, Result};\n+\n+fn main() -> Result<()> {\n+    // Load compiled module\n+    let module = Module::load_from_file(\"build/add_one_cpu.so\")?;\n+\n+    // Get function by name\n+    let add_fn = module.get_function(\"add_one_cpu\")?;\n+\n+    Ok(())\n+}\n+```\n+\n+### Working with Tensors\n+\n+Create and manipulate tensors:\n+\n+```rust\n+use tvm_ffi::Tensor;\n+\n+// Create a tensor from a slice\n+let data = vec![1.0f32, 2.0, 3.0, 4.0, 5.0, 6.0];\n+let tensor = Tensor::from_slice(&data, &[2, 3])?;\n+```\n+\n+### Calling Functions\n+\n+Call functions with tensors:\n+\n+```rust\n+use tvm_ffi::{Module, Tensor, Result};\n+\n+fn run_example() -> Result<()> {\n+    let module = Module::load_from_file(\"build/add_one_cpu.so\")?;\n+    let func = module.get_function(\"add_one_cpu\")?;\n+\n+    // Create input and output tensors\n+    let input = Tensor::from_slice(&[1.0f32, 2.0, 3.0, 4.0], &[4])?;\n+    let output = Tensor::from_slice(&[0.0f32; 4], &[4])?;\n+\n+    // Call function\n+    func.call_tuple((&input, &output))?;\n+\n+    Ok(())\n+}\n+```\n+\n+## Advanced Topics\n+\n+### Global Functions\n+\n+Register and access global functions:\n+\n+```rust\n+use tvm_ffi::Function;\n+\n+// Get global function\n+let func = Function::get_global(\"my_function\")?;\n+\n+// Register a new global function\n+let my_func = Function::from_packed(|args: &[AnyView]| -> Result<Any> {\n+    // Function implementation\n+    Ok(Any::default())\n+});\n+Function::register_global(\"my_custom_func\", my_func)?;\n+```\n+\n+### Type-Erased Functions\n+\n+Create functions from Rust closures:\n+\n+```rust\n+use tvm_ffi::{Function, Any, AnyView, Result};\n+\n+// From packed closure\n+let func = Function::from_packed(|args: &[AnyView]| -> Result<Any> {\n+    // Process args and return result\n+    Ok(Any::default())\n+});\n+\n+// From typed closure\n+let typed_func = Function::from_typed(|x: i64, y: i64| -> Result<i64> {\n+    Ok(x + y)\n+});\n+```\n+\n+### Error Handling\n+\n+TVM FFI uses standard Rust `Result` types:\n+\n+```rust\n+use tvm_ffi::{Error, Module, Result, VALUE_ERROR};\n+\n+fn may_fail(value: i32) -> Result<()> {\n+    // Operations that may fail\n+    let module = Module::load_from_file(\"path.so\")?;\n+\n+    // Custom errors\n+    if value < 0 {\n+        return Err(Error::new(\n+            VALUE_ERROR,\n+            \"Value must be non-negative\",\n+            \"\"\n+        ));\n+    }\n+\n+    Ok(())\n+}\n+```\n+\n+## Examples\n+\n+The repository includes a complete example in `rust/tvm-ffi/examples/load_library.rs`.\n+\n+Run it with:\n+\n+```bash\n+cd rust\n+cargo run --example load_library --features example\n+```\n+\n+## Building the Workspace\n+\n+Build the entire Rust workspace:\n+\n+```bash\n+cd rust\n+cargo build\n+```\n+\n+Run tests:\n+\n+```bash\n+cargo test\n+```\n+\n+## API Reference\n+\n+For detailed API documentation, see the [Rust API Reference](../reference/rust/index.rst).\n+\n+## Related Resources\n+\n+- [Quick Start Guide](../get_started/quickstart.rst) - General TVM FFI introduction\n+- [C++ Guide](cpp_guide.md) - C++ API usage\n+- [Python Guide](python_guide.md) - Python API usage\ndiff --git a/docs/index.rst b/docs/index.rst\nindex 5e8fd0c..f885799 100644\n--- a/docs/index.rst\n+++ b/docs/index.rst\n@@ -48,6 +48,7 @@ Table of Contents\n    guides/python_packaging.md\n    guides/cpp_guide.md\n    guides/python_guide.md\n+   guides/rust_guide.md\n    guides/stable_c_abi.md\n    guides/compiler_integration.md\n    guides/build_from_source.md\n@@ -66,3 +67,4 @@ Table of Contents\n \n    reference/python/index.rst\n    reference/cpp/index.rst\n+   reference/rust/index.rst\ndiff --git a/docs/reference/rust/index.rst b/docs/reference/rust/index.rst\nnew file mode 100644\nindex 0000000..12a71be\n--- /dev/null\n+++ b/docs/reference/rust/index.rst\n@@ -0,0 +1,40 @@\n+..  Licensed to the Apache Software Foundation (ASF) under one\n+    or more contributor license agreements.  See the NOTICE file\n+    distributed with this work for additional information\n+    regarding copyright ownership.  The ASF licenses this file\n+    to you under the Apache License, Version 2.0 (the\n+    \"License\"); you may not use this file except in compliance\n+    with the License.  You may obtain a copy of the License at\n+\n+..    http://www.apache.org/licenses/LICENSE-2.0\n+\n+..  Unless required by applicable law or agreed to in writing,\n+    software distributed under the License is distributed on an\n+    \"AS IS\" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY\n+    KIND, either express or implied.  See the License for the\n+    specific language governing permissions and limitations\n+    under the License.\n+\n+Rust API\n+========\n+\n+This page contains the API reference for the Rust API. The tvm-ffi project provides\n+Rust bindings that allow you to use the TVM FFI from Rust programs.\n+\n+Crates\n+------\n+\n+The Rust API is organized into three crates:\n+\n+.. list-table::\n+   :header-rows: 1\n+   :widths: 30 70\n+\n+   * - Crate\n+     - Description\n+   * - 📦 `tvm-ffi <generated/tvm_ffi/index.html>`_\n+     - High-level Rust bindings with safe abstractions for FFI objects, functions, tensors, and containers.\n+   * - 📦 `tvm-ffi-sys <generated/tvm_ffi_sys/index.html>`_\n+     - Low-level unsafe bindings to the C API.\n+   * - 📦 `tvm-ffi-macros <generated/tvm_ffi_macros/index.html>`_\n+     - Procedural macros for deriving Object and ObjectRef traits.\ndiff --git a/rust/tvm-ffi-sys/build.rs b/rust/tvm-ffi-sys/build.rs\nindex 7cd7f24..1f2e64a 100644\n--- a/rust/tvm-ffi-sys/build.rs\n+++ b/rust/tvm-ffi-sys/build.rs\n@@ -47,15 +47,37 @@ fn update_ld_library_path(lib_dir: &str) {\n }\n \n fn main() {\n+    // When building documentation, we may not need actual linking\n+    // Check if this is a rustdoc build\n+    let is_rustdoc = env::var(\"RUSTDOC\").is_ok() || env::var(\"CARGO_CFG_DOC\").is_ok();\n+\n     // Run `mylib-config --libdir` to get the library path\n-    let config_output = Command::new(\"tvm-ffi-config\")\n-        .arg(\"--libdir\")\n-        .output()\n-        .expect(\"Failed to run tvm-ffi-config\");\n-    let lib_dir = String::from_utf8(config_output.stdout)\n-        .expect(\"Invalid UTF-8 output from tvm-ffi-config\")\n-        .trim()\n-        .to_string();\n+    let config_result = Command::new(\"tvm-ffi-config\").arg(\"--libdir\").output();\n+\n+    let lib_dir = match config_result {\n+        Ok(output) if output.status.success() => String::from_utf8(output.stdout)\n+            .unwrap_or_default()\n+            .trim()\n+            .to_string(),\n+        _ if is_rustdoc => {\n+            // For rustdoc builds, we can proceed without the library\n+            eprintln!(\"Warning: tvm-ffi-config not available, skipping for documentation build\");\n+            return;\n+        }\n+        _ => {\n+            panic!(\"Failed to run tvm-ffi-config. Make sure tvm-ffi is installed.\");\n+        }\n+    };\n+\n+    if lib_dir.is_empty() {\n+        if is_rustdoc {\n+            eprintln!(\n+                \"Warning: Empty lib_dir from tvm-ffi-config, skipping for documentation build\"\n+            );\n+            return;\n+        }\n+        panic!(\"tvm-ffi-config returned empty library path\");\n+    }\n \n     // add the library directory to the linker search path\n     println!(\"cargo:rustc-link-search=native={}\", lib_dir);",
+  "heuristics": {
+    "tags": [],
+    "extensions": [
+      ".md",
+      ".py",
+      ".rs",
+      ".rst"
+    ],
+    "scopes_guess": [
+      "docs",
+      "rust"
+    ]
+  }
+}

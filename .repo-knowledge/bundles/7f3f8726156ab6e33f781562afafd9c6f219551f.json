@@ -1,0 +1,47 @@
+{
+  "sha": "7f3f8726156ab6e33f781562afafd9c6f219551f",
+  "sha7": "7f3f872",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-11-12T14:53:20-05:00",
+  "subject": "[DLPack] Leverage exchange api when possible (#260)",
+  "body": "This PR updates the from_dlpack to leverage the exchange api when\npossible.",
+  "is_merge": false,
+  "parents": [
+    "d6bfb45e0c9c3c6150da7885804a1d3918afbeff"
+  ],
+  "name_status": [
+    [
+      "M",
+      "python/tvm_ffi/cython/function.pxi"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/cython/tensor.pxi"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "python/tvm_ffi/cython/function.pxi",
+      "additions": 8,
+      "deletions": 5
+    },
+    {
+      "path": "python/tvm_ffi/cython/tensor.pxi",
+      "additions": 37,
+      "deletions": 19
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/python/tvm_ffi/cython/function.pxi b/python/tvm_ffi/cython/function.pxi\nindex c1fb6a2..800427b 100644\n--- a/python/tvm_ffi/cython/function.pxi\n+++ b/python/tvm_ffi/cython/function.pxi\n@@ -156,20 +156,20 @@ cdef int TVMFFIPyArgSetterDLPackExchangeAPI_(\n     cdef DLManagedTensorVersioned* temp_managed_tensor\n     cdef TVMFFIObjectHandle temp_chandle\n     cdef void* current_stream = NULL\n-    cdef const DLPackExchangeAPI* api = this.c_dlpack_exchange_api\n+    cdef const DLPackExchangeAPI* exchange_api = this.c_dlpack_exchange_api\n \n     # Set the exchange API in context\n-    ctx.c_dlpack_exchange_api = api\n+    ctx.c_dlpack_exchange_api = exchange_api\n \n     # Convert PyObject to DLPack using the struct's function pointer\n-    if api.managed_tensor_from_py_object_no_sync(arg, &temp_managed_tensor) != 0:\n+    if exchange_api.managed_tensor_from_py_object_no_sync(arg, &temp_managed_tensor) != 0:\n         return -1\n \n     # Query current stream from producer if device is not CPU\n     if temp_managed_tensor.dl_tensor.device.device_type != kDLCPU:\n-        if ctx.device_type == -1 and api.current_work_stream != NULL:\n+        if ctx.device_type == -1 and exchange_api.current_work_stream != NULL:\n             # First time seeing a device, query the stream\n-            if api.current_work_stream(\n+            if exchange_api.current_work_stream(\n                 temp_managed_tensor.dl_tensor.device.device_type,\n                 temp_managed_tensor.dl_tensor.device.device_id,\n                 &current_stream\n@@ -180,6 +180,9 @@ cdef int TVMFFIPyArgSetterDLPackExchangeAPI_(\n \n     # Convert to TVM Tensor\n     if TVMFFITensorFromDLPackVersioned(temp_managed_tensor, 0, 0, &temp_chandle) != 0:\n+        # recycle the managed tensor to avoid leak\n+        if temp_managed_tensor.deleter != NULL:\n+            temp_managed_tensor.deleter(temp_managed_tensor)\n         raise BufferError(\"Failed to convert DLManagedTensorVersioned to ffi.Tensor\")\n \n     out.type_index = kTVMFFITensor\ndiff --git a/python/tvm_ffi/cython/tensor.pxi b/python/tvm_ffi/cython/tensor.pxi\nindex 6a9cf9e..614e487 100644\n--- a/python/tvm_ffi/cython/tensor.pxi\n+++ b/python/tvm_ffi/cython/tensor.pxi\n@@ -45,20 +45,6 @@ cdef void _c_dlpack_versioned_deleter(object pycaps):\n         dltensor.deleter(dltensor)\n \n \n-cdef inline object _from_dlpack_intptr(\n-    void* dlpack\n-):\n-    cdef TVMFFIObjectHandle chandle\n-    cdef DLManagedTensor* ptr = <DLManagedTensor*>dlpack\n-    cdef int c_api_ret_code\n-    cdef int c_req_alignment = 0\n-    cdef int c_req_contiguous = 0\n-    c_api_ret_code = TVMFFITensorFromDLPack(\n-        ptr, c_req_alignment, c_req_contiguous, &chandle)\n-    CHECK_CALL(c_api_ret_code)\n-    return make_tensor_from_chandle(chandle)\n-\n-\n cdef inline int _from_dlpack(\n     object dltensor, int require_alignment,\n     int require_contiguous, TVMFFIObjectHandle* out\n@@ -100,6 +86,26 @@ cdef inline int _from_dlpack_versioned(\n     raise ValueError(\"Expect a dltensor_versioned field, PyCapsule can only be consumed once\")\n \n \n+cdef inline int _from_dlpack_exchange_api(\n+    object ext_tensor, DLPackExchangeAPI* exchange_api, int require_alignment,\n+    int require_contiguous, TVMFFIObjectHandle* out\n+) except -1:\n+    cdef DLManagedTensorVersioned* temp_managed_tensor\n+    cdef PyObject* ext_tensor_pyobj = <PyObject*>ext_tensor\n+    if exchange_api.managed_tensor_from_py_object_no_sync(ext_tensor_pyobj, &temp_managed_tensor) != 0:\n+        return -1\n+\n+    # Convert to TVM Tensor\n+    if TVMFFITensorFromDLPackVersioned(\n+        temp_managed_tensor, require_alignment, require_contiguous, out\n+    ) != 0:\n+        # recycle the managed tensor to avoid leak\n+        if temp_managed_tensor.deleter != NULL:\n+            temp_managed_tensor.deleter(temp_managed_tensor)\n+        raise BufferError(\"Failed to convert DLManagedTensorVersioned to ffi.Tensor\")\n+\n+    return 0\n+\n cdef inline int _from_dlpack_universal(\n     object ext_tensor, int require_alignment,\n     int require_contiguous, TVMFFIObjectHandle* out\n@@ -108,9 +114,21 @@ cdef inline int _from_dlpack_universal(\n     # move to false as most frameworks get upgraded.\n     cdef int favor_legacy_dlpack = True\n \n+    if hasattr(ext_tensor, \"__c_dlpack_exchange_api__\"):\n+        try:\n+            return _from_dlpack_exchange_api(\n+                ext_tensor,\n+                <DLPackExchangeAPI*><long long>(ext_tensor.__c_dlpack_exchange_api__),\n+                require_alignment,\n+                require_contiguous,\n+                out\n+            )\n+        except BufferError:\n+            pass\n+\n     if hasattr(ext_tensor, \"__dlpack__\"):\n         if favor_legacy_dlpack:\n-            _from_dlpack(\n+            return _from_dlpack(\n                 ext_tensor.__dlpack__(),\n                 require_alignment,\n                 require_contiguous,\n@@ -118,14 +136,14 @@ cdef inline int _from_dlpack_universal(\n             )\n         else:\n             try:\n-                _from_dlpack_versioned(\n+                return _from_dlpack_versioned(\n                     ext_tensor.__dlpack__(max_version=__dlpack_version__),\n                     require_alignment,\n                     require_contiguous,\n                     out\n                 )\n             except TypeError:\n-                _from_dlpack(\n+                return _from_dlpack(\n                     ext_tensor.__dlpack__(),\n                     require_alignment,\n                     require_contiguous,\n@@ -133,14 +151,14 @@ cdef inline int _from_dlpack_universal(\n                 )\n     else:\n         if pycapsule.PyCapsule_IsValid(ext_tensor, _c_str_dltensor_versioned):\n-            _from_dlpack_versioned(\n+            return _from_dlpack_versioned(\n                 ext_tensor,\n                 require_alignment,\n                 require_contiguous,\n                 out\n             )\n         elif pycapsule.PyCapsule_IsValid(ext_tensor, _c_str_dltensor):\n-            _from_dlpack(\n+            return _from_dlpack(\n                 ext_tensor,\n                 require_alignment,\n                 require_contiguous,",
+  "heuristics": {
+    "tags": [],
+    "extensions": [
+      ".pxi"
+    ],
+    "scopes_guess": [
+      "python"
+    ]
+  }
+}

@@ -1,0 +1,62 @@
+{
+  "sha": "b5dd851f7019f4f63a19d9dce074ba62706f16e7",
+  "sha7": "b5dd851",
+  "author_name": "Junru Shao",
+  "author_email": "junrushao@apache.org",
+  "date_iso": "2025-09-22T16:38:23-07:00",
+  "subject": "fix(c_class): Fix mypy warnings on `dataclasses.field(...)` (#43)",
+  "body":
+      "Previously when defining a `c_class`, when RHS invokes a\n`dataclasses.field(...)`, as exemplified below:\n\n```python\nv_str: str = field(default_factory=lambda: \"default\") \n```\n\nwe will get a warning saying\n\n```\nerror: Incompatible types in assignment (expression has type \"Field\", variable has type \"str\")  [assignment]\n```\n\nThis PR fixes this issue",
+  "is_merge": false,
+  "parents": [
+    "66778b5e4fc017710d699a146f355ed48f631dca"
+  ],
+  "name_status": [
+    [
+      "M",
+      "pyproject.toml"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/dataclasses/field.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/testing.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "pyproject.toml",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "python/tvm_ffi/dataclasses/field.py",
+      "additions": 17,
+      "deletions": 5
+    },
+    {
+      "path": "python/tvm_ffi/testing.py",
+      "additions": 2,
+      "deletions": 2
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/pyproject.toml b/pyproject.toml\nindex c7e43db..d51698f 100644\n--- a/pyproject.toml\n+++ b/pyproject.toml\n@@ -32,7 +32,7 @@ classifiers = [\n ]\n keywords = [\"machine learning\", \"inference\"]\n requires-python = \">=3.9\"\n-dependencies = []\n+dependencies = [\"typing-extensions\"]\n \n [project.urls]\n Homepage = \"https://github.com/apache/tvm-ffi\"\ndiff --git a/python/tvm_ffi/dataclasses/field.py b/python/tvm_ffi/dataclasses/field.py\nindex f1a582e..2a62d66 100644\n--- a/python/tvm_ffi/dataclasses/field.py\n+++ b/python/tvm_ffi/dataclasses/field.py\n@@ -18,8 +18,10 @@\n \n from __future__ import annotations\n \n-from dataclasses import MISSING\n-from typing import Any, Callable\n+from dataclasses import _MISSING_TYPE, MISSING\n+from typing import Any, Callable, TypeVar, cast\n+\n+_FieldValue = TypeVar(\"_FieldValue\")\n \n \n class Field:\n@@ -37,13 +39,22 @@ class Field:\n \n     __slots__ = (\"default_factory\", \"name\")\n \n-    def __init__(self, *, name: str | None = None, default_factory: Callable[[], Any]) -> None:\n+    def __init__(\n+        self,\n+        *,\n+        name: str | None = None,\n+        default_factory: Callable[[], _FieldValue] | _MISSING_TYPE = MISSING,\n+    ) -> None:\n         \"\"\"Do not call directly; use :func:`field` instead.\"\"\"\n         self.name = name\n         self.default_factory = default_factory\n \n \n-def field(*, default: Any = MISSING, default_factory: Any = MISSING) -> Field:\n+def field(\n+    *,\n+    default: _FieldValue | _MISSING_TYPE = MISSING,  # type: ignore[assignment]\n+    default_factory: Callable[[], _FieldValue] | _MISSING_TYPE = MISSING,  # type: ignore[assignment]\n+) -> _FieldValue:\n     \"\"\"(Experimental) Declare a dataclass-style field on a :func:`c_class` proxy.\n \n     Use this helper exactly like :func:`dataclasses.field` when defining the\n@@ -86,7 +97,8 @@ def field(*, default: Any = MISSING, default_factory: Any = MISSING) -> Field:\n         raise ValueError(\"Cannot specify both `default` and `default_factory`\")\n     if default is not MISSING:\n         default_factory = _make_default_factory(default)\n-    return Field(default_factory=default_factory)\n+    ret = Field(default_factory=default_factory)\n+    return cast(_FieldValue, ret)\n \n \n def _make_default_factory(value: Any) -> Callable[[], Any]:\ndiff --git a/python/tvm_ffi/testing.py b/python/tvm_ffi/testing.py\nindex 9769158..f74abc2 100644\n--- a/python/tvm_ffi/testing.py\n+++ b/python/tvm_ffi/testing.py\n@@ -103,5 +103,5 @@ class _TestCxxClassDerived(_TestCxxClassBase):\n \n @c_class(\"testing.TestCxxClassDerivedDerived\")\n class _TestCxxClassDerivedDerived(_TestCxxClassDerived):\n-    v_str: str = field(default_factory=lambda: \"default\")  # type: ignore[assignment]\n-    v_bool: bool  # type: ignore[misc]\n+    v_str: str = field(default_factory=lambda: \"default\")\n+    v_bool: bool  # type: ignore[misc]  # Suppress: Attributes without a default cannot follow attributes with one",
+  "heuristics": {
+    "tags": [
+      "build",
+      "test"
+    ],
+    "extensions": [
+      ".py",
+      ".toml"
+    ],
+    "scopes_guess": [
+      "pyproject.toml",
+      "python"
+    ]
+  }
+}

@@ -1,0 +1,374 @@
+{
+  "sha": "40e9c83345636b187f39df86a077e0b56683c792",
+  "sha7": "40e9c83",
+  "author_name": "Junru Shao",
+  "author_email": "junrushao@apache.org",
+  "date_iso": "2025-09-22T12:58:15-07:00",
+  "subject": "feat: Enable mypy type checking (#35)",
+  "body":
+      "With this PR, we are able to enable mypy type checking for the following\ndirectories:\n- `python/` and `tests/`\n- `examples/inline_module`\n- `examples/packaging`\n- `examples/quick_start`",
+  "is_merge": false,
+  "parents": [
+    "c0add281b0973aacc88f3185a84e0768c67306f4"
+  ],
+  "name_status": [
+    [
+      "M",
+      ".pre-commit-config.yaml"
+    ],
+    [
+      "M",
+      "examples/packaging/python/my_ffi_extension/__init__.py"
+    ],
+    [
+      "M",
+      "examples/quick_start/run_example.py"
+    ],
+    [
+      "M",
+      "pyproject.toml"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/_convert.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/_dtype.py"
+    ],
+    [
+      "A",
+      "python/tvm_ffi/_ffi_api.pyi"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/_optional_torch_c_dlpack.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/_tensor.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/access_path.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/container.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/core.pyi"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/cpp/load_inline.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/cython/type_info.pxi"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/dataclasses/_utils.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/dataclasses/c_class.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/dataclasses/field.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/error.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/libinfo.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/module.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/registry.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/serialization.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/stream.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/testing.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/utils/lockfile.py"
+    ],
+    [
+      "M",
+      "tests/lint/check_asf_header.py"
+    ],
+    [
+      "M",
+      "tests/lint/check_file_type.py"
+    ],
+    [
+      "M",
+      "tests/python/test_container.py"
+    ],
+    [
+      "M",
+      "tests/python/test_dataclasses_c_class.py"
+    ],
+    [
+      "M",
+      "tests/python/test_device.py"
+    ],
+    [
+      "M",
+      "tests/python/test_error.py"
+    ],
+    [
+      "M",
+      "tests/python/test_function.py"
+    ],
+    [
+      "M",
+      "tests/python/test_load_inline.py"
+    ],
+    [
+      "M",
+      "tests/python/test_object.py"
+    ],
+    [
+      "M",
+      "tests/python/test_stream.py"
+    ],
+    [
+      "M",
+      "tests/python/test_tensor.py"
+    ],
+    [
+      "M",
+      "tests/scripts/benchmark_dlpack.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": ".pre-commit-config.yaml",
+      "additions": 27,
+      "deletions": 0
+    },
+    {
+      "path": "examples/packaging/python/my_ffi_extension/__init__.py",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "examples/quick_start/run_example.py",
+      "additions": 3,
+      "deletions": 15
+    },
+    {
+      "path": "pyproject.toml",
+      "additions": 4,
+      "deletions": 0
+    },
+    {
+      "path": "python/tvm_ffi/_convert.py",
+      "additions": 8,
+      "deletions": 3
+    },
+    {
+      "path": "python/tvm_ffi/_dtype.py",
+      "additions": 1,
+      "deletions": 0
+    },
+    {
+      "path": "python/tvm_ffi/_ffi_api.pyi",
+      "additions": 43,
+      "deletions": 0
+    },
+    {
+      "path": "python/tvm_ffi/_optional_torch_c_dlpack.py",
+      "additions": 6,
+      "deletions": 6
+    },
+    {
+      "path": "python/tvm_ffi/_tensor.py",
+      "additions": 12,
+      "deletions": 8
+    },
+    {
+      "path": "python/tvm_ffi/access_path.py",
+      "additions": 16,
+      "deletions": 11
+    },
+    {
+      "path": "python/tvm_ffi/container.py",
+      "additions": 6,
+      "deletions": 4
+    },
+    {
+      "path": "python/tvm_ffi/core.pyi",
+      "additions": 11,
+      "deletions": 6
+    },
+    {
+      "path": "python/tvm_ffi/cpp/load_inline.py",
+      "additions": 62,
+      "deletions": 53
+    },
+    {
+      "path": "python/tvm_ffi/cython/type_info.pxi",
+      "additions": 6,
+      "deletions": 5
+    },
+    {
+      "path": "python/tvm_ffi/dataclasses/_utils.py",
+      "additions": 10,
+      "deletions": 13
+    },
+    {
+      "path": "python/tvm_ffi/dataclasses/c_class.py",
+      "additions": 8,
+      "deletions": 5
+    },
+    {
+      "path": "python/tvm_ffi/dataclasses/field.py",
+      "additions": 7,
+      "deletions": 4
+    },
+    {
+      "path": "python/tvm_ffi/error.py",
+      "additions": 7,
+      "deletions": 5
+    },
+    {
+      "path": "python/tvm_ffi/libinfo.py",
+      "additions": 20,
+      "deletions": 17
+    },
+    {
+      "path": "python/tvm_ffi/module.py",
+      "additions": 2,
+      "deletions": 2
+    },
+    {
+      "path": "python/tvm_ffi/registry.py",
+      "additions": 41,
+      "deletions": 21
+    },
+    {
+      "path": "python/tvm_ffi/serialization.py",
+      "additions": 4,
+      "deletions": 2
+    },
+    {
+      "path": "python/tvm_ffi/stream.py",
+      "additions": 5,
+      "deletions": 5
+    },
+    {
+      "path": "python/tvm_ffi/testing.py",
+      "additions": 16,
+      "deletions": 3
+    },
+    {
+      "path": "python/tvm_ffi/utils/lockfile.py",
+      "additions": 8,
+      "deletions": 8
+    },
+    {
+      "path": "tests/lint/check_asf_header.py",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "tests/lint/check_file_type.py",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "tests/python/test_container.py",
+      "additions": 2,
+      "deletions": 2
+    },
+    {
+      "path": "tests/python/test_dataclasses_c_class.py",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "tests/python/test_device.py",
+      "additions": 3,
+      "deletions": 1
+    },
+    {
+      "path": "tests/python/test_error.py",
+      "additions": 10,
+      "deletions": 10
+    },
+    {
+      "path": "tests/python/test_function.py",
+      "additions": 5,
+      "deletions": 5
+    },
+    {
+      "path": "tests/python/test_load_inline.py",
+      "additions": 7,
+      "deletions": 1
+    },
+    {
+      "path": "tests/python/test_object.py",
+      "additions": 9,
+      "deletions": 5
+    },
+    {
+      "path": "tests/python/test_stream.py",
+      "additions": 9,
+      "deletions": 1
+    },
+    {
+      "path": "tests/python/test_tensor.py",
+      "additions": 10,
+      "deletions": 3
+    },
+    {
+      "path": "tests/scripts/benchmark_dlpack.py",
+      "additions": 3,
+      "deletions": 3
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/.pre-commit-config.yaml b/.pre-commit-config.yaml\nindex 8f762dc..329c00c 100644\n--- a/.pre-commit-config.yaml\n+++ b/.pre-commit-config.yaml\n@@ -83,3 +83,30 @@ repos:\n     rev: v0.10.0.1\n     hooks:\n       - id: shellcheck\n+  - repo: https://github.com/pre-commit/mirrors-mypy\n+    rev: \"v1.17.0\"\n+    hooks:\n+      - id: mypy\n+        name: mypy for `python/` and `tests/`\n+        additional_dependencies: ['numpy >= 1.22', \"ml-dtypes >= 0.1\", \"pytest\", \"typing-extensions>=4.5\"]\n+        args: [--show-error-codes, --python-version=3.9]\n+        exclude: ^.*/_ffi_api\\.py$\n+        files: ^(python/|tests/).*\\.py$\n+      - id: mypy\n+        name: mypy for `examples/inline_module`\n+        additional_dependencies: ['numpy >= 1.22', \"ml-dtypes >= 0.1\", \"pytest\", \"typing-extensions>=4.5\"]\n+        args: [--show-error-codes, --python-version=3.9]\n+        exclude: ^.*/_ffi_api\\.py$\n+        files: ^examples/inline_module/.*\\.py$\n+      - id: mypy\n+        name: mypy for `examples/packaging`\n+        additional_dependencies: ['numpy >= 1.22', \"ml-dtypes >= 0.1\", \"pytest\", \"typing-extensions>=4.5\"]\n+        args: [--show-error-codes, --python-version=3.9]\n+        exclude: ^.*/_ffi_api\\.py$\n+        files: ^examples/packaging/.*\\.py$\n+      - id: mypy\n+        name: mypy for `examples/quick_start`\n+        additional_dependencies: ['numpy >= 1.22', \"ml-dtypes >= 0.1\", \"pytest\", \"typing-extensions>=4.5\"]\n+        args: [--show-error-codes, --python-version=3.9]\n+        exclude: ^.*/_ffi_api\\.py$\n+        files: ^examples/quick_start/.*\\.py$\ndiff --git a/examples/packaging/python/my_ffi_extension/__init__.py b/examples/packaging/python/my_ffi_extension/__init__.py\nindex ae4abfd..0c2b0fd 100644\n--- a/examples/packaging/python/my_ffi_extension/__init__.py\n+++ b/examples/packaging/python/my_ffi_extension/__init__.py\n@@ -51,4 +51,4 @@ def raise_error(msg: str) -> None:\n         The error raised by the function.\n \n     \"\"\"\n-    return _ffi_api.raise_error(msg)\n+    return _ffi_api.raise_error(msg)  # type: ignore[attr-defined]\ndiff --git a/examples/quick_start/run_example.py b/examples/quick_start/run_example.py\nindex 87c9507..2e2b7f3 100644\n--- a/examples/quick_start/run_example.py\n+++ b/examples/quick_start/run_example.py\n@@ -16,15 +16,9 @@\n # under the License.\n \"\"\"Quick start script to run tvm-ffi examples from prebuilt libraries.\"\"\"\n \n-import tvm_ffi\n-\n-try:\n-    import torch\n-except ImportError:\n-    torch = None\n-\n-\n import numpy\n+import torch\n+import tvm_ffi\n \n \n def run_add_one_cpu() -> None:\n@@ -40,9 +34,6 @@ def run_add_one_cpu() -> None:\n     print(\"numpy.result after add_one(x, y)\")\n     print(x)\n \n-    if torch is None:\n-        return\n-\n     x = torch.tensor([1, 2, 3, 4, 5], dtype=torch.float32)\n     y = torch.empty_like(x)\n     # tvm-ffi automatically handles DLPack compatible tensors\n@@ -63,9 +54,6 @@ def run_add_one_c() -> None:\n     print(\"numpy.result after add_one_c(x, y)\")\n     print(x)\n \n-    if torch is None:\n-        return\n-\n     x = torch.tensor([1, 2, 3, 4, 5], dtype=torch.float32)\n     y = torch.empty_like(x)\n     mod.add_one_c(x, y)\n@@ -75,7 +63,7 @@ def run_add_one_c() -> None:\n \n def run_add_one_cuda() -> None:\n     \"\"\"Load the add_one_cuda module and call the add_one_cuda function.\"\"\"\n-    if torch is None or not torch.cuda.is_available():\n+    if not torch.cuda.is_available():\n         return\n \n     mod = tvm_ffi.load_module(\"build/add_one_cuda.so\")\ndiff --git a/pyproject.toml b/pyproject.toml\nindex d2fd897..58d394a 100644\n--- a/pyproject.toml\n+++ b/pyproject.toml\n@@ -213,3 +213,7 @@ environment = { MACOSX_DEPLOYMENT_TARGET = \"10.14\" }\n \n [tool.cibuildwheel.windows]\n archs = [\"AMD64\"]\n+\n+[tool.mypy]\n+allow_redefinition = true\n+ignore_missing_imports = true\ndiff --git a/python/tvm_ffi/_convert.py b/python/tvm_ffi/_convert.py\nindex 6313c8e..05e99da 100644\n--- a/python/tvm_ffi/_convert.py\n+++ b/python/tvm_ffi/_convert.py\n@@ -16,20 +16,25 @@\n # under the License.\n \"\"\"Conversion utilities to bring python objects into ffi values.\"\"\"\n \n+from __future__ import annotations\n+\n from numbers import Number\n+from types import ModuleType\n from typing import Any\n \n from . import container, core\n \n+torch: ModuleType | None = None\n try:\n-    import torch\n+    import torch  # type: ignore[no-redef]\n except ImportError:\n-    torch = None\n+    pass\n \n+numpy: ModuleType | None = None\n try:\n     import numpy\n except ImportError:\n-    numpy = None\n+    pass\n \n \n def convert(value: Any) -> Any:  # noqa: PLR0911,PLR0912\ndiff --git a/python/tvm_ffi/_dtype.py b/python/tvm_ffi/_dtype.py\nindex ba1735f..8306593 100644\n--- a/python/tvm_ffi/_dtype.py\n+++ b/python/tvm_ffi/_dtype.py\n@@ -59,6 +59,7 @@ class dtype(str):\n     \"\"\"\n \n     __slots__ = [\"__tvm_ffi_dtype__\"]\n+    __tvm_ffi_dtype__: core.DataType\n \n     _NUMPY_DTYPE_TO_STR: ClassVar[dict[Any, str]] = {}\n \ndiff --git a/python/tvm_ffi/_ffi_api.pyi b/python/tvm_ffi/_ffi_api.pyi\nnew file mode 100644\nindex 0000000..95059e5\n--- /dev/null\n+++ b/python/tvm_ffi/_ffi_api.pyi\n@@ -0,0 +1,43 @@\n+# Licensed to the Apache Software Foundation (ASF) under one\n+# or more contributor license agreements.  See the NOTICE file\n+# distributed with this work for additional information\n+# regarding copyright ownership.  The ASF licenses this file\n+# to you under the Apache License, Version 2.0 (the\n+# \"License\"); you may not use this file except in compliance\n+# with the License.  You may obtain a copy of the License at\n+#\n+#   http://www.apache.org/licenses/LICENSE-2.0\n+#\n+# Unless required by applicable law or agreed to in writing,\n+# software distributed under the License is distributed on an\n+# \"AS IS\" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY\n+# KIND, either express or implied.  See the License for the\n+# specific language governing permissions and limitations\n+# under the License.\n+\"\"\"FFI API.\"\"\"\n+\n+from typing import Any\n+\n+def ModuleGetKind(*args: Any) -> Any: ...\n+def ModuleImplementsFunction(*args: Any) -> Any: ...\n+def ModuleGetFunction(*args: Any) -> Any: ...\n+def ModuleImportModule(*args: Any) -> Any: ...\n+def ModuleInspectSource(*args: Any) -> Any: ...\n+def ModuleGetWriteFormats(*args: Any) -> Any: ...\n+def ModuleGetPropertyMask(*args: Any) -> Any: ...\n+def ModuleClearImports(*args: Any) -> Any: ...\n+def ModuleWriteToFile(*args: Any) -> Any: ...\n+def ModuleLoadFromFile(*args: Any) -> Any: ...\n+def SystemLib(*args: Any) -> Any: ...\n+def Array(*args: Any) -> Any: ...\n+def ArrayGetItem(*args: Any) -> Any: ...\n+def ArraySize(*args: Any) -> Any: ...\n+def MapForwardIterFunctor(*args: Any) -> Any: ...\n+def Map(*args: Any) -> Any: ...\n+def MapGetItem(*args: Any) -> Any: ...\n+def MapCount(*args: Any) -> Any: ...\n+def MapSize(*args: Any) -> Any: ...\n+def MakeObjectFromPackedArgs(*args: Any) -> Any: ...\n+def ToJSONGraphString(*args: Any) -> Any: ...\n+def FromJSONGraphString(*args: Any) -> Any: ...\n+def Shape(*args: Any) -> Any: ...\ndiff --git a/python/tvm_ffi/_optional_torch_c_dlpack.py b/python/tvm_ffi/_optional_torch_c_dlpack.py\nindex dd820a9..5be7211 100644\n--- a/python/tvm_ffi/_optional_torch_c_dlpack.py\n+++ b/python/tvm_ffi/_optional_torch_c_dlpack.py\n@@ -31,12 +31,12 @@ subsequent calls will be much faster.\n \"\"\"\n \n import warnings\n-from typing import Any, Optional\n+from typing import Any\n \n from . import libinfo\n \n \n-def load_torch_c_dlpack_extension() -> Optional[Any]:\n+def load_torch_c_dlpack_extension() -> Any:\n     \"\"\"Load the torch c dlpack extension.\"\"\"\n     cpp_source = \"\"\"\n #include <dlpack/dlpack.h>\n@@ -556,9 +556,9 @@ int64_t TorchDLPackTensorAllocatorPtr() {\n             extra_include_paths=include_paths,\n         )\n         # set the dlpack related flags\n-        torch.Tensor.__c_dlpack_from_pyobject__ = mod.TorchDLPackFromPyObjectPtr()\n-        torch.Tensor.__c_dlpack_to_pyobject__ = mod.TorchDLPackToPyObjectPtr()\n-        torch.Tensor.__c_dlpack_tensor_allocator__ = mod.TorchDLPackTensorAllocatorPtr()\n+        setattr(torch.Tensor, \"__c_dlpack_from_pyobject__\", mod.TorchDLPackFromPyObjectPtr())\n+        setattr(torch.Tensor, \"__c_dlpack_to_pyobject__\", mod.TorchDLPackToPyObjectPtr())\n+        setattr(torch.Tensor, \"__c_dlpack_tensor_allocator__\", mod.TorchDLPackTensorAllocatorPtr())\n         return mod\n     except ImportError:\n         pass\n@@ -566,7 +566,7 @@ int64_t TorchDLPackTensorAllocatorPtr() {\n         warnings.warn(\n             f\"Failed to load torch c dlpack extension: {e},EnvTensorAllocator will not be enabled.\"\n         )\n-        return None\n+    return None\n \n \n # keep alive\ndiff --git a/python/tvm_ffi/_tensor.py b/python/tvm_ffi/_tensor.py\nindex 0cc09f1..0d44994 100644\n--- a/python/tvm_ffi/_tensor.py\n+++ b/python/tvm_ffi/_tensor.py\n@@ -15,11 +15,13 @@\n # specific language governing permissions and limitations\n # under the License.\n \"\"\"Tensor related objects and functions.\"\"\"\n+\n+from __future__ import annotations\n+\n # we name it as _tensor.py to avoid potential future case\n # if we also want to expose a tensor function in the root namespace\n-\n from numbers import Integral\n-from typing import Any, Optional, Union\n+from typing import Any\n \n from . import _ffi_api, core, registry\n from .core import (\n@@ -43,23 +45,25 @@ class Shape(tuple, PyNativeObject):\n \n     \"\"\"\n \n-    def __new__(cls, content: tuple[int, ...]) -> \"Shape\":\n+    __tvm_ffi_object__: Any\n+\n+    def __new__(cls, content: tuple[int, ...]) -> Shape:\n         if any(not isinstance(x, Integral) for x in content):\n             raise ValueError(\"Shape must be a tuple of integers\")\n-        val = tuple.__new__(cls, content)\n+        val: Shape = tuple.__new__(cls, content)\n         val.__init_tvm_ffi_object_by_constructor__(_ffi_api.Shape, *content)\n         return val\n \n     # pylint: disable=no-self-argument\n-    def __from_tvm_ffi_object__(cls, obj: Any) -> \"Shape\":\n+    def __from_tvm_ffi_object__(cls, obj: Any) -> Shape:\n         \"\"\"Construct from a given tvm object.\"\"\"\n         content = _shape_obj_get_py_tuple(obj)\n-        val = tuple.__new__(cls, content)\n-        val.__tvm_ffi_object__ = obj\n+        val: Shape = tuple.__new__(cls, content)  # type: ignore[arg-type]\n+        val.__tvm_ffi_object__ = obj  # type: ignore[attr-defined]\n         return val\n \n \n-def device(device_type: Union[str, int, DLDeviceType], index: Optional[int] = None) -> Device:\n+def device(device_type: str | int | DLDeviceType, index: int | None = None) -> Device:\n     \"\"\"Construct a TVM FFI device with given device type and index.\n \n     Parameters\ndiff --git a/python/tvm_ffi/access_path.py b/python/tvm_ffi/access_path.py\nindex e8aec10..aa52d58 100644\n--- a/python/tvm_ffi/access_path.py\n+++ b/python/tvm_ffi/access_path.py\n@@ -39,11 +39,16 @@ class AccessKind(IntEnum):\n class AccessStep(core.Object):\n     \"\"\"Access step container.\"\"\"\n \n+    kind: AccessKind\n+    key: Any\n+\n \n @register_object(\"ffi.reflection.AccessPath\")\n class AccessPath(core.Object):\n     \"\"\"Access path container.\"\"\"\n \n+    parent: \"AccessPath\"\n+\n     def __init__(self) -> None:\n         \"\"\"Disallow direct construction; use `AccessPath.root()` instead.\"\"\"\n         super().__init__()\n@@ -55,19 +60,19 @@ class AccessPath(core.Object):\n     @staticmethod\n     def root() -> \"AccessPath\":\n         \"\"\"Create a root access path.\"\"\"\n-        return AccessPath._root()\n+        return AccessPath._root()  # type: ignore[attr-defined]\n \n     def __eq__(self, other: Any) -> bool:\n         \"\"\"Return whether two access paths are equal.\"\"\"\n         if not isinstance(other, AccessPath):\n             return False\n-        return self._path_equal(other)\n+        return self._path_equal(other)  # type: ignore[attr-defined]\n \n     def __ne__(self, other: Any) -> bool:\n         \"\"\"Return whether two access paths are not equal.\"\"\"\n         if not isinstance(other, AccessPath):\n             return True\n-        return not self._path_equal(other)\n+        return not self._path_equal(other)  # type: ignore[attr-defined]\n \n     def is_prefix_of(self, other: \"AccessPath\") -> bool:\n         \"\"\"Check if this access path is a prefix of another access path.\n@@ -83,7 +88,7 @@ class AccessPath(core.Object):\n             True if this access path is a prefix of the other access path, False otherwise\n \n         \"\"\"\n-        return self._is_prefix_of(other)\n+        return self._is_prefix_of(other)  # type: ignore[attr-defined]\n \n     def attr(self, attr_key: str) -> \"AccessPath\":\n         \"\"\"Create an access path to the attribute of the current object.\n@@ -99,7 +104,7 @@ class AccessPath(core.Object):\n             The extended access path\n \n         \"\"\"\n-        return self._attr(attr_key)\n+        return self._attr(attr_key)  # type: ignore[attr-defined]\n \n     def attr_missing(self, attr_key: str) -> \"AccessPath\":\n         \"\"\"Create an access path that indicate an attribute is missing.\n@@ -115,7 +120,7 @@ class AccessPath(core.Object):\n             The extended access path\n \n         \"\"\"\n-        return self._attr_missing(attr_key)\n+        return self._attr_missing(attr_key)  # type: ignore[attr-defined]\n \n     def array_item(self, index: int) -> \"AccessPath\":\n         \"\"\"Create an access path to the item of the current array.\n@@ -131,7 +136,7 @@ class AccessPath(core.Object):\n             The extended access path\n \n         \"\"\"\n-        return self._array_item(index)\n+        return self._array_item(index)  # type: ignore[attr-defined]\n \n     def array_item_missing(self, index: int) -> \"AccessPath\":\n         \"\"\"Create an access path that indicate an array item is missing.\n@@ -147,7 +152,7 @@ class AccessPath(core.Object):\n             The extended access path\n \n         \"\"\"\n-        return self._array_item_missing(index)\n+        return self._array_item_missing(index)  # type: ignore[attr-defined]\n \n     def map_item(self, key: Any) -> \"AccessPath\":\n         \"\"\"Create an access path to the item of the current map.\n@@ -163,7 +168,7 @@ class AccessPath(core.Object):\n             The extended access path\n \n         \"\"\"\n-        return self._map_item(key)\n+        return self._map_item(key)  # type: ignore[attr-defined]\n \n     def map_item_missing(self, key: Any) -> \"AccessPath\":\n         \"\"\"Create an access path that indicate a map item is missing.\n@@ -179,7 +184,7 @@ class AccessPath(core.Object):\n             The extended access path\n \n         \"\"\"\n-        return self._map_item_missing(key)\n+        return self._map_item_missing(key)  # type: ignore[attr-defined]\n \n     def to_steps(self) -> list[\"AccessStep\"]:\n         \"\"\"Convert the access path to a list of access steps.\n@@ -190,6 +195,6 @@ class AccessPath(core.Object):\n             The list of access steps\n \n         \"\"\"\n-        return self._to_steps()\n+        return self._to_steps()  # type: ignore[attr-defined]\n \n     __hash__ = core.Object.__hash__\ndiff --git a/python/tvm_ffi/container.py b/python/tvm_ffi/container.py\nindex 008dda9..6f29dfd 100644\n--- a/python/tvm_ffi/container.py\n+++ b/python/tvm_ffi/container.py\n@@ -16,6 +16,8 @@\n # under the License.\n \"\"\"Container classes.\"\"\"\n \n+from __future__ import annotations\n+\n import collections.abc\n from collections.abc import Iterator, Mapping, Sequence\n from typing import Any, Callable\n@@ -121,7 +123,7 @@ class Array(core.Object, collections.abc.Sequence):\n class KeysView(collections.abc.KeysView):\n     \"\"\"Helper class to return keys view.\"\"\"\n \n-    def __init__(self, backend_map: \"Map\") -> None:\n+    def __init__(self, backend_map: Map) -> None:\n         self._backend_map = backend_map\n \n     def __len__(self) -> int:\n@@ -144,7 +146,7 @@ class KeysView(collections.abc.KeysView):\n class ValuesView(collections.abc.ValuesView):\n     \"\"\"Helper class to return values view.\"\"\"\n \n-    def __init__(self, backend_map: \"Map\") -> None:\n+    def __init__(self, backend_map: Map) -> None:\n         self._backend_map = backend_map\n \n     def __len__(self) -> int:\n@@ -164,7 +166,7 @@ class ValuesView(collections.abc.ValuesView):\n class ItemsView(collections.abc.ItemsView):\n     \"\"\"Helper class to return items view.\"\"\"\n \n-    def __init__(self, backend_map: \"Map\") -> None:\n+    def __init__(self, backend_map: Map) -> None:\n         self.backend_map = backend_map\n \n     def __len__(self) -> int:\n@@ -231,7 +233,7 @@ class Map(core.Object, collections.abc.Mapping):\n         \"\"\"Return a dynamic view of the map's keys.\"\"\"\n         return KeysView(self)\n \n-    def values(self) -> \"ValuesView\":\n+    def values(self) -> ValuesView:\n         \"\"\"Return a dynamic view of the map's values.\"\"\"\n         return ValuesView(self)\n \ndiff --git a/python/tvm_ffi/core.pyi b/python/tvm_ffi/core.pyi\nindex cfb3ea9..7c623af 100644\n--- a/python/tvm_ffi/core.pyi\n+++ b/python/tvm_ffi/core.pyi\n@@ -19,6 +19,7 @@\n from __future__ import annotations\n \n import types\n+from ctypes import c_void_p\n from enum import IntEnum\n from typing import Any, Callable\n \n@@ -28,7 +29,6 @@ ERROR_TYPE_TO_NAME: dict[type, str]\n \n _WITH_APPEND_BACKTRACE: Callable[[BaseException, str], BaseException] | None\n _TRACEBACK_TO_BACKTRACE_STR: Callable[[types.TracebackType | None], str] | None\n-\n # DLPack protocol version (defined in tensor.pxi)\n __dlpack_version__: tuple[int, int]\n \n@@ -44,7 +44,7 @@ class Object:\n     def __eq__(self, other: Any) -> bool: ...\n     def __ne__(self, other: Any) -> bool: ...\n     def __hash__(self) -> int: ...\n-    def __init_handle_by_constructor__(self, fconstructor: Function, *args: Any) -> None: ...\n+    def __init_handle_by_constructor__(self, fconstructor: Any, *args: Any) -> None: ...\n     def __ffi_init__(self, *args: Any) -> None:\n         \"\"\"Initialize the instance using the ` __init__` method registered on C++ side.\n \n@@ -78,9 +78,7 @@ class PyNativeObject:\n     \"\"\"Base class of all TVM objects that also subclass python's builtin types.\"\"\"\n \n     __slots__: list[str]\n-    def __init_tvm_ffi_object_by_constructor__(\n-        self, fconstructor: Function, *args: Any\n-    ) -> None: ...\n+    def __init_tvm_ffi_object_by_constructor__(self, fconstructor: Any, *args: Any) -> None: ...\n \n def _set_class_object(cls: type) -> None: ...\n def _register_object_by_index(type_index: int, type_cls: type) -> TypeInfo: ...\n@@ -101,7 +99,9 @@ class Error(Object):\n     def backtrace(self) -> str: ...\n \n def _convert_to_ffi_error(error: BaseException) -> Error: ...\n-def _env_set_current_stream(device_type: int, device_id: int, stream: int) -> int: ...\n+def _env_set_current_stream(\n+    device_type: int, device_id: int, stream: int | c_void_p\n+) -> int | c_void_p: ...\n \n class DataType:\n     \"\"\"DataType wrapper around DLDataType.\"\"\"\n@@ -121,6 +121,8 @@ class DataType:\n     def __str__(self) -> str: ...\n \n def _set_class_dtype(cls: type) -> None: ...\n+def _convert_torch_dtype_to_ffi_dtype(torch_dtype: Any) -> DataType: ...\n+def _convert_numpy_dtype_to_ffi_dtype(numpy_dtype: Any) -> DataType: ...\n def _create_dtype_from_tuple(cls: type[DataType], code: int, bits: int, lanes: int) -> DataType: ...\n \n class DLDeviceType(IntEnum):\n@@ -185,6 +187,9 @@ class Tensor(Object):\n         copy: bool | None = None,\n     ) -> Any: ...\n \n+_CLASS_TENSOR: type[Tensor] = Tensor\n+\n+def _set_class_tensor(cls: type[Tensor]) -> None: ...\n def from_dlpack(\n     ext_tensor: Any, *, require_alignment: int = ..., require_contiguous: bool = ...\n ) -> Tensor: ...\ndiff --git a/python/tvm_ffi/cpp/load_inline.py b/python/tvm_ffi/cpp/load_inline.py\nindex 2c1caf5..d7a5c14 100644\n--- a/python/tvm_ffi/cpp/load_inline.py\n+++ b/python/tvm_ffi/cpp/load_inline.py\n@@ -16,6 +16,8 @@\n # under the License.\n \"\"\"Build and load inline C++/CUDA sources into a tvm_ffi Module using Ninja.\"\"\"\n \n+from __future__ import annotations\n+\n import functools\n import hashlib\n import os\n@@ -24,7 +26,6 @@ import subprocess\n import sys\n from collections.abc import Mapping, Sequence\n from pathlib import Path\n-from typing import Optional\n \n from tvm_ffi.libinfo import find_dlpack_include_path, find_include_path, find_libtvm_ffi\n from tvm_ffi.module import Module, load_module\n@@ -77,7 +78,7 @@ def _maybe_write(path: str, content: str) -> None:\n \n \n @functools.lru_cache\n-def _find_cuda_home() -> Optional[str]:\n+def _find_cuda_home() -> str:\n     \"\"\"Find the CUDA install path.\"\"\"\n     # Guess #1\n     cuda_home = os.environ.get(\"CUDA_HOME\") or os.environ.get(\"CUDA_PATH\")\n@@ -92,9 +93,10 @@ def _find_cuda_home() -> Optional[str]:\n                 cuda_root = Path(\"C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA\")\n                 cuda_homes = list(cuda_root.glob(\"v*.*\"))\n                 if len(cuda_homes) == 0:\n-                    cuda_home = \"\"\n-                else:\n-                    cuda_home = str(cuda_homes[0])\n+                    raise RuntimeError(\n+                        \"Could not find CUDA installation. Please set CUDA_HOME environment variable.\"\n+                    )\n+                cuda_home = str(cuda_homes[0])\n             else:\n                 cuda_home = \"/usr/local/cuda\"\n             if not Path(cuda_home).exists():\n@@ -358,17 +360,17 @@ def _decorate_with_tvm_ffi(source: str, functions: Mapping[str, str]) -> str:\n     return \"\\n\".join(sources)\n \n \n-def load_inline(\n+def load_inline(  # noqa: PLR0912, PLR0915\n     name: str,\n     *,\n-    cpp_sources: str | None = None,\n-    cuda_sources: str | None = None,\n-    functions: Sequence[str] | None = None,\n+    cpp_sources: Sequence[str] | str | None = None,\n+    cuda_sources: Sequence[str] | str | None = None,\n+    functions: Mapping[str, str] | Sequence[str] | str | None = None,\n     extra_cflags: Sequence[str] | None = None,\n     extra_cuda_cflags: Sequence[str] | None = None,\n     extra_ldflags: Sequence[str] | None = None,\n     extra_include_paths: Sequence[str] | None = None,\n-    build_directory: Optional[str] = None,\n+    build_directory: str | None = None,\n ) -> Module:\n     \"\"\"Compile and load a C++/CUDA module from inline source code.\n \n@@ -481,76 +483,83 @@ def load_inline(\n \n     \"\"\"\n     if cpp_sources is None:\n-        cpp_sources = []\n+        cpp_source_list: list[str] = []\n     elif isinstance(cpp_sources, str):\n-        cpp_sources = [cpp_sources]\n-    cpp_source = \"\\n\".join(cpp_sources)\n+        cpp_source_list = [cpp_sources]\n+    else:\n+        cpp_source_list = list(cpp_sources)\n+    cpp_source = \"\\n\".join(cpp_source_list)\n+    with_cpp = bool(cpp_source_list)\n+    del cpp_source_list\n+\n     if cuda_sources is None:\n-        cuda_sources = []\n+        cuda_source_list: list[str] = []\n     elif isinstance(cuda_sources, str):\n-        cuda_sources = [cuda_sources]\n-    cuda_source = \"\\n\".join(cuda_sources)\n-    with_cpp = len(cpp_sources) > 0\n-    with_cuda = len(cuda_sources) > 0\n+        cuda_source_list = [cuda_sources]\n+    else:\n+        cuda_source_list = list(cuda_sources)\n+    cuda_source = \"\\n\".join(cuda_source_list)\n+    with_cuda = bool(cuda_source_list)\n+    del cuda_source_list\n \n-    extra_ldflags = extra_ldflags or []\n-    extra_cflags = extra_cflags or []\n-    extra_cuda_cflags = extra_cuda_cflags or []\n-    extra_include_paths = extra_include_paths or []\n+    extra_ldflags_list = list(extra_ldflags) if extra_ldflags is not None else []\n+    extra_cflags_list = list(extra_cflags) if extra_cflags is not None else []\n+    extra_cuda_cflags_list = list(extra_cuda_cflags) if extra_cuda_cflags is not None else []\n+    extra_include_paths_list = list(extra_include_paths) if extra_include_paths is not None else []\n \n     # add function registration code to sources\n-    if isinstance(functions, str):\n-        functions = {functions: \"\"}\n-    elif isinstance(functions, Sequence):\n-        functions = {name: \"\" for name in functions}\n+    if functions is None:\n+        function_map: dict[str, str] = {}\n+    elif isinstance(functions, str):\n+        function_map = {functions: \"\"}\n+    elif isinstance(functions, Mapping):\n+        function_map = dict(functions)\n+    else:\n+        function_map = {name: \"\" for name in functions}\n \n     if with_cpp:\n-        cpp_source = _decorate_with_tvm_ffi(cpp_source, functions)\n+        cpp_source = _decorate_with_tvm_ffi(cpp_source, function_map)\n         cuda_source = _decorate_with_tvm_ffi(cuda_source, {})\n     else:\n         cpp_source = _decorate_with_tvm_ffi(cpp_source, {})\n-        cuda_source = _decorate_with_tvm_ffi(cuda_source, functions)\n+        cuda_source = _decorate_with_tvm_ffi(cuda_source, function_map)\n \n     # determine the cache dir for the built module\n+    build_dir: Path\n     if build_directory is None:\n-        build_directory = os.environ.get(\n-            \"TVM_FFI_CACHE_DIR\", str(Path(\"~/.cache/tvm-ffi\").expanduser())\n-        )\n+        cache_dir = os.environ.get(\"TVM_FFI_CACHE_DIR\", str(Path(\"~/.cache/tvm-ffi\").expanduser()))\n         source_hash: str = _hash_sources(\n             cpp_source,\n             cuda_source,\n-            functions,\n-            extra_cflags,\n-            extra_cuda_cflags,\n-            extra_ldflags,\n-            extra_include_paths,\n+            function_map,\n+            extra_cflags_list,\n+            extra_cuda_cflags_list,\n+            extra_ldflags_list,\n+            extra_include_paths_list,\n         )\n-        build_dir: str = str(Path(build_directory) / f\"{name}_{source_hash}\")\n+        build_dir = Path(cache_dir).expanduser() / f\"{name}_{source_hash}\"\n     else:\n-        build_dir = str(Path(build_directory).resolve())\n-    Path(build_dir).mkdir(parents=True, exist_ok=True)\n+        build_dir = Path(build_directory).resolve()\n+    build_dir.mkdir(parents=True, exist_ok=True)\n \n     # generate build.ninja\n     ninja_source = _generate_ninja_build(\n         name=name,\n-        build_dir=build_dir,\n+        build_dir=str(build_dir),\n         with_cuda=with_cuda,\n-        extra_cflags=extra_cflags,\n-        extra_cuda_cflags=extra_cuda_cflags,\n-        extra_ldflags=extra_ldflags,\n-        extra_include_paths=extra_include_paths,\n+        extra_cflags=extra_cflags_list,\n+        extra_cuda_cflags=extra_cuda_cflags_list,\n+        extra_ldflags=extra_ldflags_list,\n+        extra_include_paths=extra_include_paths_list,\n     )\n-\n-    with FileLock(str(Path(build_dir) / \"lock\")):\n+    with FileLock(str(build_dir / \"lock\")):\n         # write source files and build.ninja if they do not already exist\n-        _maybe_write(str(Path(build_dir) / \"main.cpp\"), cpp_source)\n+        _maybe_write(str(build_dir / \"main.cpp\"), cpp_source)\n         if with_cuda:\n-            _maybe_write(str(Path(build_dir) / \"cuda.cu\"), cuda_source)\n-        _maybe_write(str(Path(build_dir) / \"build.ninja\"), ninja_source)\n-\n+            _maybe_write(str(build_dir / \"cuda.cu\"), cuda_source)\n+        _maybe_write(str(build_dir / \"build.ninja\"), ninja_source)\n         # build the module\n-        _build_ninja(build_dir)\n-\n+        _build_ninja(str(build_dir))\n         # Use appropriate extension based on platform\n         ext = \".dll\" if IS_WINDOWS else \".so\"\n-        return load_module(str((Path(build_dir) / f\"{name}{ext}\").resolve()))\n+        return load_module(str((build_dir / f\"{name}{ext}\").resolve()))\ndiff --git a/python/tvm_ffi/cython/type_info.pxi b/python/tvm_ffi/cython/type_info.pxi\nindex 4ab9f15..fcd443b 100644\n--- a/python/tvm_ffi/cython/type_info.pxi\n+++ b/python/tvm_ffi/cython/type_info.pxi\n@@ -15,6 +15,7 @@\n # specific language governing permissions and limitations\n # under the License.\n import dataclasses\n+from typing import Optional, Any\n \n \n cdef class FieldGetter:\n@@ -62,13 +63,13 @@ class TypeField:\n     \"\"\"Description of a single reflected field on an FFI-backed type.\"\"\"\n \n     name: str\n-    doc: str | None\n+    doc: Optional[str]\n     size: int\n     offset: int\n     frozen: bool\n     getter: FieldGetter\n     setter: FieldSetter\n-    dataclass_field: object | None = None\n+    dataclass_field: Any = None\n \n     def __post_init__(self):\n         assert self.setter is not None\n@@ -96,7 +97,7 @@ class TypeMethod:\n     \"\"\"Description of a single reflected method on an FFI-backed type.\"\"\"\n \n     name: str\n-    doc: str | None\n+    doc: Optional[str]\n     func: object\n     is_static: bool\n \n@@ -105,9 +106,9 @@ class TypeMethod:\n class TypeInfo:\n     \"\"\"Aggregated type information required to build a proxy class.\"\"\"\n \n-    type_cls: type | None\n+    type_cls: Optional[type]\n     type_index: int\n     type_key: str\n     fields: list[TypeField]\n     methods: list[TypeMethod]\n-    parent_type_info: TypeInfo | None\n+    parent_type_info: Optional[TypeInfo]\ndiff --git a/python/tvm_ffi/dataclasses/_utils.py b/python/tvm_ffi/dataclasses/_utils.py\nindex ef7c7e4..7a28e01 100644\n--- a/python/tvm_ffi/dataclasses/_utils.py\n+++ b/python/tvm_ffi/dataclasses/_utils.py\n@@ -21,7 +21,7 @@ from __future__ import annotations\n import functools\n import inspect\n from dataclasses import MISSING\n-from typing import Any, Callable, NamedTuple, TypeVar\n+from typing import Any, Callable, NamedTuple, TypeVar, cast\n \n from ..core import (\n     Object,\n@@ -68,7 +68,7 @@ def type_info_to_cls(\n         attrs[field.name] = field.as_property(cls)\n \n     # Step 3. Add methods\n-    def _add_method(name: str, func: Callable) -> None:\n+    def _add_method(name: str, func: Callable[..., Any]) -> None:\n         if name == \"__ffi_init__\":\n             name = \"__c_ffi_init__\"\n         if name in attrs:  # already defined\n@@ -80,9 +80,9 @@ def type_info_to_cls(\n         attrs[name] = func\n         setattr(cls, name, func)\n \n-    for name, method in methods.items():\n-        if method is not None:\n-            _add_method(name, method)\n+    for name, method_impl in methods.items():\n+        if method_impl is not None:\n+            _add_method(name, method_impl)\n     for method in type_info.methods:\n         _add_method(method.name, method.func)\n \n@@ -90,7 +90,7 @@ def type_info_to_cls(\n     new_cls = type(cls.__name__, cls_bases, attrs)\n     new_cls.__module__ = cls.__module__\n     new_cls = functools.wraps(cls, updated=())(new_cls)  # type: ignore\n-    return new_cls\n+    return cast(type[_InputClsType], new_cls)\n \n \n def fill_dataclass_field(type_cls: type, type_field: TypeField) -> None:\n@@ -123,15 +123,12 @@ def method_init(type_cls: type, type_info: TypeInfo) -> Callable[..., None]:  #\n \n         fn: Callable[[], Any]\n \n-    fields: list[TypeInfo] = []\n-    cur_type_info = type_info\n-    while True:\n+    fields: list[TypeField] = []\n+    cur_type_info: TypeInfo | None = type_info\n+    while cur_type_info is not None:\n         fields.extend(reversed(cur_type_info.fields))\n         cur_type_info = cur_type_info.parent_type_info\n-        if cur_type_info is None:\n-            break\n     fields.reverse()\n-    del cur_type_info\n \n     annotations: dict[str, Any] = {\"return\": None}\n     # Step 1. Split the parameters into two groups to ensure that\n@@ -187,7 +184,7 @@ def method_init(type_cls: type, type_info: TypeInfo) -> Callable[..., None]:  #\n     else:\n         raise ValueError(f\"Cannot find constructor method: `{type_info.type_key}.__ffi_init__`\")\n \n-    def __init__(self: type, *args: Any, **kwargs: Any) -> None:\n+    def __init__(self: Any, *args: Any, **kwargs: Any) -> None:\n         e = None\n         try:\n             args = bind_args(*args, **kwargs)\ndiff --git a/python/tvm_ffi/dataclasses/c_class.py b/python/tvm_ffi/dataclasses/c_class.py\nindex 7507b76..700f287 100644\n--- a/python/tvm_ffi/dataclasses/c_class.py\n+++ b/python/tvm_ffi/dataclasses/c_class.py\n@@ -28,18 +28,21 @@ from dataclasses import InitVar\n from typing import ClassVar, TypeVar, get_origin, get_type_hints\n \n from ..core import TypeField, TypeInfo\n-from . import _utils, field\n+from . import _utils\n+from .field import Field, field\n \n try:\n-    from typing import dataclass_transform\n+    from typing_extensions import dataclass_transform  # type: ignore[attr-defined]\n except ImportError:\n-    from typing_extensions import dataclass_transform\n+    from typing import dataclass_transform  # type: ignore[no-redef,attr-defined]\n+except ImportError:\n+    pass\n \n \n _InputClsType = TypeVar(\"_InputClsType\")\n \n \n-@dataclass_transform(field_specifiers=(field.field, field.Field))\n+@dataclass_transform(field_specifiers=(field, Field))\n def c_class(\n     type_key: str, init: bool = True\n ) -> Callable[[type[_InputClsType]], type[_InputClsType]]:\n@@ -157,7 +160,7 @@ def _inspect_c_class_fields(type_cls: type, type_info: TypeInfo) -> list[TypeFie\n     for field_name, _field_ty_py in type_hints_py.items():\n         if field_name.startswith(\"__tvm_ffi\"):  # TVM's private fields - skip\n             continue\n-        type_field: TypeField = type_fields_cxx.pop(field_name, None)\n+        type_field = type_fields_cxx.pop(field_name, None)\n         if type_field is None:\n             raise ValueError(\n                 f\"Extraneous field `{type_cls}.{field_name}`. Defined in Python but not in C++\"\ndiff --git a/python/tvm_ffi/dataclasses/field.py b/python/tvm_ffi/dataclasses/field.py\nindex 00170e5..f1a582e 100644\n--- a/python/tvm_ffi/dataclasses/field.py\n+++ b/python/tvm_ffi/dataclasses/field.py\n@@ -18,11 +18,10 @@\n \n from __future__ import annotations\n \n-from dataclasses import MISSING, dataclass\n+from dataclasses import MISSING\n from typing import Any, Callable\n \n \n-@dataclass(kw_only=True)\n class Field:\n     \"\"\"(Experimental) Descriptor placeholder returned by :func:`tvm_ffi.dataclasses.field`.\n \n@@ -36,8 +35,12 @@ class Field:\n     way the decorator understands.\n     \"\"\"\n \n-    name: str | None = None\n-    default_factory: Callable[[], Any]\n+    __slots__ = (\"default_factory\", \"name\")\n+\n+    def __init__(self, *, name: str | None = None, default_factory: Callable[[], Any]) -> None:\n+        \"\"\"Do not call directly; use :func:`field` instead.\"\"\"\n+        self.name = name\n+        self.default_factory = default_factory\n \n \n def field(*, default: Any = MISSING, default_factory: Any = MISSING) -> Field:\ndiff --git a/python/tvm_ffi/error.py b/python/tvm_ffi/error.py\nindex f29fc90..fd0bf2b 100644\n--- a/python/tvm_ffi/error.py\n+++ b/python/tvm_ffi/error.py\n@@ -17,11 +17,13 @@\n # pylint: disable=invalid-name\n \"\"\"Error handling.\"\"\"\n \n+from __future__ import annotations\n+\n import ast\n import re\n import sys\n import types\n-from typing import Any, Optional\n+from typing import Any\n \n from . import core\n \n@@ -60,7 +62,7 @@ class TracebackManager:\n \n     def __init__(self) -> None:\n         \"\"\"Initialize the traceback manager and its cache.\"\"\"\n-        self._code_cache = {}\n+        self._code_cache: dict[tuple[str, int, str], types.CodeType] = {}\n \n     def _get_cached_code_object(self, filename: str, lineno: int, func: str) -> types.CodeType:\n         # Hack to create a code object that points to the correct\n@@ -95,7 +97,7 @@ class TracebackManager:\n \n     def append_traceback(\n         self,\n-        tb: Optional[types.TracebackType],\n+        tb: types.TracebackType | None,\n         filename: str,\n         lineno: int,\n         func: str,\n@@ -134,7 +136,7 @@ def _with_append_backtrace(py_error: BaseException, backtrace: str) -> BaseExcep\n     return py_error.with_traceback(tb)\n \n \n-def _traceback_to_backtrace_str(tb: Optional[types.TracebackType]) -> str:\n+def _traceback_to_backtrace_str(tb: types.TracebackType | None) -> str:\n     \"\"\"Convert the traceback to a string.\"\"\"\n     lines = []\n     while tb is not None:\n@@ -155,7 +157,7 @@ core._TRACEBACK_TO_BACKTRACE_STR = _traceback_to_backtrace_str\n \n def register_error(\n     name_or_cls: str | type | None = None,\n-    cls: Optional[type] = None,\n+    cls: type | None = None,\n ) -> Any:\n     \"\"\"Register an error class so it can be recognized by the ffi error handler.\n \ndiff --git a/python/tvm_ffi/libinfo.py b/python/tvm_ffi/libinfo.py\nindex 382690b..8d92df3 100644\n--- a/python/tvm_ffi/libinfo.py\n+++ b/python/tvm_ffi/libinfo.py\n@@ -46,25 +46,24 @@ def split_env_var(env_var: str, split: str) -> list[str]:\n def get_dll_directories() -> list[str]:\n     \"\"\"Get the possible dll directories.\"\"\"\n     ffi_dir = Path(__file__).expanduser().resolve().parent\n-    dll_path = [ffi_dir / \"lib\"]\n-    dll_path += [ffi_dir / \"..\" / \"..\" / \"build\" / \"lib\"]\n+    dll_path: list[Path] = [ffi_dir / \"lib\"]\n+    dll_path.append(ffi_dir / \"..\" / \"..\" / \"build\" / \"lib\")\n     # in source build from parent if needed\n-    dll_path += [ffi_dir / \"..\" / \"..\" / \"..\" / \"build\" / \"lib\"]\n-\n+    dll_path.append(ffi_dir / \"..\" / \"..\" / \"..\" / \"build\" / \"lib\")\n     if sys.platform.startswith(\"linux\") or sys.platform.startswith(\"freebsd\"):\n-        dll_path.extend(split_env_var(\"LD_LIBRARY_PATH\", \":\"))\n-        dll_path.extend(split_env_var(\"PATH\", \":\"))\n+        dll_path.extend(Path(p) for p in split_env_var(\"LD_LIBRARY_PATH\", \":\"))\n+        dll_path.extend(Path(p) for p in split_env_var(\"PATH\", \":\"))\n     elif sys.platform.startswith(\"darwin\"):\n-        dll_path.extend(split_env_var(\"DYLD_LIBRARY_PATH\", \":\"))\n-        dll_path.extend(split_env_var(\"PATH\", \":\"))\n+        dll_path.extend(Path(p) for p in split_env_var(\"DYLD_LIBRARY_PATH\", \":\"))\n+        dll_path.extend(Path(p) for p in split_env_var(\"PATH\", \":\"))\n     elif sys.platform.startswith(\"win32\"):\n-        dll_path.extend(split_env_var(\"PATH\", \";\"))\n-    return [str(Path(x).resolve()) for x in dll_path if Path(x).is_dir()]\n+        dll_path.extend(Path(p) for p in split_env_var(\"PATH\", \";\"))\n+    return [str(path.resolve()) for path in dll_path if path.is_dir()]\n \n \n def find_libtvm_ffi() -> str:\n     \"\"\"Find libtvm_ffi.\"\"\"\n-    dll_path = get_dll_directories()\n+    dll_path = [Path(p) for p in get_dll_directories()]\n     if sys.platform.startswith(\"win32\"):\n         lib_dll_names = [\"tvm_ffi.dll\"]\n     elif sys.platform.startswith(\"darwin\"):\n@@ -72,14 +71,18 @@ def find_libtvm_ffi() -> str:\n     else:\n         lib_dll_names = [\"libtvm_ffi.so\"]\n \n-    name = lib_dll_names\n-    lib_dll_path = [str(Path(p) / name) for name in lib_dll_names for p in dll_path]\n-    lib_found = [p for p in lib_dll_path if Path(p).exists() and Path(p).is_file()]\n+    lib_dll_path = [p / name for name in lib_dll_names for p in dll_path]\n+    lib_found = [p for p in lib_dll_path if p.exists() and p.is_file()]\n \n     if not lib_found:\n-        raise RuntimeError(f\"Cannot find library: {name}\\nList of candidates:\\n{lib_dll_path}\")\n-\n-    return lib_found[0]\n+        candidate_list = \"\\n\".join(str(p) for p in lib_dll_path)\n+        raise RuntimeError(\n+            \"Cannot find library: {}\\nList of candidates:\\n{}\".format(\n+                \", \".join(lib_dll_names), candidate_list\n+            )\n+        )\n+\n+    return str(lib_found[0])\n \n \n def find_source_path() -> str:\ndiff --git a/python/tvm_ffi/module.py b/python/tvm_ffi/module.py\nindex acdc11e..768463d 100644\n--- a/python/tvm_ffi/module.py\n+++ b/python/tvm_ffi/module.py\n@@ -73,7 +73,7 @@ class Module(core.Object):\n             The module\n \n         \"\"\"\n-        return self.imports_\n+        return self.imports_  # type: ignore[return-value]\n \n     def implements_function(self, name: str, query_imports: bool = False) -> bool:\n         \"\"\"Return True if the module defines a global function.\n@@ -255,7 +255,7 @@ def system_lib(symbol_prefix: str = \"\") -> Module:\n \n     Parameters\n     ----------\n-    symbol_prefix: Optional[str]\n+    symbol_prefix: str = \"\"\n         Optional symbol prefix that can be used for search. When we lookup a symbol\n         symbol_prefix + name will first be searched, then the name without symbol_prefix.\n \ndiff --git a/python/tvm_ffi/registry.py b/python/tvm_ffi/registry.py\nindex 6bf08f6..3ef4039 100644\n--- a/python/tvm_ffi/registry.py\n+++ b/python/tvm_ffi/registry.py\n@@ -16,8 +16,10 @@\n # under the License.\n \"\"\"FFI registry to register function and objects.\"\"\"\n \n+from __future__ import annotations\n+\n import sys\n-from typing import Any, Callable, Optional\n+from typing import Any, Callable, Literal, overload\n \n from . import core\n from .core import TypeInfo\n@@ -26,7 +28,7 @@ from .core import TypeInfo\n _SKIP_UNKNOWN_OBJECTS = False\n \n \n-def register_object(type_key: str | type | None = None) -> Any:\n+def register_object(type_key: str | type | None = None) -> Callable[[type], type] | type:\n     \"\"\"Register object type.\n \n     Parameters\n@@ -46,9 +48,8 @@ def register_object(type_key: str | type | None = None) -> Any:\n           pass\n \n     \"\"\"\n-    object_name = type_key if isinstance(type_key, str) else type_key.__name__\n \n-    def register(cls: type) -> type:\n+    def _register(cls: type, object_name: str) -> type:\n         \"\"\"Register the object type with the FFI core.\"\"\"\n         type_index = core._object_type_key_to_index(object_name)\n         if type_index is None:\n@@ -60,14 +61,25 @@ def register_object(type_key: str | type | None = None) -> Any:\n         return cls\n \n     if isinstance(type_key, str):\n-        return register\n \n-    return register(type_key)\n+        def _decorator_with_name(cls: type) -> type:\n+            return _register(cls, type_key)\n+\n+        return _decorator_with_name\n+\n+    def _decorator_default(cls: type) -> type:\n+        return _register(cls, cls.__name__)\n+\n+    if type_key is None:\n+        return _decorator_default\n+    if isinstance(type_key, type):\n+        return _decorator_default(type_key)\n+    raise TypeError(\"type_key must be a string, type, or None\")\n \n \n def register_global_func(\n     func_name: str | Callable[..., Any],\n-    f: Optional[Callable[..., Any]] = None,\n+    f: Callable[..., Any] | None = None,\n     override: bool = False,\n ) -> Any:\n     \"\"\"Register global function.\n@@ -124,12 +136,20 @@ def register_global_func(\n         \"\"\"Register the global function with the FFI core.\"\"\"\n         return core._register_global_func(func_name, myf, override)\n \n-    if f:\n+    if f is not None:\n         return register(f)\n     return register\n \n \n-def get_global_func(name: str, allow_missing: bool = False) -> Optional[core.Function]:\n+@overload\n+def get_global_func(name: str, allow_missing: Literal[True]) -> core.Function | None: ...\n+\n+\n+@overload\n+def get_global_func(name: str, allow_missing: Literal[False] = False) -> core.Function: ...\n+\n+\n+def get_global_func(name: str, allow_missing: bool = False) -> core.Function | None:\n     \"\"\"Get a global function by name.\n \n     Parameters\n@@ -179,7 +199,7 @@ def remove_global_func(name: str) -> None:\n     get_global_func(\"ffi.FunctionRemoveGlobal\")(name)\n \n \n-def init_ffi_api(namespace: str, target_module_name: Optional[str] = None) -> None:\n+def init_ffi_api(namespace: str, target_module_name: str | None = None) -> None:\n     \"\"\"Initialize register ffi api  functions into a given module.\n \n     Parameters\n@@ -225,8 +245,8 @@ def init_ffi_api(namespace: str, target_module_name: Optional[str] = None) -> No\n             continue\n \n         f = get_global_func(name)\n-        f.__name__ = fname\n-        setattr(target_module, f.__name__, f)\n+        setattr(f, \"__name__\", fname)\n+        setattr(target_module, fname, f)\n \n \n def _member_method_wrapper(method_func: Callable[..., Any]) -> Callable[..., Any]:\n@@ -253,16 +273,16 @@ def _add_class_attrs(type_cls: type, type_info: TypeInfo) -> type:\n         doc = method.doc if method.doc else None\n         method_func = method.func\n         if method.is_static:\n-            method_pyfunc = staticmethod(method_func)\n+            if doc is not None:\n+                method_func.__doc__ = doc\n+            method_func.__name__ = name\n+            method_pyfunc: Any = staticmethod(method_func)\n         else:\n-            # must call into another method instead of direct capture\n-            # to avoid the same method_func variable being used\n-            # across multiple loop iterations\n-            method_pyfunc = _member_method_wrapper(method_func)\n-\n-        if doc is not None:\n-            method_pyfunc.__doc__ = doc\n-        method_pyfunc.__name__ = name\n+            wrapped_func = _member_method_wrapper(method_func)\n+            if doc is not None:\n+                wrapped_func.__doc__ = doc\n+            wrapped_func.__name__ = name\n+            method_pyfunc = wrapped_func\n \n         if hasattr(type_cls, name):\n             # skip already defined attributes\ndiff --git a/python/tvm_ffi/serialization.py b/python/tvm_ffi/serialization.py\nindex 2bc0d14..6960eda 100644\n--- a/python/tvm_ffi/serialization.py\n+++ b/python/tvm_ffi/serialization.py\n@@ -16,12 +16,14 @@\n # under the License.\n \"\"\"Serialization related utilities to enable some object can be pickled.\"\"\"\n \n-from typing import Any, Optional\n+from __future__ import annotations\n+\n+from typing import Any\n \n from . import _ffi_api\n \n \n-def to_json_graph_str(obj: Any, metadata: Optional[dict] = None) -> str:\n+def to_json_graph_str(obj: Any, metadata: dict[str, Any] | None = None) -> str:\n     \"\"\"Dump an object to a JSON graph string.\n \n     The JSON graph string is a string representation of of the object\ndiff --git a/python/tvm_ffi/stream.py b/python/tvm_ffi/stream.py\nindex 3ce9d94..7f2dde5 100644\n--- a/python/tvm_ffi/stream.py\n+++ b/python/tvm_ffi/stream.py\n@@ -18,7 +18,7 @@\n \"\"\"Stream context.\"\"\"\n \n from ctypes import c_void_p\n-from typing import Any, NoReturn, Optional, Union\n+from typing import Any, Union\n \n from . import core\n from ._tensor import device\n@@ -72,7 +72,7 @@ try:\n     class TorchStreamContext:\n         \"\"\"Context manager that syncs Torch and FFI stream contexts.\"\"\"\n \n-        def __init__(self, context: Optional[Any]) -> None:\n+        def __init__(self, context: Any) -> None:\n             \"\"\"Initialize with an optional Torch stream/graph context wrapper.\"\"\"\n             self.torch_context = context\n \n@@ -93,14 +93,14 @@ try:\n                 self.torch_context.__exit__(*args)\n             self.ffi_context.__exit__(*args)\n \n-    def use_torch_stream(context: Optional[Any] = None) -> \"TorchStreamContext\":\n+    def use_torch_stream(context: Any = None) -> \"TorchStreamContext\":\n         \"\"\"Create an FFI stream context with a Torch stream or graph.\n \n         cuda graph or current stream if `None` provided.\n \n         Parameters\n         ----------\n-        context : Optional[Any]\n+        context : Any = None\n             The wrapped torch stream or cuda graph.\n \n         Returns\n@@ -129,7 +129,7 @@ try:\n \n except ImportError:\n \n-    def use_torch_stream(context: Optional[Any] = None) -> NoReturn:\n+    def use_torch_stream(context: Any = None) -> \"TorchStreamContext\":\n         \"\"\"Raise an informative error when Torch is unavailable.\"\"\"\n         raise ImportError(\"Cannot import torch\")\n \ndiff --git a/python/tvm_ffi/testing.py b/python/tvm_ffi/testing.py\nindex 825f9cf..9769158 100644\n--- a/python/tvm_ffi/testing.py\n+++ b/python/tvm_ffi/testing.py\n@@ -16,9 +16,12 @@\n # under the License.\n \"\"\"Testing utilities.\"\"\"\n \n+from __future__ import annotations\n+\n from typing import Any, ClassVar\n \n from . import _ffi_api\n+from .container import Array, Map\n from .core import Object\n from .dataclasses import c_class, field\n from .registry import register_object\n@@ -28,11 +31,18 @@ from .registry import register_object\n class TestObjectBase(Object):\n     \"\"\"Test object base class.\"\"\"\n \n+    v_i64: int\n+    v_f64: float\n+    v_str: str\n+\n \n @register_object(\"testing.TestIntPair\")\n class TestIntPair(Object):\n     \"\"\"Test Int Pair.\"\"\"\n \n+    a: int\n+    b: int\n+\n     def __init__(self, a: int, b: int) -> None:\n         \"\"\"Construct the object.\"\"\"\n         self.__ffi_init__(a, b)\n@@ -42,6 +52,9 @@ class TestIntPair(Object):\n class TestObjectDerived(TestObjectBase):\n     \"\"\"Test object derived class.\"\"\"\n \n+    v_map: Map\n+    v_array: Array\n+\n \n def create_object(type_key: str, **kwargs: Any) -> Object:\n     \"\"\"Make an object by reflection.\n@@ -79,7 +92,7 @@ class _TestCxxClassBase:\n     not_field_2: ClassVar[int] = 2\n \n     def __init__(self, v_i64: int, v_i32: int) -> None:\n-        self.__ffi_init__(v_i64 + 1, v_i32 + 2)\n+        self.__ffi_init__(v_i64 + 1, v_i32 + 2)  # type: ignore[attr-defined]\n \n \n @c_class(\"testing.TestCxxClassDerived\")\n@@ -90,5 +103,5 @@ class _TestCxxClassDerived(_TestCxxClassBase):\n \n @c_class(\"testing.TestCxxClassDerivedDerived\")\n class _TestCxxClassDerivedDerived(_TestCxxClassDerived):\n-    v_str: str = field(default_factory=lambda: \"default\")\n-    v_bool: bool\n+    v_str: str = field(default_factory=lambda: \"default\")  # type: ignore[assignment]\n+    v_bool: bool  # type: ignore[misc]\ndiff --git a/python/tvm_ffi/utils/lockfile.py b/python/tvm_ffi/utils/lockfile.py\nindex 243a319..6efe80f 100644\n--- a/python/tvm_ffi/utils/lockfile.py\n+++ b/python/tvm_ffi/utils/lockfile.py\n@@ -16,10 +16,12 @@\n # under the License.\n \"\"\"Simple cross-platform advisory file lock utilities.\"\"\"\n \n+from __future__ import annotations\n+\n import os\n import sys\n import time\n-from typing import Any, Optional\n+from typing import Any, Literal\n \n # Platform-specific imports for file locking\n if sys.platform == \"win32\":\n@@ -38,9 +40,9 @@ class FileLock:\n     def __init__(self, lock_file_path: str) -> None:\n         \"\"\"Initialize a file lock using the given lock file path.\"\"\"\n         self.lock_file_path = lock_file_path\n-        self._file_descriptor = None\n+        self._file_descriptor: int | None = None\n \n-    def __enter__(self) -> \"FileLock\":\n+    def __enter__(self) -> FileLock:\n         \"\"\"Acquire the lock upon entering the context.\n \n         This method blocks until the lock is acquired.\n@@ -48,12 +50,12 @@ class FileLock:\n         self.blocking_acquire()\n         return self\n \n-    def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> bool:\n+    def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> Literal[False]:\n         \"\"\"Context manager protocol: release the lock upon exiting the 'with' block.\"\"\"\n         self.release()\n         return False  # Propagate exceptions, if any\n \n-    def acquire(self) -> Optional[bool]:\n+    def acquire(self) -> bool:\n         \"\"\"Acquire an exclusive, non-blocking lock on the file.\n \n         Returns True if the lock was acquired, False otherwise.\n@@ -79,9 +81,7 @@ class FileLock:\n                 self._file_descriptor = None\n             raise RuntimeError(f\"An unexpected error occurred: {e}\")\n \n-    def blocking_acquire(\n-        self, timeout: Optional[float] = None, poll_interval: float = 0.1\n-    ) -> Optional[bool]:\n+    def blocking_acquire(self, timeout: float | None = None, poll_interval: float = 0.1) -> bool:\n         \"\"\"Wait until an exclusive lock can be acquired, with an optional timeout.\n \n         Args:\ndiff --git a/tests/lint/check_asf_header.py b/tests/lint/check_asf_header.py\nindex da30464..713520f 100644\n--- a/tests/lint/check_asf_header.py\n+++ b/tests/lint/check_asf_header.py\n@@ -170,7 +170,7 @@ FMT_MAP = {\n }\n \n # Files and patterns to skip during header checking\n-SKIP_LIST = []\n+SKIP_LIST: list[str] = []\n \n \n def should_skip_file(filepath: str) -> bool:\ndiff --git a/tests/lint/check_file_type.py b/tests/lint/check_file_type.py\nindex 9d08f9a..c776b20 100644\n--- a/tests/lint/check_file_type.py\n+++ b/tests/lint/check_file_type.py\n@@ -183,8 +183,8 @@ def main() -> None:\n     cmd = [\"git\", \"ls-files\"]\n     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)\n     (out, _) = proc.communicate()\n-    assert proc.returncode == 0, f\"{' '.join(cmd)} errored: {out}\"\n     res = out.decode(\"utf-8\")\n+    assert proc.returncode == 0, f\"{' '.join(cmd)} errored: {res}\"\n     flist = res.split()\n     error_list = []\n \ndiff --git a/tests/python/test_container.py b/tests/python/test_container.py\nindex f5f28f3..f42e9b3 100644\n--- a/tests/python/test_container.py\n+++ b/tests/python/test_container.py\n@@ -38,10 +38,10 @@ def test_bad_constructor_init_state() -> None:\n     proper repr code\n     \"\"\"\n     with pytest.raises(TypeError):\n-        tvm_ffi.Array(1)\n+        tvm_ffi.Array(1)  # type: ignore[arg-type]\n \n     with pytest.raises(AttributeError):\n-        tvm_ffi.Map(1)\n+        tvm_ffi.Map(1)  # type: ignore[arg-type]\n \n \n def test_array_of_array_map() -> None:\ndiff --git a/tests/python/test_dataclasses_c_class.py b/tests/python/test_dataclasses_c_class.py\nindex a2fa80e..0050e6c 100644\n--- a/tests/python/test_dataclasses_c_class.py\n+++ b/tests/python/test_dataclasses_c_class.py\n@@ -57,7 +57,7 @@ def test_cxx_class_derived_derived() -> None:\n \n \n def test_cxx_class_derived_derived_default() -> None:\n-    obj = _TestCxxClassDerivedDerived(123, 456, 4, True)\n+    obj = _TestCxxClassDerivedDerived(123, 456, 4, True)  # type: ignore[call-arg,misc]\n     assert obj.v_i64 == 123\n     assert obj.v_i32 == 456\n     assert isinstance(obj.v_f64, float) and obj.v_f64 == 4\ndiff --git a/tests/python/test_device.py b/tests/python/test_device.py\nindex 9441c9f..7a3638b 100644\n--- a/tests/python/test_device.py\n+++ b/tests/python/test_device.py\n@@ -15,6 +15,8 @@\n # specific language governing permissions and limitations\n # under the License.\n \n+from __future__ import annotations\n+\n import pickle\n \n import pytest\n@@ -87,7 +89,7 @@ def test_deive_type_error(dev_type: str, dev_id: int | None) -> None:\n \n def test_deive_id_error() -> None:\n     with pytest.raises(TypeError):\n-        tvm_ffi.device(\"cpu\", \"?\")\n+        tvm_ffi.device(\"cpu\", \"?\")  # type: ignore[arg-type]\n \n \n def test_device_pickle() -> None:\ndiff --git a/tests/python/test_error.py b/tests/python/test_error.py\nindex dda436c..dd94cf3 100644\n--- a/tests/python/test_error.py\n+++ b/tests/python/test_error.py\n@@ -39,9 +39,9 @@ def test_error_from_cxx() -> None:\n     try:\n         test_raise_error(\"ValueError\", \"error XYZ\")\n     except ValueError as e:\n-        assert e.__tvm_ffi_error__.kind == \"ValueError\"\n-        assert e.__tvm_ffi_error__.message == \"error XYZ\"\n-        assert e.__tvm_ffi_error__.backtrace.find(\"TestRaiseError\") != -1\n+        assert e.__tvm_ffi_error__.kind == \"ValueError\"  # type: ignore[attr-defined]\n+        assert e.__tvm_ffi_error__.message == \"error XYZ\"  # type: ignore[attr-defined]\n+        assert e.__tvm_ffi_error__.backtrace.find(\"TestRaiseError\") != -1  # type: ignore[attr-defined]\n \n     fapply = tvm_ffi.convert(lambda f, *args: f(*args))\n \n@@ -64,17 +64,17 @@ def test_error_from_nested_pyfunc() -> None:\n         try:\n             fapply(cxx_test_raise_error, \"ValueError\", \"error XYZ\")\n         except ValueError as e:\n-            assert e.__tvm_ffi_error__.kind == \"ValueError\"\n-            assert e.__tvm_ffi_error__.message == \"error XYZ\"\n-            assert e.__tvm_ffi_error__.backtrace.find(\"TestRaiseError\") != -1\n-            record_object.append(e.__tvm_ffi_error__)\n+            assert e.__tvm_ffi_error__.kind == \"ValueError\"  # type: ignore[attr-defined]\n+            assert e.__tvm_ffi_error__.message == \"error XYZ\"  # type: ignore[attr-defined]\n+            assert e.__tvm_ffi_error__.backtrace.find(\"TestRaiseError\") != -1  # type: ignore[attr-defined]\n+            record_object.append(e.__tvm_ffi_error__)  # type: ignore[attr-defined]\n             raise e\n \n     try:\n         cxx_test_apply(raise_error)\n     except ValueError as e:\n-        backtrace = e.__tvm_ffi_error__.backtrace\n-        assert e.__tvm_ffi_error__.same_as(record_object[0])\n+        backtrace = e.__tvm_ffi_error__.backtrace  # type: ignore[attr-defined]\n+        assert e.__tvm_ffi_error__.same_as(record_object[0])  # type: ignore[attr-defined]\n         assert backtrace.count(\"TestRaiseError\") == 1\n         # The following lines may fail if debug symbols are missing\n         try:\n@@ -108,7 +108,7 @@ def test_error_traceback_update() -> None:\n     try:\n         raise_cxx_error()\n     except ValueError as e:\n-        assert e.__tvm_ffi_error__.backtrace.find(\"raise_cxx_error\") == -1\n+        assert e.__tvm_ffi_error__.backtrace.find(\"raise_cxx_error\") == -1  # type: ignore[attr-defined]\n         ffi_error1 = tvm_ffi.convert(e)\n         ffi_error2 = fecho(e)\n         assert ffi_error1.backtrace.find(\"raise_cxx_error\") != -1\ndiff --git a/tests/python/test_function.py b/tests/python/test_function.py\nindex d0afd5f..edc9ffd 100644\n--- a/tests/python/test_function.py\n+++ b/tests/python/test_function.py\n@@ -113,11 +113,11 @@ def test_string_bytes_passing() -> None:\n     # small bytes\n     assert fecho(b\"hello\") == b\"hello\"\n     # large bytes\n-    x = b\"hello\" * 100\n-    y = fecho(x)\n-    assert y == x\n-    assert y.__tvm_ffi_object__ is not None\n-    fecho(y) == 1\n+    x2 = b\"hello\" * 100\n+    y2 = fecho(x2)\n+    assert y2 == x2\n+    assert y2.__tvm_ffi_object__ is not None\n+    fecho(y2) == 1\n \n \n def test_nested_container_passing() -> None:\ndiff --git a/tests/python/test_load_inline.py b/tests/python/test_load_inline.py\nindex 5454284..cd46bf5 100644\n--- a/tests/python/test_load_inline.py\n+++ b/tests/python/test_load_inline.py\n@@ -15,12 +15,16 @@\n # specific language governing permissions and limitations\n # under the License.\n \n+from __future__ import annotations\n+\n+from types import ModuleType\n \n import numpy\n import pytest\n \n+torch: ModuleType | None\n try:\n-    import torch\n+    import torch  # type: ignore[no-redef]\n except ImportError:\n     torch = None\n \n@@ -197,6 +201,7 @@ def test_load_inline_cuda() -> None:\n \n @pytest.mark.skipif(torch is None, reason=\"Requires torch\")\n def test_load_inline_with_env_tensor_allocator() -> None:\n+    assert torch is not None\n     if not hasattr(torch.Tensor, \"__c_dlpack_tensor_allocator__\"):\n         pytest.skip(\"Torch does not support __c_dlpack_tensor_allocator__\")\n     mod: Module = tvm_ffi.cpp.load_inline(\n@@ -241,6 +246,7 @@ def test_load_inline_with_env_tensor_allocator() -> None:\n     torch is None or not torch.cuda.is_available(), reason=\"Requires torch and CUDA\"\n )\n def test_load_inline_both() -> None:\n+    assert torch is not None\n     mod: Module = tvm_ffi.cpp.load_inline(\n         name=\"hello\",\n         cpp_sources=r\"\"\"\ndiff --git a/tests/python/test_object.py b/tests/python/test_object.py\nindex ea54adf..aa1a791 100644\n--- a/tests/python/test_object.py\n+++ b/tests/python/test_object.py\n@@ -24,6 +24,7 @@ import tvm_ffi\n def test_make_object() -> None:\n     # with default values\n     obj0 = tvm_ffi.testing.create_object(\"testing.TestObjectBase\")\n+    assert isinstance(obj0, tvm_ffi.testing.TestObjectBase)\n     assert obj0.v_i64 == 10\n     assert obj0.v_f64 == 10.0\n     assert obj0.v_str == \"hello\"\n@@ -37,14 +38,16 @@ def test_make_object_via_init() -> None:\n \n def test_method() -> None:\n     obj0 = tvm_ffi.testing.create_object(\"testing.TestObjectBase\", v_i64=12)\n-    assert obj0.add_i64(1) == 13\n-    assert type(obj0).add_i64.__doc__ == \"add_i64 method\"\n-    assert type(obj0).v_i64.__doc__ == \"i64 field\"\n+    assert isinstance(obj0, tvm_ffi.testing.TestObjectBase)\n+    assert obj0.add_i64(1) == 13  # type: ignore[attr-defined]\n+    assert type(obj0).add_i64.__doc__ == \"add_i64 method\"  # type: ignore[attr-defined]\n+    assert type(obj0).v_i64.__doc__ == \"i64 field\"  # type: ignore[attr-defined]\n \n \n def test_setter() -> None:\n     # test setter\n     obj0 = tvm_ffi.testing.create_object(\"testing.TestObjectBase\", v_i64=10, v_str=\"hello\")\n+    assert isinstance(obj0, tvm_ffi.testing.TestObjectBase)\n     assert obj0.v_i64 == 10\n     obj0.v_i64 = 11\n     assert obj0.v_i64 == 11\n@@ -52,10 +55,10 @@ def test_setter() -> None:\n     assert obj0.v_str == \"world\"\n \n     with pytest.raises(TypeError):\n-        obj0.v_str = 1\n+        obj0.v_str = 1  # type: ignore[assignment]\n \n     with pytest.raises(TypeError):\n-        obj0.v_i64 = \"hello\"\n+        obj0.v_i64 = \"hello\"  # type: ignore[assignment]\n \n \n def test_derived_object() -> None:\n@@ -68,6 +71,7 @@ def test_derived_object() -> None:\n     obj0 = tvm_ffi.testing.create_object(\n         \"testing.TestObjectDerived\", v_i64=20, v_map=v_map, v_array=v_array\n     )\n+    assert isinstance(obj0, tvm_ffi.testing.TestObjectDerived)\n     assert obj0.v_map.same_as(v_map)\n     assert obj0.v_array.same_as(v_array)\n     assert obj0.v_i64 == 20\ndiff --git a/tests/python/test_stream.py b/tests/python/test_stream.py\nindex cfaf650..9280aab 100644\n--- a/tests/python/test_stream.py\n+++ b/tests/python/test_stream.py\n@@ -15,12 +15,17 @@\n # specific language governing permissions and limitations\n # under the License.\n \n+from __future__ import annotations\n+\n+from types import ModuleType\n+\n import pytest\n import tvm_ffi\n import tvm_ffi.cpp\n \n+torch: ModuleType | None\n try:\n-    import torch\n+    import torch  # type: ignore[no-redef]\n except ImportError:\n     torch = None\n \n@@ -56,6 +61,7 @@ def test_raw_stream() -> None:\n     torch is None or not torch.cuda.is_available(), reason=\"Requires torch and CUDA\"\n )\n def test_torch_stream() -> None:\n+    assert torch is not None\n     mod = gen_check_stream_mod()\n     device_id = torch.cuda.current_device()\n     device = tvm_ffi.device(\"cuda\", device_id)\n@@ -78,6 +84,7 @@ def test_torch_stream() -> None:\n     torch is None or not torch.cuda.is_available(), reason=\"Requires torch and CUDA\"\n )\n def test_torch_current_stream() -> None:\n+    assert torch is not None\n     mod = gen_check_stream_mod()\n     device_id = torch.cuda.current_device()\n     device = tvm_ffi.device(\"cuda\", device_id)\n@@ -103,6 +110,7 @@ def test_torch_current_stream() -> None:\n     torch is None or not torch.cuda.is_available(), reason=\"Requires torch and CUDA\"\n )\n def test_torch_graph() -> None:\n+    assert torch is not None\n     mod = gen_check_stream_mod()\n     device_id = torch.cuda.current_device()\n     device = tvm_ffi.device(\"cuda\", device_id)\ndiff --git a/tests/python/test_tensor.py b/tests/python/test_tensor.py\nindex 4c2e9a8..186d91b 100644\n--- a/tests/python/test_tensor.py\n+++ b/tests/python/test_tensor.py\n@@ -14,10 +14,16 @@\n # KIND, either express or implied.  See the License for the\n # specific language governing permissions and limitations\n # under the License.\n+\n+from __future__ import annotations\n+\n+from types import ModuleType\n+\n import pytest\n \n+torch: ModuleType | None\n try:\n-    import torch\n+    import torch  # type: ignore[no-redef]\n except ImportError:\n     torch = None\n \n@@ -45,18 +51,19 @@ def test_shape_object() -> None:\n     assert shape == (10, 8, 4, 2)\n \n     fecho = tvm_ffi.convert(lambda x: x)\n-    shape2 = fecho(shape)\n+    shape2: tvm_ffi.Shape = fecho(shape)\n     assert shape2.__tvm_ffi_object__.same_as(shape.__tvm_ffi_object__)\n     assert isinstance(shape2, tvm_ffi.Shape)\n     assert isinstance(shape2, tuple)\n \n-    shape3 = tvm_ffi.convert(shape)\n+    shape3: tvm_ffi.Shape = tvm_ffi.convert(shape)\n     assert shape3.__tvm_ffi_object__.same_as(shape.__tvm_ffi_object__)\n     assert isinstance(shape3, tvm_ffi.Shape)\n \n \n @pytest.mark.skipif(torch is None, reason=\"Fast torch dlpack importer is not enabled\")\n def test_tensor_auto_dlpack() -> None:\n+    assert torch is not None\n     x = torch.arange(128)\n     fecho = tvm_ffi.get_global_func(\"testing.echo\")\n     y = fecho(x)\ndiff --git a/tests/scripts/benchmark_dlpack.py b/tests/scripts/benchmark_dlpack.py\nindex 2d9b296..4366b58 100644\n--- a/tests/scripts/benchmark_dlpack.py\n+++ b/tests/scripts/benchmark_dlpack.py\n@@ -254,9 +254,9 @@ def tvm_ffi_nop_autodlpack_from_dltensor_test_wrapper(repeat: int, device: str)\n     x = tvm_ffi.from_dlpack(torch.arange(1, device=device))\n     y = tvm_ffi.from_dlpack(torch.arange(1, device=device))\n     z = tvm_ffi.from_dlpack(torch.arange(1, device=device))\n-    x = tvm_ffi.core.DLTensorTestWrapper(x)\n-    y = tvm_ffi.core.DLTensorTestWrapper(y)\n-    z = tvm_ffi.core.DLTensorTestWrapper(z)\n+    x = tvm_ffi.core.DLTensorTestWrapper(x)  # type: ignore[assignment]\n+    y = tvm_ffi.core.DLTensorTestWrapper(y)  # type: ignore[assignment]\n+    z = tvm_ffi.core.DLTensorTestWrapper(z)  # type: ignore[assignment]\n     bench_tvm_ffi_nop_autodlpack(\n         f\"tvm_ffi.nop.autodlpack(DLTensorTestWrapper[{device}])\", x, y, z, repeat\n     )",
+  "heuristics": {
+    "tags": [
+      "build",
+      "test"
+    ],
+    "extensions": [
+      ".pxi",
+      ".py",
+      ".pyi",
+      ".toml",
+      ".yaml"
+    ],
+    "scopes_guess": [
+      ".pre-commit-config.yaml",
+      "examples",
+      "pyproject.toml",
+      "python",
+      "tests"
+    ]
+  }
+}

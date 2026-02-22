@@ -1,0 +1,51 @@
+{
+  "sha": "46ab64481c60478f5ca3081b26607f4ae525f76a",
+  "sha7": "46ab644",
+  "author_name": "Guan-Ming (Wesley) Chiu",
+  "author_email": "105915352+guan404ming@users.noreply.github.com",
+  "date_iso": "2026-01-05T15:42:10+08:00",
+  "subject": "feat: add __bool__ support for Array and Map (#380)",
+  "body":
+      "## Why\n\nPython's built-in list and dict return False when empty. However, Array\nand Map containers always returned True because they didn't implement\n__bool__, making bool(Array([])) and bool(Map({})) return True\nunexpectedly.\n\n## How\n\n- Python: Implemented __bool__ for Array and Map returning len(self) > 0\n- Tests: Added parametrized tests verifying truthy/falsy behavior for\nempty and non-empty containers",
+  "is_merge": false,
+  "parents": [
+    "ad195eb766fb1658612e034f19e93cae1f67360a"
+  ],
+  "name_status": [
+    [
+      "M",
+      "python/tvm_ffi/container.py"
+    ],
+    [
+      "M",
+      "tests/python/test_container.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "python/tvm_ffi/container.py",
+      "additions": 8,
+      "deletions": 0
+    },
+    {
+      "path": "tests/python/test_container.py",
+      "additions": 28,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/python/tvm_ffi/container.py b/python/tvm_ffi/container.py\nindex d2aff29..2b64ed6 100644\n--- a/python/tvm_ffi/container.py\n+++ b/python/tvm_ffi/container.py\n@@ -192,6 +192,10 @@ class Array(core.Object, Sequence[T]):\n         \"\"\"Check if the array contains a value.\"\"\"\n         return _ffi_api.ArrayContains(self, value)\n \n+    def __bool__(self) -> bool:\n+        \"\"\"Return True if the array is non-empty.\"\"\"\n+        return len(self) > 0\n+\n     def __add__(self, other: Iterable[T]) -> Array[T]:\n         \"\"\"Concatenate two arrays.\"\"\"\n         return type(self)(itertools.chain(self, other))\n@@ -337,6 +341,10 @@ class Map(core.Object, Mapping[K, V]):\n         \"\"\"Return the number of items in the map.\"\"\"\n         return _ffi_api.MapSize(self)\n \n+    def __bool__(self) -> bool:\n+        \"\"\"Return True if the map is non-empty.\"\"\"\n+        return len(self) > 0\n+\n     def __iter__(self) -> Iterator[K]:\n         \"\"\"Iterate over the map's keys.\"\"\"\n         return iter(self.keys())\ndiff --git a/tests/python/test_container.py b/tests/python/test_container.py\nindex 8650e08..37f7432 100644\n--- a/tests/python/test_container.py\n+++ b/tests/python/test_container.py\n@@ -227,3 +227,31 @@ def test_large_map_get() -> None:\n def test_array_contains(arr: list[Any], value: Any, expected: bool) -> None:\n     a = tvm_ffi.convert(arr)\n     assert (value in a) == expected\n+\n+\n+@pytest.mark.parametrize(\n+    \"arr, expected\",\n+    [\n+        ([1, 2, 3], True),\n+        ([1], True),\n+        ([], False),\n+        ([\"hello\"], True),\n+    ],\n+)\n+def test_array_bool(arr: list[Any], expected: bool) -> None:\n+    a = tvm_ffi.Array(arr)\n+    assert bool(a) is expected\n+\n+\n+@pytest.mark.parametrize(\n+    \"mapping, expected\",\n+    [\n+        ({\"a\": 1, \"b\": 2}, True),\n+        ({\"a\": 1}, True),\n+        ({}, False),\n+        ({1: \"one\"}, True),\n+    ],\n+)\n+def test_map_bool(mapping: dict[Any, Any], expected: bool) -> None:\n+    m = tvm_ffi.Map(mapping)\n+    assert bool(m) is expected",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".py"
+    ],
+    "scopes_guess": [
+      "python",
+      "tests"
+    ]
+  }
+}

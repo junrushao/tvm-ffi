@@ -1,0 +1,111 @@
+{
+  "sha": "df04392b44a90f6641a7afb51638b324c8fb67ec",
+  "sha7": "df04392",
+  "author_name": "Yixin Dong",
+  "author_email": "ubospica@gmail.com",
+  "date_iso": "2025-10-15T06:12:06-07:00",
+  "subject": "[CMake] Enable automatic cmake config discovery (#124)",
+  "body":
+      "Relocate CMake config files from `cmake/` to `share/cmake/tvm_ffi/` to\nmatch\nCMake's standard search pattern `<prefix>/<name>*/share/cmake/<name>*/`.\n\nThis enables `find_package(tvm_ffi CONFIG REQUIRED)` to work\nautomatically\nwithout manually setting `tvm_ffi_ROOT`.\n\nWhen `find_package(Python)` is called, CMake adds `sys.prefix` to search\npaths,\nallowing it to discover tvm-ffi's config files in the standard location.\n\nThis also aligns with pybind's behavior. See also\nhttps://github.com/pybind/pybind11/blob/a2c59711b20707d64b7ad61d488e002611369780/.github/CONTRIBUTING.md#L325\nand\nhttps://github.com/pybind/pybind11/blob/a2c59711b20707d64b7ad61d488e002611369780/pybind11/commands.py#L22.\n\nChanges:\n- CMakeLists.txt: Install config to `share/cmake/tvm_ffi/`\n- libinfo.py: Update `find_cmake_path()` to check standard path first\n- examples: Simplify CMakeLists.txt to use direct `find_package()`\n\nThis PR also avoids rebuilding in editable installation mode, and adds a\ncd command in the readme of examples to ensure user is in the correct\ndirectory.",
+  "is_merge": false,
+  "parents": [
+    "70caf4cc2bed25288df242e2cbe0080dbe505a8b"
+  ],
+  "name_status": [
+    [
+      "M",
+      "CMakeLists.txt"
+    ],
+    [
+      "M",
+      "docs/guides/packaging.md"
+    ],
+    [
+      "M",
+      "examples/packaging/CMakeLists.txt"
+    ],
+    [
+      "M",
+      "examples/packaging/README.md"
+    ],
+    [
+      "M",
+      "examples/quick_start/CMakeLists.txt"
+    ],
+    [
+      "M",
+      "examples/quick_start/README.md"
+    ],
+    [
+      "M",
+      "pyproject.toml"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/libinfo.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "CMakeLists.txt",
+      "additions": 4,
+      "deletions": 2
+    },
+    {
+      "path": "docs/guides/packaging.md",
+      "additions": 0,
+      "deletions": 3
+    },
+    {
+      "path": "examples/packaging/CMakeLists.txt",
+      "additions": 1,
+      "deletions": 6
+    },
+    {
+      "path": "examples/packaging/README.md",
+      "additions": 1,
+      "deletions": 0
+    },
+    {
+      "path": "examples/quick_start/CMakeLists.txt",
+      "additions": 1,
+      "deletions": 7
+    },
+    {
+      "path": "examples/quick_start/README.md",
+      "additions": 1,
+      "deletions": 0
+    },
+    {
+      "path": "pyproject.toml",
+      "additions": 4,
+      "deletions": 0
+    },
+    {
+      "path": "python/tvm_ffi/libinfo.py",
+      "additions": 2,
+      "deletions": 2
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/CMakeLists.txt b/CMakeLists.txt\nindex 2a6c28e..b4ea1ea 100644\n--- a/CMakeLists.txt\n+++ b/CMakeLists.txt\n@@ -277,9 +277,11 @@ if (TVM_FFI_BUILD_PYTHON_MODULE)\n     PATTERN \"*.tmp\" EXCLUDE\n   )\n   install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/src/ffi/ DESTINATION src/ffi/)\n-  install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/cmake/Utils/ DESTINATION cmake/Utils)\n+  install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/cmake/Utils/ DESTINATION share/cmake/tvm_ffi/Utils)\n   install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/CMakeLists.txt DESTINATION .)\n-  install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/cmake/tvm_ffi-config.cmake DESTINATION cmake)\n+  install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/cmake/tvm_ffi-config.cmake\n+          DESTINATION share/cmake/tvm_ffi\n+  )\n   install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/python/tvm_ffi/cython/tvm_ffi_python_helpers.h\n           DESTINATION include/\n   )\ndiff --git a/docs/guides/packaging.md b/docs/guides/packaging.md\nindex 2a82e0a..4979d02 100644\n--- a/docs/guides/packaging.md\n+++ b/docs/guides/packaging.md\n@@ -104,9 +104,6 @@ cmake_minimum_required(VERSION 3.18)\n project(my_ffi_extension)\n \n find_package(Python COMPONENTS Interpreter REQUIRED)\n-execute_process(\n-  COMMAND \"${Python_EXECUTABLE}\" -m tvm_ffi.config --cmakedir\n-  OUTPUT_STRIP_TRAILING_WHITESPACE OUTPUT_VARIABLE tvm_ffi_ROOT)\n # find the prebuilt package\n find_package(tvm_ffi CONFIG REQUIRED)\n \ndiff --git a/examples/packaging/CMakeLists.txt b/examples/packaging/CMakeLists.txt\nindex b577f3a..0463a88 100644\n--- a/examples/packaging/CMakeLists.txt\n+++ b/examples/packaging/CMakeLists.txt\n@@ -51,12 +51,7 @@ if (TVM_FFI_BUILD_FROM_SOURCE)\n   message(STATUS \"Building tvm_ffi from source: ${tvm_ffi_ROOT}\")\n   add_subdirectory(${tvm_ffi_ROOT} tvm_ffi)\n else ()\n-  # call tvm_ffi.config to get the cmake directory and set it to tvm_ffi_ROOT\n-  execute_process(\n-    COMMAND \"${Python_EXECUTABLE}\" -m tvm_ffi.config --cmakedir\n-    OUTPUT_STRIP_TRAILING_WHITESPACE\n-    OUTPUT_VARIABLE tvm_ffi_ROOT\n-  )\n+  # tvm_ffi is installed via pip. Try to find tvm_ffi automatically\n   find_package(tvm_ffi CONFIG REQUIRED)\n endif ()\n \ndiff --git a/examples/packaging/README.md b/examples/packaging/README.md\nindex e7fc95a..b161fe7 100644\n--- a/examples/packaging/README.md\n+++ b/examples/packaging/README.md\n@@ -29,6 +29,7 @@ packaging as well.\n ## Install the wheel\n \n ```bash\n+cd examples/packaging\n pip install .\n ```\n \ndiff --git a/examples/quick_start/CMakeLists.txt b/examples/quick_start/CMakeLists.txt\nindex ed4f771..b16ab48 100644\n--- a/examples/quick_start/CMakeLists.txt\n+++ b/examples/quick_start/CMakeLists.txt\n@@ -25,13 +25,7 @@ find_package(\n   REQUIRED\n )\n \n-# Ask tvm-ffi where it stores its exported CMake files.\n-execute_process(\n-  COMMAND \"${Python_EXECUTABLE}\" -m tvm_ffi.config --cmakedir\n-  OUTPUT_STRIP_TRAILING_WHITESPACE\n-  OUTPUT_VARIABLE tvm_ffi_ROOT\n-)\n-# Pull in the tvm-ffi CMake targets so we can link against them below.\n+# Find tvm-ffi automatically\n find_package(tvm_ffi CONFIG REQUIRED)\n \n # Build the CPU and C versions of the simple \"add one\" function that the examples call.\ndiff --git a/examples/quick_start/README.md b/examples/quick_start/README.md\nindex db1a22d..14e62e8 100644\n--- a/examples/quick_start/README.md\n+++ b/examples/quick_start/README.md\n@@ -41,6 +41,7 @@ pip install -ve \"../..[test]\"\n From `examples/quick_start` you can build and run everything with the helper script:\n \n ```bash\n+cd examples/quick_start\n ./run_example.sh\n ```\n \ndiff --git a/pyproject.toml b/pyproject.toml\nindex f5ee20f..5363c87 100644\n--- a/pyproject.toml\n+++ b/pyproject.toml\n@@ -89,6 +89,10 @@ minimum-version = \"build-system.requires\"\n build-dir = \"build\"\n build.verbose = true\n \n+# Editable install configuration\n+editable.rebuild = false\n+editable.verbose = true\n+\n # CMake configuration\n cmake.version = \"CMakeLists.txt\"\n cmake.build-type = \"Release\"\ndiff --git a/python/tvm_ffi/libinfo.py b/python/tvm_ffi/libinfo.py\nindex df814cf..c59bd60 100644\n--- a/python/tvm_ffi/libinfo.py\n+++ b/python/tvm_ffi/libinfo.py\n@@ -134,8 +134,8 @@ def find_source_path() -> str:\n def find_cmake_path() -> str:\n     \"\"\"Find the preferred cmake path.\"\"\"\n     candidates = [\n-        str(Path(__file__).resolve().parent / \"cmake\"),\n-        str(Path(__file__).resolve().parent / \"..\" / \"..\" / \"cmake\"),\n+        str(Path(__file__).resolve().parent / \"share\" / \"cmake\" / \"tvm_ffi\"),  # Standard install\n+        str(Path(__file__).resolve().parent / \"..\" / \"..\" / \"cmake\"),  # Development mode\n     ]\n     for candidate in candidates:\n         if Path(candidate).is_dir():",
+  "heuristics": {
+    "tags": [
+      "build"
+    ],
+    "extensions": [
+      ".md",
+      ".py",
+      ".toml",
+      ".txt"
+    ],
+    "scopes_guess": [
+      "CMakeLists.txt",
+      "docs",
+      "examples",
+      "pyproject.toml",
+      "python"
+    ]
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "sha": "71dea752f43267b1929a119672b6862db20ac8aa",
+  "sha7": "71dea75",
+  "author_name": "Kathryn (Jinqi) Chen",
+  "author_email": "65606304+Kathryn-cat@users.noreply.github.com",
+  "date_iso": "2025-09-18T17:45:35-07:00",
+  "subject": "small fix (#27)",
+  "body": "",
+  "is_merge": false,
+  "parents": [
+    "53ffe5ecd8b4f36506ee04f90d95bc34e456af78"
+  ],
+  "name_status": [
+    [
+      "M",
+      "python/tvm_ffi/_optional_torch_c_dlpack.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "python/tvm_ffi/_optional_torch_c_dlpack.py",
+      "additions": 1,
+      "deletions": 1
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/python/tvm_ffi/_optional_torch_c_dlpack.py b/python/tvm_ffi/_optional_torch_c_dlpack.py\nindex 2501607..dd820a9 100644\n--- a/python/tvm_ffi/_optional_torch_c_dlpack.py\n+++ b/python/tvm_ffi/_optional_torch_c_dlpack.py\n@@ -210,7 +210,7 @@ template <class T>\n T* toDLPackImpl(const Tensor& src) {\n   auto view = src;\n \n-  bool need_normalize_strides = src.ndim() == 1 && src.size(0) == 1 && src.stride(0) != 1;\n+  bool need_normalize_strides = src.dim() == 1 && src.size(0) == 1 && src.stride(0) != 1;\n   // less common case, try normalizing the strides\n   if (need_normalize_strides) {\n     // create a new tensor with possibly normalized strides",
+  "heuristics": {
+    "tags": [],
+    "extensions": [
+      ".py"
+    ],
+    "scopes_guess": [
+      "python"
+    ]
+  }
+}

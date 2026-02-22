@@ -1,0 +1,52 @@
+{
+  "sha": "4bccb3eda0d543be67ec56204e045ca3e3b88641",
+  "sha7": "4bccb3e",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-11-07T20:05:20-05:00",
+  "subject": "[ERROR] Make Error conform more to std (#240)",
+  "body":
+      "This PR changes Error.what() to only return message. This helps to\nconform to the standard that what should not throw. Added a\nerror.FullMessage() function to get the fullmessage with trace and kind.\n\nThis also helps us to remove TLS in the header side which can makes the\ncompiled c++ object more friendly wrt to LLVM JIT.",
+  "is_merge": false,
+  "parents": [
+    "6d8b134f5667c00f7d73fd648a2dd95bc63c8c75"
+  ],
+  "name_status": [
+    [
+      "M",
+      "include/tvm/ffi/error.h"
+    ],
+    [
+      "M",
+      "tests/cpp/test_error.cc"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "include/tvm/ffi/error.h",
+      "additions": 14,
+      "deletions": 6
+    },
+    {
+      "path": "tests/cpp/test_error.cc",
+      "additions": 17,
+      "deletions": 15
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/include/tvm/ffi/error.h b/include/tvm/ffi/error.h\nindex dd7b923..9560237 100644\n--- a/include/tvm/ffi/error.h\n+++ b/include/tvm/ffi/error.h\n@@ -225,17 +225,25 @@ class Error : public ObjectRef, public std::exception {\n     obj->update_backtrace(obj, backtrace_str, update_mode);\n   }\n \n+  /*!\n+   * \\brief Get the full message of the error, including kind, message and traceback.\n+   * \\return The full message of the error object.\n+   */\n+  std::string FullMessage() const {\n+    ErrorObj* obj = static_cast<ErrorObj*>(data_.get());\n+    return (std::string(\"Traceback (most recent call last):\\n\") + TracebackMostRecentCallLast() +\n+            std::string(obj->kind.data, obj->kind.size) + std::string(\": \") +\n+            std::string(obj->message.data, obj->message.size) + '\\n');\n+  }\n+\n   /*!\n    * \\brief Get the error message\n    * \\return The error message\n+   * \\note To get the full message including kind and traceback, use FullMessage() instead.\n    */\n   const char* what() const noexcept(true) override {\n-    thread_local std::string what_data;\n     ErrorObj* obj = static_cast<ErrorObj*>(data_.get());\n-    what_data = (std::string(\"Traceback (most recent call last):\\n\") +\n-                 TracebackMostRecentCallLast() + std::string(obj->kind.data, obj->kind.size) +\n-                 std::string(\": \") + std::string(obj->message.data, obj->message.size) + '\\n');\n-    return what_data.c_str();\n+    return obj->message.data;\n   }\n \n   /// \\cond Doxygen_Suppress\n@@ -265,7 +273,7 @@ class ErrorBuilder {\n   [[noreturn]] ~ErrorBuilder() noexcept(false) {\n     ::tvm::ffi::Error error(std::move(kind_), stream_.str(), std::move(backtrace_));\n     if (log_before_throw_) {\n-      std::cerr << error.what();\n+      std::cerr << error.FullMessage();\n     }\n     throw error;\n   }\ndiff --git a/tests/cpp/test_error.cc b/tests/cpp/test_error.cc\nindex 46ffe7c..283e4b9 100644\n--- a/tests/cpp/test_error.cc\n+++ b/tests/cpp/test_error.cc\n@@ -35,10 +35,10 @@ TEST(Error, Backtrace) {\n         } catch (const Error& error) {\n           EXPECT_EQ(error.message(), \"test0\");\n           EXPECT_EQ(error.kind(), \"RuntimeError\");\n-          std::string what = error.what();\n-          EXPECT_NE(what.find(\"line\"), std::string::npos);\n-          EXPECT_NE(what.find(\"ThrowRuntimeError\"), std::string::npos);\n-          EXPECT_NE(what.find(\"RuntimeError: test0\"), std::string::npos);\n+          std::string full_message = error.FullMessage();\n+          EXPECT_NE(full_message.find(\"line\"), std::string::npos);\n+          EXPECT_NE(full_message.find(\"ThrowRuntimeError\"), std::string::npos);\n+          EXPECT_NE(full_message.find(\"RuntimeError: test0\"), std::string::npos);\n           throw;\n         }\n       },\n@@ -52,9 +52,9 @@ TEST(CheckError, Backtrace) {\n           TVM_FFI_ICHECK_GT(2, 3);\n         } catch (const Error& error) {\n           EXPECT_EQ(error.kind(), \"InternalError\");\n-          std::string what = error.what();\n-          EXPECT_NE(what.find(\"line\"), std::string::npos);\n-          EXPECT_NE(what.find(\"2 > 3\"), std::string::npos);\n+          std::string full_message = error.FullMessage();\n+          EXPECT_NE(full_message.find(\"line\"), std::string::npos);\n+          EXPECT_NE(full_message.find(\"2 > 3\"), std::string::npos);\n           throw;\n         }\n       },\n@@ -69,10 +69,10 @@ TEST(CheckError, ValueError) {\n           TVM_FFI_CHECK(value >= 0, ValueError) << \"Value must be non-negative, got \" << value;\n         } catch (const Error& error) {\n           EXPECT_EQ(error.kind(), \"ValueError\");\n-          std::string what = error.what();\n-          EXPECT_NE(what.find(\"line\"), std::string::npos);\n-          EXPECT_NE(what.find(\"Check failed: (value >= 0) is false\"), std::string::npos);\n-          EXPECT_NE(what.find(\"Value must be non-negative, got -5\"), std::string::npos);\n+          std::string full_message = error.FullMessage();\n+          EXPECT_NE(full_message.find(\"line\"), std::string::npos);\n+          EXPECT_NE(full_message.find(\"Check failed: (value >= 0) is false\"), std::string::npos);\n+          EXPECT_NE(full_message.find(\"Value must be non-negative, got -5\"), std::string::npos);\n           throw;\n         }\n       },\n@@ -89,10 +89,12 @@ TEST(CheckError, IndexError) {\n               << \"Index \" << index << \" out of bounds for array of size \" << array_size;\n         } catch (const Error& error) {\n           EXPECT_EQ(error.kind(), \"IndexError\");\n-          std::string what = error.what();\n-          EXPECT_NE(what.find(\"line\"), std::string::npos);\n-          EXPECT_NE(what.find(\"Check failed: (index < array_size) is false\"), std::string::npos);\n-          EXPECT_NE(what.find(\"Index 10 out of bounds for array of size 5\"), std::string::npos);\n+          std::string full_message = error.FullMessage();\n+          EXPECT_NE(full_message.find(\"line\"), std::string::npos);\n+          EXPECT_NE(full_message.find(\"Check failed: (index < array_size) is false\"),\n+                    std::string::npos);\n+          EXPECT_NE(full_message.find(\"Index 10 out of bounds for array of size 5\"),\n+                    std::string::npos);\n           throw;\n         }\n       },",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".cc",
+      ".h"
+    ],
+    "scopes_guess": [
+      "include",
+      "tests"
+    ]
+  }
+}

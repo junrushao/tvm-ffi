@@ -1,0 +1,39 @@
+{
+  "sha": "39d675d5f9674345c040aae99b3b3a67b3f270a2",
+  "sha7": "39d675d",
+  "author_name": "Junru Shao",
+  "author_email": "junrushao@apache.org",
+  "date_iso": "2025-10-16T17:59:12-07:00",
+  "subject": "chore(release): Test wheels nightly (#157)",
+  "body":
+      "All wheel building is triggered 9am UTC every day, but publishing is\nlimited to explicit manual trigger (workflow_dispatch)",
+  "is_merge": false,
+  "parents": [
+    "33738534976882104799da5ac043ae652685f150"
+  ],
+  "name_status": [
+    [
+      "M",
+      ".github/workflows/publish_wheel.yml"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": ".github/workflows/publish_wheel.yml",
+      "additions": 2,
+      "deletions": 5
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/.github/workflows/publish_wheel.yml b/.github/workflows/publish_wheel.yml\nindex f5b3dcf..ffd77fd 100644\n--- a/.github/workflows/publish_wheel.yml\n+++ b/.github/workflows/publish_wheel.yml\n@@ -18,8 +18,8 @@\n name: Publish wheel\n \n on:\n-  push:\n-    branches: [main]        # <-- build on every commit to main\n+  schedule:\n+    - cron: '0 9 * * *'  # every day at 9am UTC\n   workflow_dispatch:\n     inputs:\n       branch:\n@@ -28,9 +28,6 @@ on:\n \n jobs:\n   build_wheels:\n-    # Only build manylinux2014 on manual runs (workflow_dispatch)\n-    if: ${{ github.event_name == 'workflow_dispatch' || matrix.linux_image != 'manylinux2014' }}\n-    name: Build wheels on ${{ matrix.os }}-${{ matrix.arch }} ${{ matrix.linux_image }}\n     runs-on: ${{ matrix.os }}\n     strategy:\n       fail-fast: false",
+  "heuristics": {
+    "tags": [
+      "ci"
+    ],
+    "extensions": [
+      ".yml"
+    ],
+    "scopes_guess": []
+  }
+}

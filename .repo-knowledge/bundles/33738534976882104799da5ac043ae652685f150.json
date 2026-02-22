@@ -1,0 +1,38 @@
+{
+  "sha": "33738534976882104799da5ac043ae652685f150",
+  "sha7": "3373853",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-10-16T20:08:52-04:00",
+  "subject": "[DLPACK] Skip Loading DLPack if available (#156)",
+  "body": "This PR updates the optional torch module to\nskip loading if attribute exists.",
+  "is_merge": false,
+  "parents": [
+    "997a366b50a7da185395c015c94f4b32be897080"
+  ],
+  "name_status": [
+    [
+      "M",
+      "python/tvm_ffi/_optional_torch_c_dlpack.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "python/tvm_ffi/_optional_torch_c_dlpack.py",
+      "additions": 11,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/python/tvm_ffi/_optional_torch_c_dlpack.py b/python/tvm_ffi/_optional_torch_c_dlpack.py\nindex 3cc1529..6bdff08 100644\n--- a/python/tvm_ffi/_optional_torch_c_dlpack.py\n+++ b/python/tvm_ffi/_optional_torch_c_dlpack.py\n@@ -39,6 +39,17 @@ from . import libinfo\n \n \n def load_torch_c_dlpack_extension() -> Any:\n+    try:\n+        import torch  # noqa: PLC0415\n+\n+        if hasattr(torch.Tensor, \"__c_dlpack_exchange_api__\"):\n+            # skip loading the extension if the __c_dlpack_exchange_api__\n+            # attribute is already set so we don't have to do it in\n+            # newer version of PyTorch\n+            return None\n+    except ImportError:\n+        return None\n+\n     \"\"\"Load the torch c dlpack extension.\"\"\"\n     cpp_source = \"\"\"\n #include <dlpack/dlpack.h>",
+  "heuristics": {
+    "tags": [],
+    "extensions": [
+      ".py"
+    ],
+    "scopes_guess": [
+      "python"
+    ]
+  }
+}

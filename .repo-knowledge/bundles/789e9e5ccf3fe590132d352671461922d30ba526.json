@@ -1,0 +1,41 @@
+{
+  "sha": "789e9e5ccf3fe590132d352671461922d30ba526",
+  "sha7": "789e9e5",
+  "author_name": "Junru Shao",
+  "author_email": "junrushao@apache.org",
+  "date_iso": "2025-10-27T07:21:35-07:00",
+  "subject": "fix(doc): Remove `?sanitize=true` in SVG URL (#196)",
+  "body":
+      "In accordance to commit:\nhttps://github.com/apache/tvm-site/commit/81a8c2e94ea1e32d5bfb5c1335cd5a8565e66f46",
+  "is_merge": false,
+  "parents": [
+    "d13141d3dd6affabcc94b83a1ebfb441f79dddf4"
+  ],
+  "name_status": [
+    [
+      "M",
+      "docs/get_started/stable_c_abi.rst"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "docs/get_started/stable_c_abi.rst",
+      "additions": 2,
+      "deletions": 2
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/docs/get_started/stable_c_abi.rst b/docs/get_started/stable_c_abi.rst\nindex 5c43093..c372a7b 100644\n--- a/docs/get_started/stable_c_abi.rst\n+++ b/docs/get_started/stable_c_abi.rst\n@@ -79,7 +79,7 @@ Layout of :cpp:class:`TVMFFIAny`\n - Next 32 bits: reserved (used for flags in rare cases, e.g. small-string optimization).\n - Last 64 bits: payload that is either a 64-bit integer, a 64-bit floating-point number, or a pointer to a heap-allocated object.\n \n-.. figure:: https://raw.githubusercontent.com/tlc-pack/web-data/main/images/tvm-ffi/stable-c-abi-layout-any.svg?sanitize=true\n+.. figure:: https://raw.githubusercontent.com/tlc-pack/web-data/main/images/tvm-ffi/stable-c-abi-layout-any.svg\n    :alt: Layout of the 128-bit Any tagged union\n    :name: fig:layout-any\n \n@@ -112,7 +112,7 @@ Function calls in TVM-FFI share the same calling convention, :ref:`tvm_ffi_c_abi\n - ``num_args: int``: number of input arguments.\n - ``result: TVMFFIAny*``: out-parameter that receives the function result (use ``kTVMFFINone`` for \"no return value\").\n \n-.. figure:: https://raw.githubusercontent.com/tlc-pack/web-data/main/images/tvm-ffi/stable-c-abi-layout-func.svg?sanitize=true\n+.. figure:: https://raw.githubusercontent.com/tlc-pack/web-data/main/images/tvm-ffi/stable-c-abi-layout-func.svg\n    :alt: Layout and calling convention for tvm_ffi_c_abi\n    :name: fig:layout-func\n ",
+  "heuristics": {
+    "tags": [
+      "docs"
+    ],
+    "extensions": [
+      ".rst"
+    ],
+    "scopes_guess": [
+      "docs"
+    ]
+  }
+}

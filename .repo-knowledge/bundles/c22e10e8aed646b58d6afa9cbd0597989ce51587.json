@@ -1,0 +1,135 @@
+{
+  "sha": "c22e10e8aed646b58d6afa9cbd0597989ce51587",
+  "sha7": "c22e10e",
+  "author_name": "Guan-Ming (Wesley) Chiu",
+  "author_email": "105915352+guan404ming@users.noreply.github.com",
+  "date_iso": "2026-01-03T07:38:48+08:00",
+  "subject": "chore: fix compiler warnings (#378)",
+  "body":
+      "## Why\n\n- Unused parameter `num_args` in `GetMismatchMessageAux` template\nfunction\n- Extra semicolon after `TVM_FFI_DLL_EXPORT_TYPED_FUNC` macro call\n\n## How\n\n- Add `[[maybe_unused]]` attribute to `num_args` param\n- Remove trailing semicolon",
+  "is_merge": false,
+  "parents": [
+    "5bc7fcdebd0fae2d3650a5b18ae69154c1c92d70"
+  ],
+  "name_status": [
+    [
+      "M",
+      "examples/cubin_launcher/dynamic_cubin/src/lib_dynamic.cc"
+    ],
+    [
+      "M",
+      "examples/cubin_launcher/embedded_cubin/cpp_embed/src/lib_embedded.cc"
+    ],
+    [
+      "M",
+      "examples/cubin_launcher/embedded_cubin/embed_with_tvm_ffi/src/lib_embedded.cc"
+    ],
+    [
+      "M",
+      "examples/cubin_launcher/embedded_cubin/include_bin2c/src/lib_embedded.cc"
+    ],
+    [
+      "M",
+      "examples/python_packaging/src/extension.cc"
+    ],
+    [
+      "M",
+      "examples/quickstart/compile/add_one_cpu.cc"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/reflection/overload.h"
+    ],
+    [
+      "M",
+      "src/ffi/testing/testing.cc"
+    ],
+    [
+      "M",
+      "tests/cpp/test_function.cc"
+    ],
+    [
+      "M",
+      "tests/python/cpp_src/test_stl.cc"
+    ],
+    [
+      "M",
+      "tests/python/test_build.cc"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "examples/cubin_launcher/dynamic_cubin/src/lib_dynamic.cc",
+      "additions": 3,
+      "deletions": 3
+    },
+    {
+      "path": "examples/cubin_launcher/embedded_cubin/cpp_embed/src/lib_embedded.cc",
+      "additions": 2,
+      "deletions": 2
+    },
+    {
+      "path": "examples/cubin_launcher/embedded_cubin/embed_with_tvm_ffi/src/lib_embedded.cc",
+      "additions": 2,
+      "deletions": 2
+    },
+    {
+      "path": "examples/cubin_launcher/embedded_cubin/include_bin2c/src/lib_embedded.cc",
+      "additions": 2,
+      "deletions": 2
+    },
+    {
+      "path": "examples/python_packaging/src/extension.cc",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "examples/quickstart/compile/add_one_cpu.cc",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "include/tvm/ffi/reflection/overload.h",
+      "additions": 2,
+      "deletions": 1
+    },
+    {
+      "path": "src/ffi/testing/testing.cc",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "tests/cpp/test_function.cc",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "tests/python/cpp_src/test_stl.cc",
+      "additions": 6,
+      "deletions": 6
+    },
+    {
+      "path": "tests/python/test_build.cc",
+      "additions": 1,
+      "deletions": 1
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/examples/cubin_launcher/dynamic_cubin/src/lib_dynamic.cc b/examples/cubin_launcher/dynamic_cubin/src/lib_dynamic.cc\nindex 61f050d..1a39383 100644\n--- a/examples/cubin_launcher/dynamic_cubin/src/lib_dynamic.cc\n+++ b/examples/cubin_launcher/dynamic_cubin/src/lib_dynamic.cc\n@@ -129,8 +129,8 @@ void MulTwo(tvm::ffi::TensorView x, tvm::ffi::TensorView y) {\n }\n \n // Export TVM-FFI functions\n-TVM_FFI_DLL_EXPORT_TYPED_FUNC(set_cubin, cubin_dynamic::SetCubin);\n-TVM_FFI_DLL_EXPORT_TYPED_FUNC(add_one, cubin_dynamic::AddOne);\n-TVM_FFI_DLL_EXPORT_TYPED_FUNC(mul_two, cubin_dynamic::MulTwo);\n+TVM_FFI_DLL_EXPORT_TYPED_FUNC(set_cubin, cubin_dynamic::SetCubin)\n+TVM_FFI_DLL_EXPORT_TYPED_FUNC(add_one, cubin_dynamic::AddOne)\n+TVM_FFI_DLL_EXPORT_TYPED_FUNC(mul_two, cubin_dynamic::MulTwo)\n \n }  // namespace cubin_dynamic\ndiff --git a/examples/cubin_launcher/embedded_cubin/cpp_embed/src/lib_embedded.cc b/examples/cubin_launcher/embedded_cubin/cpp_embed/src/lib_embedded.cc\nindex 357522e..615bdc9 100644\n--- a/examples/cubin_launcher/embedded_cubin/cpp_embed/src/lib_embedded.cc\n+++ b/examples/cubin_launcher/embedded_cubin/cpp_embed/src/lib_embedded.cc\n@@ -116,7 +116,7 @@ void MulTwo(tvm::ffi::TensorView x, tvm::ffi::TensorView y) {\n }\n \n // Export TVM-FFI functions\n-TVM_FFI_DLL_EXPORT_TYPED_FUNC(add_one, cubin_embedded::AddOne);\n-TVM_FFI_DLL_EXPORT_TYPED_FUNC(mul_two, cubin_embedded::MulTwo);\n+TVM_FFI_DLL_EXPORT_TYPED_FUNC(add_one, cubin_embedded::AddOne)\n+TVM_FFI_DLL_EXPORT_TYPED_FUNC(mul_two, cubin_embedded::MulTwo)\n \n }  // namespace cubin_embedded\ndiff --git a/examples/cubin_launcher/embedded_cubin/embed_with_tvm_ffi/src/lib_embedded.cc b/examples/cubin_launcher/embedded_cubin/embed_with_tvm_ffi/src/lib_embedded.cc\nindex 53401fc..ea410a6 100644\n--- a/examples/cubin_launcher/embedded_cubin/embed_with_tvm_ffi/src/lib_embedded.cc\n+++ b/examples/cubin_launcher/embedded_cubin/embed_with_tvm_ffi/src/lib_embedded.cc\n@@ -113,7 +113,7 @@ void MulTwo(tvm::ffi::TensorView x, tvm::ffi::TensorView y) {\n }\n \n // Export TVM-FFI functions\n-TVM_FFI_DLL_EXPORT_TYPED_FUNC(add_one, cubin_embedded::AddOne);\n-TVM_FFI_DLL_EXPORT_TYPED_FUNC(mul_two, cubin_embedded::MulTwo);\n+TVM_FFI_DLL_EXPORT_TYPED_FUNC(add_one, cubin_embedded::AddOne)\n+TVM_FFI_DLL_EXPORT_TYPED_FUNC(mul_two, cubin_embedded::MulTwo)\n \n }  // namespace cubin_embedded\ndiff --git a/examples/cubin_launcher/embedded_cubin/include_bin2c/src/lib_embedded.cc b/examples/cubin_launcher/embedded_cubin/include_bin2c/src/lib_embedded.cc\nindex dd8d578..3c87889 100644\n--- a/examples/cubin_launcher/embedded_cubin/include_bin2c/src/lib_embedded.cc\n+++ b/examples/cubin_launcher/embedded_cubin/include_bin2c/src/lib_embedded.cc\n@@ -113,7 +113,7 @@ void MulTwo(tvm::ffi::TensorView x, tvm::ffi::TensorView y) {\n }\n \n // Export TVM-FFI functions\n-TVM_FFI_DLL_EXPORT_TYPED_FUNC(add_one, cubin_embedded::AddOne);\n-TVM_FFI_DLL_EXPORT_TYPED_FUNC(mul_two, cubin_embedded::MulTwo);\n+TVM_FFI_DLL_EXPORT_TYPED_FUNC(add_one, cubin_embedded::AddOne)\n+TVM_FFI_DLL_EXPORT_TYPED_FUNC(mul_two, cubin_embedded::MulTwo)\n \n }  // namespace cubin_embedded\ndiff --git a/examples/python_packaging/src/extension.cc b/examples/python_packaging/src/extension.cc\nindex fc06625..81fb003 100644\n--- a/examples/python_packaging/src/extension.cc\n+++ b/examples/python_packaging/src/extension.cc\n@@ -33,7 +33,7 @@ namespace ffi = tvm::ffi;\n // [tvm_ffi_abi.begin]\n static int AddTwo(int x) { return x + 2; }\n \n-TVM_FFI_DLL_EXPORT_TYPED_FUNC(add_two, AddTwo);\n+TVM_FFI_DLL_EXPORT_TYPED_FUNC(add_two, AddTwo)\n // [tvm_ffi_abi.end]\n \n // [global_function.begin]\ndiff --git a/examples/quickstart/compile/add_one_cpu.cc b/examples/quickstart/compile/add_one_cpu.cc\nindex 22ce5e0..3ddf6cf 100644\n--- a/examples/quickstart/compile/add_one_cpu.cc\n+++ b/examples/quickstart/compile/add_one_cpu.cc\n@@ -34,6 +34,6 @@ void AddOne(tvm::ffi::TensorView x, tvm::ffi::TensorView y) {\n   }\n }\n \n-TVM_FFI_DLL_EXPORT_TYPED_FUNC(add_one_cpu, tvm_ffi_example_cpu::AddOne);\n+TVM_FFI_DLL_EXPORT_TYPED_FUNC(add_one_cpu, tvm_ffi_example_cpu::AddOne)\n }  // namespace tvm_ffi_example_cpu\n // [example.end]\ndiff --git a/include/tvm/ffi/reflection/overload.h b/include/tvm/ffi/reflection/overload.h\nindex f9684bc..a85174c 100644\n--- a/include/tvm/ffi/reflection/overload.h\n+++ b/include/tvm/ffi/reflection/overload.h\n@@ -145,7 +145,8 @@ struct TypedOverload : OverloadBase {\n \n  private:\n   template <std::size_t I>\n-  void GetMismatchMessageAux(std::ostringstream& os, const AnyView* args, int32_t num_args) {\n+  void GetMismatchMessageAux(std::ostringstream& os, const AnyView* args,\n+                             [[maybe_unused]] int32_t num_args) {\n     if constexpr (I < kNumArgs) {\n       if (this->last_mismatch_index_ == static_cast<int32_t>(I)) {\n         TVMFFIAny any_data = args[I].CopyToTVMFFIAny();\ndiff --git a/src/ffi/testing/testing.cc b/src/ffi/testing/testing.cc\nindex d38c027..7ee6ffd 100644\n--- a/src/ffi/testing/testing.cc\n+++ b/src/ffi/testing/testing.cc\n@@ -519,7 +519,7 @@ TVM_FFI_STATIC_INIT_BLOCK() {\n // Exported symbols for metadata testing on DLL-exported functions\n // -----------------------------------------------------------------------------\n // We keep minimal DLL exports here to verify the export mechanism.\n-TVM_FFI_DLL_EXPORT_TYPED_FUNC(testing_dll_schema_id_int, tvm::ffi::schema_test_impl::schema_id_int);\n+TVM_FFI_DLL_EXPORT_TYPED_FUNC(testing_dll_schema_id_int, tvm::ffi::schema_test_impl::schema_id_int)\n \n // Documentation export\n TVM_FFI_DLL_EXPORT_TYPED_FUNC(testing_dll_test_add_with_docstring,\ndiff --git a/tests/cpp/test_function.cc b/tests/cpp/test_function.cc\nindex b3879d7..fddb8fd 100644\n--- a/tests/cpp/test_function.cc\n+++ b/tests/cpp/test_function.cc\n@@ -275,7 +275,7 @@ TEST(SetRaisedFromCStrParts, TypeError) {\n \n int testing_add1(int x) { return x + 1; }\n \n-TVM_FFI_DLL_EXPORT_TYPED_FUNC(testing_add1, testing_add1);\n+TVM_FFI_DLL_EXPORT_TYPED_FUNC(testing_add1, testing_add1)\n \n TEST(Func, FromExternC) {\n   // this is the function abi convention\ndiff --git a/tests/python/cpp_src/test_stl.cc b/tests/python/cpp_src/test_stl.cc\nindex d7ed421..52477ea 100644\n--- a/tests/python/cpp_src/test_stl.cc\n+++ b/tests/python/cpp_src/test_stl.cc\n@@ -89,11 +89,11 @@ auto test_function(std::function<int(void)> f) -> std::function<int(void)> {\n   return [fn = std::move(f)] { return fn() + 1; };\n }\n \n-TVM_FFI_DLL_EXPORT_TYPED_FUNC(test_tuple, test_tuple);\n-TVM_FFI_DLL_EXPORT_TYPED_FUNC(test_vector, test_vector);\n-TVM_FFI_DLL_EXPORT_TYPED_FUNC(test_variant, test_variant);\n-TVM_FFI_DLL_EXPORT_TYPED_FUNC(test_map, test_map);\n-TVM_FFI_DLL_EXPORT_TYPED_FUNC(test_map_2, test_map_2);\n-TVM_FFI_DLL_EXPORT_TYPED_FUNC(test_function, test_function);\n+TVM_FFI_DLL_EXPORT_TYPED_FUNC(test_tuple, test_tuple)\n+TVM_FFI_DLL_EXPORT_TYPED_FUNC(test_vector, test_vector)\n+TVM_FFI_DLL_EXPORT_TYPED_FUNC(test_variant, test_variant)\n+TVM_FFI_DLL_EXPORT_TYPED_FUNC(test_map, test_map)\n+TVM_FFI_DLL_EXPORT_TYPED_FUNC(test_map_2, test_map_2)\n+TVM_FFI_DLL_EXPORT_TYPED_FUNC(test_function, test_function)\n \n }  // namespace\ndiff --git a/tests/python/test_build.cc b/tests/python/test_build.cc\nindex bc6acf1..881f294 100644\n--- a/tests/python/test_build.cc\n+++ b/tests/python/test_build.cc\n@@ -38,4 +38,4 @@ void add_one_cpu(tvm::ffi::TensorView x, tvm::ffi::TensorView y) {\n   }\n }\n \n-TVM_FFI_DLL_EXPORT_TYPED_FUNC(add_one_cpu, add_one_cpu);\n+TVM_FFI_DLL_EXPORT_TYPED_FUNC(add_one_cpu, add_one_cpu)",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".cc",
+      ".h"
+    ],
+    "scopes_guess": [
+      "examples",
+      "include",
+      "src",
+      "tests"
+    ]
+  }
+}

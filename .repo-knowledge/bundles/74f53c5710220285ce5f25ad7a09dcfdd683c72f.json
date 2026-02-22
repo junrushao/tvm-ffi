@@ -1,0 +1,38 @@
+{
+  "sha": "74f53c5710220285ce5f25ad7a09dcfdd683c72f",
+  "sha7": "74f53c5",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-11-17T13:52:10-05:00",
+  "subject": "[BUILD][MINOR] Remove --no-as-needed (#276)",
+  "body": "This PR removes --no-as-needed as we don't need it for our extension\nbuild.",
+  "is_merge": false,
+  "parents": [
+    "9a1539943bcd1bcf66d8cc21586f8cb5615dd208"
+  ],
+  "name_status": [
+    [
+      "M",
+      "python/tvm_ffi/utils/_build_optional_torch_c_dlpack.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "python/tvm_ffi/utils/_build_optional_torch_c_dlpack.py",
+      "additions": 3,
+      "deletions": 3
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/python/tvm_ffi/utils/_build_optional_torch_c_dlpack.py b/python/tvm_ffi/utils/_build_optional_torch_c_dlpack.py\nindex 984a632..b18c40a 100644\n--- a/python/tvm_ffi/utils/_build_optional_torch_c_dlpack.py\n+++ b/python/tvm_ffi/utils/_build_optional_torch_c_dlpack.py\n@@ -602,11 +602,11 @@ def _run_build_on_linux_like(\n     default_cflags = [\"-std=c++17\", \"-fPIC\", \"-O3\"]\n     # Platform-specific linker flags\n     if IS_DARWIN:\n-        # macOS doesn't support --no-as-needed and uses @loader_path instead of $ORIGIN\n+        # macOS uses @loader_path instead of $ORIGIN\n         default_ldflags = [\"-shared\", \"-Wl,-rpath,@loader_path\"]\n     else:\n-        # Linux uses $ORIGIN and supports --no-as-needed\n-        default_ldflags = [\"-shared\", \"-Wl,-rpath,$ORIGIN\", \"-Wl,--no-as-needed\"]\n+        # Linux uses $ORIGIN\n+        default_ldflags = [\"-shared\", \"-Wl,-rpath,$ORIGIN\"]\n \n     cflags = default_cflags + [flag.strip() for flag in extra_cflags]\n     ldflags = default_ldflags + [flag.strip() for flag in extra_ldflags]",
+  "heuristics": {
+    "tags": [],
+    "extensions": [
+      ".py"
+    ],
+    "scopes_guess": [
+      "python"
+    ]
+  }
+}

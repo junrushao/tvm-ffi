@@ -1,0 +1,127 @@
+{
+  "sha": "539364726ea51d5ea4c7695bf9a1a6cfc37ca8cc",
+  "sha7": "5393647",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-12-05T12:23:26-05:00",
+  "subject": "[DLPack] Further compatibility (#315)",
+  "body":
+      "This PR updates the DLPack support to be compatible to name\nc_dlpack_exchange_api and dlpack_c_exchange_api in case of future DLPack\nnaming changes. Backward compatibility is kept.",
+  "is_merge": false,
+  "parents": [
+    "79894c32315108e72e2ccc8f7d9e29118ee6919b"
+  ],
+  "name_status": [
+    [
+      "M",
+      "addons/torch_c_dlpack_ext/build_backend.py"
+    ],
+    [
+      "M",
+      "addons/torch_c_dlpack_ext/torch_c_dlpack_ext/core.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/_optional_torch_c_dlpack.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/core.pyi"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/cython/base.pxi"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/cython/function.pxi"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/cython/tensor.pxi"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/cython/tvm_ffi_python_helpers.h"
+    ],
+    [
+      "M",
+      "tests/python/test_dlpack_exchange_api.py"
+    ],
+    [
+      "M",
+      "tests/python/test_load_inline.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "addons/torch_c_dlpack_ext/build_backend.py",
+      "additions": 4,
+      "deletions": 2
+    },
+    {
+      "path": "addons/torch_c_dlpack_ext/torch_c_dlpack_ext/core.py",
+      "additions": 24,
+      "deletions": 1
+    },
+    {
+      "path": "python/tvm_ffi/_optional_torch_c_dlpack.py",
+      "additions": 23,
+      "deletions": 10
+    },
+    {
+      "path": "python/tvm_ffi/core.pyi",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "python/tvm_ffi/cython/base.pxi",
+      "additions": 2,
+      "deletions": 2
+    },
+    {
+      "path": "python/tvm_ffi/cython/function.pxi",
+      "additions": 6,
+      "deletions": 6
+    },
+    {
+      "path": "python/tvm_ffi/cython/tensor.pxi",
+      "additions": 8,
+      "deletions": 9
+    },
+    {
+      "path": "python/tvm_ffi/cython/tvm_ffi_python_helpers.h",
+      "additions": 11,
+      "deletions": 11
+    },
+    {
+      "path": "tests/python/test_dlpack_exchange_api.py",
+      "additions": 12,
+      "deletions": 20
+    },
+    {
+      "path": "tests/python/test_load_inline.py",
+      "additions": 2,
+      "deletions": 2
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/addons/torch_c_dlpack_ext/build_backend.py b/addons/torch_c_dlpack_ext/build_backend.py\nindex e4504fa..639977e 100644\n--- a/addons/torch_c_dlpack_ext/build_backend.py\n+++ b/addons/torch_c_dlpack_ext/build_backend.py\n@@ -66,9 +66,11 @@ def build_wheel(\n         # build wheel from sdist package, compile the torch c dlpack ext library locally.\n         import torch  # noqa: PLC0415\n \n-        if hasattr(torch.Tensor, \"__c_dlpack_exchange_api__\"):\n+        if hasattr(torch.Tensor, \"__dlpack_c_exchange_api__\") or hasattr(\n+            torch.Tensor, \"__c_dlpack_exchange_api__\"\n+        ):\n             print(\n-                \"torch.Tensor already has attribute __c_dlpack_exchange_api__. \"\n+                \"torch.Tensor already has attribute __dlpack_c_exchange_api__. \"\n                 \"No need to build any torch c dlpackc libs.\"\n             )\n         else:\ndiff --git a/addons/torch_c_dlpack_ext/torch_c_dlpack_ext/core.py b/addons/torch_c_dlpack_ext/torch_c_dlpack_ext/core.py\nindex d0313a7..6b63e0a 100644\n--- a/addons/torch_c_dlpack_ext/torch_c_dlpack_ext/core.py\n+++ b/addons/torch_c_dlpack_ext/torch_c_dlpack_ext/core.py\n@@ -19,14 +19,31 @@\n import ctypes\n import sys\n from pathlib import Path\n+from typing import Any\n \n import torch\n from packaging.version import Version\n \n \n+def _create_dlpack_exchange_api_capsule(ptr_as_int: int) -> Any:\n+    \"\"\"Create a PyCapsule wrapping the DLPack exchange API pointer.\"\"\"\n+    capsule_name = b\"dlpack_exchange_api\"\n+    pythonapi = ctypes.pythonapi\n+    pythonapi.PyCapsule_New.restype = ctypes.py_object\n+    pythonapi.PyCapsule_New.argtypes = [\n+        ctypes.c_void_p,\n+        ctypes.c_char_p,\n+        ctypes.c_void_p,\n+    ]\n+    capsule = pythonapi.PyCapsule_New(ctypes.c_void_p(ptr_as_int), capsule_name, None)\n+    return capsule\n+\n+\n def load_torch_c_dlpack_extension() -> None:\n     \"\"\"Load the torch c dlpack extension based on torch version.\"\"\"\n-    if hasattr(torch.Tensor, \"__c_dlpack_exchange_api__\"):\n+    if hasattr(torch.Tensor, \"__dlpack_c_exchange_api__\") or hasattr(\n+        torch.Tensor, \"__c_dlpack_exchange_api__\"\n+    ):\n         return None\n     version = Version(torch.__version__)\n     if sys.platform.startswith(\"win32\"):\n@@ -52,6 +69,12 @@ def load_torch_c_dlpack_extension() -> None:\n     # We will do eager upgrade to PyCapsule in the tvm-ffi side instead.\n     dlpack_exchange_api_ptr_as_int = func()\n     setattr(torch.Tensor, \"__c_dlpack_exchange_api__\", dlpack_exchange_api_ptr_as_int)\n+    setattr(\n+        torch.Tensor,\n+        \"__dlpack_c_exchange_api__\",\n+        _create_dlpack_exchange_api_capsule(dlpack_exchange_api_ptr_as_int),\n+    )\n+\n     return lib\n \n \ndiff --git a/python/tvm_ffi/_optional_torch_c_dlpack.py b/python/tvm_ffi/_optional_torch_c_dlpack.py\nindex f3d0119..dde0550 100644\n--- a/python/tvm_ffi/_optional_torch_c_dlpack.py\n+++ b/python/tvm_ffi/_optional_torch_c_dlpack.py\n@@ -70,12 +70,31 @@ def _create_dlpack_exchange_api_capsule(ptr_as_int: int) -> Any:\n     return capsule\n \n \n+def _check_and_update_dlpack_c_exchange_api(tensor_cls: object) -> bool:\n+    \"\"\"Check if the DLPack exchange API is available and update the __dlpack_c_exchange_api__ attribute.\"\"\"\n+    if hasattr(tensor_cls, \"__dlpack_c_exchange_api__\"):\n+        return True\n+    # legacy path compactibility handling\n+    if hasattr(tensor_cls, \"__c_dlpack_exchange_api__\"):\n+        c_dlpack_attribute = tensor_cls.__c_dlpack_exchange_api__\n+        if isinstance(c_dlpack_attribute, int):\n+            setattr(\n+                tensor_cls,\n+                \"__dlpack_c_exchange_api__\",\n+                _create_dlpack_exchange_api_capsule(c_dlpack_attribute),\n+            )\n+        else:\n+            setattr(tensor_cls, \"__dlpack_c_exchange_api__\", c_dlpack_attribute)\n+        return True\n+    return False\n+\n+\n def load_torch_c_dlpack_extension() -> Any:  # noqa: PLR0912, PLR0915\n     try:\n         import torch  # noqa: PLC0415\n \n-        if hasattr(torch.Tensor, \"__c_dlpack_exchange_api__\"):\n-            # skip loading the extension if the __c_dlpack_exchange_api__\n+        if _check_and_update_dlpack_c_exchange_api(torch.Tensor):\n+            # skip loading the extension if the __dlpack_c_exchange_api__\n             # attribute is already set so we don't have to do it in\n             # newer version of PyTorch\n             return None\n@@ -86,12 +105,7 @@ def load_torch_c_dlpack_extension() -> Any:  # noqa: PLR0912, PLR0915\n     try:\n         import torch_c_dlpack_ext  # type: ignore  # noqa: PLC0415, F401\n \n-        if hasattr(torch.Tensor, \"__c_dlpack_exchange_api__\"):\n-            if isinstance(torch.Tensor.__c_dlpack_exchange_api__, int):\n-                # Brings up to speed with the new PyCapsule behavior\n-                torch.Tensor.__c_dlpack_exchange_api__ = _create_dlpack_exchange_api_capsule(\n-                    torch.Tensor.__c_dlpack_exchange_api__\n-                )\n+        if _check_and_update_dlpack_c_exchange_api(torch.Tensor):\n             return None\n     except ImportError:\n         pass\n@@ -152,8 +166,7 @@ def load_torch_c_dlpack_extension() -> Any:  # noqa: PLR0912, PLR0915\n         # Create a PyCapsule from the pointer\n         capsule = _create_dlpack_exchange_api_capsule(func())\n         # Set the DLPackExchangeAPI pointer on the class\n-        setattr(torch.Tensor, \"__c_dlpack_exchange_api__\", capsule)\n-\n+        setattr(torch.Tensor, \"__dlpack_c_exchange_api__\", capsule)\n         return lib\n     except ImportError:\n         pass\ndiff --git a/python/tvm_ffi/core.pyi b/python/tvm_ffi/core.pyi\nindex 06a78e6..2cee79c 100644\n--- a/python/tvm_ffi/core.pyi\n+++ b/python/tvm_ffi/core.pyi\n@@ -175,7 +175,7 @@ def from_dlpack(\n ) -> Tensor: ...\n \n class DLTensorTestWrapper:\n-    __c_dlpack_exchange_api__: int\n+    __dlpack_c_exchange_api__: int\n     def __init__(self, tensor: Tensor) -> None: ...\n     def __tvm_ffi_env_stream__(self) -> int: ...\n     def __dlpack_device__(self) -> tuple[int, int]: ...\ndiff --git a/python/tvm_ffi/cython/base.pxi b/python/tvm_ffi/cython/base.pxi\nindex 933bc86..9e7ff87 100644\n--- a/python/tvm_ffi/cython/base.pxi\n+++ b/python/tvm_ffi/cython/base.pxi\n@@ -322,11 +322,11 @@ cdef extern from \"tvm_ffi_python_helpers.h\":\n         int device_type\n         int device_id\n         TVMFFIStreamHandle stream\n-        const DLPackExchangeAPI* c_dlpack_exchange_api\n+        const DLPackExchangeAPI* dlpack_c_exchange_api\n \n     ctypedef struct TVMFFIPyArgSetter:\n         int (*func)(TVMFFIPyArgSetter* handle, TVMFFIPyCallContext* ctx,  PyObject* py_arg, TVMFFIAny* out) except -1\n-        const DLPackExchangeAPI* c_dlpack_exchange_api\n+        const DLPackExchangeAPI* dlpack_c_exchange_api\n \n     ctypedef int (*TVMFFIPyArgSetterFactory)(PyObject* value, TVMFFIPyArgSetter* out) except -1\n     # The main call function\ndiff --git a/python/tvm_ffi/cython/function.pxi b/python/tvm_ffi/cython/function.pxi\nindex 29af699..01a3366 100644\n--- a/python/tvm_ffi/cython/function.pxi\n+++ b/python/tvm_ffi/cython/function.pxi\n@@ -156,10 +156,10 @@ cdef int TVMFFIPyArgSetterDLPackExchangeAPI_(\n     cdef DLManagedTensorVersioned* temp_managed_tensor\n     cdef TVMFFIObjectHandle temp_chandle\n     cdef void* current_stream = NULL\n-    cdef const DLPackExchangeAPI* exchange_api = this.c_dlpack_exchange_api\n+    cdef const DLPackExchangeAPI* exchange_api = this.dlpack_c_exchange_api\n \n     # Set the exchange API in context\n-    ctx.c_dlpack_exchange_api = exchange_api\n+    ctx.dlpack_c_exchange_api = exchange_api\n \n     # Convert PyObject to DLPack using the struct's function pointer\n     if exchange_api.managed_tensor_from_py_object_no_sync(arg, &temp_managed_tensor) != 0:\n@@ -239,7 +239,7 @@ cdef int TVMFFIPyArgSetterTorchFallback_(\n     out.type_index = kTVMFFITensor\n     out.v_ptr = (<Tensor>arg).chandle\n     temp_dltensor = TVMFFITensorGetDLTensorPtr((<Tensor>arg).chandle)\n-    ctx.c_dlpack_exchange_api = GetTorchFallbackExchangeAPI()\n+    ctx.dlpack_c_exchange_api = GetTorchFallbackExchangeAPI()\n     # record the stream and device for torch context\n     if is_cuda and ctx.device_type == -1:\n         ctx.device_type = temp_dltensor.device.device_type\n@@ -740,12 +740,12 @@ cdef int TVMFFIPyArgSetterFactory_(PyObject* value, TVMFFIPyArgSetter* out) exce\n         # as a member variable\n         out.func = TVMFFIPyArgSetterFFIObjectProtocol_\n         return 0\n-    if os.environ.get(\"TVM_FFI_SKIP_C_DLPACK_EXCHANGE_API\", \"0\") != \"1\":\n+    if os.environ.get(\"TVM_FFI_SKIP_DLPACK_C_EXCHANGE_API\", \"0\") != \"1\":\n         # Check for DLPackExchangeAPI struct (new approach)\n         # This is checked on the CLASS, not the instance\n-        if hasattr(arg_class, \"__c_dlpack_exchange_api__\"):\n+        if hasattr(arg_class, \"__dlpack_c_exchange_api__\"):\n             out.func = TVMFFIPyArgSetterDLPackExchangeAPI_\n-            _get_dlpack_exchange_api(arg_class.__c_dlpack_exchange_api__, &(out.c_dlpack_exchange_api))\n+            _get_dlpack_exchange_api(arg_class.__dlpack_c_exchange_api__, &(out.dlpack_c_exchange_api))\n             return 0\n     if hasattr(arg_class, \"__cuda_stream__\"):\n         # cuda stream protocol\ndiff --git a/python/tvm_ffi/cython/tensor.pxi b/python/tvm_ffi/cython/tensor.pxi\nindex 841687a..1f4973d 100644\n--- a/python/tvm_ffi/cython/tensor.pxi\n+++ b/python/tvm_ffi/cython/tensor.pxi\n@@ -133,9 +133,9 @@ cdef inline int _from_dlpack_universal(\n     cdef int favor_legacy_dlpack = True\n     cdef const DLPackExchangeAPI* exchange_api = NULL\n \n-    if hasattr(ext_tensor, \"__c_dlpack_exchange_api__\"):\n+    if hasattr(ext_tensor, \"__dlpack_c_exchange_api__\"):\n         try:\n-            _get_dlpack_exchange_api(ext_tensor.__c_dlpack_exchange_api__, &exchange_api)\n+            _get_dlpack_exchange_api(ext_tensor.__dlpack_c_exchange_api__, &exchange_api)\n             return _from_dlpack_exchange_api(\n                 ext_tensor,\n                 exchange_api,\n@@ -405,7 +405,7 @@ cdef int _dltensor_test_wrapper_current_work_stream(\n # Module-level static DLPackExchangeAPI for DLTensorTestWrapper\n cdef DLPackExchangeAPI _dltensor_test_wrapper_static_api\n \n-cdef const DLPackExchangeAPI* _dltensor_test_wrapper_get_exchange_api() noexcept:\n+cdef DLPackExchangeAPI* _dltensor_test_wrapper_get_exchange_api() noexcept:\n     \"\"\"Get the static DLPackExchangeAPI instance for DLTensorTestWrapper.\"\"\"\n     global _dltensor_test_wrapper_static_api\n \n@@ -430,15 +430,14 @@ cdef const DLPackExchangeAPI* _dltensor_test_wrapper_get_exchange_api() noexcept\n     return &_dltensor_test_wrapper_static_api\n \n \n-def _dltensor_test_wrapper_exchange_api_ptr():\n-    \"\"\"Return the pointer to the DLPackExchangeAPI struct as an integer.\"\"\"\n-    return <long long>_dltensor_test_wrapper_get_exchange_api()\n-\n-\n cdef class DLTensorTestWrapper:\n     \"\"\"Wrapper of a Tensor that exposes DLPack protocol, only for testing purpose.\n     \"\"\"\n-    __c_dlpack_exchange_api__ = _dltensor_test_wrapper_exchange_api_ptr()\n+    __dlpack_c_exchange_api__ = pycapsule.PyCapsule_New(\n+        _dltensor_test_wrapper_get_exchange_api(),\n+        b\"dlpack_exchange_api\",\n+        NULL\n+    )\n \n     cdef Tensor tensor\n     cdef dict __dict__\ndiff --git a/python/tvm_ffi/cython/tvm_ffi_python_helpers.h b/python/tvm_ffi/cython/tvm_ffi_python_helpers.h\nindex 88c27d7..93d6540 100644\n--- a/python/tvm_ffi/cython/tvm_ffi_python_helpers.h\n+++ b/python/tvm_ffi/cython/tvm_ffi_python_helpers.h\n@@ -86,7 +86,7 @@ class TVMFFIPyCallContext {\n   /*! \\brief Detected stream, if any */\n   void* stream = nullptr;\n   /*! \\brief the DLPack exchange API, if any */\n-  const DLPackExchangeAPI* c_dlpack_exchange_api{nullptr};\n+  const DLPackExchangeAPI* dlpack_c_exchange_api{nullptr};\n   /*! \\brief pointer to the call stack space */\n   TVMFFIPyCallStack* call_stack = nullptr;\n   /*! \\brief the temporary arguments to be recycled */\n@@ -174,7 +174,7 @@ struct TVMFFIPyArgSetter {\n    * \\brief Optional DLPackExchangeAPI struct pointer.\n    * This is the new struct-based approach that bundles all DLPack exchange functions.\n    */\n-  const DLPackExchangeAPI* c_dlpack_exchange_api{nullptr};\n+  const DLPackExchangeAPI* dlpack_c_exchange_api{nullptr};\n   /*!\n    * \\brief Invoke the setter.\n    * \\param call_ctx The call context.\n@@ -297,10 +297,10 @@ class TVMFFIPyCallManager {\n         // setting failed, directly return\n         if (c_api_ret_code[0] != 0) return 0;\n       }\n-      if (ctx.c_dlpack_exchange_api != nullptr &&\n-          ctx.c_dlpack_exchange_api->managed_tensor_allocator != nullptr) {\n+      if (ctx.dlpack_c_exchange_api != nullptr &&\n+          ctx.dlpack_c_exchange_api->managed_tensor_allocator != nullptr) {\n         c_api_ret_code[0] = TVMFFIEnvSetDLPackManagedTensorAllocator(\n-            ctx.c_dlpack_exchange_api->managed_tensor_allocator, 0, &prev_tensor_allocator);\n+            ctx.dlpack_c_exchange_api->managed_tensor_allocator, 0, &prev_tensor_allocator);\n         if (c_api_ret_code[0] != 0) return 0;\n       }\n       // call the function\n@@ -321,14 +321,14 @@ class TVMFFIPyCallManager {\n           return -1;\n         }\n       }\n-      if (ctx.c_dlpack_exchange_api != nullptr &&\n-          prev_tensor_allocator != ctx.c_dlpack_exchange_api->managed_tensor_allocator) {\n+      if (ctx.dlpack_c_exchange_api != nullptr &&\n+          prev_tensor_allocator != ctx.dlpack_c_exchange_api->managed_tensor_allocator) {\n         c_api_ret_code[0] =\n             TVMFFIEnvSetDLPackManagedTensorAllocator(prev_tensor_allocator, 0, nullptr);\n         if (c_api_ret_code[0] != 0) return 0;\n       }\n-      if (optional_out_ctx_dlpack_api != nullptr && ctx.c_dlpack_exchange_api != nullptr) {\n-        *optional_out_ctx_dlpack_api = ctx.c_dlpack_exchange_api;\n+      if (optional_out_ctx_dlpack_api != nullptr && ctx.dlpack_c_exchange_api != nullptr) {\n+        *optional_out_ctx_dlpack_api = ctx.dlpack_c_exchange_api;\n       }\n       return 0;\n     } catch (const std::exception& ex) {\n@@ -380,8 +380,8 @@ class TVMFFIPyCallManager {\n           parent_ctx->stream = ctx.stream;\n         }\n         // DLPack exchange API\n-        if (parent_ctx->c_dlpack_exchange_api == nullptr) {\n-          parent_ctx->c_dlpack_exchange_api = ctx.c_dlpack_exchange_api;\n+        if (parent_ctx->dlpack_c_exchange_api == nullptr) {\n+          parent_ctx->dlpack_c_exchange_api = ctx.dlpack_c_exchange_api;\n         }\n       }\n       return 0;\ndiff --git a/tests/python/test_dlpack_exchange_api.py b/tests/python/test_dlpack_exchange_api.py\nindex 7df8dcf..70e7586 100644\n--- a/tests/python/test_dlpack_exchange_api.py\n+++ b/tests/python/test_dlpack_exchange_api.py\n@@ -27,7 +27,7 @@ try:\n     import torch  # type: ignore[no-redef]\n \n     # Import tvm_ffi to load the DLPack exchange API extension\n-    # This sets torch.Tensor.__c_dlpack_exchange_api__\n+    # This sets torch.Tensor.__dlpack_c_exchange_api__\n     import tvm_ffi\n     from torch.utils import cpp_extension  # type: ignore\n     from tvm_ffi import libinfo\n@@ -35,7 +35,7 @@ except ImportError:\n     torch = None\n \n # Check if DLPack Exchange API is available\n-_has_dlpack_api = torch is not None and hasattr(torch.Tensor, \"__c_dlpack_exchange_api__\")\n+_has_dlpack_api = torch is not None and hasattr(torch.Tensor, \"__dlpack_c_exchange_api__\")\n \n \n @pytest.mark.skipif(not _has_dlpack_api, reason=\"PyTorch DLPack Exchange API not available\")\n@@ -45,24 +45,16 @@ def test_dlpack_exchange_api() -> None:\n         pytest.xfail(\"DLPack Exchange API test is known to fail on Windows platform\")\n \n     assert torch is not None\n-\n-    assert hasattr(torch.Tensor, \"__c_dlpack_exchange_api__\")\n-    api_attr = torch.Tensor.__c_dlpack_exchange_api__\n-\n-    # Handle both PyCapsule and integer types\n-    if isinstance(api_attr, int):\n-        # Direct integer pointer\n-        api_ptr = api_attr\n-        assert api_ptr != 0, \"API pointer should not be NULL\"\n-    else:\n-        # PyCapsule - extract the pointer as integer\n-        pythonapi = ctypes.pythonapi\n-        # Set restype to c_size_t to get integer directly (avoids c_void_p quirks)\n-        pythonapi.PyCapsule_GetPointer.restype = ctypes.c_size_t\n-        pythonapi.PyCapsule_GetPointer.argtypes = [ctypes.py_object, ctypes.c_char_p]\n-        capsule_name = b\"dlpack_exchange_api\"\n-        api_ptr = pythonapi.PyCapsule_GetPointer(api_attr, capsule_name)\n-        assert api_ptr != 0, \"API pointer from PyCapsule should not be NULL\"\n+    assert hasattr(torch.Tensor, \"__dlpack_c_exchange_api__\")\n+    api_attr = torch.Tensor.__dlpack_c_exchange_api__\n+    # PyCapsule - extract the pointer as integer\n+    pythonapi = ctypes.pythonapi\n+    # Set restype to c_size_t to get integer directly (avoids c_void_p quirks)\n+    pythonapi.PyCapsule_GetPointer.restype = ctypes.c_size_t\n+    pythonapi.PyCapsule_GetPointer.argtypes = [ctypes.py_object, ctypes.c_char_p]\n+    capsule_name = b\"dlpack_exchange_api\"\n+    api_ptr = pythonapi.PyCapsule_GetPointer(api_attr, capsule_name)\n+    assert api_ptr != 0, \"API pointer from PyCapsule should not be NULL\"\n \n     tensor = torch.arange(24, dtype=torch.float32).reshape(2, 3, 4)\n \ndiff --git a/tests/python/test_load_inline.py b/tests/python/test_load_inline.py\nindex f39c485..77b9f8b 100644\n--- a/tests/python/test_load_inline.py\n+++ b/tests/python/test_load_inline.py\n@@ -213,8 +213,8 @@ def test_load_inline_cuda() -> None:\n @pytest.mark.skipif(torch is None, reason=\"Requires torch\")\n def test_load_inline_with_env_tensor_allocator() -> None:\n     assert torch is not None\n-    if not hasattr(torch.Tensor, \"__c_dlpack_exchange_api__\"):\n-        pytest.skip(\"Torch does not support __c_dlpack_exchange_api__\")\n+    if not hasattr(torch.Tensor, \"__dlpack_c_exchange_api__\"):\n+        pytest.skip(\"Torch does not support __dlpack_c_exchange_api__\")\n     mod: Module = tvm_ffi.cpp.load_inline(\n         name=\"hello\",\n         cpp_sources=r\"\"\"",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".h",
+      ".pxi",
+      ".py",
+      ".pyi"
+    ],
+    "scopes_guess": [
+      "addons",
+      "python",
+      "tests"
+    ]
+  }
+}

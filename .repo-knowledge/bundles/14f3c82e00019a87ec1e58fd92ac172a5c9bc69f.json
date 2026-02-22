@@ -1,0 +1,39 @@
+{
+  "sha": "14f3c82e00019a87ec1e58fd92ac172a5c9bc69f",
+  "sha7": "14f3c82",
+  "author_name": "DarkSharpness",
+  "author_email": "76582120+DarkSharpness@users.noreply.github.com",
+  "date_iso": "2025-11-04T10:03:32+08:00",
+  "subject": "[Fix] fix iterator behavior (#218)",
+  "body":
+      "According to\n[cppreference](https://en.cppreference.com/w/cpp/named_req/InputIterator.html),\nthe return type of the dereferenced iterator must be equivalent to the\n`reference_type`.\n\nBefore this PR, the IterAdapter does not adhere to legacy iterator,\nwhich may potentially leads to undefined behavior when used with STL\ncomponents(in my case, `std::make_move_iterator`) . We just fix this in\nthis PR.",
+  "is_merge": false,
+  "parents": [
+    "da570b0d8145bb31b6ae3de17a5505b9b101b5d9"
+  ],
+  "name_status": [
+    [
+      "M",
+      "include/tvm/ffi/container/container_details.h"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "include/tvm/ffi/container/container_details.h",
+      "additions": 6,
+      "deletions": 6
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/include/tvm/ffi/container/container_details.h b/include/tvm/ffi/container/container_details.h\nindex 3e3d267..397209f 100644\n--- a/include/tvm/ffi/container/container_details.h\n+++ b/include/tvm/ffi/container/container_details.h\n@@ -176,8 +176,8 @@ class IterAdapter {\n  public:\n   using difference_type = typename std::iterator_traits<TIter>::difference_type;\n   using value_type = typename Converter::ResultType;\n-  using pointer = typename Converter::ResultType*;\n-  using reference = typename Converter::ResultType&;\n+  using pointer = const typename Converter::ResultType*;\n+  using reference = const typename Converter::ResultType;\n   using iterator_category = typename std::iterator_traits<TIter>::iterator_category;\n \n   explicit IterAdapter(TIter iter) : iter_(iter) {}\n@@ -223,7 +223,7 @@ class IterAdapter {\n \n   bool operator==(IterAdapter other) const { return iter_ == other.iter_; }\n   bool operator!=(IterAdapter other) const { return !(*this == other); }\n-  const value_type operator*() const { return Converter::convert(*iter_); }\n+  reference operator*() const { return Converter::convert(*iter_); }\n \n  private:\n   TIter iter_;\n@@ -239,8 +239,8 @@ class ReverseIterAdapter {\n  public:\n   using difference_type = typename std::iterator_traits<TIter>::difference_type;\n   using value_type = typename Converter::ResultType;\n-  using pointer = typename Converter::ResultType*;\n-  using reference = typename Converter::ResultType&;  // NOLINT(*)\n+  using pointer = const typename Converter::ResultType*;\n+  using reference = const typename Converter::ResultType;\n   using iterator_category = typename std::iterator_traits<TIter>::iterator_category;\n \n   explicit ReverseIterAdapter(TIter iter) : iter_(iter) {}\n@@ -275,7 +275,7 @@ class ReverseIterAdapter {\n \n   bool operator==(ReverseIterAdapter other) const { return iter_ == other.iter_; }\n   bool operator!=(ReverseIterAdapter other) const { return !(*this == other); }\n-  const value_type operator*() const { return Converter::convert(*iter_); }\n+  reference operator*() const { return Converter::convert(*iter_); }\n \n  private:\n   TIter iter_;",
+  "heuristics": {
+    "tags": [],
+    "extensions": [
+      ".h"
+    ],
+    "scopes_guess": [
+      "include"
+    ]
+  }
+}

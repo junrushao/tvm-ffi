@@ -1,0 +1,89 @@
+{
+  "sha": "9ac312164e75c18e7b26214bba1f142de94913b4",
+  "sha7": "9ac3121",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-10-14T12:15:22-04:00",
+  "subject": "[CPP] Remove static line based object reg in favor of ObjectDef (#116)",
+  "body":
+      "This PR moves static inline registrations of objects in the object reg\nmacros.\n\nRationale: while the static inline based registration is convenient and\nremoves the need for explicit registration this can cause extra space\noverhead for every dll that includes the header file even if the class\nis not used.\n\nGiven that reflection::ObjectDef<T> already registers the type index and\nstatic type objects are predefined that we can control, we explicitly\nremoves the static inline based reg trigger to we can save up possible\nbinary space and reduce init logic.\n\nThis does mean that when an Object is not registered through ObjectDef\nthe dynamic casting mechanism won't work. But we are OK since\nexpectation is most dynamic ObjectRef needs to do so for it to be\nuseful.",
+  "is_merge": false,
+  "parents": [
+    "8873700a87d0b8426d1840f29e28015e7be2e48c"
+  ],
+  "name_status": [
+    [
+      "M",
+      "include/tvm/ffi/error.h"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/object.h"
+    ],
+    [
+      "M",
+      "src/ffi/container.cc"
+    ],
+    [
+      "M",
+      "src/ffi/object.cc"
+    ],
+    [
+      "M",
+      "tests/cpp/test_object.cc"
+    ],
+    [
+      "M",
+      "tests/cpp/test_reflection.cc"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "include/tvm/ffi/error.h",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "include/tvm/ffi/object.h",
+      "additions": 31,
+      "deletions": 20
+    },
+    {
+      "path": "src/ffi/container.cc",
+      "additions": 0,
+      "deletions": 1
+    },
+    {
+      "path": "src/ffi/object.cc",
+      "additions": 17,
+      "deletions": 8
+    },
+    {
+      "path": "tests/cpp/test_object.cc",
+      "additions": 2,
+      "deletions": 2
+    },
+    {
+      "path": "tests/cpp/test_reflection.cc",
+      "additions": 1,
+      "deletions": 1
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/include/tvm/ffi/error.h b/include/tvm/ffi/error.h\nindex d4f50a3..dd7b923 100644\n--- a/include/tvm/ffi/error.h\n+++ b/include/tvm/ffi/error.h\n@@ -89,7 +89,7 @@ class ErrorObj : public Object, public TVMFFIErrorCell {\n  public:\n   /// \\cond Doxygen_Suppress\n   static constexpr const int32_t _type_index = TypeIndex::kTVMFFIError;\n-  TVM_FFI_DECLARE_OBJECT_INFO_STATIC(\"ffi.Error\", ErrorObj, Object);\n+  TVM_FFI_DECLARE_OBJECT_INFO_STATIC(StaticTypeKey::kTVMFFIError, ErrorObj, Object);\n   /// \\endcond\n };\n \ndiff --git a/include/tvm/ffi/object.h b/include/tvm/ffi/object.h\nindex d7834e8..1f0fe4c 100644\n--- a/include/tvm/ffi/object.h\n+++ b/include/tvm/ffi/object.h\n@@ -94,6 +94,8 @@ struct StaticTypeKey {\n   static constexpr const char* kTVMFFISmallStr = \"ffi.SmallStr\";\n   /*! \\brief The type key for SmallBytes */\n   static constexpr const char* kTVMFFISmallBytes = \"ffi.SmallBytes\";\n+  /*! \\brief The type key for Error */\n+  static constexpr const char* kTVMFFIError = \"ffi.Error\";\n   /*! \\brief The type key for Bytes */\n   static constexpr const char* kTVMFFIBytes = \"ffi.Bytes\";\n   /*! \\brief The type key for String */\n@@ -913,8 +915,20 @@ struct ObjectPtrEqual {\n   TVM_FFI_INLINE bool operator()(const Variant<V...>& a, const Variant<V...>& b) const;\n };\n \n-/// \\cond Doxygen_Suppress\n-#define TVM_FFI_REGISTER_STATIC_TYPE_INFO(TypeName, ParentType)                               \\\n+/*!\n+ * \\brief Helper macro to declare object information with static type index.\n+ *\n+ * For each custom object, you need to call tvm::ffi::reflection::ObjectDef<TypeName>()\n+ * once in your cc file to register the type index with the runtime.\n+ * Alternatively, you can call TypeName::_GetOrAllocRuntimeTypeIndex() once.\n+ *\n+ * \\param TypeKey The type key of the current type.\n+ * \\param TypeName The name of the current type.\n+ * \\param ParentType The name of the ParentType\n+ *\n+ * \\see tvm::ffi::reflection::ObjectDef\n+ */\n+#define TVM_FFI_DECLARE_OBJECT_INFO_STATIC(TypeKey, TypeName, ParentType)                     \\\n   static constexpr int32_t _type_depth = ParentType::_type_depth + 1;                         \\\n   static int32_t _GetOrAllocRuntimeTypeIndex() {                                              \\\n     static_assert(!ParentType::_type_final, \"ParentType marked as final\");                    \\\n@@ -923,25 +937,13 @@ struct ObjectPtrEqual {\n                   \"Need to set _type_child_slots when parent specifies it.\");                 \\\n     TVMFFIByteArray type_key{TypeName::_type_key,                                             \\\n                              std::char_traits<char>::length(TypeName::_type_key)};            \\\n-    static int32_t tindex = TVMFFITypeGetOrAllocIndex(                                        \\\n+    static int32_t tindex [[maybe_unused]] = TVMFFITypeGetOrAllocIndex(                       \\\n         &type_key, TypeName::_type_index, TypeName::_type_depth, TypeName::_type_child_slots, \\\n         TypeName::_type_child_slots_can_overflow, ParentType::_GetOrAllocRuntimeTypeIndex()); \\\n-    return tindex;                                                                            \\\n+    return TypeName::_type_index;                                                             \\\n   }                                                                                           \\\n-  static inline int32_t _register_type_index = _GetOrAllocRuntimeTypeIndex()\n-/// \\endcond\n-\n-/*!\n- * \\brief Helper macro to declare object information with static type index.\n- *\n- * \\param TypeKey The type key of the current type.\n- * \\param TypeName The name of the current type.\n- * \\param ParentType The name of the ParentType\n- */\n-#define TVM_FFI_DECLARE_OBJECT_INFO_STATIC(TypeKey, TypeName, ParentType) \\\n-  static constexpr const char* _type_key = TypeKey;                       \\\n-  static int32_t RuntimeTypeIndex() { return TypeName::_type_index; }     \\\n-  TVM_FFI_REGISTER_STATIC_TYPE_INFO(TypeName, ParentType)\n+  static int32_t RuntimeTypeIndex() { return TypeName::_type_index; }                         \\\n+  static constexpr const char* _type_key = TypeKey\n \n /*!\n  * \\brief Helper macro to declare object information with type key already defined in class.\n@@ -963,15 +965,19 @@ struct ObjectPtrEqual {\n         TypeName::_type_child_slots_can_overflow, ParentType::_GetOrAllocRuntimeTypeIndex()); \\\n     return tindex;                                                                            \\\n   }                                                                                           \\\n-  static int32_t RuntimeTypeIndex() { return _GetOrAllocRuntimeTypeIndex(); }                 \\\n-  static inline int32_t _type_index = _GetOrAllocRuntimeTypeIndex()\n+  static int32_t RuntimeTypeIndex() { return _GetOrAllocRuntimeTypeIndex(); }\n \n /*!\n  * \\brief Helper macro to declare object information with dynamic type index.\n  *\n+ * For each custom object, you need to call tvm::ffi::reflection::ObjectDef<TypeName>()\n+ * once in your cc file to register the type index with the runtime.\n+ * Alternatively, you can call TypeName::_GetOrAllocRuntimeTypeIndex() once.\n+ *\n  * \\param TypeKey The type key of the current type.\n  * \\param TypeName The name of the current type.\n  * \\param ParentType The name of the ParentType\n+ * \\sa tvm::ffi::reflection::ObjectDef\n  */\n #define TVM_FFI_DECLARE_OBJECT_INFO(TypeKey, TypeName, ParentType) \\\n   static constexpr const char* _type_key = TypeKey;                \\\n@@ -980,9 +986,14 @@ struct ObjectPtrEqual {\n /*!\n  * \\brief Helper macro to declare object information with dynamic type index and is final.\n  *\n+ * For each custom object, you need to call tvm::ffi::reflection::ObjectDef<TypeName>()\n+ * once in your cc file to register the type index with the runtime.\n+ * Alternatively, you can call TypeName::_GetOrAllocRuntimeTypeIndex() once.\n+ *\n  * \\param TypeKey The type key of the current type.\n  * \\param TypeName The name of the current type.\n  * \\param ParentType The name of the ParentType\n+ * \\sa tvm::ffi::reflection::ObjectDef\n  */\n #define TVM_FFI_DECLARE_OBJECT_INFO_FINAL(TypeKey, TypeName, ParentType) \\\n   static const constexpr int _type_child_slots [[maybe_unused]] = 0;     \\\ndiff --git a/src/ffi/container.cc b/src/ffi/container.cc\nindex ca1ec91..b777dc0 100644\n--- a/src/ffi/container.cc\n+++ b/src/ffi/container.cc\n@@ -22,7 +22,6 @@\n  */\n #include <tvm/ffi/container/array.h>\n #include <tvm/ffi/container/map.h>\n-#include <tvm/ffi/container/shape.h>\n #include <tvm/ffi/function.h>\n #include <tvm/ffi/reflection/registry.h>\n \ndiff --git a/src/ffi/object.cc b/src/ffi/object.cc\nindex b3927fe..b58231a 100644\n--- a/src/ffi/object.cc\n+++ b/src/ffi/object.cc\n@@ -339,20 +339,29 @@ class TypeTable {\n                             TypeIndex::kTVMFFIObjectRValueRef);\n     ReserveBuiltinTypeIndex(StaticTypeKey::kTVMFFISmallStr, TypeIndex::kTVMFFISmallStr);\n     ReserveBuiltinTypeIndex(StaticTypeKey::kTVMFFISmallBytes, TypeIndex::kTVMFFISmallBytes);\n-    // register opaque py whose type depth is 1\n-    this->GetOrAllocTypeIndex(StaticTypeKey::kTVMFFIOpaquePyObject,\n-                              TypeIndex::kTVMFFIOpaquePyObject,\n-                              /*type_depth=*/1,\n-                              /*num_child_slots=*/0,\n-                              /*child_slots_can_overflow=*/false,\n-                              /*parent_type_index=*/TypeIndex::kTVMFFIObject);\n-    // no need to reserve for object types as they will be registered\n+    // reserved static type indices for depth 1 object types\n+    ReserveDepthOneObjectTypeIndex(StaticTypeKey::kTVMFFIStr, TypeIndex::kTVMFFIStr);\n+    ReserveDepthOneObjectTypeIndex(StaticTypeKey::kTVMFFIBytes, TypeIndex::kTVMFFIBytes);\n+    ReserveDepthOneObjectTypeIndex(StaticTypeKey::kTVMFFIError, TypeIndex::kTVMFFIError);\n+    ReserveDepthOneObjectTypeIndex(StaticTypeKey::kTVMFFIFunction, TypeIndex::kTVMFFIFunction);\n+    ReserveDepthOneObjectTypeIndex(StaticTypeKey::kTVMFFIShape, TypeIndex::kTVMFFIShape);\n+    ReserveDepthOneObjectTypeIndex(StaticTypeKey::kTVMFFITensor, TypeIndex::kTVMFFITensor);\n+    ReserveDepthOneObjectTypeIndex(StaticTypeKey::kTVMFFIArray, TypeIndex::kTVMFFIArray);\n+    ReserveDepthOneObjectTypeIndex(StaticTypeKey::kTVMFFIMap, TypeIndex::kTVMFFIMap);\n+    ReserveDepthOneObjectTypeIndex(StaticTypeKey::kTVMFFIModule, TypeIndex::kTVMFFIModule);\n+    ReserveDepthOneObjectTypeIndex(StaticTypeKey::kTVMFFIOpaquePyObject,\n+                                   TypeIndex::kTVMFFIOpaquePyObject);\n   }\n \n   void ReserveBuiltinTypeIndex(const char* type_key, int32_t static_type_index) {\n     this->GetOrAllocTypeIndex(String(type_key), static_type_index, 0, 0, false, -1);\n   }\n \n+  void ReserveDepthOneObjectTypeIndex(const char* type_key, int32_t static_type_index) {\n+    this->GetOrAllocTypeIndex(String(type_key), static_type_index, 1, 0, false,\n+                              TypeIndex::kTVMFFIObject);\n+  }\n+\n   static ObjectPtr<details::StringObj> MakeInplaceString(const char* data, size_t length) {\n     ObjectPtr<details::StringObj> p =\n         make_inplace_array_object<details::StringObj, char>(length + 1);\ndiff --git a/tests/cpp/test_object.cc b/tests/cpp/test_object.cc\nindex da22e59..4aeddef 100644\n--- a/tests/cpp/test_object.cc\n+++ b/tests/cpp/test_object.cc\n@@ -55,8 +55,8 @@ TEST(Object, TypeInfo) {\n   EXPECT_TRUE(info != nullptr);\n   EXPECT_EQ(info->type_index, TIntObj::RuntimeTypeIndex());\n   EXPECT_EQ(info->type_depth, 2);\n-  EXPECT_EQ(info->type_ancestors[0]->type_index, Object::_type_index);\n-  EXPECT_EQ(info->type_ancestors[1]->type_index, TNumberObj::_type_index);\n+  EXPECT_EQ(info->type_ancestors[0]->type_index, Object::RuntimeTypeIndex());\n+  EXPECT_EQ(info->type_ancestors[1]->type_index, TNumberObj::RuntimeTypeIndex());\n   EXPECT_GE(info->type_index, TypeIndex::kTVMFFIDynObjectBegin);\n }\n \ndiff --git a/tests/cpp/test_reflection.cc b/tests/cpp/test_reflection.cc\nindex acabdec..c81a20b 100644\n--- a/tests/cpp/test_reflection.cc\n+++ b/tests/cpp/test_reflection.cc\n@@ -172,7 +172,7 @@ TEST(Reflection, ForEachFieldInfo) {\n \n TEST(Reflection, TypeAttrColumn) {\n   reflection::TypeAttrColumn size_attr(\"test.size\");\n-  EXPECT_EQ(size_attr[TIntObj::_type_index].cast<int>(), sizeof(TIntObj));\n+  EXPECT_EQ(size_attr[TIntObj::RuntimeTypeIndex()].cast<int>(), sizeof(TIntObj));\n }\n \n TVM_FFI_STATIC_INIT_BLOCK() {",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".cc",
+      ".h"
+    ],
+    "scopes_guess": [
+      "include",
+      "src",
+      "tests"
+    ]
+  }
+}

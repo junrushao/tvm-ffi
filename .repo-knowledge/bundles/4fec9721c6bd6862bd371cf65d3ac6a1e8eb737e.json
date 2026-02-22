@@ -1,0 +1,39 @@
+{
+  "sha": "4fec9721c6bd6862bd371cf65d3ac6a1e8eb737e",
+  "sha7": "4fec972",
+  "author_name": "Nan",
+  "author_email": "hydzhang@hotmail.com",
+  "date_iso": "2026-01-17T11:29:51+08:00",
+  "subject": "[Feat] Support lower PyTorch versions in dtype handling (#414)",
+  "body":
+      "This PR partially adds support for older versions of PyTorch (Enables\nsuccessful `import tvm_ffi`). Previous discussion:\nhttps://github.com/apache/tvm-ffi/issues/381\n\nThis is especially helpful in scenarios where the environment uses an\nolder PyTorch version and patching/hacking PyTorch is not feasible.\n\n\n\nVerified with PyTorch 1.10.2, 1.14.0a0,  and 2.0",
+  "is_merge": false,
+  "parents": [
+    "c78e8b4eefa076c457af97bd3930dd664aec71c3"
+  ],
+  "name_status": [
+    [
+      "M",
+      "python/tvm_ffi/cython/dtype.pxi"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "python/tvm_ffi/cython/dtype.pxi",
+      "additions": 15,
+      "deletions": 11
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/python/tvm_ffi/cython/dtype.pxi b/python/tvm_ffi/cython/dtype.pxi\nindex 3b8530a..c320c63 100644\n--- a/python/tvm_ffi/cython/dtype.pxi\n+++ b/python/tvm_ffi/cython/dtype.pxi\n@@ -180,9 +180,6 @@ if torch is not None:\n         torch.int64: DLDataType(0, 64, 1),\n         torch.long: DLDataType(0, 64, 1),\n         torch.uint8: DLDataType(1, 8, 1),\n-        torch.uint16: DLDataType(1, 16, 1),\n-        torch.uint32: DLDataType(1, 32, 1),\n-        torch.uint64: DLDataType(1, 64, 1),\n         torch.float16: DLDataType(2, 16, 1),\n         torch.half: DLDataType(2, 16, 1),\n         torch.float32: DLDataType(2, 32, 1),\n@@ -191,15 +188,22 @@ if torch is not None:\n         torch.double: DLDataType(2, 64, 1),\n         torch.bfloat16: DLDataType(4, 16, 1),\n         torch.bool: DLDataType(6, 8, 1),\n-        torch.float8_e4m3fn: DLDataType(10, 8, 1),\n-        torch.float8_e4m3fnuz: DLDataType(11, 8, 1),\n-        torch.float8_e5m2: DLDataType(12, 8, 1),\n-        torch.float8_e5m2fnuz: DLDataType(13, 8, 1),\n     }\n-    if hasattr(torch, \"float8_e8m0fnu\"):\n-        TORCH_DTYPE_TO_DL_DATA_TYPE[torch.float8_e8m0fnu] = DLDataType(14, 8, 1)\n-    if hasattr(torch, \"float4_e2m1fn_x2\"):\n-        TORCH_DTYPE_TO_DL_DATA_TYPE[torch.float4_e2m1fn_x2] = DLDataType(17, 4, 2)\n+\n+    extra_types = [\n+        (\"uint16\", DLDataType(1, 16, 1)),\n+        (\"uint32\", DLDataType(1, 32, 1)),\n+        (\"uint64\", DLDataType(1, 64, 1)),\n+        (\"float8_e4m3fn\", DLDataType(10, 8, 1)),\n+        (\"float8_e4m3fnuz\", DLDataType(11, 8, 1)),\n+        (\"float8_e5m2\", DLDataType(12, 8, 1)),\n+        (\"float8_e5m2fnuz\", DLDataType(13, 8, 1)),\n+        (\"float8_e8m0fnu\", DLDataType(14, 8, 1)),\n+        (\"float4_e2m1fn_x2\", DLDataType(17, 4, 2)),\n+    ]\n+    for attr_name, dl_dtype in extra_types:\n+        if hasattr(torch, attr_name):\n+            TORCH_DTYPE_TO_DL_DATA_TYPE[getattr(torch, attr_name)] = dl_dtype\n \n     def _convert_torch_dtype_to_ffi_dtype(torch_dtype):\n         cdef DLDataType dl_data_type = TORCH_DTYPE_TO_DL_DATA_TYPE[torch_dtype]",
+  "heuristics": {
+    "tags": [],
+    "extensions": [
+      ".pxi"
+    ],
+    "scopes_guess": [
+      "python"
+    ]
+  }
+}

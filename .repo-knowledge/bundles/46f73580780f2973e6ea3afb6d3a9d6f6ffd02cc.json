@@ -1,0 +1,38 @@
+{
+  "sha": "46f73580780f2973e6ea3afb6d3a9d6f6ffd02cc",
+  "sha7": "46f7358",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-09-15T13:55:24-04:00",
+  "subject": "[CONFIG] Update squash commit default to PR title and description (#17)",
+  "body": "This commit updates the PR merge behavior to squash-and-merge.",
+  "is_merge": false,
+  "parents": [
+    "3197cd0949ae9bb9a41eb5a429a4b1519d061db4"
+  ],
+  "name_status": [
+    [
+      "M",
+      ".asf.yaml"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": ".asf.yaml",
+      "additions": 1,
+      "deletions": 1
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/.asf.yaml b/.asf.yaml\nindex b5bf070..2abcf8f 100644\n--- a/.asf.yaml\n+++ b/.asf.yaml\n@@ -39,7 +39,7 @@ github:\n     squash:  true\n     # default commit message when merging with a squash commit\n     # can either be: DEFAULT | PR_TITLE | PR_TITLE_AND_COMMIT_DETAILS | PR_TITLE_AND_DESC\n-    squash_commit_message: DEFAULT\n+    squash_commit_message: PR_TITLE_AND_DESC\n     # enable merge button:\n     merge:   false\n     # default commit message when merging with a merge commit",
+  "heuristics": {
+    "tags": [],
+    "extensions": [
+      ".yaml"
+    ],
+    "scopes_guess": [
+      ".asf.yaml"
+    ]
+  }
+}

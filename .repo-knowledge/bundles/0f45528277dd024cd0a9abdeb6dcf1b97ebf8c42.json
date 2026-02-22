@@ -1,0 +1,39 @@
+{
+  "sha": "0f45528277dd024cd0a9abdeb6dcf1b97ebf8c42",
+  "sha7": "0f45528",
+  "author_name": "Yichen Yan",
+  "author_email": "wenji.yyc@alibaba-inc.com",
+  "date_iso": "2026-02-14T04:36:52+08:00",
+  "subject": "fix: Suppress GCC warning for array bounds in String class (#439)",
+  "body":
+      "```\n  In file included from /project/3rdparty/tvm/3rdparty/tvm-ffi/include/tvm/ffi/any.h:27,\n                   from /project/3rdparty/tvm/3rdparty/tvm-ffi/include/tvm/ffi/reflection/registry.h:26,\n                   from /project/3rdparty/tvm/src/relax/transform/meta_schedule.cc:24:\n  In static member function ‘static tvm::ffi::String tvm::ffi::String::Concat(const char*, size_t, const char*, size_t)’,\n      inlined from ‘tvm::ffi::String tvm::ffi::operator+(const String&, const char*)’ at /project/3rdparty/tvm/3rdparty/tvm-ffi/include/tvm/ffi/string.h:972:60,\n      inlined from ‘tvm::relax::transform::MetaScheduleApplyDatabase(tvm::ffi::Optional<tvm::ffi::String>, bool)::<lambda(tvm::IRModule, tvm::relax::transform::PassContext)>’ at /project/3rdparty/tvm/src/relax/transform/meta_schedule.cc:90:54:\n  /project/3rdparty/tvm/3rdparty/tvm-ffi/include/tvm/ffi/string.h:669:16: warning: ‘void* memcpy(void*, const void*, size_t)’ offset [-15, -8] is out of the bounds [0, 16] of object ‘path_workload’ with type ‘tvm::ffi::String’ [-Warray-bounds=]\n    669 |     std::memcpy(dest_data + lhs_size, rhs, rhs_size);\n        |     ~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n  /project/3rdparty/tvm/src/relax/transform/meta_schedule.cc: In function ‘tvm::relax::transform::MetaScheduleApplyDatabase(tvm::ffi::Optional<tvm::ffi::String>, bool)::<lambda(tvm::IRModule, tvm::relax::transform::PassContext)>’:\n  /project/3rdparty/tvm/src/relax/transform/meta_schedule.cc:90:19: note: ‘path_workload’ declared here\n     90 |       ffi::String path_workload = work_dir.value() + \"/database_workload.json\";\n        |                   ^~~~~~~~~~~~~\n```",
+  "is_merge": false,
+  "parents": [
+    "9513c2f8a57f64ad7473d7cd06084719f6d5e70e"
+  ],
+  "name_status": [
+    [
+      "M",
+      "include/tvm/ffi/string.h"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "include/tvm/ffi/string.h",
+      "additions": 1,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/include/tvm/ffi/string.h b/include/tvm/ffi/string.h\nindex 0c885e9..3a3ffcd 100644\n--- a/include/tvm/ffi/string.h\n+++ b/include/tvm/ffi/string.h\n@@ -780,6 +780,7 @@ class String {\n #if (__GNUC__) && !(__clang__)\n #pragma GCC diagnostic push\n #pragma GCC diagnostic ignored \"-Wstringop-overflow\"\n+#pragma GCC diagnostic ignored \"-Warray-bounds\"\n #pragma GCC diagnostic ignored \"-Wrestrict\"\n #endif\n     char* dest_data = ret.InitSpaceForSize(lhs_size + rhs_size);",
+  "heuristics": {
+    "tags": [],
+    "extensions": [
+      ".h"
+    ],
+    "scopes_guess": [
+      "include"
+    ]
+  }
+}

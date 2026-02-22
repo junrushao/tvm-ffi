@@ -1,0 +1,51 @@
+{
+  "sha": "b03cc7845ae92060881e14c4f50a4b6da4d9f982",
+  "sha7": "b03cc78",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-09-23T21:02:14-04:00",
+  "subject": "[TORCH] robustify torch jit module support for earlier ver (#53)",
+  "body": "This PR robustifies torch jit module for earlier versions",
+  "is_merge": false,
+  "parents": [
+    "5cfd705e62e8ecd16e07fb9b3062eecee489eda9"
+  ],
+  "name_status": [
+    [
+      "M",
+      "pyproject.toml"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/_optional_torch_c_dlpack.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "pyproject.toml",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "python/tvm_ffi/_optional_torch_c_dlpack.py",
+      "additions": 2,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/pyproject.toml b/pyproject.toml\nindex e3ebf1c..83a280b 100644\n--- a/pyproject.toml\n+++ b/pyproject.toml\n@@ -17,7 +17,7 @@\n \n [project]\n name = \"apache-tvm-ffi\"\n-version = \"0.1.0b6\"\n+version = \"0.1.0b7\"\n description = \"tvm ffi\"\n \n authors = [{ name = \"TVM FFI team\" }]\ndiff --git a/python/tvm_ffi/_optional_torch_c_dlpack.py b/python/tvm_ffi/_optional_torch_c_dlpack.py\nindex 5be7211..cc40b31 100644\n--- a/python/tvm_ffi/_optional_torch_c_dlpack.py\n+++ b/python/tvm_ffi/_optional_torch_c_dlpack.py\n@@ -415,6 +415,7 @@ ScalarType toScalarTypeForDLPackv1(const DLDataType& dtype) {\n               false, \"Unsupported kDLFloat8_e8m0fnu bits \", std::to_string(dtype.bits));\n       }\n       break;\n+#if TORCH_VERSION_MAJOR >= 2 && TORCH_VERSION_MINOR >= 8\n     case DLDataTypeCode::kDLFloat4_e2m1fn:\n       switch (dtype.bits) {\n         case 4:\n@@ -432,6 +433,7 @@ ScalarType toScalarTypeForDLPackv1(const DLDataType& dtype) {\n               false, \"Unsupported kDLFloat4_e2m1fn bits \", std::to_string(dtype.bits));\n       }\n       break;\n+#endif\n     default:\n       TORCH_CHECK(false, \"Unsupported code \", std::to_string(dtype.code));\n   }",
+  "heuristics": {
+    "tags": [
+      "build"
+    ],
+    "extensions": [
+      ".py",
+      ".toml"
+    ],
+    "scopes_guess": [
+      "pyproject.toml",
+      "python"
+    ]
+  }
+}

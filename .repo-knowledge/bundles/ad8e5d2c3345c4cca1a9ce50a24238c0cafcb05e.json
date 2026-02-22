@@ -1,0 +1,42 @@
+{
+  "sha": "ad8e5d2c3345c4cca1a9ce50a24238c0cafcb05e",
+  "sha7": "ad8e5d2",
+  "author_name": "Ruihang Lai",
+  "author_email": "ruihangl@cs.cmu.edu",
+  "date_iso": "2025-08-29T14:51:54-04:00",
+  "subject": "[Python] Complete Python packaging with scikit-build-core (#18251)",
+  "body":
+      "Following #18239, this PR fixes a few issues we ran into during\ntesting the packaging flow through scikit-build-core.",
+  "is_merge": false,
+  "parents": [
+    "7d09d6ae1670edeb2c3e2076ec3cbce3f1a3266d"
+  ],
+  "name_status": [
+    [
+      "M",
+      "CMakeLists.txt"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "CMakeLists.txt",
+      "additions": 2,
+      "deletions": 8
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/CMakeLists.txt b/CMakeLists.txt\nindex 0690c92..f403136 100644\n--- a/CMakeLists.txt\n+++ b/CMakeLists.txt\n@@ -221,16 +221,10 @@ if (TVM_FFI_BUILD_PYTHON_MODULE)\n   # Set RPATH for tvm_ffi_cython to find tvm_ffi_shared.so relatively\n   if(APPLE)\n     # macOS uses @loader_path\n-    set_target_properties(tvm_ffi_cython PROPERTIES\n-      INSTALL_RPATH \"@loader_path/lib\"\n-      BUILD_WITH_INSTALL_RPATH ON\n-    )\n+    set_target_properties(tvm_ffi_cython PROPERTIES INSTALL_RPATH \"@loader_path/lib\")\n   elseif(LINUX)\n       # Linux uses $ORIGIN\n-    set_target_properties(tvm_ffi_cython PROPERTIES\n-      INSTALL_RPATH \"\\$ORIGIN/lib\"\n-      BUILD_WITH_INSTALL_RPATH ON\n-    )\n+    set_target_properties(tvm_ffi_cython PROPERTIES INSTALL_RPATH \"\\$ORIGIN/lib\")\n   endif()\n   install(TARGETS tvm_ffi_cython DESTINATION .)\n ",
+  "heuristics": {
+    "tags": [
+      "build",
+      "docs"
+    ],
+    "extensions": [
+      ".txt"
+    ],
+    "scopes_guess": [
+      "CMakeLists.txt"
+    ]
+  }
+}

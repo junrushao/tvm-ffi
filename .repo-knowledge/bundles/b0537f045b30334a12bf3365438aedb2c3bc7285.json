@@ -1,0 +1,52 @@
+{
+  "sha": "b0537f045b30334a12bf3365438aedb2c3bc7285",
+  "sha7": "b0537f0",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-10-13T14:25:37-04:00",
+  "subject": "[CYTHON] Support cuda stream protocol (#109)",
+  "body":
+      "This PR updates the ABI to support cuda stream protocol\nhttps://nvidia.github.io/cuda-python/cuda-core/latest/interoperability.html#cuda-stream-protocol\n\nFor now we turn stream into void* in passing into the ABI",
+  "is_merge": false,
+  "parents": [
+    "550e92fc16d6525bba126527d54db5c970a74b04"
+  ],
+  "name_status": [
+    [
+      "M",
+      "python/tvm_ffi/cython/function.pxi"
+    ],
+    [
+      "M",
+      "tests/python/test_device.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "python/tvm_ffi/cython/function.pxi",
+      "additions": 19,
+      "deletions": 1
+    },
+    {
+      "path": "tests/python/test_device.py",
+      "additions": 16,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/python/tvm_ffi/cython/function.pxi b/python/tvm_ffi/cython/function.pxi\nindex 0305fec..6fc2a7b 100644\n--- a/python/tvm_ffi/cython/function.pxi\n+++ b/python/tvm_ffi/cython/function.pxi\n@@ -287,6 +287,20 @@ cdef int TVMFFIPyArgSetterFFITensorCompatible_(\n     return 0\n \n \n+cdef int TVMFFIPyArgSetterCUDAStream_(\n+    TVMFFIPyArgSetter* handle, TVMFFIPyCallContext* ctx,\n+    PyObject* py_arg, TVMFFIAny* out\n+) except -1:\n+    \"\"\"Setter for cuda stream protocol\"\"\"\n+    cdef object arg = <object>py_arg\n+    # cuda stream is a subclass of str, so this check occur before str\n+    cdef tuple cu_stream_tuple = arg.__cuda_stream__()\n+    cdef long long long_ptr = <long long>cu_stream_tuple[1]\n+    out.type_index = kTVMFFIOpaquePtr\n+    out.v_ptr = <void*>long_ptr\n+    return 0\n+\n+\n cdef int TVMFFIPyArgSetterDType_(\n     TVMFFIPyArgSetter* handle, TVMFFIPyCallContext* ctx,\n     PyObject* py_arg, TVMFFIAny* out\n@@ -605,10 +619,14 @@ cdef int TVMFFIPyArgSetterFactory_(PyObject* value, TVMFFIPyArgSetter* out) exce\n             temp_ptr = arg_class.__c_dlpack_exchange_api__\n             out.c_dlpack_exchange_api = <const DLPackExchangeAPI*>(<long long>temp_ptr)\n             return 0\n+    if hasattr(arg_class, \"__cuda_stream__\"):\n+        # cuda stream protocol\n+        out.func = TVMFFIPyArgSetterCUDAStream_\n+        return 0\n     if torch is not None and isinstance(arg, torch.Tensor):\n         out.func = TVMFFIPyArgSetterTorchFallback_\n         return 0\n-    if hasattr(arg, \"__dlpack__\"):\n+    if hasattr(arg_class, \"__dlpack__\"):\n         out.func = TVMFFIPyArgSetterDLPack_\n         return 0\n     if isinstance(arg, bool):\ndiff --git a/tests/python/test_device.py b/tests/python/test_device.py\nindex 7a3638b..71dc0e4 100644\n--- a/tests/python/test_device.py\n+++ b/tests/python/test_device.py\n@@ -17,6 +17,7 @@\n \n from __future__ import annotations\n \n+import ctypes\n import pickle\n \n import pytest\n@@ -109,3 +110,18 @@ def test_device_class_override() -> None:\n     device = tvm_ffi.device(\"cuda\", 0)\n     assert isinstance(device, MyDevice)\n     tvm_ffi.core._set_class_device(old_device)\n+\n+\n+def test_cuda_stream_handling() -> None:\n+    class MyDummyStream:\n+        def __init__(self, stream: int) -> None:\n+            self.stream = stream\n+\n+        def __cuda_stream__(self) -> tuple[str, int]:\n+            return (\"cuda\", self.stream)\n+\n+    stream = MyDummyStream(1)\n+    echo = tvm_ffi.get_global_func(\"testing.echo\")\n+    y = echo(stream)\n+    assert isinstance(y, ctypes.c_void_p)\n+    assert y.value == 1",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".pxi",
+      ".py"
+    ],
+    "scopes_guess": [
+      "python",
+      "tests"
+    ]
+  }
+}

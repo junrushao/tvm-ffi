@@ -1,0 +1,91 @@
+{
+  "sha": "86c4042d66bf432a3c4a217be1eeab3568329b5b",
+  "sha7": "86c4042",
+  "author_name": "Junru Shao",
+  "author_email": "junrushao@apache.org",
+  "date_iso": "2026-02-15T04:15:57-08:00",
+  "subject": "feat: add `ffi.GetInvalidObject` global function for MISSING singleton (#447)",
+  "body":
+      "C++ changes:\n- Register `ffi.GetInvalidObject` global function in container.cc\n- Remove `ffi.MapGetMissingObject` in favor of the new name\n\nPython changes:\n- Initialize `MISSING` in core.pyx via `_get_global_func` after\n`Function` is registered\n- Re-export `MISSING` in container.py from core\n- Add `MISSING: Object` to core.pyi type stub\n- Update _ffi_api.py stubs and __all__\n\nTests:\n- Add `test_missing_object` verifying singleton identity across imports\nand Map.get() integration",
+  "is_merge": false,
+  "parents": [
+    "5e564cdfb932af63915fbeb5a5aa30671f55ae2c"
+  ],
+  "name_status": [
+    [
+      "M",
+      "python/tvm_ffi/_ffi_api.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/container.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/core.pyi"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/cython/core.pyx"
+    ],
+    [
+      "M",
+      "src/ffi/container.cc"
+    ],
+    [
+      "M",
+      "tests/python/test_container.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "python/tvm_ffi/_ffi_api.py",
+      "additions": 3,
+      "deletions": 3
+    },
+    {
+      "path": "python/tvm_ffi/container.py",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "python/tvm_ffi/core.pyi",
+      "additions": 1,
+      "deletions": 0
+    },
+    {
+      "path": "python/tvm_ffi/cython/core.pyx",
+      "additions": 3,
+      "deletions": 0
+    },
+    {
+      "path": "src/ffi/container.cc",
+      "additions": 9,
+      "deletions": 8
+    },
+    {
+      "path": "tests/python/test_container.py",
+      "additions": 15,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/python/tvm_ffi/_ffi_api.py b/python/tvm_ffi/_ffi_api.py\nindex a76188d..92606c9 100644\n--- a/python/tvm_ffi/_ffi_api.py\n+++ b/python/tvm_ffi/_ffi_api.py\n@@ -24,7 +24,7 @@ from .registry import init_ffi_api as _FFI_INIT_FUNC\n from typing import TYPE_CHECKING\n if TYPE_CHECKING:\n     from collections.abc import Mapping, Sequence\n-    from tvm_ffi import Module, Object\n+    from tvm_ffi import Module\n     from tvm_ffi.access_path import AccessPath\n     from typing import Any, Callable\n # isort: on\n@@ -42,6 +42,7 @@ if TYPE_CHECKING:\n     def Bytes(_0: bytes, /) -> bytes: ...\n     def FromJSONGraph(_0: Any, /) -> Any: ...\n     def FromJSONGraphString(_0: str, /) -> Any: ...\n+    def GetInvalidObject() -> Any: ...\n     def FunctionListGlobalNamesFunctor() -> Callable[..., Any]: ...\n     def FunctionRemoveGlobal(_0: str, /) -> bool: ...\n     def GetFirstStructuralMismatch(_0: Any, _1: Any, _2: bool, _3: bool, /) -> tuple[AccessPath, AccessPath] | None: ...\n@@ -66,7 +67,6 @@ if TYPE_CHECKING:\n     def MapForwardIterFunctor(_0: Mapping[Any, Any], /) -> Callable[..., Any]: ...\n     def MapGetItem(_0: Mapping[Any, Any], _1: Any, /) -> Any: ...\n     def MapGetItemOrMissing(_0: Mapping[Any, Any], _1: Any, /) -> Any: ...\n-    def MapGetMissingObject() -> Object: ...\n     def MapSize(_0: Mapping[Any, Any], /) -> int: ...\n     def ModuleClearImports(_0: Module, /) -> None: ...\n     def ModuleGetFunction(_0: Module, _1: str, _2: bool, /) -> Callable[..., Any] | None: ...\n@@ -105,6 +105,7 @@ __all__ = [\n     \"FunctionRemoveGlobal\",\n     \"GetFirstStructuralMismatch\",\n     \"GetGlobalFuncMetadata\",\n+    \"GetInvalidObject\",\n     \"GetRegisteredTypeKeys\",\n     \"List\",\n     \"ListAppend\",\n@@ -125,7 +126,6 @@ __all__ = [\n     \"MapForwardIterFunctor\",\n     \"MapGetItem\",\n     \"MapGetItemOrMissing\",\n-    \"MapGetMissingObject\",\n     \"MapSize\",\n     \"ModuleClearImports\",\n     \"ModuleGetFunction\",\ndiff --git a/python/tvm_ffi/container.py b/python/tvm_ffi/container.py\nindex 1b55fc8..2a358d2 100644\n--- a/python/tvm_ffi/container.py\n+++ b/python/tvm_ffi/container.py\n@@ -79,7 +79,7 @@ K = TypeVar(\"K\")\n V = TypeVar(\"V\")\n _DefaultT = TypeVar(\"_DefaultT\")\n \n-MISSING = _ffi_api.MapGetMissingObject()\n+from .core import MISSING\n \n \n def getitem_helper(\ndiff --git a/python/tvm_ffi/core.pyi b/python/tvm_ffi/core.pyi\nindex 2cee79c..3ad1fff 100644\n--- a/python/tvm_ffi/core.pyi\n+++ b/python/tvm_ffi/core.pyi\n@@ -24,6 +24,7 @@ from enum import IntEnum\n from typing import Any, Callable\n \n # Public module-level variables referenced by Python code\n+MISSING: Object\n ERROR_NAME_TO_TYPE: dict[str, type]\n ERROR_TYPE_TO_NAME: dict[type, str]\n \ndiff --git a/python/tvm_ffi/cython/core.pyx b/python/tvm_ffi/cython/core.pyx\nindex 6ffdc7e..b80beda 100644\n--- a/python/tvm_ffi/cython/core.pyx\n+++ b/python/tvm_ffi/cython/core.pyx\n@@ -38,3 +38,6 @@ include \"./tensor.pxi\"\n _register_object_by_index(kTVMFFITensor, Tensor)\n include \"./function.pxi\"\n _register_object_by_index(kTVMFFIFunction, Function)\n+\n+# Global invalid/missing object singleton\n+MISSING = _get_global_func(\"ffi.GetInvalidObject\", False)()\ndiff --git a/src/ffi/container.cc b/src/ffi/container.cc\nindex f3171a8..6ebc7c0 100644\n--- a/src/ffi/container.cc\n+++ b/src/ffi/container.cc\n@@ -153,14 +153,15 @@ TVM_FFI_STATIC_INIT_BLOCK() {\n            [](const ffi::MapObj* n) -> ffi::Function {\n              return ffi::Function::FromTyped(MapForwardIterFunctor(n->begin(), n->end()));\n            })\n-      .def(\"ffi.MapGetMissingObject\", GetMissingObject)\n-      .def(\"ffi.MapGetItemOrMissing\", [](const ffi::MapObj* n, const Any& k) -> Any {\n-        try {\n-          return n->at(k);\n-        } catch (const tvm::ffi::Error& e) {\n-          return GetMissingObject();\n-        }\n-      });\n+      .def(\"ffi.MapGetItemOrMissing\",\n+           [](const ffi::MapObj* n, const Any& k) -> Any {\n+             try {\n+               return n->at(k);\n+             } catch (const tvm::ffi::Error& e) {\n+               return GetMissingObject();\n+             }\n+           })\n+      .def(\"ffi.GetInvalidObject\", []() -> ObjectRef { return GetMissingObject(); });\n }\n }  // namespace ffi\n }  // namespace tvm\ndiff --git a/tests/python/test_container.py b/tests/python/test_container.py\nindex ec289cd..bb6384e 100644\n--- a/tests/python/test_container.py\n+++ b/tests/python/test_container.py\n@@ -23,6 +23,8 @@ from typing import Any\n import pytest\n import tvm_ffi\n from tvm_ffi import testing\n+from tvm_ffi.container import MISSING as CONTAINER_MISSING\n+from tvm_ffi.core import MISSING\n \n if sys.version_info >= (3, 9):\n     # PEP 585 generics\n@@ -499,3 +501,16 @@ def test_seq_cross_conv_incompatible_array_to_list() -> None:\n     arr = tvm_ffi.Array([\"not\", \"ints\"])\n     with pytest.raises(TypeError):\n         testing.schema_id_list_int(arr)  # type: ignore[arg-type]\n+\n+\n+def test_missing_object() -> None:\n+    \"\"\"Test that MISSING is a valid singleton and works with Map.get().\"\"\"\n+    # MISSING should be an Object instance\n+    assert isinstance(MISSING, tvm_ffi.Object)\n+    # MISSING should be the same object across imports\n+    assert MISSING.same_as(CONTAINER_MISSING)\n+    # Map.get() should use MISSING internally\n+    m = tvm_ffi.Map({\"a\": 1})\n+    assert m.get(\"a\") == 1\n+    assert m.get(\"b\") is None\n+    assert m.get(\"b\", 42) == 42",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".cc",
+      ".py",
+      ".pyi",
+      ".pyx"
+    ],
+    "scopes_guess": [
+      "python",
+      "src",
+      "tests"
+    ]
+  }
+}

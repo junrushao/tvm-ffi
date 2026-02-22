@@ -1,0 +1,118 @@
+{
+  "sha": "b1611e0cf669518dd01367806ab0bfda7b20841d",
+  "sha7": "b1611e0",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2026-02-03T10:50:25-05:00",
+  "subject": "[Error] Unify EnvErrorAlreadySet to error.kind (#425)",
+  "body":
+      "Previously we relied on a special error to handle EnvErrorAlreadySet,\nthis PR updates the behavior so that the Error being thrown can also\nhave kind EnvErrorAlreadySet, which indicate there is an interrupt. This\nallows the error handling behavior to be overall simpler and more\nconsistent, removing boliler plate in C++ exposure.\n\nABI impact: this change only impacts the downstream c++ usage that uses\nEnvErrorAlreadySet. The downstream DSLs and libraries are not impacted\nby this change.\n\nThe only usecase so far is tvm compiler autotuning service to propagate\nKeyboardInterrupt. Given the benefit and limited impact, we could\nconsider bring it in, since it simplifies the checking and throw logics\nin the function and further streamlines error handling.",
+  "is_merge": false,
+  "parents": [
+    "b50869806f26d57bf84f52d2d532c82b02d60b1b"
+  ],
+  "name_status": [
+    [
+      "M",
+      "docs/concepts/func_module.rst"
+    ],
+    [
+      "M",
+      "docs/guides/python_lang_guide.md"
+    ],
+    [
+      "M",
+      "examples/abi_overview/example_code.c"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/c_api.h"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/error.h"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/function.h"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/cython/error.pxi"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/cython/function.pxi"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/cython/type_info.pxi"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "docs/concepts/func_module.rst",
+      "additions": 9,
+      "deletions": 2
+    },
+    {
+      "path": "docs/guides/python_lang_guide.md",
+      "additions": 2,
+      "deletions": 2
+    },
+    {
+      "path": "examples/abi_overview/example_code.c",
+      "additions": 0,
+      "deletions": 4
+    },
+    {
+      "path": "include/tvm/ffi/c_api.h",
+      "additions": 0,
+      "deletions": 1
+    },
+    {
+      "path": "include/tvm/ffi/error.h",
+      "additions": 18,
+      "deletions": 20
+    },
+    {
+      "path": "include/tvm/ffi/function.h",
+      "additions": 0,
+      "deletions": 6
+    },
+    {
+      "path": "python/tvm_ffi/cython/error.pxi",
+      "additions": 6,
+      "deletions": 2
+    },
+    {
+      "path": "python/tvm_ffi/cython/function.pxi",
+      "additions": 9,
+      "deletions": 3
+    },
+    {
+      "path": "python/tvm_ffi/cython/type_info.pxi",
+      "additions": 10,
+      "deletions": 3
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/docs/concepts/func_module.rst b/docs/concepts/func_module.rst\nindex d354023..878819e 100644\n--- a/docs/concepts/func_module.rst\n+++ b/docs/concepts/func_module.rst\n@@ -225,7 +225,6 @@ that the caller must zero-initialize before the call.\n \n - **Error code 0**: Success\n - **Error code -1**: Error occurred, retrievable with :cpp:func:`TVMFFIErrorMoveFromRaised`\n-- **Error code -2**: Very rare frontend error\n \n .. hint::\n   See :doc:`Any <any>` for more details on the semantics of :cpp:type:`tvm::ffi::AnyView` and :cpp:type:`tvm::ffi::Any`.\n@@ -326,11 +325,19 @@ An :cpp:class:`~tvm::ffi::ErrorObj` is stored in thread-local storage (TLS) and\n with :cpp:func:`TVMFFIErrorMoveFromRaised`.\n \n - **Error code -1:** Retrieve the error from TLS, print it, and release via :cpp:func:`TVMFFIObjectDecRef`.\n-- **Error code -2:** A rare frontend error; consult the frontend's error mechanism instead of TLS.\n \n To raise an error, use :cpp:func:`TVMFFIErrorSetRaisedFromCStr` to set the TLS error and return ``-1``.\n For chains of calls, simply propagate return codes - TLS carries the error details.\n \n+\n+.. note::\n+\n+  In the very rare case, the error kind can be ``EnvErrorAlreadySet``,\n+  which indicates that an error has already been set in the frontend environment.\n+  In this case, the caller (python binding) should raise the error stored in the\n+  frontend environment. This is handled by the our python package so\n+  you generally do not need to handle this case explicitly.\n+\n See :ref:`abi-exception` for C code examples.\n \n \ndiff --git a/docs/guides/python_lang_guide.md b/docs/guides/python_lang_guide.md\nindex 7086576..1874159 100644\n--- a/docs/guides/python_lang_guide.md\n+++ b/docs/guides/python_lang_guide.md\n@@ -206,8 +206,8 @@ Traceback (most recent call last):\n File \"example.py\", line 7, in <module>\n   test_raise_error(\"ValueError\", \"message\")\n   ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^\n-File \"python/tvm_ffi/cython/function.pxi\", line 325, in core.Function.__call__\n-  raise move_from_last_error().py_error()\n+File \"python/tvm_ffi/cython/function.pxi\", line 927, in tvm_ffi.core.Function.__call__\n+  raise error.py_error()\n   ^^^\n File \"src/ffi/extra/testing.cc\", line 60, in void tvm::ffi::TestRaiseError(tvm::ffi::String, tvm::ffi::String)\n   throw ffi::Error(kind, msg, TVMFFITraceback(__FILE__, __LINE__, TVM_FFI_FUNC_SIG, 0));\ndiff --git a/examples/abi_overview/example_code.c b/examples/abi_overview/example_code.c\nindex 049ea93..659d55c 100644\n--- a/examples/abi_overview/example_code.c\n+++ b/examples/abi_overview/example_code.c\n@@ -273,10 +273,6 @@ void Error_HandleReturnCode(int rc) {\n       // IMPORTANT: Release the error object, or gets memory leaks\n       TVMFFIObjectDecRef(err);\n     }\n-  } else if (rc == -2) {\n-    // Frontend (e.g., Python) already has an exception set.\n-    // Do not fetch from TLS; consult the frontend's error mechanism.\n-    return;\n   }\n }\n // [Error.HandleReturnCode.end]\ndiff --git a/include/tvm/ffi/c_api.h b/include/tvm/ffi/c_api.h\nindex c02075b..30fc865 100644\n--- a/include/tvm/ffi/c_api.h\n+++ b/include/tvm/ffi/c_api.h\n@@ -436,7 +436,6 @@ typedef struct {\n  *  Possible return error of the API functions:\n  *  * 0: success\n  *  * -1: error happens, can be retrieved by TVMFFIErrorMoveFromRaised\n- *  * -2: a frontend error occurred and recorded in the frontend.\n  *\n  * \\note We decided to leverage TVMFFIErrorMoveFromRaised and TVMFFIErrorSetRaised\n  *  for C function error propagation. This design choice, while\ndiff --git a/include/tvm/ffi/error.h b/include/tvm/ffi/error.h\nindex b3c2cef..f1cfa21 100644\n--- a/include/tvm/ffi/error.h\n+++ b/include/tvm/ffi/error.h\n@@ -60,26 +60,6 @@\n namespace tvm {\n namespace ffi {\n \n-/*!\n- * \\brief Error already set in frontend env.\n- *\n- *  This error can be thrown by EnvCheckSignals to indicate\n- *  that there is an error set in the frontend environment(e.g.\n- *  python interpreter). The TVM FFI should catch this error\n- *  and return a proper code to tell the frontend caller about\n- *  this fact.\n- *\n- * \\code{.cpp}\n- * void ExampleLongRunningFunction() {\n- *   if (TVMFFIEnvCheckSignals() != 0) {\n- *     throw ::tvm::ffi::EnvErrorAlreadySet();\n- *   }\n- *   // do work here\n- * }\n- * \\endcode\n- */\n-struct EnvErrorAlreadySet : public std::exception {};\n-\n /*!\n  * \\brief Error object class.\n  */\n@@ -317,6 +297,24 @@ class Error : public ObjectRef, public std::exception {\n   /// \\endcond\n };\n \n+/*!\n+ * \\brief Error object for EnvErrorAlreadySet\n+ *\n+ *  This error can be thrown by EnvCheckSignals to indicate\n+ *  that there is an error set in the frontend environment(e.g.\n+ *  python interpreter).\n+ *\n+ * \\code{.cpp}\n+ * void ExampleLongRunningFunction() {\n+ *   if (TVMFFIEnvCheckSignals() != 0) {\n+ *     throw ::tvm::ffi::EnvErrorAlreadySet();\n+ *   }\n+ *   // do work here\n+ * }\n+ * \\endcode\n+ */\n+inline Error EnvErrorAlreadySet() { return Error(\"EnvErrorAlreadySet\", \"\", \"\"); }\n+\n namespace details {\n \n class ErrorBuilder {\ndiff --git a/include/tvm/ffi/function.h b/include/tvm/ffi/function.h\nindex 3043731..ef636ca 100644\n--- a/include/tvm/ffi/function.h\n+++ b/include/tvm/ffi/function.h\n@@ -82,9 +82,6 @@ namespace ffi {\n     ::tvm::ffi::details::SetSafeCallRaised(err);                                               \\\n     return -1;                                                                                 \\\n   }                                                                                            \\\n-  catch (const ::tvm::ffi::EnvErrorAlreadySet&) {                                              \\\n-    return -2;                                                                                 \\\n-  }                                                                                            \\\n   catch (const std::exception& ex) {                                                           \\\n     ::tvm::ffi::details::SetSafeCallRaised(::tvm::ffi::Error(\"InternalError\", ex.what(), \"\")); \\\n     return -1;                                                                                 \\\n@@ -104,9 +101,6 @@ namespace ffi {\n   {                                                        \\\n     int ret_code = (func);                                 \\\n     if (ret_code != 0) {                                   \\\n-      if (ret_code == -2) {                                \\\n-        throw ::tvm::ffi::EnvErrorAlreadySet();            \\\n-      }                                                    \\\n       throw ::tvm::ffi::details::MoveFromSafeCallRaised(); \\\n     }                                                      \\\n   }\ndiff --git a/python/tvm_ffi/cython/error.pxi b/python/tvm_ffi/cython/error.pxi\nindex d85cb87..5c56018 100644\n--- a/python/tvm_ffi/cython/error.pxi\n+++ b/python/tvm_ffi/cython/error.pxi\n@@ -153,7 +153,11 @@ cdef inline int CHECK_CALL(int ret) except -2:\n     \"\"\"Check the return code of the C API function call\"\"\"\n     if ret == 0:\n         return 0\n-    # -2 brings exception\n+    # backward compact with error already set case\n+    # TODO(tqchen): remove after we move beyond a few versions.\n     if ret == -2:\n         raise raise_existing_error()\n-    raise move_from_last_error().py_error()\n+    error = move_from_last_error()\n+    if error.kind == \"EnvErrorAlreadySet\":\n+        raise raise_existing_error()\n+    raise error.py_error()\ndiff --git a/python/tvm_ffi/cython/function.pxi b/python/tvm_ffi/cython/function.pxi\nindex 01a3366..ec1542d 100644\n--- a/python/tvm_ffi/cython/function.pxi\n+++ b/python/tvm_ffi/cython/function.pxi\n@@ -918,9 +918,15 @@ cdef class Function(Object):\n         # directly inline here to simplify the resulting trace\n         if c_api_ret_code == 0:\n             return make_ret(result, c_ctx_dlpack_api)\n-        elif c_api_ret_code == -2:\n-            raise_existing_error()\n-        raise move_from_last_error().py_error()\n+        # backward compact with error already set case\n+        # TODO(tqchen): remove after we move beyond a few versions.\n+        if c_api_ret_code == -2:\n+            raise raise_existing_error()\n+        # epecial handle env error already set\n+        error = move_from_last_error()\n+        if error.kind == \"EnvErrorAlreadySet\":\n+            raise raise_existing_error()\n+        raise error.py_error()\n \n     @staticmethod\n     def __from_extern_c__(\ndiff --git a/python/tvm_ffi/cython/type_info.pxi b/python/tvm_ffi/cython/type_info.pxi\nindex 093d8f7..870d052 100644\n--- a/python/tvm_ffi/cython/type_info.pxi\n+++ b/python/tvm_ffi/cython/type_info.pxi\n@@ -55,9 +55,16 @@ cdef class FieldSetter:\n         # directly inline here to simplify backtrace\n         if c_api_ret_code == 0:\n             return\n-        elif c_api_ret_code == -2:\n-            raise_existing_error()\n-        raise move_from_last_error().py_error()\n+        # backward compact with error already set case\n+        # TODO(tqchen): remove after we move beyond a few versions.\n+        if c_api_ret_code == -2:\n+            raise raise_existing_error()\n+        # epecial handle env error already set\n+        error = move_from_last_error()\n+        if error.kind == \"EnvErrorAlreadySet\":\n+            raise raise_existing_error()\n+        raise error.py_error()\n+\n \n _TYPE_SCHEMA_ORIGIN_CONVERTER = {\n     # A few Python-native types",
+  "heuristics": {
+    "tags": [],
+    "extensions": [
+      ".c",
+      ".h",
+      ".md",
+      ".pxi",
+      ".rst"
+    ],
+    "scopes_guess": [
+      "docs",
+      "examples",
+      "include",
+      "python"
+    ]
+  }
+}

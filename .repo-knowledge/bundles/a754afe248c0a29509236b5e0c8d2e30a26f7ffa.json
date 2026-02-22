@@ -1,0 +1,137 @@
+{
+  "sha": "a754afe248c0a29509236b5e0c8d2e30a26f7ffa",
+  "sha7": "a754afe",
+  "author_name": "Junru Shao",
+  "author_email": "junrushao@apache.org",
+  "date_iso": "2025-12-21T16:55:00-08:00",
+  "subject": "chore: Run examples on `main` commits (#353)",
+  "body": "",
+  "is_merge": false,
+  "parents": [
+    "ccd19f8202a980bd03501a62600e338fa883f80c"
+  ],
+  "name_status": [
+    [
+      "M",
+      ".github/workflows/ci_mainline_only.yml"
+    ],
+    [
+      "M",
+      "examples/packaging/README.md"
+    ],
+    [
+      "M",
+      "examples/packaging/pyproject.toml"
+    ],
+    [
+      "M",
+      "examples/packaging/run_example.py"
+    ],
+    [
+      "M",
+      "examples/quickstart/CMakeLists.txt"
+    ],
+    [
+      "M",
+      "examples/quickstart/README.md"
+    ],
+    [
+      "A",
+      "examples/quickstart/run_all_cpu.bat"
+    ],
+    [
+      "M",
+      "examples/stable_c_abi/CMakeLists.txt"
+    ],
+    [
+      "M",
+      "examples/stable_c_abi/README.md"
+    ],
+    [
+      "A",
+      "examples/stable_c_abi/run_all.bat"
+    ],
+    [
+      "M",
+      "examples/stable_c_abi/src/add_one_cpu.c"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": ".github/workflows/ci_mainline_only.yml",
+      "additions": 95,
+      "deletions": 0
+    },
+    {
+      "path": "examples/packaging/README.md",
+      "additions": 5,
+      "deletions": 8
+    },
+    {
+      "path": "examples/packaging/pyproject.toml",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "examples/packaging/run_example.py",
+      "additions": 11,
+      "deletions": 11
+    },
+    {
+      "path": "examples/quickstart/CMakeLists.txt",
+      "additions": 28,
+      "deletions": 18
+    },
+    {
+      "path": "examples/quickstart/README.md",
+      "additions": 27,
+      "deletions": 4
+    },
+    {
+      "path": "examples/quickstart/run_all_cpu.bat",
+      "additions": 38,
+      "deletions": 0
+    },
+    {
+      "path": "examples/stable_c_abi/CMakeLists.txt",
+      "additions": 24,
+      "deletions": 1
+    },
+    {
+      "path": "examples/stable_c_abi/README.md",
+      "additions": 20,
+      "deletions": 2
+    },
+    {
+      "path": "examples/stable_c_abi/run_all.bat",
+      "additions": 35,
+      "deletions": 0
+    },
+    {
+      "path": "examples/stable_c_abi/src/add_one_cpu.c",
+      "additions": 2,
+      "deletions": 2
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/.github/workflows/ci_mainline_only.yml b/.github/workflows/ci_mainline_only.yml\nindex c45a973..1912acb 100644\n--- a/.github/workflows/ci_mainline_only.yml\n+++ b/.github/workflows/ci_mainline_only.yml\n@@ -90,3 +90,98 @@ jobs:\n           linux_image: ${{ matrix.linux_image }}\n           checkout_ref: ${{ github.sha }}\n           build_sdist: ${{ matrix.build_sdist }}\n+\n+  examples:\n+    name: Run examples\n+    needs: [prepare]\n+    runs-on: ${{ matrix.os }}\n+    strategy:\n+      fail-fast: false\n+      matrix:\n+        include:\n+          - {os: ubuntu-latest, python_version: \"3.14\"}\n+          - {os: macos-14, python_version: \"3.13\"}\n+          - {os: windows-latest, python_version: \"3.12\"}\n+    steps:\n+      - uses: actions/checkout@v5\n+        with:\n+          submodules: recursive\n+          fetch-depth: 0\n+          fetch-tags: true\n+\n+      - name: Set up uv\n+        uses: astral-sh/setup-uv@b75a909f75acd358c2196fb9a5f1299a9a8868a4  # v6.7.0\n+        with:\n+          python-version: ${{ matrix.python_version }}\n+          activate-environment: true\n+\n+      - uses: ./.github/actions/detect-env-vars\n+        id: env_vars\n+\n+      - name: Install dependencies for examples\n+        env:\n+          CMAKE_BUILD_PARALLEL_LEVEL: ${{ steps.env_vars.outputs.cpu_count }}\n+        run: |\n+          uv pip install --reinstall --verbose -e \".[torch]\"\n+          uv pip install --reinstall --verbose numpy scikit-build-core torch-c-dlpack-ext\n+\n+      - name: Run example/quickstart (CPU) [posix]\n+        if: ${{ runner.os != 'Windows' }}\n+        env:\n+          CMAKE_BUILD_PARALLEL_LEVEL: ${{ steps.env_vars.outputs.cpu_count }}\n+        run: |\n+          pushd examples/quickstart\n+          rm -rf build\n+          bash run_all_cpu.sh\n+          popd\n+\n+      - name: Run example/quickstart (CPU) [windows]\n+        if: ${{ runner.os == 'Windows' }}\n+        shell: cmd\n+        env:\n+          CMAKE_BUILD_PARALLEL_LEVEL: ${{ steps.env_vars.outputs.cpu_count }}\n+        run: |\n+          cd examples\\quickstart\n+          call run_all_cpu.bat\n+\n+      - name: Run example/stable_c_abi [posix]\n+        if: ${{ runner.os != 'Windows' }}\n+        env:\n+          CMAKE_BUILD_PARALLEL_LEVEL: ${{ steps.env_vars.outputs.cpu_count }}\n+        run: |\n+          pushd examples/stable_c_abi\n+          rm -rf build\n+          bash run_all.sh\n+          popd\n+\n+      - name: Run example/stable_c_abi [windows]\n+        if: ${{ runner.os == 'Windows' }}\n+        shell: cmd\n+        env:\n+          CMAKE_BUILD_PARALLEL_LEVEL: ${{ steps.env_vars.outputs.cpu_count }}\n+        run: |\n+          cd examples\\stable_c_abi\n+          call run_all.bat\n+\n+      - name: Run example/packaging [posix]\n+        if: ${{ runner.os != 'Windows' }}\n+        env:\n+          CMAKE_BUILD_PARALLEL_LEVEL: ${{ steps.env_vars.outputs.cpu_count }}\n+        run: |\n+          pushd examples/packaging\n+          # This directory will be auto-generated in `CMakeLists.txt` by setting `STUB_INIT ON`\n+          rm -rf python/my_ffi_extension\n+          uv pip install --verbose . --no-build-isolation\n+          python run_example.py\n+          popd\n+\n+      - name: Run example/packaging [windows]\n+        if: ${{ runner.os == 'Windows' }}\n+        shell: pwsh\n+        env:\n+          CMAKE_BUILD_PARALLEL_LEVEL: ${{ steps.env_vars.outputs.cpu_count }}\n+        run: |\n+          Set-Location examples/packaging\n+          Remove-Item -Recurse -Force python/my_ffi_extension\n+          uv pip install --verbose . --no-build-isolation\n+          python run_example.py\ndiff --git a/examples/packaging/README.md b/examples/packaging/README.md\nindex b161fe7..96d0939 100644\n--- a/examples/packaging/README.md\n+++ b/examples/packaging/README.md\n@@ -28,9 +28,11 @@ packaging as well.\n \n ## Install the wheel\n \n+Use `uv pip` (the same tooling used in CI) to build and install the example wheel:\n+\n ```bash\n cd examples/packaging\n-pip install .\n+uv pip install --reinstall --verbose .\n ```\n \n ### Note on build and auditwheel\n@@ -44,15 +46,10 @@ After installing the `my_ffi_extension` example package, you can run the followi\n that invokes the `add_one` function exposed.\n \n ```bash\n-python run_example.py add_one\n+python run_example.py\n ```\n \n-You can also run the following command to see how error is raised and propagated\n-across the language boundaries.\n-\n-```bash\n-python run_example.py raise_error\n-```\n+This runs three flows: calling `add_one`, demonstrating `raise_error` with a propagated traceback, and constructing/using the `IntPair` object.\n \n When possible, tvm_ffi will try to preserve backtrace across language boundary. You will see output like\n \ndiff --git a/examples/packaging/pyproject.toml b/examples/packaging/pyproject.toml\nindex 7825ca8..7385120 100644\n--- a/examples/packaging/pyproject.toml\n+++ b/examples/packaging/pyproject.toml\n@@ -48,7 +48,7 @@ build.verbose = true\n \n # CMake configuration\n cmake.version = \"CMakeLists.txt\"\n-cmake.build-type = \"RelWithDebugInfo\"\n+cmake.build-type = \"RelWithDebInfo\"\n \n # Logging\n logging.level = \"INFO\"\ndiff --git a/examples/packaging/run_example.py b/examples/packaging/run_example.py\nindex 3f3e636..94c90b0 100644\n--- a/examples/packaging/run_example.py\n+++ b/examples/packaging/run_example.py\n@@ -16,7 +16,7 @@\n # Base logic to load library for extension package\n \"\"\"Run functions from the example packaged tvm-ffi extension.\"\"\"\n \n-import sys\n+import traceback\n \n import my_ffi_extension\n import torch\n@@ -24,6 +24,7 @@ import torch\n \n def run_add_one() -> None:\n     \"\"\"Invoke add_one from the extension and print the result.\"\"\"\n+    print(\"=========== Example 1: add_one ===========\")\n     x = torch.tensor([1, 2, 3, 4, 5], dtype=torch.float32)\n     y = torch.empty_like(x)\n     my_ffi_extension.LIB.add_one(x, y)\n@@ -32,23 +33,22 @@ def run_add_one() -> None:\n \n def run_raise_error() -> None:\n     \"\"\"Invoke raise_error from the extension to demonstrate error handling.\"\"\"\n-    my_ffi_extension.raise_error(\"This is an error\")\n+    print(\"=========== Example 2: raise_error ===========\")\n+    try:\n+        my_ffi_extension.raise_error(\"This is an error\")\n+    except RuntimeError:\n+        traceback.print_exc()\n \n \n def run_int_pair() -> None:\n     \"\"\"Invoke IntPair from the extension to demonstrate object handling.\"\"\"\n+    print(\"=========== Example 3: IntPair ===========\")\n     pair = my_ffi_extension.IntPair(1, 2)\n     print(f\"first={pair.get_first()}\")\n     print(f\"second={my_ffi_extension.IntPair.static_get_second(pair)}\")\n \n \n if __name__ == \"__main__\":\n-    if len(sys.argv) > 1:\n-        if sys.argv[1] == \"add_one\":\n-            run_add_one()\n-        elif sys.argv[1] == \"int_pair\":\n-            run_int_pair()\n-        elif sys.argv[1] == \"raise_error\":\n-            run_raise_error()\n-    else:\n-        print(\"Usage: python run_example.py <add_one|int_pair|raise_error>\")\n+    run_add_one()\n+    run_raise_error()\n+    run_int_pair()\ndiff --git a/examples/quickstart/CMakeLists.txt b/examples/quickstart/CMakeLists.txt\nindex ba2d7a4..eaf7659 100644\n--- a/examples/quickstart/CMakeLists.txt\n+++ b/examples/quickstart/CMakeLists.txt\n@@ -22,6 +22,29 @@ option(EXAMPLE_NAME \"Which example to build ('compile_cpu'/'compile_cuda'/'load_\n )\n message(STATUS \"Building example: ${EXAMPLE_NAME}\")\n \n+# cmake-lint: disable=C0111\n+function (set_flat_output_dirs target_name)\n+  set(output_dir \"${CMAKE_BINARY_DIR}\")\n+  # Ensure multi-config generators (e.g., MSVC) output to the same flat directory.\n+  foreach (config IN ITEMS \"\" DEBUG RELEASE RELWITHDEBINFO MINSIZEREL)\n+    if (config STREQUAL \"\")\n+      set_property(TARGET ${target_name} PROPERTY RUNTIME_OUTPUT_DIRECTORY \"${output_dir}\")\n+      set_property(TARGET ${target_name} PROPERTY LIBRARY_OUTPUT_DIRECTORY \"${output_dir}\")\n+      set_property(TARGET ${target_name} PROPERTY ARCHIVE_OUTPUT_DIRECTORY \"${output_dir}\")\n+    else ()\n+      set_property(\n+        TARGET ${target_name} PROPERTY RUNTIME_OUTPUT_DIRECTORY_${config} \"${output_dir}\"\n+      )\n+      set_property(\n+        TARGET ${target_name} PROPERTY LIBRARY_OUTPUT_DIRECTORY_${config} \"${output_dir}\"\n+      )\n+      set_property(\n+        TARGET ${target_name} PROPERTY ARCHIVE_OUTPUT_DIRECTORY_${config} \"${output_dir}\"\n+      )\n+    endif ()\n+  endforeach ()\n+endfunction ()\n+\n # Run `tvm_ffi.config --cmakedir` to find tvm-ffi package\n find_package(\n   Python\n@@ -40,34 +63,21 @@ if (EXAMPLE_NAME STREQUAL \"compile_cpu\")\n   add_library(add_one_cpu SHARED compile/add_one_cpu.cc)\n   target_link_libraries(add_one_cpu PRIVATE tvm_ffi_header)\n   target_link_libraries(add_one_cpu PRIVATE tvm_ffi_shared)\n-  set_target_properties(\n-    add_one_cpu\n-    PROPERTIES LIBRARY_OUTPUT_DIRECTORY \"${CMAKE_BINARY_DIR}/\"\n-               PREFIX \"\"\n-               SUFFIX \".so\"\n-  )\n+  set_target_properties(add_one_cpu PROPERTIES PREFIX \"\" SUFFIX \".so\")\n+  set_flat_output_dirs(add_one_cpu)\n elseif (EXAMPLE_NAME STREQUAL \"compile_cuda\")\n   # Example 2. CUDA `add_one`\n   enable_language(CUDA)\n   add_library(add_one_cuda SHARED compile/add_one_cuda.cu)\n   target_link_libraries(add_one_cuda PRIVATE tvm_ffi_shared)\n-  set_target_properties(\n-    add_one_cuda\n-    PROPERTIES LIBRARY_OUTPUT_DIRECTORY \"${CMAKE_BINARY_DIR}/\"\n-               PREFIX \"\"\n-               SUFFIX \".so\"\n-  )\n+  set_target_properties(add_one_cuda PROPERTIES PREFIX \"\" SUFFIX \".so\")\n+  set_flat_output_dirs(add_one_cuda)\n elseif (EXAMPLE_NAME STREQUAL \"load_cpp\")\n   # Example 3. Load C++ shared library\n   add_executable(load_cpp load/load_cpp.cc)\n   target_link_libraries(load_cpp PRIVATE tvm_ffi_header)\n   target_link_libraries(load_cpp PRIVATE tvm_ffi_shared)\n-  set_target_properties(\n-    load_cpp\n-    PROPERTIES LIBRARY_OUTPUT_DIRECTORY \"${CMAKE_BINARY_DIR}/\"\n-               PREFIX \"\"\n-               SUFFIX \"\"\n-  )\n+  set_flat_output_dirs(load_cpp)\n else ()\n   message(FATAL_ERROR \"Unknown EXAMPLE_NAME option: ${EXAMPLE_NAME}. \"\n                       \"Expected: 'compile_cpu', 'compile_cuda', 'load_cpp'.\"\ndiff --git a/examples/quickstart/README.md b/examples/quickstart/README.md\nindex 4e515cc..1c23eca 100644\n--- a/examples/quickstart/README.md\n+++ b/examples/quickstart/README.md\n@@ -19,7 +19,21 @@\n \n This directory contains all the source code for [tutorial](https://tvm.apache.org/ffi/get_started/quickstart.html).\n \n-## Compile and Distribute `add_one_*`\n+## Run everything (CPU path)\n+\n+On Linux/macOS:\n+\n+```bash\n+bash run_all_cpu.sh\n+```\n+\n+On Windows:\n+\n+```batch\n+run_all_cpu.bat\n+```\n+\n+## Compile and Distribute `add_one_*` manually\n \n To compile the C++ Example:\n \n@@ -28,7 +42,9 @@ cmake . -B build -DEXAMPLE_NAME=\"compile_cpu\" -DCMAKE_BUILD_TYPE=RelWithDebInfo\n cmake --build build --config RelWithDebInfo\n ```\n \n-To compile CUDA Example:\n+This produces `build/add_one_cpu.so`.\n+\n+To compile CUDA Example (Linux with CUDA toolchain available):\n \n ```bash\n cmake . -B build -DEXAMPLE_NAME=\"compile_cuda\" -DCMAKE_BUILD_TYPE=RelWithDebInfo\n@@ -37,11 +53,10 @@ cmake --build build --config RelWithDebInfo\n \n ## Load the Distributed `add_one_*`\n \n-To run library loading examples across ML frameworks:\n+To run library loading examples across ML frameworks (requires CUDA for the CUDA example):\n \n ```bash\n python load/load_pytorch.py\n-python load/load_jax.py\n python load/load_numpy.py\n python load/load_cupy.py\n ```\n@@ -53,3 +68,11 @@ cmake . -B build -DEXAMPLE_NAME=\"load_cpp\" -DCMAKE_BUILD_TYPE=RelWithDebInfo\n cmake --build build --config RelWithDebInfo\n build/load_cpp\n ```\n+\n+The executable is emitted as `build/load_cpp` (`build/load_cpp.exe` on Windows).\n+\n+For a CUDA end-to-end run, use:\n+\n+```bash\n+bash run_all_cuda.sh\n+```\ndiff --git a/examples/quickstart/run_all_cpu.bat b/examples/quickstart/run_all_cpu.bat\nnew file mode 100644\nindex 0000000..5ce731c\n--- /dev/null\n+++ b/examples/quickstart/run_all_cpu.bat\n@@ -0,0 +1,38 @@\n+@echo off\n+rem Licensed to the Apache Software Foundation (ASF) under one\n+rem or more contributor license agreements.  See the NOTICE file\n+rem distributed with this work for additional information\n+rem regarding copyright ownership.  The ASF licenses this file\n+rem to you under the Apache License, Version 2.0 (the\n+rem \"License\"); you may not use this file except in compliance\n+rem with the License.  You may obtain a copy of the License at\n+rem\n+rem   http://www.apache.org/licenses/LICENSE-2.0\n+rem\n+rem Unless required by applicable law or agreed to in writing,\n+rem software distributed under the License is distributed on an\n+rem \"AS IS\" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY\n+rem KIND, either express or implied.  See the License for the\n+rem specific language governing permissions and limitations\n+rem under the License.\n+\n+setlocal enabledelayedexpansion\n+cd /d \"%~dp0\"\n+\n+if exist build rmdir /s /q build\n+\n+rem To compile `compile/add_one_cpu.cc` to shared library `build/add_one_cpu.so`\n+cmake . -B build -DEXAMPLE_NAME=\"compile_cpu\" -DCMAKE_BUILD_TYPE=RelWithDebInfo\n+cmake --build build --config RelWithDebInfo\n+\n+rem To load and run `add_one_cpu.so` in NumPy\n+python load\\load_numpy.py\n+\n+rem To load and run `add_one_cpu.so` in C++\n+for /f \"delims=\" %%i in ('python -c \"from tvm_ffi import libinfo; import pathlib; print(pathlib.Path(libinfo.find_libtvm_ffi()).parent)\"') do set \"TVM_FFI_LIBDIR=%%i\"\n+set \"PATH=%TVM_FFI_LIBDIR%;%PATH%\"\n+cmake . -B build -DEXAMPLE_NAME=\"load_cpp\" -DCMAKE_BUILD_TYPE=RelWithDebInfo\n+cmake --build build --config RelWithDebInfo\n+build\\load_cpp.exe\n+\n+endlocal\ndiff --git a/examples/stable_c_abi/CMakeLists.txt b/examples/stable_c_abi/CMakeLists.txt\nindex 81bbd1d..a313034 100644\n--- a/examples/stable_c_abi/CMakeLists.txt\n+++ b/examples/stable_c_abi/CMakeLists.txt\n@@ -20,6 +20,28 @@ project(tvm_ffi_example LANGUAGES C)\n option(EXAMPLE_NAME \"Which example to build ('kernel'/'load')\" \"kernel\")\n message(STATUS \"Building example: ${EXAMPLE_NAME}\")\n \n+# cmake-lint: disable=C0111\n+function (set_flat_output_dirs target_name)\n+  set(output_dir \"${CMAKE_BINARY_DIR}\")\n+  foreach (config IN ITEMS \"\" DEBUG RELEASE RELWITHDEBINFO MINSIZEREL)\n+    if (config STREQUAL \"\")\n+      set_property(TARGET ${target_name} PROPERTY RUNTIME_OUTPUT_DIRECTORY \"${output_dir}\")\n+      set_property(TARGET ${target_name} PROPERTY LIBRARY_OUTPUT_DIRECTORY \"${output_dir}\")\n+      set_property(TARGET ${target_name} PROPERTY ARCHIVE_OUTPUT_DIRECTORY \"${output_dir}\")\n+    else ()\n+      set_property(\n+        TARGET ${target_name} PROPERTY RUNTIME_OUTPUT_DIRECTORY_${config} \"${output_dir}\"\n+      )\n+      set_property(\n+        TARGET ${target_name} PROPERTY LIBRARY_OUTPUT_DIRECTORY_${config} \"${output_dir}\"\n+      )\n+      set_property(\n+        TARGET ${target_name} PROPERTY ARCHIVE_OUTPUT_DIRECTORY_${config} \"${output_dir}\"\n+      )\n+    endif ()\n+  endforeach ()\n+endfunction ()\n+\n # Run `tvm_ffi.config --cmakedir` to find tvm-ffi package\n find_package(\n   Python\n@@ -47,6 +69,7 @@ if (EXAMPLE_NAME STREQUAL \"kernel\")\n                C_STANDARD_REQUIRED YES\n                C_EXTENSIONS NO\n   )\n+  set_flat_output_dirs(add_one_cpu)\n elseif (EXAMPLE_NAME STREQUAL \"load\")\n   # Example 2. Load `add_one_cpu` shared library in C\n   add_executable(load src/load.c)\n@@ -56,11 +79,11 @@ elseif (EXAMPLE_NAME STREQUAL \"load\")\n     load\n     PROPERTIES LIBRARY_OUTPUT_DIRECTORY \"${CMAKE_BINARY_DIR}/\"\n                PREFIX \"\"\n-               SUFFIX \"\"\n                C_STANDARD 11\n                C_STANDARD_REQUIRED YES\n                C_EXTENSIONS NO\n   )\n+  set_flat_output_dirs(load)\n else ()\n   message(FATAL_ERROR \"Unknown EXAMPLE_NAME option: ${EXAMPLE_NAME}. \"\n                       \"Expected: 'kernel' or 'load'.\"\ndiff --git a/examples/stable_c_abi/README.md b/examples/stable_c_abi/README.md\nindex 3a93a7d..494c7f1 100644\n--- a/examples/stable_c_abi/README.md\n+++ b/examples/stable_c_abi/README.md\n@@ -19,7 +19,21 @@\n \n This directory contains all the source code for [tutorial](https://tvm.apache.org/ffi/get_started/stable_c_abi.html).\n \n-## Compile and Distribute `add_one_cpu`\n+## Run everything\n+\n+On Linux/macOS:\n+\n+```bash\n+bash run_all.sh\n+```\n+\n+On Windows:\n+\n+```batch\n+run_all.bat\n+```\n+\n+## Compile and Distribute `add_one_cpu` manually\n \n To compile the C Example:\n \n@@ -28,7 +42,9 @@ cmake . -B build -DEXAMPLE_NAME=\"kernel\" -DCMAKE_BUILD_TYPE=RelWithDebInfo\n cmake --build build --config RelWithDebInfo\n ```\n \n-## Load the Distributed `add_one_cpu`\n+This produces `build/add_one_cpu.so`.\n+\n+## Load the Distributed `add_one_cpu` manually\n \n To run library loading example in C:\n \n@@ -37,3 +53,5 @@ cmake . -B build -DEXAMPLE_NAME=\"load\" -DCMAKE_BUILD_TYPE=RelWithDebInfo\n cmake --build build --config RelWithDebInfo\n build/load\n ```\n+\n+The executable is emitted as `build/load` (`build/load.exe` on Windows).\ndiff --git a/examples/stable_c_abi/run_all.bat b/examples/stable_c_abi/run_all.bat\nnew file mode 100644\nindex 0000000..4a15f54\n--- /dev/null\n+++ b/examples/stable_c_abi/run_all.bat\n@@ -0,0 +1,35 @@\n+@echo off\n+rem Licensed to the Apache Software Foundation (ASF) under one\n+rem or more contributor license agreements.  See the NOTICE file\n+rem distributed with this work for additional information\n+rem regarding copyright ownership.  The ASF licenses this file\n+rem to you under the Apache License, Version 2.0 (the\n+rem \"License\"); you may not use this file except in compliance\n+rem with the License.  You may obtain a copy of the License at\n+rem\n+rem   http://www.apache.org/licenses/LICENSE-2.0\n+rem\n+rem Unless required by applicable law or agreed to in writing,\n+rem software distributed under the License is distributed on an\n+rem \"AS IS\" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY\n+rem KIND, either express or implied.  See the License for the\n+rem specific language governing permissions and limitations\n+rem under the License.\n+\n+setlocal enabledelayedexpansion\n+cd /d \"%~dp0\"\n+\n+if exist build rmdir /s /q build\n+\n+rem To compile `src/add_one_cpu.c` to shared library `build/add_one_cpu.so`\n+cmake . -B build -DEXAMPLE_NAME=\"kernel\" -DCMAKE_BUILD_TYPE=RelWithDebInfo\n+cmake --build build --config RelWithDebInfo\n+\n+rem To compile `src/load.c` to executable `build/load`\n+for /f \"delims=\" %%i in ('python -c \"from tvm_ffi import libinfo; import pathlib; print(pathlib.Path(libinfo.find_libtvm_ffi()).parent)\"') do set \"TVM_FFI_LIBDIR=%%i\"\n+set \"PATH=%TVM_FFI_LIBDIR%;%PATH%\"\n+cmake . -B build -DEXAMPLE_NAME=\"load\" -DCMAKE_BUILD_TYPE=RelWithDebInfo\n+cmake --build build --config RelWithDebInfo\n+build\\load.exe\n+\n+endlocal\ndiff --git a/examples/stable_c_abi/src/add_one_cpu.c b/examples/stable_c_abi/src/add_one_cpu.c\nindex f273014..9a6cc27 100644\n--- a/examples/stable_c_abi/src/add_one_cpu.c\n+++ b/examples/stable_c_abi/src/add_one_cpu.c\n@@ -24,8 +24,8 @@\n // clang-format off\n // [example.begin]\n // File: src/add_one_cpu.cc\n-TVM_FFI_DLL int __tvm_ffi_add_one_cpu(void* handle, const TVMFFIAny* args, int32_t num_args,\n-                                      TVMFFIAny* result) {\n+TVM_FFI_DLL_EXPORT int __tvm_ffi_add_one_cpu(void* handle, const TVMFFIAny* args,\n+                                             int32_t num_args, TVMFFIAny* result) {\n   // Step 1. Extract inputs from `Any`\n   // Step 1.1. Extract `x := args[0]`\n   DLTensor* x;",
+  "heuristics": {
+    "tags": [
+      "build",
+      "ci"
+    ],
+    "extensions": [
+      ".bat",
+      ".c",
+      ".md",
+      ".py",
+      ".toml",
+      ".txt",
+      ".yml"
+    ],
+    "scopes_guess": [
+      "examples"
+    ]
+  }
+}

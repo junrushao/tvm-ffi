@@ -1,0 +1,72 @@
+{
+  "sha": "86bbddfdbaa9103016e3f39633b8b2402ea24428",
+  "sha7": "86bbddf",
+  "author_name": "Nan",
+  "author_email": "hydzhang@hotmail.com",
+  "date_iso": "2026-01-08T17:49:37+08:00",
+  "subject":
+      "feat: Add overflow check for uint64_t/size_t in TypeTraits<Int>::CopyToAnyView (#370)",
+  "body":
+      "Related discussion here  #357 \nAdds runtime overflow detection when converting unsigned 64-bit integers\n([uint64_t or\nsize_t](https://stackoverflow.com/questions/73820966/stdis-same-vsize-t-uint64-t-evaluates-to-false-when-both-types-are-8-by\n)) to int64_t in TVM FFI Any. \n\n\n128-bit signed integers (if exists) are not considered.\n\n---------\n\nCo-authored-by: Junru Shao <junrushao@apache.org>",
+  "is_merge": false,
+  "parents": [
+    "4a8a0b01f45f726147cbf75742d6b772eceab369"
+  ],
+  "name_status": [
+    [
+      "M",
+      "include/tvm/ffi/type_traits.h"
+    ],
+    [
+      "M",
+      "src/ffi/extra/structural_hash.cc"
+    ],
+    [
+      "M",
+      "tests/cpp/test_any.cc"
+    ],
+    [
+      "M",
+      "tests/cpp/testing_object.h"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "include/tvm/ffi/type_traits.h",
+      "additions": 8,
+      "deletions": 0
+    },
+    {
+      "path": "src/ffi/extra/structural_hash.cc",
+      "additions": 18,
+      "deletions": 6
+    },
+    {
+      "path": "tests/cpp/test_any.cc",
+      "additions": 16,
+      "deletions": 0
+    },
+    {
+      "path": "tests/cpp/testing_object.h",
+      "additions": 2,
+      "deletions": 3
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/include/tvm/ffi/type_traits.h b/include/tvm/ffi/type_traits.h\nindex 437dcd9..1fd1304 100644\n--- a/include/tvm/ffi/type_traits.h\n+++ b/include/tvm/ffi/type_traits.h\n@@ -28,6 +28,7 @@\n #include <tvm/ffi/error.h>\n #include <tvm/ffi/object.h>\n \n+#include <limits>\n #include <string>\n #include <type_traits>\n #include <utility>\n@@ -279,6 +280,13 @@ struct TypeTraits<Int, std::enable_if_t<std::is_integral_v<Int>>> : public TypeT\n   static constexpr int32_t field_static_type_index = TypeIndex::kTVMFFIInt;\n \n   TVM_FFI_INLINE static void CopyToAnyView(const Int& src, TVMFFIAny* result) {\n+    if constexpr (std::is_unsigned_v<Int> && sizeof(Int) >= sizeof(int64_t)) {\n+      if (src > static_cast<Int>(std::numeric_limits<int64_t>::max())) {\n+        TVM_FFI_THROW(OverflowError)\n+            << \"Integer value \" << src << \" is too large to fit in int64_t. \"\n+            << \"Consider explicitly casting to int64_t first if this is intentional.\";\n+      }\n+    }\n     result->type_index = TypeIndex::kTVMFFIInt;\n     result->zero_padding = 0;\n     result->v_int64 = static_cast<int64_t>(src);\ndiff --git a/src/ffi/extra/structural_hash.cc b/src/ffi/extra/structural_hash.cc\nindex 271a0db..5bb9eb1 100644\n--- a/src/ffi/extra/structural_hash.cc\n+++ b/src/ffi/extra/structural_hash.cc\n@@ -150,15 +150,19 @@ class StructuralHashHandler {\n                 std::swap(allow_free_var, map_free_vars_);\n                 uint64_t hash_value = HashAny(val);\n                 std::swap(allow_free_var, map_free_vars_);\n-                return details::StableHashCombine(init_hash, hash_value);\n+                return static_cast<int64_t>(details::StableHashCombine(init_hash, hash_value));\n               } else {\n-                return details::StableHashCombine(init_hash, HashAny(val));\n+                // we explicitly bitcast the result from `uint64_t` to `int64_t`.\n+                // The range of `uint64_t` is too large to fit as `int64_t`, so if we don't bitcast,\n+                // it will trigger an overflow error in `uint64_t` -> `Any` conversion.\n+                return static_cast<int64_t>(details::StableHashCombine(init_hash, HashAny(val)));\n               }\n             });\n       }\n-      hash_value = custom_s_hash[type_info->type_index]\n-                       .cast<ffi::Function>()(obj, hash_value, s_hash_callback_)\n-                       .cast<uint64_t>();\n+      hash_value =\n+          custom_s_hash[type_info->type_index]\n+              .cast<ffi::Function>()(obj, static_cast<int64_t>(hash_value), s_hash_callback_)\n+              .cast<uint64_t>();\n     }\n \n     if (structural_eq_hash_kind == kTVMFFISEqHashKindFreeVar) {\n@@ -311,9 +315,17 @@ uint64_t StructuralHash::Hash(const Any& value, bool map_free_vars, bool skip_te\n   return handler.HashAny(value);\n }\n \n+static int64_t FFIStructuralHash(const Any& value, bool map_free_vars, bool skip_tensor_content) {\n+  uint64_t result = StructuralHash::Hash(value, map_free_vars, skip_tensor_content);\n+  // we explicitly bitcast the result from `uint64_t` to `int64_t`.\n+  // The range of `uint64_t` is too large to fit as `int64_t`, so if we don't bitcast,\n+  // it will trigger an overflow error in `uint64_t` -> `Any` conversion.\n+  return static_cast<int64_t>(result);\n+}\n+\n TVM_FFI_STATIC_INIT_BLOCK() {\n   namespace refl = tvm::ffi::reflection;\n-  refl::GlobalDef().def(\"ffi.StructuralHash\", StructuralHash::Hash);\n+  refl::GlobalDef().def(\"ffi.StructuralHash\", FFIStructuralHash);\n   refl::EnsureTypeAttrColumn(\"__s_hash__\");\n }\n \ndiff --git a/tests/cpp/test_any.cc b/tests/cpp/test_any.cc\nindex 55abbbf..c29ad5c 100644\n--- a/tests/cpp/test_any.cc\n+++ b/tests/cpp/test_any.cc\n@@ -20,6 +20,8 @@\n #include <tvm/ffi/any.h>\n #include <tvm/ffi/memory.h>\n \n+#include <limits>\n+\n #include \"./testing_object.h\"\n \n namespace {\n@@ -58,6 +60,20 @@ TEST(Any, Int) {\n   view0 = v1;\n   EXPECT_EQ(view0.CopyToTVMFFIAny().type_index, TypeIndex::kTVMFFIInt);\n   EXPECT_EQ(view0.CopyToTVMFFIAny().v_int64, 2);\n+\n+  uint64_t v2 = static_cast<uint64_t>(std::numeric_limits<int64_t>::max()) + 1;\n+  EXPECT_THROW(\n+      {\n+        try {\n+          view0 = v2;\n+        } catch (const Error& error) {\n+          EXPECT_EQ(error.kind(), \"OverflowError\");\n+          std::string what = error.what();\n+          EXPECT_NE(what.find(\"is too large to fit in int64_t\"), std::string::npos);\n+          throw;\n+        }\n+      },\n+      ::tvm::ffi::Error);\n }\n \n TEST(Any, Enum) {\ndiff --git a/tests/cpp/testing_object.h b/tests/cpp/testing_object.h\nindex 933ba99..318aa11 100644\n--- a/tests/cpp/testing_object.h\n+++ b/tests/cpp/testing_object.h\n@@ -233,9 +233,8 @@ class TCustomFuncObj : public Object {\n     return true;\n   }\n \n-  uint64_t SHash(uint64_t init_hash,\n-                 ffi::TypedFunction<uint64_t(AnyView, uint64_t, bool)> hash) const {\n-    uint64_t hash_value = init_hash;\n+  int64_t SHash(int64_t init_hash, ffi::TypedFunction<int64_t(AnyView, int64_t, bool)> hash) const {\n+    int64_t hash_value = init_hash;\n     hash_value = hash(params, hash_value, true);\n     hash_value = hash(body, hash_value, false);\n     return hash_value;",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".cc",
+      ".h"
+    ],
+    "scopes_guess": [
+      "include",
+      "src",
+      "tests"
+    ]
+  }
+}

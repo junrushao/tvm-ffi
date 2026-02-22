@@ -1,0 +1,39 @@
+{
+  "sha": "692a41a3a221897501e145a0c102ab8b055bc1e7",
+  "sha7": "692a41a",
+  "author_name": "Yaxing Cai",
+  "author_email": "caiyaxing666@gmail.com",
+  "date_iso": "2026-01-13T02:02:22+08:00",
+  "subject": "fix: add unified_api.h include to device_guard.h (#405)",
+  "body":
+      "The `include/tvm/ffi/extra/cuda/device_guard.h` misses `#include\n<tvm/ffi/extra/cuda/internal/unified_api.h>` after #300, would cause\n`TVM_FFI_CHECK_CUDA_ERROR` undefined error.",
+  "is_merge": false,
+  "parents": [
+    "a78ef906f37a086054bc52cf212630cfd76516fb"
+  ],
+  "name_status": [
+    [
+      "M",
+      "include/tvm/ffi/extra/cuda/device_guard.h"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "include/tvm/ffi/extra/cuda/device_guard.h",
+      "additions": 1,
+      "deletions": 1
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/include/tvm/ffi/extra/cuda/device_guard.h b/include/tvm/ffi/extra/cuda/device_guard.h\nindex 0158688..1b44cf6 100644\n--- a/include/tvm/ffi/extra/cuda/device_guard.h\n+++ b/include/tvm/ffi/extra/cuda/device_guard.h\n@@ -23,7 +23,7 @@\n #ifndef TVM_FFI_EXTRA_CUDA_DEVICE_GUARD_H_\n #define TVM_FFI_EXTRA_CUDA_DEVICE_GUARD_H_\n \n-#include <tvm/ffi/extra/cuda/base.h>\n+#include <tvm/ffi/extra/cuda/internal/unified_api.h>\n \n namespace tvm {\n namespace ffi {",
+  "heuristics": {
+    "tags": [],
+    "extensions": [
+      ".h"
+    ],
+    "scopes_guess": [
+      "include"
+    ]
+  }
+}

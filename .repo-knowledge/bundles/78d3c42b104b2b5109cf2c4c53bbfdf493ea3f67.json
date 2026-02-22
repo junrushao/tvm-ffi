@@ -1,0 +1,52 @@
+{
+  "sha": "78d3c42b104b2b5109cf2c4c53bbfdf493ea3f67",
+  "sha7": "78d3c42",
+  "author_name": "Junru Shao",
+  "author_email": "junrushao@apache.org",
+  "date_iso": "2025-10-15T15:04:30-07:00",
+  "subject": "chore: Upgrade Python dependency (#135)",
+  "body":
+      "- Adds \"torch\" back to Windows test dependency, and further constrains\nto use latest torch;\n- Adds a new uv `dependency-group` called `dev` which developers could\nuse for local development;\n- Enforce using Ninja instead of Makefile in `scikit-build-core`\nconfigurations. Ninja can be easily installed via PyPI so it's not a\nharsh constraint.\n\nFuture forward, we may consider manage & lock those dependencies\nperiodically with `uv.lock` so that development experience can be more\nconsistent",
+  "is_merge": false,
+  "parents": [
+    "ef54bdac61f4f22ea71a475ed8264333b8626ef9"
+  ],
+  "name_status": [
+    [
+      "M",
+      "pyproject.toml"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/__init__.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "pyproject.toml",
+      "additions": 22,
+      "deletions": 6
+    },
+    {
+      "path": "python/tvm_ffi/__init__.py",
+      "additions": 13,
+      "deletions": 3
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/pyproject.toml b/pyproject.toml\nindex 732bc2c..4e0e2b8 100644\n--- a/pyproject.toml\n+++ b/pyproject.toml\n@@ -43,14 +43,25 @@ GitHub = \"https://github.com/apache/tvm-ffi\"\n torch = [\"torch\", \"setuptools\", \"ninja\"]\n cpp = [\"ninja\"]\n # note pytorch does not yet ship with 3.14t\n-test = [\n+test = [\"pytest\", \"numpy\", \"ninja\", \"torch; python_version < '3.14'\"]\n+\n+[dependency-groups]\n+dev = [\n+  \"ruff\",\n+  \"mypy\",\n+  \"clang-format\",\n+  \"clang-tidy\",\n+  \"ipdb\",\n+  \"ipython\",\n+  \"ninja\",\n+  \"pre-commit\",\n   \"pytest\",\n   \"numpy\",\n-  \"ninja\",\n-  \"torch; python_version < '3.14' and sys_platform != 'win32'\",\n+  \"ml_dtypes\",\n+  \"cython\",\n+  \"cmake\",\n+  \"scikit-build-core\",\n ]\n-\n-[dependency-groups]\n docs = [\n   \"autodocsumm\",\n   \"breathe\",\n@@ -83,12 +94,14 @@ tvm-ffi-config = \"tvm_ffi.config:__main__\"\n tvm-ffi-stubgen = \"tvm_ffi.stub.stubgen:__main__\"\n \n [build-system]\n-requires = [\"scikit-build-core>=0.10.0\", \"cython\", \"cmake>=3.18\"]\n+requires = [\"scikit-build-core>=0.10.0\", \"cython\", \"cmake>=3.18\", \"ninja\"]\n build-backend = \"scikit_build_core.build\"\n \n [tool.scikit-build]\n wheel.py-api = \"cp312\"\n minimum-version = \"build-system.requires\"\n+ninja.version = \">=1.11\"\n+ninja.make-fallback = false\n \n # Build configuration\n build-dir = \"build\"\n@@ -248,3 +261,6 @@ exclude = '''(?x)(\n [[tool.mypy.overrides]]\n module = [\"torch\", \"torch.*\", \"my_ffi_extension\", \"my_ffi_extension.*\"]\n ignore_missing_imports = true\n+\n+[tool.uv.dependency-groups]\n+docs = { requires-python = \">=3.13\" }\ndiff --git a/python/tvm_ffi/__init__.py b/python/tvm_ffi/__init__.py\nindex e2bf619..d2bf5a8 100644\n--- a/python/tvm_ffi/__init__.py\n+++ b/python/tvm_ffi/__init__.py\n@@ -16,11 +16,21 @@\n # under the License.\n \"\"\"TVM FFI Python package.\"\"\"\n \n-# version\n-__version__ = \"0.1.0b19\"\n-\n # order matters here so we need to skip isort here\n # isort: skip_file\n+__version__ = \"0.1.0b19\"\n+\n+# HACK: try importing torch first, to avoid a potential\n+# symbol conflict when both torch and tvm_ffi are imported.\n+# This conflict can be reproduced in a very narrow scenario:\n+# 1. GitHub action on Windows X64\n+# 2. Python 3.12\n+# 3. torch 2.9.0\n+try:\n+    import torch  # type: ignore\n+except ImportError:\n+    pass\n+\n # base always go first to load the libtvm_ffi\n from . import base\n from . import libinfo",
+  "heuristics": {
+    "tags": [
+      "build"
+    ],
+    "extensions": [
+      ".py",
+      ".toml"
+    ],
+    "scopes_guess": [
+      "pyproject.toml",
+      "python"
+    ]
+  }
+}

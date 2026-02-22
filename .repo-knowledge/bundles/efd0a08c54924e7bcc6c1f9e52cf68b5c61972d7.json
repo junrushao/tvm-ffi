@@ -1,0 +1,40 @@
+{
+  "sha": "efd0a08c54924e7bcc6c1f9e52cf68b5c61972d7",
+  "sha7": "efd0a08",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-10-14T15:22:02-04:00",
+  "subject": "Initial stab on README (#118)",
+  "body": "",
+  "is_merge": false,
+  "parents": [
+    "9186b44d63df3be9d3d67bb10b784f5e263f7e36"
+  ],
+  "name_status": [
+    [
+      "M",
+      "README.md"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "README.md",
+      "additions": 20,
+      "deletions": 1
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/README.md b/README.md\nindex 88083e9..c21e46f 100644\n--- a/README.md\n+++ b/README.md\n@@ -15,6 +15,25 @@\n <!--- specific language governing permissions and limitations -->\n <!--- under the License. -->\n \n-# tvm ffi\n+# TVM FFI: Open ABI and FFI for Machine Learning Systems\n \n [![CI](https://github.com/apache/tvm-ffi/actions/workflows/ci_test.yml/badge.svg)](https://github.com/apache/tvm-ffi/actions/workflows/ci_test.yml)\n+\n+Apache TVM FFI is an open ABI and FFI for machine learning systems. It is a minimal, framework-agnostic,\n+yet flexible open convention with the following systems in mind:\n+\n+- Kernel libraries: ship one wheel to support multiple frameworks, Python versions, and different languages.\n+- Kernel DSLs: reusable open ABI for JIT and AOT kernel exposure to PyTorch, JAX, and other machine learning systems.\n+- ML frameworks and runtimes: unified mechanism to connect libraries and DSLs that adopt the ABI convention.\n+- Coding agents: unified mechanism to package and ship generated code to production environments.\n+- ML infrastructure: cross-language support for Python, C++, Rust, and other languages that interface with the ABI.\n+\n+It has the following technical features:\n+\n+- Stable, minimal, and flexible C ABI to support machine learning system use-cases.\n+- First class support for PyTorch, JAX, and other array libraries.\n+- Out-of-the-box multi-language support for Python, C++, Rust, and future compatibility to other languages that bind to the ABI.\n+\n+With these technical solutions, we can enable better **interoperability** across machine learning frameworks,\n+libraries, kernel DSLs, and coding agents, **ship one wheel** to support multiple frameworks and Python versions (including free-threaded python),\n+and build infrastructure solutions across environments.",
+  "heuristics": {
+    "tags": [
+      "docs"
+    ],
+    "extensions": [
+      ".md"
+    ],
+    "scopes_guess": [
+      "README.md"
+    ]
+  }
+}

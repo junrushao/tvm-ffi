@@ -1,0 +1,40 @@
+{
+  "sha": "9b3be5d12df257bef9a75e46ae8086b55b8cad49",
+  "sha7": "9b3be5d",
+  "author_name": "Junru Shao",
+  "author_email": "junrushao@apache.org",
+  "date_iso": "2025-09-26T15:19:01-07:00",
+  "subject": "test: `__doc__` being None when it's not explicitly set (#61)",
+  "body": "Additional test of #60",
+  "is_merge": false,
+  "parents": [
+    "43ffe571bfef2a3f2c2dc254ca3e5dc10e093daa"
+  ],
+  "name_status": [
+    [
+      "M",
+      "tests/python/test_object.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "tests/python/test_object.py",
+      "additions": 9,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/tests/python/test_object.py b/tests/python/test_object.py\nindex ee5dc4e..f679469 100644\n--- a/tests/python/test_object.py\n+++ b/tests/python/test_object.py\n@@ -53,6 +53,15 @@ def test_attribute() -> None:\n     assert type(obj).b.__doc__ == \"Field `b`\"\n \n \n+def test_attribute_no_doc() -> None:\n+    from tvm_ffi.testing import TestObjectBase  # noqa: PLC0415\n+\n+    # The docs for v_f64 and v_str are None because they are not explicitly set.\n+    assert TestObjectBase.v_i64.__doc__ == \"i64 field\"\n+    assert TestObjectBase.v_f64.__doc__ is None\n+    assert TestObjectBase.v_str.__doc__ is None\n+\n+\n def test_setter() -> None:\n     # test setter\n     obj0 = tvm_ffi.testing.create_object(\"testing.TestObjectBase\", v_i64=10, v_str=\"hello\")",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".py"
+    ],
+    "scopes_guess": [
+      "tests"
+    ]
+  }
+}

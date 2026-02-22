@@ -1,0 +1,74 @@
+{
+  "sha": "cc93373b344715422d158d14b5502d7c673a0153",
+  "sha7": "cc93373",
+  "author_name": "Junru Shao",
+  "author_email": "junrushao@apache.org",
+  "date_iso": "2025-09-14T04:01:49-07:00",
+  "subject": "refactor: Prefer `bytearray_to_str|bytes` to raw Python API (#6)",
+  "body": "",
+  "is_merge": false,
+  "parents": [
+    "af82dbb9a4cbb31f1ac9dc38195eaae747c31bcb"
+  ],
+  "name_status": [
+    [
+      "M",
+      "python/tvm_ffi/cython/base.pxi"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/cython/dtype.pxi"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/cython/function.pxi"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/cython/object.pxi"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/cython/string.pxi"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "python/tvm_ffi/cython/base.pxi",
+      "additions": 4,
+      "deletions": 0
+    },
+    {
+      "path": "python/tvm_ffi/cython/dtype.pxi",
+      "additions": 2,
+      "deletions": 2
+    },
+    {
+      "path": "python/tvm_ffi/cython/function.pxi",
+      "additions": 6,
+      "deletions": 14
+    },
+    {
+      "path": "python/tvm_ffi/cython/object.pxi",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "python/tvm_ffi/cython/string.pxi",
+      "additions": 2,
+      "deletions": 2
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/python/tvm_ffi/cython/base.pxi b/python/tvm_ffi/cython/base.pxi\nindex ef583c7..08f7df2 100644\n--- a/python/tvm_ffi/cython/base.pxi\n+++ b/python/tvm_ffi/cython/base.pxi\n@@ -354,6 +354,10 @@ cdef inline str bytearray_to_str(const TVMFFIByteArray* x):\n     return PyBytes_FromStringAndSize(x.data, x.size).decode(\"utf-8\")\n \n \n+cdef inline bytes bytearray_to_bytes(const TVMFFIByteArray* x):\n+    return PyBytes_FromStringAndSize(x.data, x.size)\n+\n+\n cdef inline c_str(pystr):\n     \"\"\"Create ctypes char * from a python string\n \ndiff --git a/python/tvm_ffi/cython/dtype.pxi b/python/tvm_ffi/cython/dtype.pxi\nindex d9e20b7..4656b04 100644\n--- a/python/tvm_ffi/cython/dtype.pxi\n+++ b/python/tvm_ffi/cython/dtype.pxi\n@@ -99,11 +99,11 @@ cdef class DataType:\n         CHECK_CALL(TVMFFIDataTypeToString(&(self.cdtype), &temp_any))\n         if temp_any.type_index == kTVMFFISmallStr:\n             bytes = TVMFFISmallBytesGetContentByteArray(&temp_any)\n-            res = py_str(PyBytes_FromStringAndSize(bytes.data, bytes.size))\n+            res = bytearray_to_str(&bytes)\n             return res\n \n         bytes_ptr = TVMFFIBytesGetByteArrayPtr(temp_any.v_obj)\n-        res = py_str(PyBytes_FromStringAndSize(bytes_ptr.data, bytes_ptr.size))\n+        res = bytearray_to_str(bytes_ptr)\n         CHECK_CALL(TVMFFIObjectDecRef(temp_any.v_obj))\n         return res\n \ndiff --git a/python/tvm_ffi/cython/function.pxi b/python/tvm_ffi/cython/function.pxi\nindex ce6ea54..c80e238 100644\n--- a/python/tvm_ffi/cython/function.pxi\n+++ b/python/tvm_ffi/cython/function.pxi\n@@ -37,14 +37,14 @@ cdef inline object make_ret_small_str(TVMFFIAny result):\n     \"\"\"convert small string to return value.\"\"\"\n     cdef TVMFFIByteArray bytes\n     bytes = TVMFFISmallBytesGetContentByteArray(&result)\n-    return py_str(PyBytes_FromStringAndSize(bytes.data, bytes.size))\n+    return bytearray_to_str(&bytes)\n \n \n cdef inline object make_ret_small_bytes(TVMFFIAny result):\n     \"\"\"convert small bytes to return value.\"\"\"\n     cdef TVMFFIByteArray bytes\n     bytes = TVMFFISmallBytesGetContentByteArray(&result)\n-    return PyBytes_FromStringAndSize(bytes.data, bytes.size)\n+    return bytearray_to_bytes(&bytes)\n \n \n cdef inline object make_ret(TVMFFIAny result, DLPackToPyObject c_dlpack_to_pyobject = NULL):\n@@ -689,12 +689,8 @@ def _add_class_attrs_by_reflection(int type_index, object cls):\n         (<FieldSetter>setter).offset = field.offset\n         if (field.flags & kTVMFFIFieldFlagBitMaskWritable) == 0:\n             setter = None\n-        doc = (\n-            py_str(PyBytes_FromStringAndSize(field.doc.data, field.doc.size))\n-            if field.doc.size != 0\n-            else None\n-        )\n-        name = py_str(PyBytes_FromStringAndSize(field.name.data, field.name.size))\n+        doc = bytearray_to_str(&field.doc) if field.doc.size != 0 else None\n+        name = bytearray_to_str(&field.name)\n         if hasattr(cls, name):\n             # skip already defined attributes\n             continue\n@@ -703,12 +699,8 @@ def _add_class_attrs_by_reflection(int type_index, object cls):\n     for i in range(num_methods):\n         # attach methods to the class\n         method = &(info.methods[i])\n-        name = py_str(PyBytes_FromStringAndSize(method.name.data, method.name.size))\n-        doc = (\n-            py_str(PyBytes_FromStringAndSize(method.doc.data, method.doc.size))\n-            if method.doc.size != 0\n-            else None\n-        )\n+        name = bytearray_to_str(&method.name)\n+        doc = bytearray_to_str(&method.doc) if method.doc.size != 0 else None\n         method_func = _get_method_from_method_info(method)\n \n         if method.flags & kTVMFFIFieldFlagBitMaskIsStaticMethod:\ndiff --git a/python/tvm_ffi/cython/object.pxi b/python/tvm_ffi/cython/object.pxi\nindex 1d026b2..90821e3 100644\n--- a/python/tvm_ffi/cython/object.pxi\n+++ b/python/tvm_ffi/cython/object.pxi\n@@ -257,7 +257,7 @@ cdef inline str _type_index_to_key(int32_t tindex):\n     if info == NULL:\n         return \"<unknown>\"\n     type_key = &(info.type_key)\n-    return py_str(PyBytes_FromStringAndSize(type_key.data, type_key.size))\n+    return bytearray_to_str(type_key)\n \n \n cdef inline object make_ret_opaque_object(TVMFFIAny result):\ndiff --git a/python/tvm_ffi/cython/string.pxi b/python/tvm_ffi/cython/string.pxi\nindex 0737259..4119e7b 100644\n--- a/python/tvm_ffi/cython/string.pxi\n+++ b/python/tvm_ffi/cython/string.pxi\n@@ -20,12 +20,12 @@\n \n cdef inline str _string_obj_get_py_str(obj):\n     cdef TVMFFIByteArray* bytes = TVMFFIBytesGetByteArrayPtr((<Object>obj).chandle)\n-    return py_str(PyBytes_FromStringAndSize(bytes.data, bytes.size))\n+    return bytearray_to_str(bytes)\n \n \n cdef inline bytes _bytes_obj_get_py_bytes(obj):\n     cdef TVMFFIByteArray* bytes = TVMFFIBytesGetByteArrayPtr((<Object>obj).chandle)\n-    return PyBytes_FromStringAndSize(bytes.data, bytes.size)\n+    return bytearray_to_bytes(bytes)\n \n \n ",
+  "heuristics": {
+    "tags": [],
+    "extensions": [
+      ".pxi"
+    ],
+    "scopes_guess": [
+      "python"
+    ]
+  }
+}

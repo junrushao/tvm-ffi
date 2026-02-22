@@ -1,0 +1,385 @@
+{
+  "sha": "761966953fec7e8ceba0fcc20dc003e39cf2692d",
+  "sha7": "7619669",
+  "author_name": "Junru Shao",
+  "author_email": "junrushao@apache.org",
+  "date_iso": "2026-02-07T04:12:46-08:00",
+  "subject": "chore: Switch from mypy to ty (#432)",
+  "body":
+      "Astral's `uv`, `ruff`, `ty` are all extremely solid Python tooling\ninfra. Particularly, this PR migrates `mypy` to `ty`, which is a type\nchecker + LSP. This is significantly faster and much more accurate.",
+  "is_merge": false,
+  "parents": [
+    "b17709aabcc2f1bd776fb001bd05a9c1b4cfe421"
+  ],
+  "name_status": [
+    [
+      "M",
+      ".github/workflows/ci_test.yml"
+    ],
+    [
+      "M",
+      ".pre-commit-config.yaml"
+    ],
+    [
+      "M",
+      "CONTRIBUTING.md"
+    ],
+    [
+      "M",
+      "examples/cubin_launcher/benchmark_overhead.py"
+    ],
+    [
+      "M",
+      "examples/cubin_launcher/example_triton_cubin.py"
+    ],
+    [
+      "M",
+      "pyproject.toml"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/__init__.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/_convert.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/_optional_torch_c_dlpack.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/_tensor.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/container.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/cpp/nvrtc.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/dataclasses/_utils.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/dataclasses/field.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/error.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/libinfo.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/module.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/registry.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/stub/cli.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/stub/file_utils.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/testing/testing.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/utils/_build_optional_torch_c_dlpack.py"
+    ],
+    [
+      "M",
+      "tests/python/test_container.py"
+    ],
+    [
+      "M",
+      "tests/python/test_cubin_launcher.py"
+    ],
+    [
+      "M",
+      "tests/python/test_dataclasses_c_class.py"
+    ],
+    [
+      "M",
+      "tests/python/test_device.py"
+    ],
+    [
+      "M",
+      "tests/python/test_dlpack_exchange_api.py"
+    ],
+    [
+      "M",
+      "tests/python/test_error.py"
+    ],
+    [
+      "M",
+      "tests/python/test_function.py"
+    ],
+    [
+      "M",
+      "tests/python/test_load_inline.py"
+    ],
+    [
+      "M",
+      "tests/python/test_object.py"
+    ],
+    [
+      "M",
+      "tests/python/test_optional_torch_c_dlpack.py"
+    ],
+    [
+      "M",
+      "tests/python/test_stream.py"
+    ],
+    [
+      "M",
+      "tests/python/test_tensor.py"
+    ],
+    [
+      "M",
+      "tests/python/utils/test_embed_cubin.py"
+    ],
+    [
+      "M",
+      "tests/python/utils/test_kwargs_wrapper.py"
+    ],
+    [
+      "M",
+      "tests/scripts/benchmark_dlpack.py"
+    ],
+    [
+      "M",
+      "tests/scripts/benchmark_kwargs_wrapper.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": ".github/workflows/ci_test.yml",
+      "additions": 4,
+      "deletions": 0
+    },
+    {
+      "path": ".pre-commit-config.yaml",
+      "additions": 6,
+      "deletions": 10
+    },
+    {
+      "path": "CONTRIBUTING.md",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "examples/cubin_launcher/benchmark_overhead.py",
+      "additions": 2,
+      "deletions": 2
+    },
+    {
+      "path": "examples/cubin_launcher/example_triton_cubin.py",
+      "additions": 2,
+      "deletions": 2
+    },
+    {
+      "path": "pyproject.toml",
+      "additions": 28,
+      "deletions": 23
+    },
+    {
+      "path": "python/tvm_ffi/__init__.py",
+      "additions": 2,
+      "deletions": 2
+    },
+    {
+      "path": "python/tvm_ffi/_convert.py",
+      "additions": 2,
+      "deletions": 3
+    },
+    {
+      "path": "python/tvm_ffi/_optional_torch_c_dlpack.py",
+      "additions": 2,
+      "deletions": 2
+    },
+    {
+      "path": "python/tvm_ffi/_tensor.py",
+      "additions": 2,
+      "deletions": 2
+    },
+    {
+      "path": "python/tvm_ffi/container.py",
+      "additions": 3,
+      "deletions": 3
+    },
+    {
+      "path": "python/tvm_ffi/cpp/nvrtc.py",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "python/tvm_ffi/dataclasses/_utils.py",
+      "additions": 3,
+      "deletions": 3
+    },
+    {
+      "path": "python/tvm_ffi/dataclasses/field.py",
+      "additions": 4,
+      "deletions": 4
+    },
+    {
+      "path": "python/tvm_ffi/error.py",
+      "additions": 3,
+      "deletions": 3
+    },
+    {
+      "path": "python/tvm_ffi/libinfo.py",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "python/tvm_ffi/module.py",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "python/tvm_ffi/registry.py",
+      "additions": 2,
+      "deletions": 2
+    },
+    {
+      "path": "python/tvm_ffi/stub/cli.py",
+      "additions": 3,
+      "deletions": 3
+    },
+    {
+      "path": "python/tvm_ffi/stub/file_utils.py",
+      "additions": 2,
+      "deletions": 2
+    },
+    {
+      "path": "python/tvm_ffi/testing/testing.py",
+      "additions": 2,
+      "deletions": 2
+    },
+    {
+      "path": "python/tvm_ffi/utils/_build_optional_torch_c_dlpack.py",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "tests/python/test_container.py",
+      "additions": 3,
+      "deletions": 3
+    },
+    {
+      "path": "tests/python/test_cubin_launcher.py",
+      "additions": 1,
+      "deletions": 3
+    },
+    {
+      "path": "tests/python/test_dataclasses_c_class.py",
+      "additions": 3,
+      "deletions": 3
+    },
+    {
+      "path": "tests/python/test_device.py",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "tests/python/test_dlpack_exchange_api.py",
+      "additions": 5,
+      "deletions": 4
+    },
+    {
+      "path": "tests/python/test_error.py",
+      "additions": 10,
+      "deletions": 10
+    },
+    {
+      "path": "tests/python/test_function.py",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "tests/python/test_load_inline.py",
+      "additions": 3,
+      "deletions": 4
+    },
+    {
+      "path": "tests/python/test_object.py",
+      "additions": 16,
+      "deletions": 16
+    },
+    {
+      "path": "tests/python/test_optional_torch_c_dlpack.py",
+      "additions": 2,
+      "deletions": 1
+    },
+    {
+      "path": "tests/python/test_stream.py",
+      "additions": 2,
+      "deletions": 4
+    },
+    {
+      "path": "tests/python/test_tensor.py",
+      "additions": 1,
+      "deletions": 3
+    },
+    {
+      "path": "tests/python/utils/test_embed_cubin.py",
+      "additions": 1,
+      "deletions": 3
+    },
+    {
+      "path": "tests/python/utils/test_kwargs_wrapper.py",
+      "additions": 4,
+      "deletions": 4
+    },
+    {
+      "path": "tests/scripts/benchmark_dlpack.py",
+      "additions": 3,
+      "deletions": 3
+    },
+    {
+      "path": "tests/scripts/benchmark_kwargs_wrapper.py",
+      "additions": 1,
+      "deletions": 1
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/.github/workflows/ci_test.yml b/.github/workflows/ci_test.yml\nindex 88e7157..440fa40 100644\n--- a/.github/workflows/ci_test.yml\n+++ b/.github/workflows/ci_test.yml\n@@ -63,6 +63,10 @@ jobs:\n         with:\n           fetch-depth: 0\n           fetch-tags: true\n+      - name: Set up uv\n+        uses: astral-sh/setup-uv@b75a909f75acd358c2196fb9a5f1299a9a8868a4  # v6.7.0\n+      - name: Set up Python environment\n+        run: uv sync --group dev --no-install-project\n       - uses: pre-commit/action@2c7b3805fd2a0fd8c1884dcaebf91fc102a13ecd  # v3.0.1\n \n   clang-tidy:\ndiff --git a/.pre-commit-config.yaml b/.pre-commit-config.yaml\nindex 99fa44e..d0e7aa8 100644\n--- a/.pre-commit-config.yaml\n+++ b/.pre-commit-config.yaml\n@@ -113,18 +113,14 @@ repos:\n         args:\n           - --config\n           - docs/.rstcheck.cfg\n-  - repo: https://github.com/pre-commit/mirrors-mypy\n-    rev: \"v1.19.0\"\n+  - repo: local\n     hooks:\n-      - id: mypy\n-        name: mypy\n+      - id: ty\n+        name: ty check\n+        entry: uvx ty check\n+        language: system\n         pass_filenames: false\n-        args: []\n-        additional_dependencies:\n-          - numpy>=1.22\n-          - ml-dtypes>=0.1\n-          - pytest\n-          - typing-extensions>=4.5\n+        types: [python]\n   - repo: https://github.com/cheshirekow/cmake-format-precommit\n     rev: v0.6.13\n     hooks:\ndiff --git a/CONTRIBUTING.md b/CONTRIBUTING.md\nindex 12d5edc..837df87 100644\n--- a/CONTRIBUTING.md\n+++ b/CONTRIBUTING.md\n@@ -77,7 +77,7 @@ The pre-commit configuration includes checks for:\n - **License headers**: Ensures all files have proper Apache Software Foundation headers\n - **Code formatting**: Runs clang-format (C++), ruff (Python), shfmt (Shell scripts)\n - **Linting**: Runs clang-tidy, ruff, shellcheck, markdownlint, yamllint, and more\n-- **Type checking**: Runs mypy for Python type annotations\n+- **Type checking**: Runs ty for Python type annotations\n - **File quality**: Checks for trailing whitespace, file sizes, merge conflicts, etc.\n \n ### Troubleshooting\ndiff --git a/examples/cubin_launcher/benchmark_overhead.py b/examples/cubin_launcher/benchmark_overhead.py\nindex 89bfa84..efc82b2 100644\n--- a/examples/cubin_launcher/benchmark_overhead.py\n+++ b/examples/cubin_launcher/benchmark_overhead.py\n@@ -39,8 +39,8 @@ import traceback\n from typing import Callable\n \n import torch\n-import triton  # type: ignore[import-not-found]\n-import triton.language as tl  # type: ignore[import-not-found]\n+import triton\n+import triton.language as tl\n from tvm_ffi import cpp\n from tvm_ffi.module import Module\n \ndiff --git a/examples/cubin_launcher/example_triton_cubin.py b/examples/cubin_launcher/example_triton_cubin.py\nindex 6654289..b127cd2 100644\n--- a/examples/cubin_launcher/example_triton_cubin.py\n+++ b/examples/cubin_launcher/example_triton_cubin.py\n@@ -35,8 +35,8 @@ import sys\n import traceback\n \n import torch\n-import triton  # type: ignore[import-not-found]\n-import triton.language as tl  # type: ignore[import-not-found]\n+import triton\n+import triton.language as tl\n from tvm_ffi import cpp\n \n \ndiff --git a/pyproject.toml b/pyproject.toml\nindex 13ef672..0a096f8 100644\n--- a/pyproject.toml\n+++ b/pyproject.toml\n@@ -54,7 +54,7 @@ test = [\n [dependency-groups]\n dev = [\n   \"ruff\",\n-  \"mypy\",\n+  \"ty\",\n   \"clang-format\",\n   \"clang-tidy\",\n   \"ipdb\",\n@@ -255,28 +255,33 @@ environment = { MACOSX_DEPLOYMENT_TARGET = \"10.14\" }\n [tool.cibuildwheel.windows]\n archs = [\"AMD64\"]\n \n-[tool.mypy]\n-python_version = \"3.9\"\n-show_error_codes = true\n-mypy_path = [\"python\", \"examples\", \"tests/python\"]\n-files = [\"python/tvm_ffi\", \"examples\", \"tests/python\"]\n-namespace_packages = true\n-explicit_package_bases = true\n-allow_redefinition = true\n-exclude = '''(?x)(\n-  ^\\.venv/|\n-  ^build/|\n-  ^dist/|\n-  ^\\.mypy_cache/\n-)'''\n-\n-[[tool.mypy.overrides]]\n-module = [\"torch\", \"torch.*\", \"my_ffi_extension\", \"my_ffi_extension.*\"]\n-ignore_missing_imports = true\n-\n-[[tool.mypy.overrides]]\n-module = \"_pytest.*\"\n-follow_imports = \"skip\"\n+[tool.ty.environment]\n+python-version = \"3.9\"\n+python = \".venv\"\n+extra-paths = [\"python\", \"examples\", \"tests/python\"]\n+\n+[tool.ty.src]\n+include = [\"python/tvm_ffi/**\", \"examples/**\", \"tests/python/**\"]\n+exclude = [\".venv/**\", \"build/**\", \"dist/**\"]\n+\n+[tool.ty.analysis]\n+allowed-unresolved-imports = [\n+  \"torch\",\n+  \"torch.*\",\n+  \"torch.utils.*\",\n+  \"my_ffi_extension\",\n+  \"my_ffi_extension.*\",\n+  \"_pytest.*\",\n+  \"cupy\",\n+  \"cupy.*\",\n+  \"paddle\",\n+  \"paddle.*\",\n+  \"triton\",\n+  \"triton.*\",\n+  \"cuda.bindings\",\n+  \"cuda.bindings.*\",\n+  \"torch_c_dlpack_ext\",\n+]\n \n [tool.uv.dependency-groups]\n docs = { requires-python = \">=3.13\" }\ndiff --git a/python/tvm_ffi/__init__.py b/python/tvm_ffi/__init__.py\nindex 8d68b5d..87e6ef2 100644\n--- a/python/tvm_ffi/__init__.py\n+++ b/python/tvm_ffi/__init__.py\n@@ -26,7 +26,7 @@\n # 2. Python 3.12\n # 3. torch 2.9.0\n try:\n-    import torch  # type: ignore\n+    import torch\n except ImportError:\n     pass\n \n@@ -86,7 +86,7 @@ from ._dtype import (\n )\n \n try:\n-    from ._version import __version__, __version_tuple__  # type: ignore[import-not-found]\n+    from ._version import __version__, __version_tuple__\n except ImportError:\n     __version__ = \"0.0.0.dev0\"\n     __version_tuple__ = (0, 0, 0, \"dev0\", \"7d34eb8ab.d20250913\")\ndiff --git a/python/tvm_ffi/_convert.py b/python/tvm_ffi/_convert.py\nindex d35ad90..27f4e98 100644\n--- a/python/tvm_ffi/_convert.py\n+++ b/python/tvm_ffi/_convert.py\n@@ -25,11 +25,10 @@ from typing import Any\n \n from . import _dtype, container, core\n \n-torch: ModuleType | None = None\n try:\n-    import torch  # type: ignore[no-redef]\n+    import torch\n except ImportError:\n-    pass\n+    torch = None\n \n numpy: ModuleType | None = None\n try:\ndiff --git a/python/tvm_ffi/_optional_torch_c_dlpack.py b/python/tvm_ffi/_optional_torch_c_dlpack.py\nindex dde0550..415e151 100644\n--- a/python/tvm_ffi/_optional_torch_c_dlpack.py\n+++ b/python/tvm_ffi/_optional_torch_c_dlpack.py\n@@ -41,7 +41,7 @@ import warnings\n from pathlib import Path\n from typing import Any\n \n-logger = logging.getLogger(__name__)  # type: ignore\n+logger = logging.getLogger(__name__)\n \n \n def _create_dlpack_exchange_api_capsule(ptr_as_int: int) -> Any:\n@@ -103,7 +103,7 @@ def load_torch_c_dlpack_extension() -> Any:  # noqa: PLR0912, PLR0915\n \n     \"\"\"Load the torch c dlpack extension.\"\"\"\n     try:\n-        import torch_c_dlpack_ext  # type: ignore  # noqa: PLC0415, F401\n+        import torch_c_dlpack_ext  # noqa: PLC0415, F401\n \n         if _check_and_update_dlpack_c_exchange_api(torch.Tensor):\n             return None\ndiff --git a/python/tvm_ffi/_tensor.py b/python/tvm_ffi/_tensor.py\nindex b9a4954..f81132e 100644\n--- a/python/tvm_ffi/_tensor.py\n+++ b/python/tvm_ffi/_tensor.py\n@@ -73,8 +73,8 @@ class Shape(tuple, PyNativeObject):\n     def __from_tvm_ffi_object__(cls, obj: Any) -> Shape:\n         \"\"\"Construct from a given tvm object.\"\"\"\n         content = _shape_obj_get_py_tuple(obj)\n-        val: Shape = tuple.__new__(cls, content)  # type: ignore[arg-type]\n-        val._tvm_ffi_cached_object = obj  # type: ignore[attr-defined]\n+        val: Shape = tuple.__new__(cls, content)  # ty: ignore[invalid-argument-type]\n+        val._tvm_ffi_cached_object = obj\n         return val\n \n \ndiff --git a/python/tvm_ffi/container.py b/python/tvm_ffi/container.py\nindex 3f6884f..25cdfba 100644\n--- a/python/tvm_ffi/container.py\n+++ b/python/tvm_ffi/container.py\n@@ -169,7 +169,7 @@ class Array(core.Object, Sequence[T]):\n     @overload\n     def __getitem__(self, idx: slice, /) -> list[T]: ...\n \n-    def __getitem__(self, idx: SupportsIndex | slice, /) -> T | list[T]:\n+    def __getitem__(self, idx: SupportsIndex | slice, /) -> T | list[T]:  # ty: ignore[invalid-method-override]\n         \"\"\"Return one element or a list for a slice.\"\"\"\n         length = len(self)\n         result = getitem_helper(self, _ffi_api.ArrayGetItem, length, idx)\n@@ -227,7 +227,7 @@ class KeysView(KeysViewBase[K]):\n             if not functor(2):\n                 break\n \n-    def __contains__(self, k: object) -> bool:\n+    def __contains__(self, k: object) -> bool:  # ty: ignore[invalid-method-override]\n         return k in self._backend_map\n \n \n@@ -273,7 +273,7 @@ class ItemsView(ItemsViewBase[K, V]):\n         if not isinstance(item, tuple) or len(item) != 2:\n             return False\n         key, value = item\n-        actual_value = self._backend_map.get(key, MISSING)\n+        actual_value = self._backend_map.get(key, MISSING)  # ty: ignore[invalid-argument-type]\n         if actual_value is MISSING:\n             return False\n         # TODO(@junrus): Is `__eq__` the right method to use here?\ndiff --git a/python/tvm_ffi/cpp/nvrtc.py b/python/tvm_ffi/cpp/nvrtc.py\nindex 97033bd..73f76d7 100644\n--- a/python/tvm_ffi/cpp/nvrtc.py\n+++ b/python/tvm_ffi/cpp/nvrtc.py\n@@ -79,7 +79,7 @@ def nvrtc_compile(  # noqa: PLR0912, PLR0915\n \n     \"\"\"\n     try:\n-        from cuda.bindings import driver, nvrtc  # type: ignore[import-not-found]  # noqa: PLC0415\n+        from cuda.bindings import driver, nvrtc  # noqa: PLC0415\n     except ImportError as e:\n         raise RuntimeError(\n             \"CUDA bindings not available. Install with: pip install cuda-python\"\ndiff --git a/python/tvm_ffi/dataclasses/_utils.py b/python/tvm_ffi/dataclasses/_utils.py\nindex 7c0afb4..80e7010 100644\n--- a/python/tvm_ffi/dataclasses/_utils.py\n+++ b/python/tvm_ffi/dataclasses/_utils.py\n@@ -61,8 +61,8 @@ def type_info_to_cls(\n         # Allow overriding methods (including from base classes like Object.__repr__)\n         # by always adding to attrs, which will be used when creating the new class\n         func.__module__ = cls.__module__\n-        func.__name__ = name\n-        func.__qualname__ = f\"{cls.__qualname__}.{name}\"\n+        func.__name__ = name  # ty: ignore[unresolved-attribute]\n+        func.__qualname__ = f\"{cls.__qualname__}.{name}\"  # ty: ignore[unresolved-attribute]\n         func.__doc__ = f\"Method `{name}` of class `{cls.__qualname__}`\"\n         attrs[name] = func\n \n@@ -75,7 +75,7 @@ def type_info_to_cls(\n     # Step 4. Create the new class\n     new_cls = type(cls.__name__, cls_bases, attrs)\n     new_cls.__module__ = cls.__module__\n-    new_cls = functools.wraps(cls, updated=())(new_cls)  # type: ignore\n+    new_cls = functools.wraps(cls, updated=())(new_cls)\n     return cast(Type[_InputClsType], new_cls)\n \n \ndiff --git a/python/tvm_ffi/dataclasses/field.py b/python/tvm_ffi/dataclasses/field.py\nindex a395e50..a03642f 100644\n--- a/python/tvm_ffi/dataclasses/field.py\n+++ b/python/tvm_ffi/dataclasses/field.py\n@@ -22,7 +22,7 @@ from dataclasses import _MISSING_TYPE, MISSING\n from typing import Any, Callable, TypeVar, cast\n \n try:\n-    from dataclasses import KW_ONLY  # type: ignore[attr-defined]\n+    from dataclasses import KW_ONLY  # ty: ignore[unresolved-import]\n except ImportError:\n     # Python < 3.10: define our own KW_ONLY sentinel\n     class _KW_ONLY_Sentinel:\n@@ -68,11 +68,11 @@ class Field:\n \n def field(\n     *,\n-    default: _FieldValue | _MISSING_TYPE = MISSING,  # type: ignore[assignment]\n-    default_factory: Callable[[], _FieldValue] | _MISSING_TYPE = MISSING,  # type: ignore[assignment]\n+    default: _FieldValue | _MISSING_TYPE = MISSING,\n+    default_factory: Callable[[], _FieldValue] | _MISSING_TYPE = MISSING,\n     init: bool = True,\n     repr: bool = True,\n-    kw_only: bool | _MISSING_TYPE = MISSING,  # type: ignore[assignment]\n+    kw_only: bool | _MISSING_TYPE = MISSING,\n ) -> _FieldValue:\n     \"\"\"(Experimental) Declare a dataclass-style field on a :func:`c_class` proxy.\n \ndiff --git a/python/tvm_ffi/error.py b/python/tvm_ffi/error.py\nindex 3c4eaf0..2842629 100644\n--- a/python/tvm_ffi/error.py\n+++ b/python/tvm_ffi/error.py\n@@ -76,9 +76,9 @@ class TracebackManager:\n         tree = ast.parse(\"_getframe()\", filename=filename, mode=\"eval\")\n         for node in ast.walk(tree):\n             if hasattr(node, \"col_offset\"):\n-                node.col_offset = 0\n+                node.col_offset = 0  # ty: ignore[invalid-assignment]\n             if hasattr(node, \"end_col_offset\"):\n-                node.end_col_offset = 0\n+                node.end_col_offset = 0  # ty: ignore[invalid-assignment]\n         # call into get frame, bt changes the context\n         code_object = compile(tree, filename, \"eval\")\n         # replace the function name and line number\n@@ -240,7 +240,7 @@ def register_error(\n         assert isinstance(py_err, MyError)\n \n     \"\"\"\n-    if callable(name_or_cls):\n+    if isinstance(name_or_cls, type):\n         cls = name_or_cls\n         name_or_cls = cls.__name__\n \ndiff --git a/python/tvm_ffi/libinfo.py b/python/tvm_ffi/libinfo.py\nindex d1c1bcf..8649a81 100644\n--- a/python/tvm_ffi/libinfo.py\n+++ b/python/tvm_ffi/libinfo.py\n@@ -232,7 +232,7 @@ def _find_library_by_basename(package: str, target_name: str) -> Path:  # noqa:\n         lib_dll_names = (f\"lib{target_name}.so\",)\n \n     # Use `importlib.metadata` is the most reliable way to find package data files\n-    dist: im.PathDistribution = im.distribution(package)  # type: ignore[assignment]\n+    dist: im.PathDistribution = im.distribution(package)  # ty: ignore[invalid-assignment]\n     record = dist.read_text(\"RECORD\") or \"\"\n     for line in record.splitlines():\n         partial_path, *_ = line.split(\",\")\ndiff --git a/python/tvm_ffi/module.py b/python/tvm_ffi/module.py\nindex 5aac8f0..ad7dfce 100644\n--- a/python/tvm_ffi/module.py\n+++ b/python/tvm_ffi/module.py\n@@ -129,7 +129,7 @@ class Module(core.Object):\n             The module\n \n         \"\"\"\n-        return self.imports_  # type: ignore[return-value]\n+        return self.imports_  # ty: ignore[invalid-return-type]\n \n     def implements_function(self, name: str, query_imports: bool = False) -> bool:\n         \"\"\"Return True if the module defines a global function.\ndiff --git a/python/tvm_ffi/registry.py b/python/tvm_ffi/registry.py\nindex 9ea8e2c..8126a66 100644\n--- a/python/tvm_ffi/registry.py\n+++ b/python/tvm_ffi/registry.py\n@@ -134,9 +134,9 @@ def register_global_func(\n     :py:func:`tvm_ffi.remove_global_func`\n \n     \"\"\"\n-    if callable(func_name):\n+    if not isinstance(func_name, str):\n         f = func_name\n-        func_name = f.__name__\n+        func_name = f.__name__  # ty: ignore[unresolved-attribute]\n \n     if not isinstance(func_name, str):\n         raise ValueError(\"expect string function name\")\ndiff --git a/python/tvm_ffi/stub/cli.py b/python/tvm_ffi/stub/cli.py\nindex 1540cbc..0cfd839 100644\n--- a/python/tvm_ffi/stub/cli.py\n+++ b/python/tvm_ffi/stub/cli.py\n@@ -133,10 +133,10 @@ def _stage_2(\n         return ret\n \n     # Step 0. Find out functions and classes already defined on files.\n-    defined_func_prefixes: set[str] = {  # type: ignore[union-attr]\n+    defined_func_prefixes: set[str] = {\n         code.param[0] for file in files for code in file.code_blocks if code.kind == \"global\"\n     }\n-    defined_objs: set[str] = {  # type: ignore[assignment]\n+    defined_objs: set[str] = {  # ty: ignore[invalid-assignment]\n         code.param for file in files for code in file.code_blocks if code.kind == \"object\"\n     } | C.BUILTIN_TYPE_KEYS\n \n@@ -198,7 +198,7 @@ def _stage_3(  # noqa: PLR0912\n     # Stage 1. Collect `tvm-ffi-stubgen(import-object): ...`\n     for code in file.code_blocks:\n         if code.kind == \"import-object\":\n-            name, type_checking_only, alias = code.param  # type: ignore[misc]\n+            name, type_checking_only, alias = code.param\n             imports.append(\n                 ImportItem(\n                     name,\ndiff --git a/python/tvm_ffi/stub/file_utils.py b/python/tvm_ffi/stub/file_utils.py\nindex 055c56d..e7ce609 100644\n--- a/python/tvm_ffi/stub/file_utils.py\n+++ b/python/tvm_ffi/stub/file_utils.py\n@@ -111,7 +111,7 @@ class CodeBlock:\n         else:\n             raise ValueError(f\"Unknown stub type `{stub}` at line {lineo}\")\n         return CodeBlock(\n-            kind=kind,  # type: ignore[arg-type]\n+            kind=kind,\n             param=param,\n             lineno_start=lineo,\n             lineno_end=None,\n@@ -275,7 +275,7 @@ def path_walk(\n         return\n     # Python 3.12+ - just delegate to `Path.walk`\n     if hasattr(p, \"walk\"):\n-        yield from p.walk(  # type: ignore[attr-defined]\n+        yield from p.walk(  # ty: ignore[call-non-callable]\n             top_down=top_down,\n             on_error=on_error,\n             follow_symlinks=follow_symlinks,\ndiff --git a/python/tvm_ffi/testing/testing.py b/python/tvm_ffi/testing/testing.py\nindex 0ffeb49..cb6a0e1 100644\n--- a/python/tvm_ffi/testing/testing.py\n+++ b/python/tvm_ffi/testing/testing.py\n@@ -158,7 +158,7 @@ class _TestCxxClassBase:\n     not_field_2: ClassVar[int] = 2\n \n     def __init__(self, v_i64: int, v_i32: int) -> None:\n-        self.__ffi_init__(v_i64 + 1, v_i32 + 2)  # type: ignore[attr-defined]\n+        self.__ffi_init__(v_i64 + 1, v_i32 + 2)  # ty: ignore[unresolved-attribute]\n \n \n @c_class(\"testing.TestCxxClassDerived\")\n@@ -170,7 +170,7 @@ class _TestCxxClassDerived(_TestCxxClassBase):\n @c_class(\"testing.TestCxxClassDerivedDerived\")\n class _TestCxxClassDerivedDerived(_TestCxxClassDerived):\n     v_str: str = field(default_factory=lambda: \"default\")\n-    v_bool: bool  # type: ignore[misc]  # Suppress: Attributes without a default cannot follow attributes with one\n+    v_bool: bool  # ty: ignore[dataclass-field-order]  # Required field after fields with defaults\n \n \n @c_class(\"testing.TestCxxInitSubset\")\ndiff --git a/python/tvm_ffi/utils/_build_optional_torch_c_dlpack.py b/python/tvm_ffi/utils/_build_optional_torch_c_dlpack.py\nindex fd0aff4..985f191 100644\n--- a/python/tvm_ffi/utils/_build_optional_torch_c_dlpack.py\n+++ b/python/tvm_ffi/utils/_build_optional_torch_c_dlpack.py\n@@ -716,7 +716,7 @@ def get_torch_include_paths(build_with_cuda: bool) -> Sequence[str]:\n             device_type=\"cuda\" if build_with_cuda else \"cpu\"\n         )\n     else:\n-        return torch.utils.cpp_extension.include_paths(cuda=build_with_cuda)  # type: ignore[call-arg]\n+        return torch.utils.cpp_extension.include_paths(cuda=build_with_cuda)\n \n \n def main() -> None:  # noqa: PLR0912, PLR0915\ndiff --git a/tests/python/test_container.py b/tests/python/test_container.py\nindex 37f7432..ffedb75 100644\n--- a/tests/python/test_container.py\n+++ b/tests/python/test_container.py\n@@ -50,10 +50,10 @@ def test_bad_constructor_init_state() -> None:\n     proper repr code\n     \"\"\"\n     with pytest.raises(TypeError):\n-        tvm_ffi.Array(1)  # type: ignore[arg-type]\n+        tvm_ffi.Array(1)  # ty: ignore[invalid-argument-type]\n \n     with pytest.raises(AttributeError):\n-        tvm_ffi.Map(1)  # type: ignore[arg-type]\n+        tvm_ffi.Map(1)  # ty: ignore[invalid-argument-type]\n \n \n def test_array_of_array_map() -> None:\n@@ -198,7 +198,7 @@ def test_array_concat(\n     b: Sequence[int],\n     c_expected: Sequence[int],\n ) -> None:\n-    c_actual = a + b  # type: ignore[operator]\n+    c_actual = a + b  # ty: ignore[unsupported-operator]\n     assert type(c_actual) is type(c_expected)\n     assert len(c_actual) == len(c_expected)\n     assert tuple(c_actual) == tuple(c_expected)\ndiff --git a/tests/python/test_cubin_launcher.py b/tests/python/test_cubin_launcher.py\nindex 014511a..6190670 100644\n--- a/tests/python/test_cubin_launcher.py\n+++ b/tests/python/test_cubin_launcher.py\n@@ -22,13 +22,11 @@ import subprocess\n import sys\n import tempfile\n from pathlib import Path\n-from types import ModuleType\n \n import pytest\n \n-torch: ModuleType | None\n try:\n-    import torch  # type: ignore[import-not-found,no-redef]\n+    import torch\n except ImportError:\n     torch = None\n \ndiff --git a/tests/python/test_dataclasses_c_class.py b/tests/python/test_dataclasses_c_class.py\nindex 3a757d0..e3735e4 100644\n--- a/tests/python/test_dataclasses_c_class.py\n+++ b/tests/python/test_dataclasses_c_class.py\n@@ -69,7 +69,7 @@ def test_cxx_class_derived_derived() -> None:\n \n \n def test_cxx_class_derived_derived_default() -> None:\n-    obj = _TestCxxClassDerivedDerived(123, 456, 4, True)  # type: ignore[call-arg,misc]\n+    obj = _TestCxxClassDerivedDerived(123, 456, 4, True)  # ty: ignore[missing-argument]\n     assert obj.v_i64 == 123\n     assert obj.v_i32 == 456\n     assert isinstance(obj.v_f64, float) and obj.v_f64 == 4\n@@ -94,7 +94,7 @@ def test_cxx_class_init_subset_defaults() -> None:\n \n \n def test_cxx_class_init_subset_positional() -> None:\n-    obj = _TestCxxInitSubset(7)  # type: ignore[call-arg]\n+    obj = _TestCxxInitSubset(7)\n     assert obj.required_field == 7\n     assert obj.optional_field == -1\n     obj.optional_field = 11\n@@ -160,7 +160,7 @@ def test_kw_only_class_level_with_default() -> None:\n \n def test_kw_only_class_level_rejects_positional() -> None:\n     with pytest.raises(TypeError, match=\"positional\"):\n-        _TestCxxKwOnly(1, 2, 3, 4)  # type: ignore[misc]\n+        _TestCxxKwOnly(1, 2, 3, 4)  # ty: ignore[missing-argument, too-many-positional-arguments]\n \n \n def test_field_kw_only_parameter() -> None:\ndiff --git a/tests/python/test_device.py b/tests/python/test_device.py\nindex 33b48e8..6575ec9 100644\n--- a/tests/python/test_device.py\n+++ b/tests/python/test_device.py\n@@ -95,7 +95,7 @@ def test_deive_type_error(dev_type: str, dev_id: int | None) -> None:\n \n def test_deive_id_error() -> None:\n     with pytest.raises(TypeError):\n-        tvm_ffi.device(\"cpu\", \"?\")  # type: ignore[arg-type]\n+        tvm_ffi.device(\"cpu\", \"?\")  # ty: ignore[invalid-argument-type]\n \n \n def test_device_pickle() -> None:\ndiff --git a/tests/python/test_dlpack_exchange_api.py b/tests/python/test_dlpack_exchange_api.py\nindex 9d1df21..dda1378 100644\n--- a/tests/python/test_dlpack_exchange_api.py\n+++ b/tests/python/test_dlpack_exchange_api.py\n@@ -24,15 +24,15 @@ import sys\n import pytest\n \n try:\n-    import torch  # type: ignore[no-redef]\n+    import torch\n \n     # Import tvm_ffi to load the DLPack exchange API extension\n     # This sets torch.Tensor.__dlpack_c_exchange_api__\n     import tvm_ffi\n-    from torch.utils import cpp_extension  # type: ignore\n+    from torch.utils import cpp_extension\n     from tvm_ffi import libinfo\n except ImportError:\n-    torch = None  # type: ignore[assignment]\n+    torch = None\n \n # Check if DLPack Exchange API is available\n _has_dlpack_api = torch is not None and hasattr(torch.Tensor, \"__dlpack_c_exchange_api__\")\n@@ -46,7 +46,7 @@ def test_dlpack_exchange_api() -> None:\n \n     assert torch is not None\n     assert hasattr(torch.Tensor, \"__dlpack_c_exchange_api__\")\n-    api_attr = torch.Tensor.__dlpack_c_exchange_api__  # type: ignore[attr-defined]\n+    api_attr = torch.Tensor.__dlpack_c_exchange_api__\n     # PyCapsule - extract the pointer as integer\n     pythonapi = ctypes.pythonapi\n     # Set restype to c_size_t to get integer directly (avoids c_void_p quirks)\n@@ -217,6 +217,7 @@ def test_dlpack_exchange_api() -> None:\n @pytest.mark.skipif(not _has_dlpack_api, reason=\"PyTorch DLPack Exchange API not available\")\n def test_from_dlpack_torch() -> None:\n     # Covers from_dlpack to use fallback fastpath\n+    assert torch is not None\n     tensor = torch.arange(24, dtype=torch.float32).reshape(2, 3, 4)\n     tensor_from_dlpack = tvm_ffi.from_dlpack(tensor)\n     assert tensor_from_dlpack.shape == tensor.shape\ndiff --git a/tests/python/test_error.py b/tests/python/test_error.py\nindex 068fb3f..c6c36f9 100644\n--- a/tests/python/test_error.py\n+++ b/tests/python/test_error.py\n@@ -41,9 +41,9 @@ def test_error_from_cxx() -> None:\n     try:\n         test_raise_error(\"ValueError\", \"error XYZ\")\n     except ValueError as e:\n-        assert e.__tvm_ffi_error__.kind == \"ValueError\"  # type: ignore[attr-defined]\n-        assert e.__tvm_ffi_error__.message == \"error XYZ\"  # type: ignore[attr-defined]\n-        assert e.__tvm_ffi_error__.backtrace.find(\"TestRaiseError\") != -1  # type: ignore[attr-defined]\n+        assert e.__tvm_ffi_error__.kind == \"ValueError\"  # ty: ignore[unresolved-attribute]\n+        assert e.__tvm_ffi_error__.message == \"error XYZ\"  # ty: ignore[unresolved-attribute]\n+        assert e.__tvm_ffi_error__.backtrace.find(\"TestRaiseError\") != -1  # ty: ignore[unresolved-attribute]\n \n     fapply = tvm_ffi.convert(lambda f, *args: f(*args))\n \n@@ -66,17 +66,17 @@ def test_error_from_nested_pyfunc() -> None:\n         try:\n             fapply(cxx_test_raise_error, \"ValueError\", \"error XYZ\")\n         except ValueError as e:\n-            assert e.__tvm_ffi_error__.kind == \"ValueError\"  # type: ignore[attr-defined]\n-            assert e.__tvm_ffi_error__.message == \"error XYZ\"  # type: ignore[attr-defined]\n-            assert e.__tvm_ffi_error__.backtrace.find(\"TestRaiseError\") != -1  # type: ignore[attr-defined]\n-            record_object.append(e.__tvm_ffi_error__)  # type: ignore[attr-defined]\n+            assert e.__tvm_ffi_error__.kind == \"ValueError\"  # ty: ignore[unresolved-attribute]\n+            assert e.__tvm_ffi_error__.message == \"error XYZ\"  # ty: ignore[unresolved-attribute]\n+            assert e.__tvm_ffi_error__.backtrace.find(\"TestRaiseError\") != -1  # ty: ignore[unresolved-attribute]\n+            record_object.append(e.__tvm_ffi_error__)  # ty: ignore[unresolved-attribute]\n             raise e\n \n     try:\n         cxx_test_apply(raise_error)\n     except ValueError as e:\n-        backtrace = e.__tvm_ffi_error__.backtrace  # type: ignore[attr-defined]\n-        assert e.__tvm_ffi_error__.same_as(record_object[0])  # type: ignore[attr-defined]\n+        backtrace = e.__tvm_ffi_error__.backtrace  # ty: ignore[unresolved-attribute]\n+        assert e.__tvm_ffi_error__.same_as(record_object[0])  # ty: ignore[unresolved-attribute]\n         assert backtrace.count(\"TestRaiseError\") == 1\n         # The following lines may fail if debug symbols are missing\n         try:\n@@ -110,7 +110,7 @@ def test_error_traceback_update() -> None:\n     try:\n         raise_cxx_error()\n     except ValueError as e:\n-        assert e.__tvm_ffi_error__.backtrace.find(\"raise_cxx_error\") == -1  # type: ignore[attr-defined]\n+        assert e.__tvm_ffi_error__.backtrace.find(\"raise_cxx_error\") == -1  # ty: ignore[unresolved-attribute]\n         ffi_error1 = tvm_ffi.convert(e)\n         ffi_error2 = fecho(e)\n         assert ffi_error1.backtrace.find(\"raise_cxx_error\") != -1\ndiff --git a/tests/python/test_function.py b/tests/python/test_function.py\nindex 8a494fb..686fc08 100644\n--- a/tests/python/test_function.py\n+++ b/tests/python/test_function.py\n@@ -284,7 +284,7 @@ def test_function_subclass() -> None:\n         # When subclassing a Cython cdef class and overriding `__init__`,\n         # special methods like `__call__` may not be inherited automatically.\n         # This explicit assignment ensures the subclass remains callable.\n-        __call__ = tvm_ffi.Function.__call__  # type: ignore\n+        __call__ = tvm_ffi.Function.__call__\n \n     f = tvm_ffi.convert(lambda x: x)\n     assert isinstance(f, tvm_ffi.Function)\ndiff --git a/tests/python/test_load_inline.py b/tests/python/test_load_inline.py\nindex 77b9f8b..fb4b582 100644\n--- a/tests/python/test_load_inline.py\n+++ b/tests/python/test_load_inline.py\n@@ -17,14 +17,11 @@\n \n from __future__ import annotations\n \n-from types import ModuleType\n-\n import numpy\n import pytest\n \n-torch: ModuleType | None\n try:\n-    import torch  # type: ignore[no-redef]\n+    import torch\n except ImportError:\n     torch = None\n \n@@ -251,6 +248,7 @@ def test_load_inline_with_env_tensor_allocator() -> None:\n         When a module returns an object, the object deleter address is part of the\n         loaded library. We need to keep the module loaded until the object is deleted.\n         \"\"\"\n+        assert torch is not None\n         x_cpu = torch.asarray([1, 2, 3, 4, 5], dtype=torch.float32, device=\"cpu\")\n         # test support for nested container passing\n         y_cpu = mod.return_add_one({\"x\": [x_cpu]})\n@@ -353,6 +351,7 @@ def test_cuda_memory_alloc_noleak() -> None:\n \n     def run_check() -> None:\n         \"\"\"Must run in a separate function to ensure deletion happens before mod unloads.\"\"\"\n+        assert torch is not None\n         x = torch.arange(1024 * 1024, dtype=torch.float32, device=\"cuda\")\n         current_allocated = torch.cuda.memory_allocated()\n         repeat = 8\ndiff --git a/tests/python/test_object.py b/tests/python/test_object.py\nindex e49d3ec..3f1554c 100644\n--- a/tests/python/test_object.py\n+++ b/tests/python/test_object.py\n@@ -35,7 +35,7 @@ def test_make_object() -> None:\n \n \n def test_make_object_via_init() -> None:\n-    obj0 = tvm_ffi.testing.TestIntPair(1, 2)  # type: ignore[call-arg]\n+    obj0 = tvm_ffi.testing.TestIntPair(1, 2)  # ty: ignore[too-many-positional-arguments]\n     assert obj0.a == 1\n     assert obj0.b == 2\n \n@@ -43,13 +43,13 @@ def test_make_object_via_init() -> None:\n def test_method() -> None:\n     obj0 = tvm_ffi.testing.create_object(\"testing.TestObjectBase\", v_i64=12)\n     assert isinstance(obj0, tvm_ffi.testing.TestObjectBase)\n-    assert obj0.add_i64(1) == 13  # type: ignore[attr-defined]\n-    assert type(obj0).add_i64.__doc__ == \"add_i64 method\"  # type: ignore[attr-defined]\n-    assert type(obj0).v_i64.__doc__ == \"i64 field\"  # type: ignore[attr-defined]\n+    assert obj0.add_i64(1) == 13\n+    assert type(obj0).add_i64.__doc__ == \"add_i64 method\"\n+    assert type(obj0).v_i64.__doc__ == \"i64 field\"\n \n \n def test_attribute() -> None:\n-    obj = tvm_ffi.testing.TestIntPair(3, 4)  # type: ignore[call-arg]\n+    obj = tvm_ffi.testing.TestIntPair(3, 4)  # ty: ignore[too-many-positional-arguments]\n     assert obj.a == 3\n     assert obj.b == 4\n     assert type(obj).a.__doc__ == \"Field `a`\"\n@@ -76,10 +76,10 @@ def test_setter() -> None:\n     assert obj0.v_str == \"world\"\n \n     with pytest.raises(TypeError):\n-        obj0.v_str = 1  # type: ignore[assignment]\n+        obj0.v_str = 1  # ty: ignore[invalid-assignment]\n \n     with pytest.raises(TypeError):\n-        obj0.v_i64 = \"hello\"  # type: ignore[assignment]\n+        obj0.v_i64 = \"hello\"  # ty: ignore[invalid-assignment]\n \n \n def test_derived_object() -> None:\n@@ -93,8 +93,8 @@ def test_derived_object() -> None:\n         \"testing.TestObjectDerived\", v_i64=20, v_map=v_map, v_array=v_array\n     )\n     assert isinstance(obj0, tvm_ffi.testing.TestObjectDerived)\n-    assert obj0.v_map.same_as(v_map)  # type: ignore[attr-defined]\n-    assert obj0.v_array.same_as(v_array)  # type: ignore[attr-defined]\n+    assert obj0.v_map.same_as(v_map)  # ty: ignore[unresolved-attribute]\n+    assert obj0.v_array.same_as(v_array)  # ty: ignore[unresolved-attribute]\n     assert obj0.v_i64 == 20\n     assert obj0.v_f64 == 10.0\n     assert obj0.v_str == \"hello\"\n@@ -129,7 +129,7 @@ def test_opaque_object() -> None:\n def test_opaque_type_error() -> None:\n     obj0 = MyObject(\"hello\")\n     with pytest.raises(TypeError) as e:\n-        tvm_ffi.testing.add_one(obj0)  # type: ignore[arg-type]\n+        tvm_ffi.testing.add_one(obj0)  # ty: ignore[invalid-argument-type]\n     assert (\n         \"Mismatched type on argument #0 when calling: `testing.add_one(0: int) -> int`. Expected `int` but got `ffi.OpaquePyObject`\"\n         in str(e.value)\n@@ -154,18 +154,18 @@ def test_object_protocol() -> None:\n \n def test_unregistered_object_fallback() -> None:\n     def _check_type(x: Any) -> None:\n-        type_info: TypeInfo = type(x).__tvm_ffi_type_info__  # type: ignore[attr-defined]\n+        type_info: TypeInfo = type(x).__tvm_ffi_type_info__\n         assert type_info.type_key == \"testing.TestUnregisteredObject\"\n         assert x.v1 == 41\n         assert x.v2 == 42\n-        assert x.get_v1_plus_one() == 42  # type: ignore[attr-defined]\n-        assert x.get_v2_plus_two() == 44  # type: ignore[attr-defined]\n+        assert x.get_v1_plus_one() == 42\n+        assert x.get_v2_plus_two() == 44\n         assert type(x).__name__ == \"TestUnregisteredObject\"\n         assert type(x).__module__ == \"testing\"\n         assert type(x).__qualname__ == \"testing.TestUnregisteredObject\"\n-        assert \"Auto-generated fallback class\" in type(x).__doc__  # type: ignore[operator]\n-        assert \"Get (v1 + 1) from TestUnregisteredBaseObject\" in type(x).get_v1_plus_one.__doc__  # type: ignore[attr-defined]\n-        assert \"Get (v2 + 2) from TestUnregisteredObject\" in type(x).get_v2_plus_two.__doc__  # type: ignore[attr-defined]\n+        assert \"Auto-generated fallback class\" in type(x).__doc__\n+        assert \"Get (v1 + 1) from TestUnregisteredBaseObject\" in type(x).get_v1_plus_one.__doc__\n+        assert \"Get (v2 + 2) from TestUnregisteredObject\" in type(x).get_v2_plus_two.__doc__\n \n     obj = tvm_ffi.testing.make_unregistered_object()\n     _check_type(obj)\ndiff --git a/tests/python/test_optional_torch_c_dlpack.py b/tests/python/test_optional_torch_c_dlpack.py\nindex e8e4100..93d29cc 100644\n--- a/tests/python/test_optional_torch_c_dlpack.py\n+++ b/tests/python/test_optional_torch_c_dlpack.py\n@@ -25,7 +25,7 @@ import pytest\n try:\n     import torch\n except ImportError:\n-    torch = None  # type: ignore[assignment]\n+    torch = None\n \n \n import tvm_ffi\n@@ -35,6 +35,7 @@ IS_WINDOWS = sys.platform.startswith(\"win\")\n \n @pytest.mark.skipif(torch is None, reason=\"torch is not installed\")\n def test_build_torch_c_dlpack_extension() -> None:\n+    assert torch is not None\n     build_script = Path(tvm_ffi.__file__).parent / \"utils\" / \"_build_optional_torch_c_dlpack.py\"\n     args = [\n         sys.executable,\ndiff --git a/tests/python/test_stream.py b/tests/python/test_stream.py\nindex fa5c9b3..c1d9376 100644\n--- a/tests/python/test_stream.py\n+++ b/tests/python/test_stream.py\n@@ -18,21 +18,19 @@\n from __future__ import annotations\n \n import ctypes\n-from types import ModuleType\n \n import pytest\n import tvm_ffi\n import tvm_ffi.cpp\n \n-torch: ModuleType | None\n try:\n-    import torch  # type: ignore[no-redef]\n+    import torch\n except ImportError:\n     torch = None\n \n \n try:\n-    from cuda.bindings import driver as cuda_driver  # type: ignore[import-not-found]\n+    from cuda.bindings import driver as cuda_driver\n except ImportError:\n     cuda_driver = None\n \ndiff --git a/tests/python/test_tensor.py b/tests/python/test_tensor.py\nindex 0c45654..d2f75ec 100644\n--- a/tests/python/test_tensor.py\n+++ b/tests/python/test_tensor.py\n@@ -17,15 +17,13 @@\n \n from __future__ import annotations\n \n-from types import ModuleType\n from typing import Any, NamedTuple, NoReturn\n \n import numpy.typing as npt\n import pytest\n \n-torch: ModuleType | None\n try:\n-    import torch  # type: ignore[no-redef]\n+    import torch\n except ImportError:\n     torch = None\n \ndiff --git a/tests/python/utils/test_embed_cubin.py b/tests/python/utils/test_embed_cubin.py\nindex 33a8558..6a08cd7 100644\n--- a/tests/python/utils/test_embed_cubin.py\n+++ b/tests/python/utils/test_embed_cubin.py\n@@ -22,14 +22,12 @@ import subprocess\n import sys\n import tempfile\n from pathlib import Path\n-from types import ModuleType\n \n import pytest\n from tvm_ffi.utils.embed_cubin import embed_cubin\n \n-torch: ModuleType | None\n try:\n-    import torch  # type: ignore[import-not-found,no-redef]\n+    import torch\n except ImportError:\n     torch = None\n \ndiff --git a/tests/python/utils/test_kwargs_wrapper.py b/tests/python/utils/test_kwargs_wrapper.py\nindex aa304cd..4c370de 100644\n--- a/tests/python/utils/test_kwargs_wrapper.py\n+++ b/tests/python/utils/test_kwargs_wrapper.py\n@@ -124,7 +124,7 @@ def test_validation_errors() -> None:\n \n     # Invalid argument name types\n     with pytest.raises(TypeError, match=\"Argument name must be a string\"):\n-        make_kwargs_wrapper(target, [\"a\", 123])  # type: ignore[list-item]\n+        make_kwargs_wrapper(target, [\"a\", 123])  # ty: ignore[invalid-argument-type]\n \n     # Invalid Python identifiers\n     with pytest.raises(ValueError, match=\"not a valid Python identifier\"):\n@@ -138,7 +138,7 @@ def test_validation_errors() -> None:\n \n     # arg_defaults not a tuple\n     with pytest.raises(TypeError, match=\"arg_defaults must be a tuple\"):\n-        make_kwargs_wrapper(target, [\"a\", \"b\"], arg_defaults=[10])  # type: ignore[arg-type]\n+        make_kwargs_wrapper(target, [\"a\", \"b\"], arg_defaults=[10])  # ty: ignore[invalid-argument-type]\n \n     # arg_defaults too long\n     with pytest.raises(ValueError, match=r\"arg_defaults has .* values but only\"):\n@@ -190,7 +190,7 @@ def test_wrapper_with_signature() -> None:\n \n     # Test metadata preservation when prototype is provided\n     wrapper_with_metadata = make_kwargs_wrapper_from_signature(target, sig, source_func)\n-    assert wrapper_with_metadata.__name__ == \"source_func\"\n+    assert wrapper_with_metadata.__name__ == \"source_func\"  # ty: ignore[unresolved-attribute]\n     assert wrapper_with_metadata.__doc__ == \"Source function documentation.\"\n \n     # With keyword-only arguments\n@@ -322,7 +322,7 @@ def test_metadata_preservation() -> None:\n     target = lambda *args: sum(args)\n \n     wrapper = make_kwargs_wrapper(target, [\"x\", \"y\"], arg_defaults=(10,), prototype=my_function)\n-    assert wrapper.__name__ == \"my_function\"\n+    assert wrapper.__name__ == \"my_function\"  # ty: ignore[unresolved-attribute]\n     assert wrapper.__doc__ == \"Document the function.\"\n     assert wrapper.__annotations__ == my_function.__annotations__\n     assert wrapper(5) == 15\ndiff --git a/tests/scripts/benchmark_dlpack.py b/tests/scripts/benchmark_dlpack.py\nindex 4798d00..471a048 100644\n--- a/tests/scripts/benchmark_dlpack.py\n+++ b/tests/scripts/benchmark_dlpack.py\n@@ -290,9 +290,9 @@ def tvm_ffi_nop_autodlpack_from_dltensor_test_wrapper(repeat: int, device: str)\n     x = tvm_ffi.from_dlpack(torch.arange(1, device=device))\n     y = tvm_ffi.from_dlpack(torch.arange(1, device=device))\n     z = tvm_ffi.from_dlpack(torch.arange(1, device=device))\n-    x = tvm_ffi.core.DLTensorTestWrapper(x)  # type: ignore[assignment]\n-    y = tvm_ffi.core.DLTensorTestWrapper(y)  # type: ignore[assignment]\n-    z = tvm_ffi.core.DLTensorTestWrapper(z)  # type: ignore[assignment]\n+    x = tvm_ffi.core.DLTensorTestWrapper(x)\n+    y = tvm_ffi.core.DLTensorTestWrapper(y)\n+    z = tvm_ffi.core.DLTensorTestWrapper(z)\n     bench_tvm_ffi_nop_autodlpack(\n         f\"tvm_ffi.nop.autodlpack(DLTensorTestWrapper[{device}])\", x, y, z, repeat\n     )\ndiff --git a/tests/scripts/benchmark_kwargs_wrapper.py b/tests/scripts/benchmark_kwargs_wrapper.py\nindex 892d06e..185400c 100644\n--- a/tests/scripts/benchmark_kwargs_wrapper.py\n+++ b/tests/scripts/benchmark_kwargs_wrapper.py\n@@ -28,7 +28,7 @@ def print_speed(name: str, speed: float) -> None:\n     print(f\"{name:<60} {speed} sec/call\")\n \n \n-def target_func(*args: Any) -> None:  # type: ignore[no-untyped-def]\n+def target_func(*args: Any) -> None:\n     pass\n \n ",
+  "heuristics": {
+    "tags": [
+      "build",
+      "ci",
+      "test"
+    ],
+    "extensions": [
+      ".md",
+      ".py",
+      ".toml",
+      ".yaml",
+      ".yml"
+    ],
+    "scopes_guess": [
+      ".pre-commit-config.yaml",
+      "CONTRIBUTING.md",
+      "examples",
+      "pyproject.toml",
+      "python",
+      "tests"
+    ]
+  }
+}

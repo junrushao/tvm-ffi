@@ -1,0 +1,39 @@
+{
+  "sha": "6e9100c13b83f1ab42cd067cc0121aad8766a507",
+  "sha7": "6e9100c",
+  "author_name": "Javier",
+  "author_email": "25750030+SystemPanic@users.noreply.github.com",
+  "date_iso": "2025-10-17T10:58:10-05:00",
+  "subject": "MSVC compiler fix (#159)",
+  "body":
+      "This pull request adds a forward declaration of Tensor class to prevent\nerrors when compiling with MSVC.\n\nSigned-off-by: Javier <25750030+SystemPanic@users.noreply.github.com>",
+  "is_merge": false,
+  "parents": [
+    "08dbabf0cb22f72823c6bbb468fbfd6826fb43cf"
+  ],
+  "name_status": [
+    [
+      "M",
+      "include/tvm/ffi/container/tensor.h"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "include/tvm/ffi/container/tensor.h",
+      "additions": 2,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/include/tvm/ffi/container/tensor.h b/include/tvm/ffi/container/tensor.h\nindex 3164267..0b978db 100644\n--- a/include/tvm/ffi/container/tensor.h\n+++ b/include/tvm/ffi/container/tensor.h\n@@ -38,6 +38,8 @@\n namespace tvm {\n namespace ffi {\n \n+class Tensor;\n+\n /*!\n  * \\brief Check if the device uses direct address, where address of data indicate alignment.\n  * \\param device The input device.",
+  "heuristics": {
+    "tags": [],
+    "extensions": [
+      ".h"
+    ],
+    "scopes_guess": [
+      "include"
+    ]
+  }
+}

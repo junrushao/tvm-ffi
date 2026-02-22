@@ -1,0 +1,200 @@
+{
+  "sha": "7b813f8bc6a548d9aebb24ec5d19c0aa8b89c6a7",
+  "sha7": "7b813f8",
+  "author_name": "tqchen",
+  "author_email": "tianqi.tchen@gmail.com",
+  "date_iso": "2025-09-13T14:14:31-04:00",
+  "subject": "[FFI][REFACTOR] Update TVM_FFI_STATIC_INIT_BLOCK to fn style",
+  "body":
+      "This PR updates TVM_FFI_STATIC_INIT_BLOCK to function style.\nNow we do the code as follows, which is cleaner in generally\nand also helps error reporting to locate the right place.\n\nTVM_FFI_STATIC_INIT_BLOCK() {\n  RegisterStaffs();\n}",
+  "is_merge": false,
+  "parents": [
+    "043d9f647677cc3b4a8baba198a2ced45f99cc98"
+  ],
+  "name_status": [
+    [
+      "M",
+      "docs/guides/packaging.md"
+    ],
+    [
+      "M",
+      "docs/guides/python_guide.md"
+    ],
+    [
+      "M",
+      "examples/packaging/src/extension.cc"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/base_details.h"
+    ],
+    [
+      "M",
+      "src/ffi/container.cc"
+    ],
+    [
+      "M",
+      "src/ffi/extra/json_parser.cc"
+    ],
+    [
+      "M",
+      "src/ffi/extra/json_writer.cc"
+    ],
+    [
+      "M",
+      "src/ffi/extra/library_module_dynamic_lib.cc"
+    ],
+    [
+      "M",
+      "src/ffi/extra/library_module_system_lib.cc"
+    ],
+    [
+      "M",
+      "src/ffi/extra/module.cc"
+    ],
+    [
+      "M",
+      "src/ffi/extra/reflection_extra.cc"
+    ],
+    [
+      "M",
+      "src/ffi/extra/serialization.cc"
+    ],
+    [
+      "M",
+      "src/ffi/extra/structural_equal.cc"
+    ],
+    [
+      "M",
+      "src/ffi/extra/structural_hash.cc"
+    ],
+    [
+      "M",
+      "src/ffi/extra/testing.cc"
+    ],
+    [
+      "M",
+      "src/ffi/function.cc"
+    ],
+    [
+      "M",
+      "src/ffi/tensor.cc"
+    ],
+    [
+      "M",
+      "tests/cpp/test_reflection.cc"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "docs/guides/packaging.md",
+      "additions": 2,
+      "deletions": 2
+    },
+    {
+      "path": "docs/guides/python_guide.md",
+      "additions": 2,
+      "deletions": 2
+    },
+    {
+      "path": "examples/packaging/src/extension.cc",
+      "additions": 2,
+      "deletions": 2
+    },
+    {
+      "path": "include/tvm/ffi/base_details.h",
+      "additions": 32,
+      "deletions": 8
+    },
+    {
+      "path": "src/ffi/container.cc",
+      "additions": 2,
+      "deletions": 2
+    },
+    {
+      "path": "src/ffi/extra/json_parser.cc",
+      "additions": 2,
+      "deletions": 2
+    },
+    {
+      "path": "src/ffi/extra/json_writer.cc",
+      "additions": 2,
+      "deletions": 2
+    },
+    {
+      "path": "src/ffi/extra/library_module_dynamic_lib.cc",
+      "additions": 2,
+      "deletions": 2
+    },
+    {
+      "path": "src/ffi/extra/library_module_system_lib.cc",
+      "additions": 2,
+      "deletions": 2
+    },
+    {
+      "path": "src/ffi/extra/module.cc",
+      "additions": 2,
+      "deletions": 2
+    },
+    {
+      "path": "src/ffi/extra/reflection_extra.cc",
+      "additions": 2,
+      "deletions": 2
+    },
+    {
+      "path": "src/ffi/extra/serialization.cc",
+      "additions": 2,
+      "deletions": 2
+    },
+    {
+      "path": "src/ffi/extra/structural_equal.cc",
+      "additions": 2,
+      "deletions": 2
+    },
+    {
+      "path": "src/ffi/extra/structural_hash.cc",
+      "additions": 2,
+      "deletions": 2
+    },
+    {
+      "path": "src/ffi/extra/testing.cc",
+      "additions": 4,
+      "deletions": 4
+    },
+    {
+      "path": "src/ffi/function.cc",
+      "additions": 2,
+      "deletions": 2
+    },
+    {
+      "path": "src/ffi/tensor.cc",
+      "additions": 2,
+      "deletions": 2
+    },
+    {
+      "path": "tests/cpp/test_reflection.cc",
+      "additions": 4,
+      "deletions": 4
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/docs/guides/packaging.md b/docs/guides/packaging.md\nindex 1ae9bc6..c12fe4e 100644\n--- a/docs/guides/packaging.md\n+++ b/docs/guides/packaging.md\n@@ -161,11 +161,11 @@ void RaiseError(ffi::String msg) {\n   TVM_FFI_THROW(RuntimeError) << msg;\n }\n \n-TVM_FFI_STATIC_INIT_BLOCK({\n+TVM_FFI_STATIC_INIT_BLOCK() {\n   namespace refl = tvm::ffi::reflection;\n   refl::GlobalDef()\n     .def(\"my_ffi_extension.raise_error\", RaiseError);\n-});\n+}\n ```\n \n Make sure to have a unique name across all registered functions when registering a global function.\ndiff --git a/docs/guides/python_guide.md b/docs/guides/python_guide.md\nindex b7cff50..0ab56eb 100644\n--- a/docs/guides/python_guide.md\n+++ b/docs/guides/python_guide.md\n@@ -203,7 +203,7 @@ public:\n   TVM_FFI_DEFINE_OBJECT_REF_METHODS_NULLABLE(TestIntPair, tvm::ffi::ObjectRef, TestIntPairObj);\n };\n \n-TVM_FFI_STATIC_INIT_BLOCK({\n+TVM_FFI_STATIC_INIT_BLOCK() {\n   namespace refl = tvm::ffi::reflection;\n   // register the object into the system\n   // register field accessors and a global static function `__create__` as ffi::Function\n@@ -213,7 +213,7 @@ TVM_FFI_STATIC_INIT_BLOCK({\n     .def_static(\"__create__\", [](int64_t a, int64_t b) -> TestIntPair {\n       return TestIntPair(a, b);\n     });\n-});\n+}\n ```\n \n You can then create wrapper classes for objects that are in the library as follows:\ndiff --git a/examples/packaging/src/extension.cc b/examples/packaging/src/extension.cc\nindex 7a2eb15..6a7324f 100644\n--- a/examples/packaging/src/extension.cc\n+++ b/examples/packaging/src/extension.cc\n@@ -62,7 +62,7 @@ TVM_FFI_DLL_EXPORT_TYPED_FUNC(add_one, my_ffi_extension::AddOne);\n \n // The static initialization block is\n // called once when the library is loaded.\n-TVM_FFI_STATIC_INIT_BLOCK({\n+TVM_FFI_STATIC_INIT_BLOCK() {\n   namespace refl = tvm::ffi::reflection;\n   // In this particular example, we use the reflection mechanisms to\n   // register the functions directly into the global function table.\n@@ -85,5 +85,5 @@ TVM_FFI_STATIC_INIT_BLOCK({\n   // tvm::ffi::Module::LoadFromFile, instead, just load the dll or simply bundle into the\n   // final project\n   refl::GlobalDef().def(\"my_ffi_extension.raise_error\", RaiseError);\n-});\n+}\n }  // namespace my_ffi_extension\ndiff --git a/include/tvm/ffi/base_details.h b/include/tvm/ffi/base_details.h\nindex 80cd889..c20f0e5 100644\n--- a/include/tvm/ffi/base_details.h\n+++ b/include/tvm/ffi/base_details.h\n@@ -72,9 +72,6 @@\n #define TVM_FFI_UNREACHABLE() __builtin_unreachable()\n #endif\n \n-/*! \\brief helper macro to suppress unused warning */\n-#define TVM_FFI_ATTRIBUTE_UNUSED [[maybe_unused]]\n-\n #define TVM_FFI_STR_CONCAT_(__x, __y) __x##__y\n #define TVM_FFI_STR_CONCAT(__x, __y) TVM_FFI_STR_CONCAT_(__x, __y)\n \n@@ -86,12 +83,39 @@\n #define TVM_FFI_FUNC_SIG __func__\n #endif\n \n-#define TVM_FFI_STATIC_INIT_BLOCK_VAR_DEF \\\n-  TVM_FFI_ATTRIBUTE_UNUSED static inline int __##TVMFFIStaticInitReg\n+#if defined(__GNUC__)\n+// gcc and clang and attribute constructor\n+/// \\cond Doxygen_Suppress\n+#define TVM_FFI_STATIC_INIT_BLOCK_DEF_(FnName) __attribute__((constructor)) static void FnName()\n+/// \\endcond\n+/*\n+ * \\brief Macro that defines a block that will be called during static initialization.\n+ *\n+ * \\code\n+ * TVM_FFI_STATIC_INIT_BLOCK() {\n+ *   RegisterFunctions();\n+ * }\n+ * \\endcode\n+ */\n+#define TVM_FFI_STATIC_INIT_BLOCK() \\\n+  TVM_FFI_STATIC_INIT_BLOCK_DEF_(TVM_FFI_STR_CONCAT(__TVMFFIStaticInitFunc, __COUNTER__))\n \n-/*! \\brief helper macro to run code once during initialization */\n-#define TVM_FFI_STATIC_INIT_BLOCK(Body) \\\n-  TVM_FFI_STR_CONCAT(TVM_FFI_STATIC_INIT_BLOCK_VAR_DEF, __COUNTER__) = []() { Body return 0; }()\n+#else\n+/// \\cond Doxygen_Suppress\n+// for other compilers, use the variable trick\n+#define TVM_FFI_STATIC_INIT_BLOCK_DEF_(FnName, RegVar) \\\n+  static void FnName();                                \\\n+  [[maybe_unused]] static inline int RegVar = []() {   \\\n+    FnName();                                          \\\n+    return 0;                                          \\\n+  }();                                                 \\\n+  static void FnName()\n+\n+#define TVM_FFI_STATIC_INIT_BLOCK()                                                       \\\n+  TVM_FFI_STATIC_INIT_BLOCK_DEF_(TVM_FFI_STR_CONCAT(__TVMFFIStaticInitFunc, __COUNTER__), \\\n+                                 TVM_FFI_STR_CONCAT(__TVMFFIStaticInitReg, __COUNTER__))\n+/// \\endcond\n+#endif\n \n /*\n  * \\brief Define the default copy/move constructor and assign operator\ndiff --git a/src/ffi/container.cc b/src/ffi/container.cc\nindex 858cbd4..5cf692a 100644\n--- a/src/ffi/container.cc\n+++ b/src/ffi/container.cc\n@@ -56,7 +56,7 @@ class MapForwardIterFunctor {\n   ffi::MapObj::iterator end_;\n };\n \n-TVM_FFI_STATIC_INIT_BLOCK({\n+TVM_FFI_STATIC_INIT_BLOCK() {\n   namespace refl = tvm::ffi::reflection;\n   refl::GlobalDef()\n       .def_packed(\"ffi.Array\",\n@@ -83,6 +83,6 @@ TVM_FFI_STATIC_INIT_BLOCK({\n       .def(\"ffi.MapForwardIterFunctor\", [](const ffi::MapObj* n) -> ffi::Function {\n         return ffi::Function::FromTyped(MapForwardIterFunctor(n->begin(), n->end()));\n       });\n-});\n+}\n }  // namespace ffi\n }  // namespace tvm\ndiff --git a/src/ffi/extra/json_parser.cc b/src/ffi/extra/json_parser.cc\nindex c346e0d..dddb782 100644\n--- a/src/ffi/extra/json_parser.cc\n+++ b/src/ffi/extra/json_parser.cc\n@@ -720,11 +720,11 @@ json::Value Parse(const String& json_str, String* error_msg) {\n   return JSONParser::Parse(json_str, error_msg);\n }\n \n-TVM_FFI_STATIC_INIT_BLOCK({\n+TVM_FFI_STATIC_INIT_BLOCK() {\n   namespace refl = tvm::ffi::reflection;\n   refl::GlobalDef().def(\"ffi.json.Parse\",\n                         [](const String& json_str) { return json::Parse(json_str); });\n-});\n+}\n \n }  // namespace json\n }  // namespace ffi\ndiff --git a/src/ffi/extra/json_writer.cc b/src/ffi/extra/json_writer.cc\nindex c2cd3f2..1a4636d 100644\n--- a/src/ffi/extra/json_writer.cc\n+++ b/src/ffi/extra/json_writer.cc\n@@ -295,10 +295,10 @@ String Stringify(const json::Value& value, Optional<int> indent) {\n   return JSONWriter::Stringify(value, indent);\n }\n \n-TVM_FFI_STATIC_INIT_BLOCK({\n+TVM_FFI_STATIC_INIT_BLOCK() {\n   namespace refl = tvm::ffi::reflection;\n   refl::GlobalDef().def(\"ffi.json.Stringify\", Stringify);\n-});\n+}\n \n }  // namespace json\n }  // namespace ffi\ndiff --git a/src/ffi/extra/library_module_dynamic_lib.cc b/src/ffi/extra/library_module_dynamic_lib.cc\nindex e85b051..34072aa 100644\n--- a/src/ffi/extra/library_module_dynamic_lib.cc\n+++ b/src/ffi/extra/library_module_dynamic_lib.cc\n@@ -108,11 +108,11 @@ void DSOLibrary::Unload() {\n }\n #endif\n \n-TVM_FFI_STATIC_INIT_BLOCK({\n+TVM_FFI_STATIC_INIT_BLOCK() {\n   namespace refl = tvm::ffi::reflection;\n   refl::GlobalDef().def(\"ffi.Module.load_from_file.so\", [](String library_path, String) {\n     return CreateLibraryModule(make_object<DSOLibrary>(library_path));\n   });\n-});\n+}\n }  // namespace ffi\n }  // namespace tvm\ndiff --git a/src/ffi/extra/library_module_system_lib.cc b/src/ffi/extra/library_module_system_lib.cc\nindex 9d077fe..3a61473 100644\n--- a/src/ffi/extra/library_module_system_lib.cc\n+++ b/src/ffi/extra/library_module_system_lib.cc\n@@ -124,7 +124,7 @@ class SystemLibModuleRegistry {\n   Map<String, ffi::Module> lib_map_;\n };\n \n-TVM_FFI_STATIC_INIT_BLOCK({\n+TVM_FFI_STATIC_INIT_BLOCK() {\n   namespace refl = tvm::ffi::reflection;\n   refl::GlobalDef().def_packed(\"ffi.SystemLib\", [](ffi::PackedArgs args, ffi::Any* rv) {\n     String symbol_prefix = \"\";\n@@ -133,7 +133,7 @@ TVM_FFI_STATIC_INIT_BLOCK({\n     }\n     *rv = SystemLibModuleRegistry::Global()->GetOrCreateModule(symbol_prefix);\n   });\n-});\n+}\n }  // namespace ffi\n }  // namespace tvm\n \ndiff --git a/src/ffi/extra/module.cc b/src/ffi/extra/module.cc\nindex 9450917..d2ebcd1 100644\n--- a/src/ffi/extra/module.cc\n+++ b/src/ffi/extra/module.cc\n@@ -119,7 +119,7 @@ Module Module::LoadFromFile(const String& file_name) {\n   return (*floader)(file_name, format).cast<Module>();\n }\n \n-TVM_FFI_STATIC_INIT_BLOCK({\n+TVM_FFI_STATIC_INIT_BLOCK() {\n   namespace refl = tvm::ffi::reflection;\n   ModuleObj::InternalUnsafe::RegisterReflection();\n \n@@ -144,7 +144,7 @@ TVM_FFI_STATIC_INIT_BLOCK({\n       .def_method(\"ffi.ModuleWriteToFile\", &ModuleObj::WriteToFile)\n       .def_method(\"ffi.ModuleImportModule\", &ModuleObj::ImportModule)\n       .def_method(\"ffi.ModuleClearImports\", &ModuleObj::ClearImports);\n-});\n+}\n }  // namespace ffi\n }  // namespace tvm\n \ndiff --git a/src/ffi/extra/reflection_extra.cc b/src/ffi/extra/reflection_extra.cc\nindex 698be63..f923643 100644\n--- a/src/ffi/extra/reflection_extra.cc\n+++ b/src/ffi/extra/reflection_extra.cc\n@@ -132,12 +132,12 @@ inline void AccessPathRegisterReflection() {\n            [](const AccessPath& self, const AccessPath& other) { return self->PathEqual(other); });\n }\n \n-TVM_FFI_STATIC_INIT_BLOCK({\n+TVM_FFI_STATIC_INIT_BLOCK() {\n   namespace refl = tvm::ffi::reflection;\n   AccessStepRegisterReflection();\n   AccessPathRegisterReflection();\n   refl::GlobalDef().def_packed(\"ffi.MakeObjectFromPackedArgs\", MakeObjectFromPackedArgs);\n-});\n+}\n \n }  // namespace reflection\n }  // namespace ffi\ndiff --git a/src/ffi/extra/serialization.cc b/src/ffi/extra/serialization.cc\nindex ea9a96b..14c7844 100644\n--- a/src/ffi/extra/serialization.cc\n+++ b/src/ffi/extra/serialization.cc\n@@ -415,7 +415,7 @@ String ToJSONGraphString(const Any& value, const Any& metadata) {\n   return json::Stringify(ToJSONGraph(value, metadata));\n }\n \n-TVM_FFI_STATIC_INIT_BLOCK({\n+TVM_FFI_STATIC_INIT_BLOCK() {\n   namespace refl = tvm::ffi::reflection;\n   refl::GlobalDef()\n       .def(\"ffi.ToJSONGraph\", ToJSONGraph)\n@@ -424,7 +424,7 @@ TVM_FFI_STATIC_INIT_BLOCK({\n       .def(\"ffi.FromJSONGraphString\", FromJSONGraphString);\n   refl::EnsureTypeAttrColumn(\"__data_to_json__\");\n   refl::EnsureTypeAttrColumn(\"__data_from_json__\");\n-});\n+}\n \n }  // namespace ffi\n }  // namespace tvm\ndiff --git a/src/ffi/extra/structural_equal.cc b/src/ffi/extra/structural_equal.cc\nindex 976ba4e..ccedfcb 100644\n--- a/src/ffi/extra/structural_equal.cc\n+++ b/src/ffi/extra/structural_equal.cc\n@@ -428,12 +428,12 @@ Optional<reflection::AccessPathPair> StructuralEqual::GetFirstMismatch(const Any\n   return reflection::AccessPathPair(lhs_path, rhs_path);\n }\n \n-TVM_FFI_STATIC_INIT_BLOCK({\n+TVM_FFI_STATIC_INIT_BLOCK() {\n   namespace refl = tvm::ffi::reflection;\n   refl::GlobalDef().def(\"ffi.GetFirstStructuralMismatch\", StructuralEqual::GetFirstMismatch);\n   // ensure the type attribute column is presented in the system even if it is empty.\n   refl::EnsureTypeAttrColumn(\"__s_equal__\");\n-});\n+}\n \n }  // namespace ffi\n }  // namespace tvm\ndiff --git a/src/ffi/extra/structural_hash.cc b/src/ffi/extra/structural_hash.cc\nindex 2eb9843..f6463af 100644\n--- a/src/ffi/extra/structural_hash.cc\n+++ b/src/ffi/extra/structural_hash.cc\n@@ -307,11 +307,11 @@ uint64_t StructuralHash::Hash(const Any& value, bool map_free_vars, bool skip_te\n   return handler.HashAny(value);\n }\n \n-TVM_FFI_STATIC_INIT_BLOCK({\n+TVM_FFI_STATIC_INIT_BLOCK() {\n   namespace refl = tvm::ffi::reflection;\n   refl::GlobalDef().def(\"ffi.StructuralHash\", StructuralHash::Hash);\n   refl::EnsureTypeAttrColumn(\"__s_hash__\");\n-});\n+}\n \n }  // namespace ffi\n }  // namespace tvm\ndiff --git a/src/ffi/extra/testing.cc b/src/ffi/extra/testing.cc\nindex 54bf7ba..3d9501d 100644\n--- a/src/ffi/extra/testing.cc\n+++ b/src/ffi/extra/testing.cc\n@@ -55,14 +55,14 @@ class TestIntPair : public tvm::ffi::ObjectRef {\n   TVM_FFI_DEFINE_OBJECT_REF_METHODS_NULLABLE(TestIntPair, tvm::ffi::ObjectRef, TestIntPairObj);\n };\n \n-TVM_FFI_STATIC_INIT_BLOCK({\n+TVM_FFI_STATIC_INIT_BLOCK() {\n   namespace refl = tvm::ffi::reflection;\n   refl::ObjectDef<TestIntPairObj>()\n       .def_ro(\"a\", &TestIntPairObj::a)\n       .def_ro(\"b\", &TestIntPairObj::b)\n       .def_static(\"__create__\",\n                   [](int64_t a, int64_t b) -> TestIntPair { return TestIntPair(a, b); });\n-});\n+}\n \n class TestObjectBase : public Object {\n  public:\n@@ -98,7 +98,7 @@ TVM_FFI_NO_INLINE void TestApply(PackedArgs args, Any* ret) {\n   f.CallPacked(args.Slice(1), ret);\n }\n \n-TVM_FFI_STATIC_INIT_BLOCK({\n+TVM_FFI_STATIC_INIT_BLOCK() {\n   namespace refl = tvm::ffi::reflection;\n \n   refl::ObjectDef<TestObjectBase>()\n@@ -127,7 +127,7 @@ TVM_FFI_STATIC_INIT_BLOCK({\n              std::cout << \"Function finished without catching signal\" << std::endl;\n            })\n       .def(\"testing.object_use_count\", [](const Object* obj) { return obj->use_count(); });\n-});\n+}\n \n }  // namespace ffi\n }  // namespace tvm\ndiff --git a/src/ffi/function.cc b/src/ffi/function.cc\nindex ca587c6..b1bee7e 100644\n--- a/src/ffi/function.cc\n+++ b/src/ffi/function.cc\n@@ -200,7 +200,7 @@ int TVMFFIFunctionCall(TVMFFIObjectHandle func, TVMFFIAny* args, int32_t num_arg\n #endif\n }\n \n-TVM_FFI_STATIC_INIT_BLOCK({\n+TVM_FFI_STATIC_INIT_BLOCK() {\n   namespace refl = tvm::ffi::reflection;\n   refl::GlobalDef()\n       .def(\"ffi.FunctionRemoveGlobal\",\n@@ -226,4 +226,4 @@ TVM_FFI_STATIC_INIT_BLOCK({\n            })\n       .def(\"ffi.String\", [](tvm::ffi::String val) -> tvm::ffi::String { return val; })\n       .def(\"ffi.Bytes\", [](tvm::ffi::Bytes val) -> tvm::ffi::Bytes { return val; });\n-});\n+}\ndiff --git a/src/ffi/tensor.cc b/src/ffi/tensor.cc\nindex c166c29..d408280 100644\n--- a/src/ffi/tensor.cc\n+++ b/src/ffi/tensor.cc\n@@ -28,7 +28,7 @@\n namespace tvm {\n namespace ffi {\n \n-TVM_FFI_STATIC_INIT_BLOCK({\n+TVM_FFI_STATIC_INIT_BLOCK() {\n   namespace refl = tvm::ffi::reflection;\n   refl::GlobalDef().def_packed(\"ffi.Shape\", [](ffi::PackedArgs args, Any* ret) {\n     int64_t* mutable_data;\n@@ -42,7 +42,7 @@ TVM_FFI_STATIC_INIT_BLOCK({\n     }\n     *ret = details::ObjectUnsafe::ObjectRefFromObjectPtr<Shape>(shape);\n   });\n-});\n+}\n \n }  // namespace ffi\n }  // namespace tvm\ndiff --git a/tests/cpp/test_reflection.cc b/tests/cpp/test_reflection.cc\nindex 8de408d..c9aa500 100644\n--- a/tests/cpp/test_reflection.cc\n+++ b/tests/cpp/test_reflection.cc\n@@ -46,7 +46,7 @@ struct TestObjADerived : public TestObjA {\n   TVM_FFI_DECLARE_OBJECT_INFO_FINAL(\"test.TestObjADerived\", TestObjADerived, TestObjA);\n };\n \n-TVM_FFI_STATIC_INIT_BLOCK({\n+TVM_FFI_STATIC_INIT_BLOCK() {\n   namespace refl = tvm::ffi::reflection;\n \n   TIntObj::RegisterReflection();\n@@ -58,7 +58,7 @@ TVM_FFI_STATIC_INIT_BLOCK({\n \n   refl::ObjectDef<TestObjA>().def_ro(\"x\", &TestObjA::x).def_rw(\"y\", &TestObjA::y);\n   refl::ObjectDef<TestObjADerived>().def_ro(\"z\", &TestObjADerived::z);\n-});\n+}\n \n TEST(Reflection, GetFieldByteOffset) {\n   EXPECT_EQ(reflection::GetFieldByteOffsetToObject(&TestObjA::x), sizeof(TVMFFIObject));\n@@ -147,10 +147,10 @@ TEST(Reflection, TypeAttrColumn) {\n   EXPECT_EQ(size_attr[TIntObj::_type_index].cast<int>(), sizeof(TIntObj));\n }\n \n-TVM_FFI_STATIC_INIT_BLOCK({\n+TVM_FFI_STATIC_INIT_BLOCK() {\n   namespace refl = tvm::ffi::reflection;\n   refl::GlobalDef().def_method(\"testing.Int_GetValue\", &TIntObj::GetValue);\n-});\n+}\n \n TEST(Reflection, FuncRegister) {\n   Function fget_value = Function::GetGlobalRequired(\"testing.Int_GetValue\");",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".cc",
+      ".h",
+      ".md"
+    ],
+    "scopes_guess": [
+      "docs",
+      "examples",
+      "include",
+      "src",
+      "tests"
+    ]
+  }
+}

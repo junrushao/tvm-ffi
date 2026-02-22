@@ -1,0 +1,119 @@
+{
+  "sha": "9829dec97e4c3f394955c0b4d90102356b52d285",
+  "sha7": "9829dec",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-10-15T12:24:37-04:00",
+  "subject": "chore: cleanup old DLPack related defs (#129)",
+  "body": "They are no longer needed as we migrate to the latest version.",
+  "is_merge": false,
+  "parents": [
+    "fc2630fac7acc17f966aae7fb724b23a9eec93c6"
+  ],
+  "name_status": [
+    [
+      "M",
+      "include/tvm/ffi/c_api.h"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/container/tensor.h"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/extra/c_env_api.h"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/cython/base.pxi"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/cython/tvm_ffi_python_helpers.h"
+    ],
+    [
+      "M",
+      "rust/tvm-ffi-macros/src/utils.rs"
+    ],
+    [
+      "M",
+      "rust/tvm-ffi-sys/src/c_env_api.rs"
+    ],
+    [
+      "M",
+      "src/ffi/extra/env_context.cc"
+    ],
+    [
+      "M",
+      "tests/cpp/test_tensor.cc"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "include/tvm/ffi/c_api.h",
+      "additions": 0,
+      "deletions": 18
+    },
+    {
+      "path": "include/tvm/ffi/container/tensor.h",
+      "additions": 2,
+      "deletions": 2
+    },
+    {
+      "path": "include/tvm/ffi/extra/c_env_api.h",
+      "additions": 4,
+      "deletions": 4
+    },
+    {
+      "path": "python/tvm_ffi/cython/base.pxi",
+      "additions": 0,
+      "deletions": 12
+    },
+    {
+      "path": "python/tvm_ffi/cython/tvm_ffi_python_helpers.h",
+      "additions": 1,
+      "deletions": 24
+    },
+    {
+      "path": "rust/tvm-ffi-macros/src/utils.rs",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "rust/tvm-ffi-sys/src/c_env_api.rs",
+      "additions": 4,
+      "deletions": 4
+    },
+    {
+      "path": "src/ffi/extra/env_context.cc",
+      "additions": 13,
+      "deletions": 12
+    },
+    {
+      "path": "tests/cpp/test_tensor.cc",
+      "additions": 11,
+      "deletions": 10
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/include/tvm/ffi/c_api.h b/include/tvm/ffi/c_api.h\nindex 88d91f8..ef2f70e 100644\n--- a/include/tvm/ffi/c_api.h\n+++ b/include/tvm/ffi/c_api.h\n@@ -60,24 +60,6 @@\n extern \"C\" {\n #endif\n \n-// TODO(tqchen): remove this once dlpack.h is updated\n-typedef struct DLManagedTensorVersioned DLManagedTensorVersioned;\n-\n-/*\n- * \\brief C-style Allocator that allocates memory for a DLPack tensor.\n- * \\param prototype The prototype DLTensor to offer details about device and shape.\n- * \\param out The output DLManagedTensorVersioned.\n- * \\param error_ctx The context to set the error.\n- * \\param SetError The function to set the error.\n- * \\return 0 on success, -1 on failure.\n- *         call SetError(error_ctx, kind, message) to set the error kind and message.\n- * \\note Error propagation via SetError.\n- */\n-typedef int (*DLPackTensorAllocator)(                                         //\n-    DLTensor* prototype, DLManagedTensorVersioned** out, void* error_ctx,     //\n-    void (*SetError)(void* error_ctx, const char* kind, const char* message)  //\n-);\n-\n #ifdef __cplusplus\n enum TVMFFITypeIndex : int32_t {\n #else\ndiff --git a/include/tvm/ffi/container/tensor.h b/include/tvm/ffi/container/tensor.h\nindex d99a79a..00cc402 100644\n--- a/include/tvm/ffi/container/tensor.h\n+++ b/include/tvm/ffi/container/tensor.h\n@@ -359,7 +359,7 @@ class Tensor : public ObjectRef {\n         std::forward<ExtraArgs>(extra_args)...));\n   }\n   /*!\n-   * \\brief Create a Tensor from a DLPackTensorAllocator\n+   * \\brief Create a Tensor from a DLPackManagedTensorAllocator\n    *\n    * This function can be used together with TVMFFIEnvSetTensorAllocator\n    * in the extra/c_env_api.h to create Tensor from the thread-local\n@@ -378,7 +378,7 @@ class Tensor : public ObjectRef {\n    * \\param device The device of the Tensor.\n    * \\return The created Tensor.\n    */\n-  static Tensor FromDLPackAlloc(DLPackTensorAllocator allocator, ffi::ShapeView shape,\n+  static Tensor FromDLPackAlloc(DLPackManagedTensorAllocator allocator, ffi::ShapeView shape,\n                                 DLDataType dtype, DLDevice device) {\n     if (allocator == nullptr) {\n       TVM_FFI_THROW(RuntimeError)\ndiff --git a/include/tvm/ffi/extra/c_env_api.h b/include/tvm/ffi/extra/c_env_api.h\nindex 25291be..8276825 100644\n--- a/include/tvm/ffi/extra/c_env_api.h\n+++ b/include/tvm/ffi/extra/c_env_api.h\n@@ -70,9 +70,9 @@ TVM_FFI_DLL TVMFFIStreamHandle TVMFFIEnvGetStream(int32_t device_type, int32_t d\n  * \\param opt_out_original_allocator Output original TLS allocator if the address is not nullptr.\n  * \\return 0 when success, nonzero when failure happens\n  */\n-TVM_FFI_DLL int TVMFFIEnvSetTensorAllocator(DLPackTensorAllocator allocator,\n-                                            int write_to_global_context,\n-                                            DLPackTensorAllocator* opt_out_original_allocator);\n+TVM_FFI_DLL int TVMFFIEnvSetTensorAllocator(\n+    DLPackManagedTensorAllocator allocator, int write_to_global_context,\n+    DLPackManagedTensorAllocator* opt_out_original_allocator);\n \n /*!\n  * \\brief FFI function get the current DLPack allocator stored in context.\n@@ -82,7 +82,7 @@ TVM_FFI_DLL int TVMFFIEnvSetTensorAllocator(DLPackTensorAllocator allocator,\n  *\n  * \\return The current DLPack allocator.\n  */\n-TVM_FFI_DLL DLPackTensorAllocator TVMFFIEnvGetTensorAllocator();\n+TVM_FFI_DLL DLPackManagedTensorAllocator TVMFFIEnvGetTensorAllocator();\n \n /*!\n  * \\brief Check if there are any signals raised in the surrounding env.\ndiff --git a/python/tvm_ffi/cython/base.pxi b/python/tvm_ffi/cython/base.pxi\nindex d7decda..1106901 100644\n--- a/python/tvm_ffi/cython/base.pxi\n+++ b/python/tvm_ffi/cython/base.pxi\n@@ -313,18 +313,6 @@ def _env_get_current_stream(int device_type, int device_id):\n \n cdef extern from \"tvm_ffi_python_helpers.h\":\n     # no need to expose fields of the call context setter data structure\n-    ctypedef int (*DLPackFromPyObject)(\n-        void* py_obj, DLManagedTensorVersioned** out, TVMFFIStreamHandle* env_stream\n-    ) except -1\n-\n-    ctypedef int (*DLPackToPyObject)(\n-        DLManagedTensorVersioned* tensor, void** py_obj_out\n-    ) except -1\n-    ctypedef int (*DLPackTensorAllocator)(\n-        DLTensor* prototype, DLManagedTensorVersioned** out, void* error_ctx,\n-        void (*SetError)(void* error_ctx, const char* kind, const char* message)\n-    ) except -1\n-\n     ctypedef struct TVMFFIPyCallContext:\n         int device_type\n         int device_id\ndiff --git a/python/tvm_ffi/cython/tvm_ffi_python_helpers.h b/python/tvm_ffi/cython/tvm_ffi_python_helpers.h\nindex da2404b..bfd5d60 100644\n--- a/python/tvm_ffi/cython/tvm_ffi_python_helpers.h\n+++ b/python/tvm_ffi/cython/tvm_ffi_python_helpers.h\n@@ -41,29 +41,6 @@\n #include <iostream>\n #include <unordered_map>\n \n-//----------------------------------------------------------\n-// Extra support for DLPack\n-//----------------------------------------------------------\n-/*!\n- * \\brief C-style function pointer to speed convert a PyObject Tensor to a DLManagedTensorVersioned.\n- * \\param py_obj The Python object to convert, this should be PyObject*\n- * \\param out The output DLManagedTensorVersioned.\n- * \\param env_stream Outputs the current context stream of the device provided by the tensor.\n- * \\return 0 on success, -1 on failure. PyError should be set if -1 is returned.\n- * \\note We use void* to avoid dependency on Python.h so this specific type is\n- *       not dependent on Python.h and can be copied to dlpack.h\n- */\n-typedef int (*DLPackFromPyObject)(void* py_obj, DLManagedTensorVersioned** out, void** env_stream);\n-/*!\n- * \\brief C-style function pointer to speed convert a DLManagedTensorVersioned to a PyObject Tensor.\n- * \\param tensor The DLManagedTensorVersioned to convert.\n- * \\param py_obj_out The output Python object.\n- * \\return 0 on success, -1 on failure. PyError should be set if -1 is returned.\n- * \\note We use void* to avoid dependency on Python.h so this specific type is\n- *       not dependent on Python.h and can be copied to dlpack.h\n- */\n-typedef int (*DLPackToPyObject)(DLManagedTensorVersioned* tensor, void** py_obj_out);\n-\n ///--------------------------------------------------------------------------------\n /// We deliberately designed the data structure and function to be C-style\n //  prefixed with TVMFFIPy so they can be easily invoked through Cython.\n@@ -284,7 +261,7 @@ class TVMFFIPyCallManager {\n         if (SetArgument(setter_factory, &ctx, py_arg, c_arg) != 0) return -1;\n       }\n       TVMFFIStreamHandle prev_stream = nullptr;\n-      DLPackTensorAllocator prev_tensor_allocator = nullptr;\n+      DLPackManagedTensorAllocator prev_tensor_allocator = nullptr;\n       // setup stream context if needed\n       if (ctx.device_type != -1) {\n         c_api_ret_code[0] =\ndiff --git a/rust/tvm-ffi-macros/src/utils.rs b/rust/tvm-ffi-macros/src/utils.rs\nindex 5b6f4c1..da86534 100644\n--- a/rust/tvm-ffi-macros/src/utils.rs\n+++ b/rust/tvm-ffi-macros/src/utils.rs\n@@ -58,7 +58,7 @@ pub(crate) fn attr_to_str(attr: &syn::Attribute) -> syn::LitStr {\n             lit: syn::Lit::Str(s),\n             ..\n         })) => s,\n-        Ok(m) => panic!(\"Expected a string literal, got\"),\n+        Ok(_m) => panic!(\"Expected a string literal, got\"),\n         Err(e) => panic!(\"{}\", e),\n     }\n }\ndiff --git a/rust/tvm-ffi-sys/src/c_env_api.rs b/rust/tvm-ffi-sys/src/c_env_api.rs\nindex 98b02ce..e0b9306 100644\n--- a/rust/tvm-ffi-sys/src/c_env_api.rs\n+++ b/rust/tvm-ffi-sys/src/c_env_api.rs\n@@ -36,7 +36,7 @@ use crate::dlpack::DLTensor;\n pub type TVMFFIStreamHandle = *mut c_void;\n \n /// DLPack tensor allocator function type\n-pub type DLPackTensorAllocator = unsafe extern \"C\" fn(\n+pub type DLPackManagedTensorAllocator = unsafe extern \"C\" fn(\n     prototype: *mut DLTensor,\n     out: *mut *mut c_void, // DLManagedTensorVersioned**\n     error_ctx: *mut c_void,\n@@ -54,12 +54,12 @@ unsafe extern \"C\" {\n     pub fn TVMFFIEnvGetStream(device_type: i32, device_id: i32) -> TVMFFIStreamHandle;\n \n     pub fn TVMFFIEnvSetTensorAllocator(\n-        allocator: DLPackTensorAllocator,\n+        allocator: DLPackManagedTensorAllocator,\n         write_to_global_context: i32,\n-        opt_out_original_allocator: *mut DLPackTensorAllocator,\n+        opt_out_original_allocator: *mut DLPackManagedTensorAllocator,\n     ) -> i32;\n \n-    pub fn TVMFFIEnvGetTensorAllocator() -> DLPackTensorAllocator;\n+    pub fn TVMFFIEnvGetTensorAllocator() -> DLPackManagedTensorAllocator;\n \n     pub fn TVMFFIEnvCheckSignals() -> i32;\n \ndiff --git a/src/ffi/extra/env_context.cc b/src/ffi/extra/env_context.cc\nindex 30f9270..cb68b53 100644\n--- a/src/ffi/extra/env_context.cc\n+++ b/src/ffi/extra/env_context.cc\n@@ -54,15 +54,16 @@ class EnvContext {\n     return nullptr;\n   }\n \n-  DLPackTensorAllocator GetDLPackTensorAllocator() {\n+  DLPackManagedTensorAllocator GetDLPackManagedTensorAllocator() {\n     if (dlpack_allocator_ != nullptr) {\n       return dlpack_allocator_;\n     }\n     return GlobalTensorAllocator();\n   }\n \n-  void SetDLPackTensorAllocator(DLPackTensorAllocator allocator, int write_to_global_context,\n-                                DLPackTensorAllocator* opt_out_original_allocator) {\n+  void SetDLPackManagedTensorAllocator(DLPackManagedTensorAllocator allocator,\n+                                       int write_to_global_context,\n+                                       DLPackManagedTensorAllocator* opt_out_original_allocator) {\n     dlpack_allocator_ = allocator;\n     if (write_to_global_context != 0) {\n       GlobalTensorAllocator() = allocator;\n@@ -80,12 +81,12 @@ class EnvContext {\n \n  private:\n   // use static function to avoid static initialization order issue\n-  static DLPackTensorAllocator& GlobalTensorAllocator() {  // NOLINT(*)\n-    static DLPackTensorAllocator allocator = nullptr;\n+  static DLPackManagedTensorAllocator& GlobalTensorAllocator() {  // NOLINT(*)\n+    static DLPackManagedTensorAllocator allocator = nullptr;\n     return allocator;\n   }\n   std::vector<std::vector<TVMFFIStreamHandle>> stream_table_;\n-  DLPackTensorAllocator dlpack_allocator_ = nullptr;\n+  DLPackManagedTensorAllocator dlpack_allocator_ = nullptr;\n };\n \n }  // namespace ffi\n@@ -105,16 +106,16 @@ TVMFFIStreamHandle TVMFFIEnvGetStream(int32_t device_type, int32_t device_id) {\n   TVM_FFI_LOG_EXCEPTION_CALL_END(TVMFFIEnvGetStream);\n }\n \n-int TVMFFIEnvSetTensorAllocator(DLPackTensorAllocator allocator, int write_to_global_context,\n-                                DLPackTensorAllocator* opt_out_original_allocator) {\n+int TVMFFIEnvSetTensorAllocator(DLPackManagedTensorAllocator allocator, int write_to_global_context,\n+                                DLPackManagedTensorAllocator* opt_out_original_allocator) {\n   TVM_FFI_SAFE_CALL_BEGIN();\n-  tvm::ffi::EnvContext::ThreadLocal()->SetDLPackTensorAllocator(allocator, write_to_global_context,\n-                                                                opt_out_original_allocator);\n+  tvm::ffi::EnvContext::ThreadLocal()->SetDLPackManagedTensorAllocator(\n+      allocator, write_to_global_context, opt_out_original_allocator);\n   TVM_FFI_SAFE_CALL_END();\n }\n \n-DLPackTensorAllocator TVMFFIEnvGetTensorAllocator() {\n+DLPackManagedTensorAllocator TVMFFIEnvGetTensorAllocator() {\n   TVM_FFI_LOG_EXCEPTION_CALL_BEGIN();\n-  return tvm::ffi::EnvContext::ThreadLocal()->GetDLPackTensorAllocator();\n+  return tvm::ffi::EnvContext::ThreadLocal()->GetDLPackManagedTensorAllocator();\n   TVM_FFI_LOG_EXCEPTION_CALL_END(TVMFFIEnvGetTensorAllocator);\n }\ndiff --git a/tests/cpp/test_tensor.cc b/tests/cpp/test_tensor.cc\nindex 1c45e8a..60d9a9a 100644\n--- a/tests/cpp/test_tensor.cc\n+++ b/tests/cpp/test_tensor.cc\n@@ -32,20 +32,21 @@ inline Tensor Empty(const Shape& shape, DLDataType dtype, DLDevice device) {\n   return Tensor::FromNDAlloc(CPUNDAlloc(), shape, dtype, device);\n }\n \n-int TestDLPackTensorAllocator(DLTensor* prototype, DLManagedTensorVersioned** out, void* error_ctx,\n-                              void (*SetError)(void* error_ctx, const char* kind,\n-                                               const char* message)) {\n+int TestDLPackManagedTensorAllocator(DLTensor* prototype, DLManagedTensorVersioned** out,\n+                                     void* error_ctx,\n+                                     void (*SetError)(void* error_ctx, const char* kind,\n+                                                      const char* message)) {\n   Shape shape(prototype->shape, prototype->shape + prototype->ndim);\n   Tensor nd = Empty(shape, prototype->dtype, prototype->device);\n   *out = nd.ToDLPackVersioned();\n   return 0;\n }\n \n-int TestDLPackTensorAllocatorError(DLTensor* prototype, DLManagedTensorVersioned** out,\n-                                   void* error_ctx,\n-                                   void (*SetError)(void* error_ctx, const char* kind,\n-                                                    const char* message)) {\n-  SetError(error_ctx, \"RuntimeError\", \"TestDLPackTensorAllocatorError\");\n+int TestDLPackManagedTensorAllocatorError(DLTensor* prototype, DLManagedTensorVersioned** out,\n+                                          void* error_ctx,\n+                                          void (*SetError)(void* error_ctx, const char* kind,\n+                                                           const char* message)) {\n+  SetError(error_ctx, \"RuntimeError\", \"TestDLPackManagedTensorAllocatorError\");\n   return -1;\n }\n \n@@ -138,7 +139,7 @@ TEST(Tensor, DLPackVersioned) {\n \n TEST(Tensor, DLPackAlloc) {\n   // Test successful allocation\n-  Tensor tensor = Tensor::FromDLPackAlloc(TestDLPackTensorAllocator, {1, 2, 3},\n+  Tensor tensor = Tensor::FromDLPackAlloc(TestDLPackManagedTensorAllocator, {1, 2, 3},\n                                           DLDataType({kDLFloat, 32, 1}), DLDevice({kDLCPU, 0}));\n   EXPECT_EQ(tensor.use_count(), 1);\n   EXPECT_EQ(tensor.shape().size(), 3);\n@@ -157,7 +158,7 @@ TEST(Tensor, DLPackAllocError) {\n   // Test error handling in DLPackAlloc\n   EXPECT_THROW(\n       {\n-        Tensor::FromDLPackAlloc(TestDLPackTensorAllocatorError, {1, 2, 3},\n+        Tensor::FromDLPackAlloc(TestDLPackManagedTensorAllocatorError, {1, 2, 3},\n                                 DLDataType({kDLFloat, 32, 1}), DLDevice({kDLCPU, 0}));\n       },\n       tvm::ffi::Error);",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".cc",
+      ".h",
+      ".pxi",
+      ".rs"
+    ],
+    "scopes_guess": [
+      "include",
+      "python",
+      "rust",
+      "src",
+      "tests"
+    ]
+  }
+}

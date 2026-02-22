@@ -1,0 +1,52 @@
+{
+  "sha": "573d76f2e140f070497c1f61e384ed3720fa85cf",
+  "sha7": "573d76f",
+  "author_name": "Yaxing Cai",
+  "author_email": "caiyaxing666@gmail.com",
+  "date_iso": "2025-10-17T16:03:18-07:00",
+  "subject": "API Alias Redirect for torch aten tensor (#167)",
+  "body":
+      "This PR add the alias for `ndim -> dim`, `shape -> sizes` and\n`IsContiguous -> is_contiguous` as torch aten tensor interface naming.",
+  "is_merge": false,
+  "parents": [
+    "6e448cffb1873afed0d626e7f92ddf2d9a2435bb"
+  ],
+  "name_status": [
+    [
+      "M",
+      "include/tvm/ffi/container/tensor.h"
+    ],
+    [
+      "M",
+      "tests/cpp/test_tensor.cc"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "include/tvm/ffi/container/tensor.h",
+      "additions": 52,
+      "deletions": 8
+    },
+    {
+      "path": "tests/cpp/test_tensor.cc",
+      "additions": 9,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/include/tvm/ffi/container/tensor.h b/include/tvm/ffi/container/tensor.h\nindex 0b978db..da750e6 100644\n--- a/include/tvm/ffi/container/tensor.h\n+++ b/include/tvm/ffi/container/tensor.h\n@@ -306,18 +306,26 @@ class Tensor : public ObjectRef {\n   }\n \n   /*!\n-   * \\brief Get the size of the idx-th dimension.\n+   * \\brief Get the size of the idx-th dimension. If the idx is negative,\n+   * it gets the size of last idx-th dimension.\n    * \\param idx The index of the size.\n    * \\return The size of the idx-th dimension.\n    */\n-  int64_t size(size_t idx) const { return get()->shape[idx]; }\n+  int64_t size(int64_t idx) const {\n+    const TensorObj* ptr = get();\n+    return ptr->shape[idx >= 0 ? idx : (ptr->ndim + idx)];\n+  }\n \n   /*!\n-   * \\brief Get the stride of the idx-th dimension.\n+   * \\brief Get the stride of the idx-th dimension. If the idx is negative,\n+   * it gets the stride of last idx-th dimension.\n    * \\param idx The index of the stride.\n    * \\return The stride of the idx-th dimension.\n    */\n-  int64_t stride(size_t idx) const { return get()->strides[idx]; }\n+  int64_t stride(int64_t idx) const {\n+    const TensorObj* ptr = get();\n+    return ptr->strides[idx >= 0 ? idx : (ptr->ndim + idx)];\n+  }\n \n   /*!\n    * \\brief Get the number of elements in the Tensor.\n@@ -473,6 +481,23 @@ class Tensor : public ObjectRef {\n   using ContainerType = TensorObj;\n   /// \\endcond\n \n+  // the following code are convenient APIs redirections created to provide aten-style api\n+  /*!\n+   * \\brief This functions redirects to ndim().\n+   * \\return The number of dimensions in the Tensor.\n+   */\n+  inline int32_t dim() { return ndim(); }\n+  /*!\n+   * \\brief This functions redirects to shape().\n+   * \\return The shape of the Tensor.\n+   */\n+  inline ShapeView sizes() const { return shape(); }\n+  /*!\n+   * \\brief This functions redirects to IsContiguous().\n+   * \\return True if the Tensor is contiguous, false otherwise.\n+   */\n+  inline bool is_contiguous() const { return IsContiguous(); }\n+\n  protected:\n   /*!\n    * \\brief Get const internal container pointer.\n@@ -598,18 +623,20 @@ class TensorView {\n   }\n \n   /*!\n-   * \\brief Get the size of the idx-th dimension.\n+   * \\brief Get the size of the idx-th dimension. If the idx is negative,\n+   * it gets the size of last idx-th dimension.\n    * \\param idx The index of the size.\n    * \\return The size of the idx-th dimension.\n    */\n-  int64_t size(size_t idx) const { return tensor_.shape[idx]; }\n+  int64_t size(int64_t idx) const { return tensor_.shape[idx >= 0 ? idx : tensor_.ndim + idx]; }\n \n   /*!\n-   * \\brief Get the stride of the idx-th dimension.\n+   * \\brief Get the stride of the idx-th dimension. If the idx is negative,\n+   * it gets the stride of last idx-th dimension.\n    * \\param idx The index of the stride.\n    * \\return The stride of the idx-th dimension.\n    */\n-  int64_t stride(size_t idx) const { return tensor_.strides[idx]; }\n+  int64_t stride(int64_t idx) const { return tensor_.strides[idx >= 0 ? idx : tensor_.ndim + idx]; }\n \n   /*!\n    * \\brief Get the byte offset of the Tensor.\n@@ -623,6 +650,23 @@ class TensorView {\n    */\n   bool IsContiguous() const { return tvm::ffi::IsContiguous(tensor_); }\n \n+  // the following code are convenient APIs redirections created to provide aten-style api\n+  /*!\n+   * \\brief This functions redirects to ndim().\n+   * \\return The number of dimensions in the Tensor.\n+   */\n+  inline int32_t dim() { return ndim(); }\n+  /*!\n+   * \\brief This functions redirects to shape().\n+   * \\return The shape of the Tensor.\n+   */\n+  inline ShapeView sizes() const { return shape(); }\n+  /*!\n+   * \\brief This functions redirects to IsContiguous().\n+   * \\return True if the Tensor is contiguous, false otherwise.\n+   */\n+  inline bool is_contiguous() const { return IsContiguous(); }\n+\n  private:\n   DLTensor tensor_;\n   template <typename, typename>\ndiff --git a/tests/cpp/test_tensor.cc b/tests/cpp/test_tensor.cc\nindex 41f7041..052a8ec 100644\n--- a/tests/cpp/test_tensor.cc\n+++ b/tests/cpp/test_tensor.cc\n@@ -140,6 +140,15 @@ TEST(Tensor, EnvAlloc) {\n   EXPECT_EQ(tensor.size(0), 1);\n   EXPECT_EQ(tensor.size(1), 2);\n   EXPECT_EQ(tensor.size(2), 3);\n+  EXPECT_EQ(tensor.size(-3), 1);\n+  EXPECT_EQ(tensor.size(-2), 2);\n+  EXPECT_EQ(tensor.size(-1), 3);\n+  EXPECT_EQ(tensor.stride(0), 6);\n+  EXPECT_EQ(tensor.stride(1), 3);\n+  EXPECT_EQ(tensor.stride(2), 1);\n+  EXPECT_EQ(tensor.stride(-3), 6);\n+  EXPECT_EQ(tensor.stride(-2), 3);\n+  EXPECT_EQ(tensor.stride(-1), 1);\n   EXPECT_EQ(tensor.dtype().code, kDLFloat);\n   EXPECT_EQ(tensor.dtype().bits, 32);\n   EXPECT_EQ(tensor.dtype().lanes, 1);",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".cc",
+      ".h"
+    ],
+    "scopes_guess": [
+      "include",
+      "tests"
+    ]
+  }
+}

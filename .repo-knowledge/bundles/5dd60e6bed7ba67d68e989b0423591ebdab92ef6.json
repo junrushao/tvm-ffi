@@ -1,0 +1,42 @@
+{
+  "sha": "5dd60e6bed7ba67d68e989b0423591ebdab92ef6",
+  "sha7": "5dd60e6",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-10-14T21:33:02-04:00",
+  "subject": "[CMAKE] Fix tvm_ffi_testing in wheel packaging (#122)",
+  "body":
+      "This PR updates tvm_ffi_testing to use relative path so it can find\nlibtvm_ffi during wheel instaltion.",
+  "is_merge": false,
+  "parents": [
+    "da7007fda1b1ece445cb66dbfbcf8c4bf8afb4bc"
+  ],
+  "name_status": [
+    [
+      "M",
+      "CMakeLists.txt"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "CMakeLists.txt",
+      "additions": 10,
+      "deletions": 1
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/CMakeLists.txt b/CMakeLists.txt\nindex b268152..2a6c28e 100644\n--- a/CMakeLists.txt\n+++ b/CMakeLists.txt\n@@ -148,6 +148,15 @@ target_link_libraries(tvm_ffi_testing PUBLIC tvm_ffi_header)\n tvm_ffi_add_msvc_flags(tvm_ffi_testing)\n tvm_ffi_add_apple_dsymutil(tvm_ffi_testing)\n \n+# Set the install RPATH for tvm_ffi_testing so it can find tvm_ffi.so relatively\n+if (APPLE)\n+  # macOS uses @loader_path\n+  set_target_properties(tvm_ffi_testing PROPERTIES INSTALL_RPATH \"@loader_path\")\n+elseif (UNIX AND NOT APPLE)\n+  # Linux uses $ORIGIN\n+  set_target_properties(tvm_ffi_testing PROPERTIES INSTALL_RPATH \"\\$ORIGIN\")\n+endif ()\n+\n # ----------------------------------------------------------------------------\n # The following code section only is triggered when the project is the root and will be skipped when\n # the project is a subproject.\n@@ -250,7 +259,7 @@ if (TVM_FFI_BUILD_PYTHON_MODULE)\n   if (APPLE)\n     # macOS uses @loader_path\n     set_target_properties(tvm_ffi_cython PROPERTIES INSTALL_RPATH \"@loader_path/lib\")\n-  elseif (LINUX)\n+  elseif (UNIX AND NOT APPLE)\n     # Linux uses $ORIGIN\n     set_target_properties(tvm_ffi_cython PROPERTIES INSTALL_RPATH \"\\$ORIGIN/lib\")\n   endif ()",
+  "heuristics": {
+    "tags": [
+      "build",
+      "docs"
+    ],
+    "extensions": [
+      ".txt"
+    ],
+    "scopes_guess": [
+      "CMakeLists.txt"
+    ]
+  }
+}

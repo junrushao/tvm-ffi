@@ -1,0 +1,93 @@
+{
+  "sha": "4edf4f30e50c52e082ad178eb91016378335040d",
+  "sha7": "4edf4f3",
+  "author_name": "Junru Shao",
+  "author_email": "junrushao@apache.org",
+  "date_iso": "2025-11-08T17:31:55-08:00",
+  "subject": "feat(cython): Expose TypeAttr via `_lookup_type_attr` (#247)",
+  "body":
+      "This PR introduces an API that exposes type attributes on Python side.\nFor now, there's no type attribute being defined, but I personally do\nanticipate usecases (e.g. `__repr__`, `__metadata__`, etc.) being used\nas part of stubgen & dataclass push.",
+  "is_merge": false,
+  "parents": [
+    "c1df05f3555d4e2a9e1a32822c0f41ccb8467251"
+  ],
+  "name_status": [
+    [
+      "M",
+      "include/tvm/ffi/c_api.h"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/core.pyi"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/cython/base.pxi"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/cython/object.pxi"
+    ],
+    [
+      "M",
+      "src/ffi/object.cc"
+    ],
+    [
+      "M",
+      "tests/python/test_metadata.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "include/tvm/ffi/c_api.h",
+      "additions": 3,
+      "deletions": 3
+    },
+    {
+      "path": "python/tvm_ffi/core.pyi",
+      "additions": 1,
+      "deletions": 0
+    },
+    {
+      "path": "python/tvm_ffi/cython/base.pxi",
+      "additions": 5,
+      "deletions": 0
+    },
+    {
+      "path": "python/tvm_ffi/cython/object.pxi",
+      "additions": 9,
+      "deletions": 0
+    },
+    {
+      "path": "src/ffi/object.cc",
+      "additions": 4,
+      "deletions": 4
+    },
+    {
+      "path": "tests/python/test_metadata.py",
+      "additions": 5,
+      "deletions": 1
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/include/tvm/ffi/c_api.h b/include/tvm/ffi/c_api.h\nindex ebe1a99..e773208 100644\n--- a/include/tvm/ffi/c_api.h\n+++ b/include/tvm/ffi/c_api.h\n@@ -156,9 +156,6 @@ typedef enum {\n   kTVMFFITensor = 70,\n   /*! \\brief Array object. */\n   kTVMFFIArray = 71,\n-  //----------------------------------------------------------------\n-  // more complex objects\n-  //----------------------------------------------------------------\n   /*! \\brief Map object. */\n   kTVMFFIMap = 72,\n   /*! \\brief Runtime dynamic loaded module object. */\n@@ -175,6 +172,9 @@ typedef enum {\n    * \\sa TVMFFIObjectCreateOpaque\n    */\n   kTVMFFIOpaquePyObject = 74,\n+  //----------------------------------------------------------------\n+  // more complex objects\n+  //----------------------------------------------------------------\n   kTVMFFIStaticObjectEnd,\n   // [Section] Dynamic Boxed: [kTVMFFIDynObjectBegin, +oo)\n   /*! \\brief Start of type indices that are allocated at runtime. */\ndiff --git a/python/tvm_ffi/core.pyi b/python/tvm_ffi/core.pyi\nindex d5d43b7..8141748 100644\n--- a/python/tvm_ffi/core.pyi\n+++ b/python/tvm_ffi/core.pyi\n@@ -67,6 +67,7 @@ def _register_object_by_index(type_index: int, type_cls: type) -> TypeInfo: ...\n def _object_type_key_to_index(type_key: str) -> int | None: ...\n def _set_type_cls(type_info: TypeInfo, type_cls: type) -> None: ...\n def _lookup_or_register_type_info_from_type_key(type_key: str) -> TypeInfo: ...\n+def _lookup_type_attr(type_index: int, attr_key: str) -> Any: ...\n \n class Error(Object):\n     def __init__(self, kind: str, message: str, backtrace: str) -> None: ...\ndiff --git a/python/tvm_ffi/cython/base.pxi b/python/tvm_ffi/cython/base.pxi\nindex 597956b..a24a5d8 100644\n--- a/python/tvm_ffi/cython/base.pxi\n+++ b/python/tvm_ffi/cython/base.pxi\n@@ -244,6 +244,10 @@ cdef extern from \"tvm/ffi/c_api.h\":\n         const TVMFFIMethodInfo* methods\n         const TVMFFITypeMetadata* metadata\n \n+    ctypedef struct TVMFFITypeAttrColumn:\n+        const TVMFFIAny* data\n+        size_t size\n+\n     int TVMFFIObjectDecRef(TVMFFIObjectHandle obj) nogil\n     int TVMFFIObjectIncRef(TVMFFIObjectHandle obj) nogil\n     int TVMFFIObjectCreateOpaque(void* handle, int32_t type_index,\n@@ -285,6 +289,7 @@ cdef extern from \"tvm/ffi/c_api.h\":\n     TVMFFIShapeCell* TVMFFIShapeGetCellPtr(TVMFFIObjectHandle obj) nogil\n     DLTensor* TVMFFITensorGetDLTensorPtr(TVMFFIObjectHandle obj) nogil\n     DLDevice TVMFFIDLDeviceFromIntPair(int32_t device_type, int32_t device_id) nogil\n+    const TVMFFITypeAttrColumn* TVMFFIGetTypeAttrColumn(const TVMFFIByteArray* attr_name) nogil\n \n cdef extern from \"tvm/ffi/extra/c_env_api.h\":\n     ctypedef void* TVMFFIStreamHandle\ndiff --git a/python/tvm_ffi/cython/object.pxi b/python/tvm_ffi/cython/object.pxi\nindex 0c5bdac..49c7595 100644\n--- a/python/tvm_ffi/cython/object.pxi\n+++ b/python/tvm_ffi/cython/object.pxi\n@@ -514,6 +514,15 @@ def _lookup_or_register_type_info_from_type_key(type_key: str) -> TypeInfo:\n     return info\n \n \n+def _lookup_type_attr(type_index: int32_t, attr_key: str) -> Any:\n+    cdef ByteArrayArg attr_key_bytes = ByteArrayArg(c_str(attr_key))\n+    cdef const TVMFFITypeAttrColumn* column = TVMFFIGetTypeAttrColumn(&attr_key_bytes.cdata)\n+    cdef TVMFFIAny data\n+    if column == NULL or column.size <= type_index:\n+        return None\n+    return make_ret(column.data[type_index])\n+\n+\n cdef list TYPE_INDEX_TO_CLS = []\n cdef list TYPE_INDEX_TO_INFO = []\n cdef dict TYPE_KEY_TO_INFO = {}\ndiff --git a/src/ffi/object.cc b/src/ffi/object.cc\nindex 810d3b1..1671ba8 100644\n--- a/src/ffi/object.cc\n+++ b/src/ffi/object.cc\n@@ -315,7 +315,7 @@ class TypeTable {\n   }\n \n  private:\n-  TypeTable() {\n+  TypeTable() : type_attr_columns_{}, type_attr_name_to_column_index_{} {\n     type_table_.reserve(TypeIndex::kTVMFFIDynObjectBegin);\n     for (int32_t i = 0; i < TypeIndex::kTVMFFIDynObjectBegin; ++i) {\n       type_table_.emplace_back(nullptr);\n@@ -332,13 +332,13 @@ class TypeTable {\n     // reserve the static types\n     ReserveBuiltinTypeIndex(StaticTypeKey::kTVMFFINone, TypeIndex::kTVMFFINone);\n     ReserveBuiltinTypeIndex(StaticTypeKey::kTVMFFIInt, TypeIndex::kTVMFFIInt);\n-    ReserveBuiltinTypeIndex(StaticTypeKey::kTVMFFIFloat, TypeIndex::kTVMFFIFloat);\n     ReserveBuiltinTypeIndex(StaticTypeKey::kTVMFFIBool, TypeIndex::kTVMFFIBool);\n-    ReserveBuiltinTypeIndex(StaticTypeKey::kTVMFFIRawStr, TypeIndex::kTVMFFIRawStr);\n+    ReserveBuiltinTypeIndex(StaticTypeKey::kTVMFFIFloat, TypeIndex::kTVMFFIFloat);\n     ReserveBuiltinTypeIndex(StaticTypeKey::kTVMFFIOpaquePtr, TypeIndex::kTVMFFIOpaquePtr);\n-    ReserveBuiltinTypeIndex(StaticTypeKey::kTVMFFIDLTensorPtr, TypeIndex::kTVMFFIDLTensorPtr);\n     ReserveBuiltinTypeIndex(StaticTypeKey::kTVMFFIDataType, TypeIndex::kTVMFFIDataType);\n     ReserveBuiltinTypeIndex(StaticTypeKey::kTVMFFIDevice, TypeIndex::kTVMFFIDevice);\n+    ReserveBuiltinTypeIndex(StaticTypeKey::kTVMFFIDLTensorPtr, TypeIndex::kTVMFFIDLTensorPtr);\n+    ReserveBuiltinTypeIndex(StaticTypeKey::kTVMFFIRawStr, TypeIndex::kTVMFFIRawStr);\n     ReserveBuiltinTypeIndex(StaticTypeKey::kTVMFFIByteArrayPtr, TypeIndex::kTVMFFIByteArrayPtr);\n     ReserveBuiltinTypeIndex(StaticTypeKey::kTVMFFIObjectRValueRef,\n                             TypeIndex::kTVMFFIObjectRValueRef);\ndiff --git a/tests/python/test_metadata.py b/tests/python/test_metadata.py\nindex 787ed91..116afd3 100644\n--- a/tests/python/test_metadata.py\n+++ b/tests/python/test_metadata.py\n@@ -18,7 +18,7 @@ from typing import Any\n \n import pytest\n from tvm_ffi import get_global_func_metadata\n-from tvm_ffi.core import TypeInfo, TypeSchema\n+from tvm_ffi.core import TypeInfo, TypeSchema, _lookup_type_attr\n from tvm_ffi.testing import _SchemaAllTypes\n \n \n@@ -195,3 +195,7 @@ def test_mem_fn_as_global_func() -> None:\n     metadata: dict[str, Any] = get_global_func_metadata(\"testing.TestIntPairSum\")\n     type_schema: TypeSchema = TypeSchema.from_json_str(metadata[\"type_schema\"])\n     assert str(type_schema) == \"Callable[[testing.TestIntPair], int]\"\n+\n+\n+def test_class_metadata_none() -> None:\n+    assert _lookup_type_attr(64, \"__metadata__\") is None",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".cc",
+      ".h",
+      ".pxi",
+      ".py",
+      ".pyi"
+    ],
+    "scopes_guess": [
+      "include",
+      "python",
+      "src",
+      "tests"
+    ]
+  }
+}

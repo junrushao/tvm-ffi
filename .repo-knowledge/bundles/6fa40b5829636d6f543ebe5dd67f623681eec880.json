@@ -1,0 +1,80 @@
+{
+  "sha": "6fa40b5829636d6f543ebe5dd67f623681eec880",
+  "sha7": "6fa40b5",
+  "author_name": "Yaxing Cai",
+  "author_email": "caiyaxing666@gmail.com",
+  "date_iso": "2025-09-06T20:02:26-07:00",
+  "subject": "[FFI] Add ffi::Tensor.strides() (#18276)",
+  "body": "* ffi::Tensor strides",
+  "is_merge": false,
+  "parents": [
+    "3a551d83f7c05106fa8033a61970a5ce34aa8aef"
+  ],
+  "name_status": [
+    [
+      "M",
+      "examples/packaging/src/extension.cc"
+    ],
+    [
+      "M",
+      "examples/quick_start/src/add_one_cpu.cc"
+    ],
+    [
+      "M",
+      "examples/quick_start/src/add_one_cuda.cu"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/container/tensor.h"
+    ],
+    [
+      "M",
+      "tests/cpp/test_tensor.cc"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "examples/packaging/src/extension.cc",
+      "additions": 2,
+      "deletions": 1
+    },
+    {
+      "path": "examples/quick_start/src/add_one_cpu.cc",
+      "additions": 2,
+      "deletions": 2
+    },
+    {
+      "path": "examples/quick_start/src/add_one_cuda.cu",
+      "additions": 2,
+      "deletions": 1
+    },
+    {
+      "path": "include/tvm/ffi/container/tensor.h",
+      "additions": 15,
+      "deletions": 3
+    },
+    {
+      "path": "tests/cpp/test_tensor.cc",
+      "additions": 6,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/examples/packaging/src/extension.cc b/examples/packaging/src/extension.cc\nindex eb4be85..7a2eb15 100644\n--- a/examples/packaging/src/extension.cc\n+++ b/examples/packaging/src/extension.cc\n@@ -24,6 +24,7 @@\n  * The library is written in C++ and can be compiled into a shared library.\n  * The shared library can then be loaded into python and used to call the functions.\n  */\n+#include <tvm/ffi/container/tensor.h>\n #include <tvm/ffi/dtype.h>\n #include <tvm/ffi/error.h>\n #include <tvm/ffi/function.h>\n@@ -43,7 +44,7 @@ namespace ffi = tvm::ffi;\n  */\n void RaiseError(ffi::String msg) { TVM_FFI_THROW(RuntimeError) << msg; }\n \n-void AddOne(DLTensor* x, DLTensor* y) {\n+void AddOne(ffi::Tensor x, ffi::Tensor y) {\n   // implementation of a library function\n   TVM_FFI_ICHECK(x->ndim == 1) << \"x must be a 1D tensor\";\n   DLDataType f32_dtype{kDLFloat, 32, 1};\ndiff --git a/examples/quick_start/src/add_one_cpu.cc b/examples/quick_start/src/add_one_cpu.cc\nindex 2499510..76b9b37 100644\n--- a/examples/quick_start/src/add_one_cpu.cc\n+++ b/examples/quick_start/src/add_one_cpu.cc\n@@ -16,14 +16,14 @@\n  * specific language governing permissions and limitations\n  * under the License.\n  */\n-\n+#include <tvm/ffi/container/tensor.h>\n #include <tvm/ffi/dtype.h>\n #include <tvm/ffi/error.h>\n #include <tvm/ffi/function.h>\n \n namespace tvm_ffi_example {\n \n-void AddOne(DLTensor* x, DLTensor* y) {\n+void AddOne(tvm::ffi::Tensor x, tvm::ffi::Tensor y) {\n   // implementation of a library function\n   TVM_FFI_ICHECK(x->ndim == 1) << \"x must be a 1D tensor\";\n   DLDataType f32_dtype{kDLFloat, 32, 1};\ndiff --git a/examples/quick_start/src/add_one_cuda.cu b/examples/quick_start/src/add_one_cuda.cu\nindex 282395f..ead2ec8 100644\n--- a/examples/quick_start/src/add_one_cuda.cu\n+++ b/examples/quick_start/src/add_one_cuda.cu\n@@ -16,6 +16,7 @@\n  * specific language governing permissions and limitations\n  * under the License.\n  */\n+#include <tvm/ffi/container/tensor.h>\n #include <tvm/ffi/dtype.h>\n #include <tvm/ffi/error.h>\n #include <tvm/ffi/extra/c_env_api.h>\n@@ -30,7 +31,7 @@ __global__ void AddOneKernel(float* x, float* y, int n) {\n   }\n }\n \n-void AddOneCUDA(DLTensor* x, DLTensor* y) {\n+void AddOneCUDA(tvm::ffi::Tensor x, tvm::ffi::Tensor y) {\n   // implementation of a library function\n   TVM_FFI_ICHECK(x->ndim == 1) << \"x must be a 1D tensor\";\n   DLDataType f32_dtype{kDLFloat, 32, 1};\ndiff --git a/include/tvm/ffi/container/tensor.h b/include/tvm/ffi/container/tensor.h\nindex 93526e5..8a8134d 100644\n--- a/include/tvm/ffi/container/tensor.h\n+++ b/include/tvm/ffi/container/tensor.h\n@@ -151,7 +151,7 @@ class TensorObj : public Object, public DLTensor {\n  protected:\n   // backs up the shape/strides\n   Optional<Shape> shape_data_;\n-  Optional<Shape> stride_data_;\n+  Optional<Shape> strides_data_;\n \n   static void DLManagedTensorDeleter(DLManagedTensor* tensor) {\n     TensorObj* obj = static_cast<TensorObj*>(tensor->manager_ctx);\n@@ -189,7 +189,7 @@ class TensorObjFromNDAlloc : public TensorObj {\n     this->strides = const_cast<int64_t*>(strides.data());\n     this->byte_offset = 0;\n     this->shape_data_ = std::move(shape);\n-    this->stride_data_ = std::move(strides);\n+    this->strides_data_ = std::move(strides);\n     alloc_.AllocData(static_cast<DLTensor*>(this), std::forward<ExtraArgs>(extra_args)...);\n   }\n \n@@ -208,7 +208,7 @@ class TensorObjFromDLPack : public TensorObj {\n     if (tensor_->dl_tensor.strides == nullptr) {\n       Shape strides = Shape(details::MakeStridesFromShape(ndim, shape));\n       this->strides = const_cast<int64_t*>(strides.data());\n-      this->stride_data_ = std::move(strides);\n+      this->strides_data_ = std::move(strides);\n     }\n   }\n \n@@ -244,6 +244,18 @@ class Tensor : public ObjectRef {\n     }\n     return *(obj->shape_data_);\n   }\n+  /*!\n+   * \\brief Get the strides of the Tensor.\n+   * \\return The strides of the Tensor.\n+   */\n+  tvm::ffi::Shape strides() const {\n+    TensorObj* obj = get_mutable();\n+    TVM_FFI_ICHECK(obj->strides != nullptr);\n+    if (!obj->strides_data_.has_value()) {\n+      obj->strides_data_ = tvm::ffi::Shape(obj->strides, obj->strides + obj->ndim);\n+    }\n+    return *(obj->strides_data_);\n+  }\n   /*!\n    * \\brief Get the data type of the Tensor.\n    * \\return The data type of the Tensor.\ndiff --git a/tests/cpp/test_tensor.cc b/tests/cpp/test_tensor.cc\nindex 17a6427..3ad182d 100644\n--- a/tests/cpp/test_tensor.cc\n+++ b/tests/cpp/test_tensor.cc\n@@ -35,10 +35,15 @@ inline Tensor Empty(Shape shape, DLDataType dtype, DLDevice device) {\n TEST(Tensor, Basic) {\n   Tensor nd = Empty(Shape({1, 2, 3}), DLDataType({kDLFloat, 32, 1}), DLDevice({kDLCPU, 0}));\n   Shape shape = nd.shape();\n+  Shape strides = nd.strides();\n   EXPECT_EQ(shape.size(), 3);\n   EXPECT_EQ(shape[0], 1);\n   EXPECT_EQ(shape[1], 2);\n   EXPECT_EQ(shape[2], 3);\n+  EXPECT_EQ(strides.size(), 3);\n+  EXPECT_EQ(strides[0], 6);\n+  EXPECT_EQ(strides[1], 3);\n+  EXPECT_EQ(strides[2], 1);\n   EXPECT_EQ(nd.dtype(), DLDataType({kDLFloat, 32, 1}));\n   for (int64_t i = 0; i < shape.Product(); ++i) {\n     reinterpret_cast<float*>(nd->data)[i] = static_cast<float>(i);\n@@ -47,6 +52,7 @@ TEST(Tensor, Basic) {\n   Any any0 = nd;\n   Tensor nd2 = any0.as<Tensor>().value();\n   EXPECT_EQ(nd2.shape(), shape);\n+  EXPECT_EQ(nd2.strides(), strides);\n   EXPECT_EQ(nd2.dtype(), DLDataType({kDLFloat, 32, 1}));\n   for (int64_t i = 0; i < shape.Product(); ++i) {\n     EXPECT_EQ(reinterpret_cast<float*>(nd2->data)[i], i);",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".cc",
+      ".cu",
+      ".h"
+    ],
+    "scopes_guess": [
+      "examples",
+      "include",
+      "tests"
+    ]
+  }
+}

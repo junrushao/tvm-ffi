@@ -1,0 +1,38 @@
+{
+  "sha": "23500b56a07553b4551908c80d0445538f160494",
+  "sha7": "23500b5",
+  "author_name": "Junru Shao",
+  "author_email": "junrushao@apache.org",
+  "date_iso": "2025-09-20T06:10:53-07:00",
+  "subject": "chore(lint): Add Taplo for TOML (#33)",
+  "body": "This PR adds a linter for TOML, which is mostly used as pyproject\nconfiguration.",
+  "is_merge": false,
+  "parents": [
+    "d77606afb21e3a40bc1da9cfaabd04562afbc1d0"
+  ],
+  "name_status": [
+    [
+      "M",
+      ".pre-commit-config.yaml"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": ".pre-commit-config.yaml",
+      "additions": 4,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/.pre-commit-config.yaml b/.pre-commit-config.yaml\nindex f31f7f3..8ea7c4a 100644\n--- a/.pre-commit-config.yaml\n+++ b/.pre-commit-config.yaml\n@@ -51,6 +51,10 @@ repos:\n       - id: trailing-whitespace\n       - id: check-yaml\n       - id: check-toml\n+  - repo: https://github.com/ComPWA/taplo-pre-commit\n+    rev: v0.9.3\n+    hooks:\n+      - id: taplo-format\n   - repo: https://github.com/astral-sh/ruff-pre-commit\n     rev: v0.12.3\n     hooks:",
+  "heuristics": {
+    "tags": [],
+    "extensions": [
+      ".yaml"
+    ],
+    "scopes_guess": [
+      ".pre-commit-config.yaml"
+    ]
+  }
+}

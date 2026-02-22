@@ -1,0 +1,39 @@
+{
+  "sha": "e6e5d3a20bf8e04f88d0de3623b243a3a97593b4",
+  "sha7": "e6e5d3a",
+  "author_name": "Guan-Ming (Wesley) Chiu",
+  "author_email": "105915352+guan404ming@users.noreply.github.com",
+  "date_iso": "2026-01-25T21:07:10+08:00",
+  "subject": "[DLPack] bump to latest version (#420)",
+  "body":
+      "This PR bumps DLPack to latest version. I've checked there is no any\ncompat issue need to be updated in our src code.",
+  "is_merge": false,
+  "parents": [
+    "3a5bf5e68ad1b4108045ef6b336a13efcd2037d9"
+  ],
+  "name_status": [
+    [
+      "M",
+      "3rdparty/dlpack"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "3rdparty/dlpack",
+      "additions": 1,
+      "deletions": 1
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/3rdparty/dlpack b/3rdparty/dlpack\nindex 93c8f2a..84d107b 160000\n--- a/3rdparty/dlpack\n+++ b/3rdparty/dlpack\n@@ -1 +1 @@\n-Subproject commit 93c8f2a3c774b84af6f652b1992c48164fae60fc\n+Subproject commit 84d107bf416c6bab9ae68ad285876600d230490d",
+  "heuristics": {
+    "tags": [],
+    "extensions": [
+      ""
+    ],
+    "scopes_guess": [
+      "3rdparty"
+    ]
+  }
+}

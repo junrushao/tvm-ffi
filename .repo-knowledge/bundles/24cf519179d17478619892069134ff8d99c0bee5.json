@@ -1,0 +1,77 @@
+{
+  "sha": "24cf519179d17478619892069134ff8d99c0bee5",
+  "sha7": "24cf519",
+  "author_name": "Junru Shao",
+  "author_email": "junrushao@apache.org",
+  "date_iso": "2025-10-17T04:46:09-07:00",
+  "subject": "doc: Expose more Python APIs (#161)",
+  "body": "",
+  "is_merge": false,
+  "parents": [
+    "10fa0109684468de23907df87245fef11d078c22"
+  ],
+  "name_status": [
+    [
+      "M",
+      "docs/conf.py"
+    ],
+    [
+      "M",
+      "docs/reference/python/index.rst"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/__init__.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/_tensor.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/cython/device.pxi"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "docs/conf.py",
+      "additions": 8,
+      "deletions": 0
+    },
+    {
+      "path": "docs/reference/python/index.rst",
+      "additions": 53,
+      "deletions": 20
+    },
+    {
+      "path": "python/tvm_ffi/__init__.py",
+      "additions": 4,
+      "deletions": 2
+    },
+    {
+      "path": "python/tvm_ffi/_tensor.py",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "python/tvm_ffi/cython/device.pxi",
+      "additions": 1,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/docs/conf.py b/docs/conf.py\nindex cc421af..28f87df 100644\n--- a/docs/conf.py\n+++ b/docs/conf.py\n@@ -143,6 +143,14 @@ intersphinx_mapping = {\n     \"torch\": (\"https://pytorch.org/docs/stable\", None),\n }\n \n+autosummary_generate = True  # actually create stub pages\n+\n+# Map object names -> stub docnames (no \".rst\"; relative to your :toctree: dir)\n+autosummary_filename_map = {\n+    \"tvm_ffi.device\": \"tvm_ffi.device_function\",\n+    \"tvm_ffi.Device\": \"tvm_ffi.Device_class\",\n+}\n+\n _DOCS_DIR = Path(__file__).resolve().parent\n _STUBS = {\n     \"_stubs/cpp_index.rst\": \"reference/cpp/generated/index.rst\",\ndiff --git a/docs/reference/python/index.rst b/docs/reference/python/index.rst\nindex 7cae49d..53ac71c 100644\n--- a/docs/reference/python/index.rst\n+++ b/docs/reference/python/index.rst\n@@ -23,44 +23,53 @@ Python API\n \n .. currentmodule:: tvm_ffi\n \n+.. contents:: Table of Contents\n+   :local:\n+   :depth: 2\n+\n+\n Object\n ------\n .. autosummary::\n   :toctree: generated/\n \n   Object\n-  register_object\n \n \n-Function and Module\n--------------------\n+Tensor\n+~~~~~~\n+.. autosummary::\n+  :toctree: generated/\n+\n+  Tensor\n+  Shape\n+  Device\n+  from_dlpack\n+  DLDeviceType\n+  device\n+  dtype\n+\n+\n+Function\n+~~~~~~~~\n .. autosummary::\n   :toctree: generated/\n \n   Function\n-  Module\n-  register_global_func\n-  get_global_func\n-  system_lib\n-  load_module\n-  init_ffi_api\n-  register_error\n-  convert\n \n \n-Tensor\n-------\n+Module\n+~~~~~~\n .. autosummary::\n   :toctree: generated/\n \n-  Shape\n-  Tensor\n-  Device\n-  from_dlpack\n+  Module\n+  system_lib\n+  load_module\n \n \n Containers\n-----------\n+~~~~~~~~~~\n .. autosummary::\n   :toctree: generated/\n \n@@ -68,6 +77,20 @@ Containers\n   Map\n \n \n+Global Registry\n+---------------\n+.. autosummary::\n+  :toctree: generated/\n+\n+  register_error\n+  register_object\n+  register_global_func\n+  get_global_func\n+  get_global_func_metadata\n+  init_ffi_api\n+  remove_global_func\n+\n+\n Stream Context\n --------------\n .. autosummary::\n@@ -78,8 +101,8 @@ Stream Context\n   use_raw_stream\n \n \n-Utility\n--------\n+Inline Loading\n+--------------\n \n C++ integration helpers for building and loading inline modules.\n \n@@ -90,6 +113,16 @@ C++ integration helpers for building and loading inline modules.\n   cpp.build_inline\n \n \n+Misc\n+----\n+.. autosummary::\n+  :toctree: generated/\n+\n+  serialization\n+  access_path\n+  convert\n+  ObjectConvertible\n+\n .. (Experimental) Dataclasses\n .. --------------------------\n \ndiff --git a/python/tvm_ffi/__init__.py b/python/tvm_ffi/__init__.py\nindex 5149ff5..130e893 100644\n--- a/python/tvm_ffi/__init__.py\n+++ b/python/tvm_ffi/__init__.py\n@@ -64,14 +64,13 @@ __all__ = [\n     \"Array\",\n     \"DLDeviceType\",\n     \"Device\",\n-    \"Device\",\n     \"Function\",\n     \"Map\",\n     \"Module\",\n     \"Object\",\n-    \"Object\",\n     \"ObjectConvertible\",\n     \"Shape\",\n+    \"StreamContext\",\n     \"Tensor\",\n     \"__version__\",\n     \"access_path\",\n@@ -82,6 +81,7 @@ __all__ = [\n     \"from_dlpack\",\n     \"get_global_func\",\n     \"get_global_func_metadata\",\n+    \"get_raw_stream\",\n     \"init_ffi_api\",\n     \"load_module\",\n     \"register_error\",\n@@ -90,4 +90,6 @@ __all__ = [\n     \"remove_global_func\",\n     \"serialization\",\n     \"system_lib\",\n+    \"use_raw_stream\",\n+    \"use_torch_stream\",\n ]\ndiff --git a/python/tvm_ffi/_tensor.py b/python/tvm_ffi/_tensor.py\nindex a4714b2..4c9714b 100644\n--- a/python/tvm_ffi/_tensor.py\n+++ b/python/tvm_ffi/_tensor.py\n@@ -36,7 +36,7 @@ from .core import (\n \n @registry.register_object(\"ffi.Shape\")\n class Shape(tuple, PyNativeObject):\n-    \"\"\"Shape tuple that represents ``ffi::Shape`` returned by an FFI call.\n+    \"\"\"Shape tuple that represents :cpp:class:`tvm::ffi::Shape` returned by an FFI call.\n \n     Notes\n     -----\ndiff --git a/python/tvm_ffi/cython/device.pxi b/python/tvm_ffi/cython/device.pxi\nindex f25ee94..34cbf5c 100644\n--- a/python/tvm_ffi/cython/device.pxi\n+++ b/python/tvm_ffi/cython/device.pxi\n@@ -73,6 +73,7 @@ cdef class Device:\n \n       assert tvm_ffi.device(\"cuda:0\") == tvm_ffi.device(\"cuda\", 0)\n       assert tvm_ffi.device(\"cpu:0\") == tvm_ffi.device(\"cpu\", 0)\n+\n     \"\"\"\n     cdef DLDevice cdevice\n ",
+  "heuristics": {
+    "tags": [],
+    "extensions": [
+      ".pxi",
+      ".py",
+      ".rst"
+    ],
+    "scopes_guess": [
+      "docs",
+      "python"
+    ]
+  }
+}

@@ -1,0 +1,88 @@
+{
+  "sha": "d5d2d12eab1bac530abfcac06b258a6d99f5cd7b",
+  "sha7": "d5d2d12",
+  "author_name": "Junru Shao",
+  "author_email": "junrushao@apache.org",
+  "date_iso": "2025-10-28T07:03:41-07:00",
+  "subject": "chore: Fix clang-tidy warnings (#197)",
+  "body":
+      "Following https://github.com/apache/tvm-ffi/pull/78, this PR addresses\nnew warnings from clang-tidy.\n\nAfter this PR being merged, PR #95 will run clang-tidy tests per-commit\nto `main` branch to make sure it always passes.",
+  "is_merge": false,
+  "parents": [
+    "9574e9d0afb50eca58f56cf0cdce9f64f8cd319f"
+  ],
+  "name_status": [
+    [
+      "M",
+      "include/tvm/ffi/base_details.h"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/c_api.h"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/container/array.h"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/reflection/access_path.h"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/reflection/registry.h"
+    ],
+    [
+      "M",
+      "src/ffi/testing/testing.cc"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "include/tvm/ffi/base_details.h",
+      "additions": 2,
+      "deletions": 2
+    },
+    {
+      "path": "include/tvm/ffi/c_api.h",
+      "additions": 2,
+      "deletions": 0
+    },
+    {
+      "path": "include/tvm/ffi/container/array.h",
+      "additions": 2,
+      "deletions": 2
+    },
+    {
+      "path": "include/tvm/ffi/reflection/access_path.h",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "include/tvm/ffi/reflection/registry.h",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "src/ffi/testing/testing.cc",
+      "additions": 3,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/include/tvm/ffi/base_details.h b/include/tvm/ffi/base_details.h\nindex 4e83648..f628020 100644\n--- a/include/tvm/ffi/base_details.h\n+++ b/include/tvm/ffi/base_details.h\n@@ -200,6 +200,7 @@ TVM_FFI_INLINE uint64_t StableHashCombine(uint64_t key, const T& value) {\n  * \\return the hash value.\n  */\n TVM_FFI_INLINE uint64_t StableHashBytes(const void* data_ptr, size_t size) {\n+  // NOLINTBEGIN(clang-analyzer-security.ArrayBound)\n   const char* data = reinterpret_cast<const char*>(data_ptr);\n   const constexpr uint64_t kMultiplier = 1099511628211ULL;\n   const constexpr uint64_t kMod = 2147483647ULL;\n@@ -215,14 +216,12 @@ TVM_FFI_INLINE uint64_t StableHashBytes(const void* data_ptr, size_t size) {\n     // if alignment requirement is met, directly use load\n     if (reinterpret_cast<uintptr_t>(it) % 8 == 0) {\n       for (; it + 8 <= end; it += 8) {\n-        // NOLINTNEXTLINE(clang-analyzer-security.ArrayBound)\n         u.b = *reinterpret_cast<const uint64_t*>(it);\n         result = (result * kMultiplier + u.b) % kMod;\n       }\n     } else {\n       // unaligned version\n       for (; it + 8 <= end; it += 8) {\n-        // NOLINTNEXTLINE(clang-analyzer-security.ArrayBound)\n         u.a[0] = it[0];\n         u.a[1] = it[1];\n         u.a[2] = it[2];\n@@ -277,6 +276,7 @@ TVM_FFI_INLINE uint64_t StableHashBytes(const void* data_ptr, size_t size) {\n     }\n     result = (result * kMultiplier + u.b) % kMod;\n   }\n+  // NOLINTEND(clang-analyzer-security.ArrayBound)\n   return result;\n }\n \ndiff --git a/include/tvm/ffi/c_api.h b/include/tvm/ffi/c_api.h\nindex 240dd76..f3dc4ea 100644\n--- a/include/tvm/ffi/c_api.h\n+++ b/include/tvm/ffi/c_api.h\n@@ -56,12 +56,14 @@\n #define TVM_FFI_DLL_EXPORT __attribute__((visibility(\"default\")))\n #endif\n \n+// NOLINTBEGIN(modernize-macro-to-enum)\n /*! \\brief TVM FFI major version. */\n #define TVM_FFI_VERSION_MAJOR 0\n /*! \\brief TVM FFI minor version. */\n #define TVM_FFI_VERSION_MINOR 1\n /*! \\brief TVM FFI patch version. */\n #define TVM_FFI_VERSION_PATCH 1\n+// NOLINTEND(modernize-macro-to-enum)\n \n #ifdef __cplusplus\n extern \"C\" {\ndiff --git a/include/tvm/ffi/container/array.h b/include/tvm/ffi/container/array.h\nindex 3831b2a..60fa6fe 100644\n--- a/include/tvm/ffi/container/array.h\n+++ b/include/tvm/ffi/container/array.h\n@@ -447,7 +447,7 @@ class Array : public ObjectRef {\n    * \\tparam IterType The type of iterator\n    */\n   template <typename IterType>\n-  Array(IterType first, IterType last) {\n+  Array(IterType first, IterType last) {  // NOLINT(performance-unnecessary-value-param)\n     static_assert(is_valid_iterator_v<T, IterType>,\n                   \"IterType cannot be inserted into a tvm::Array<T>\");\n     Assign(first, last);\n@@ -817,7 +817,7 @@ class Array : public ObjectRef {\n    * \\tparam IterType The type of iterator\n    */\n   template <typename IterType>\n-  void Assign(IterType first, IterType last) {\n+  void Assign(IterType first, IterType last) {  // NOLINT(performance-unnecessary-value-param)\n     int64_t cap = std::distance(first, last);\n     if (cap < 0) {\n       TVM_FFI_THROW(ValueError) << \"cannot construct an Array of negative size\";\ndiff --git a/include/tvm/ffi/reflection/access_path.h b/include/tvm/ffi/reflection/access_path.h\nindex 76d061e..e4ebc2a 100644\n--- a/include/tvm/ffi/reflection/access_path.h\n+++ b/include/tvm/ffi/reflection/access_path.h\n@@ -329,7 +329,7 @@ class AccessPath : public ObjectRef {\n    * \\param end The end of the iterator range.\n    * \\return The access path.\n    */\n-  template <typename Iter>\n+  template <typename Iter>  // NOLINTNEXTLINE(performance-unnecessary-value-param)\n   static AccessPath FromSteps(Iter begin, Iter end) {\n     AccessPath path = AccessPath::Root();\n     for (Iter it = begin; it != end; ++it) {\ndiff --git a/include/tvm/ffi/reflection/registry.h b/include/tvm/ffi/reflection/registry.h\nindex be63c30..3014108 100644\n--- a/include/tvm/ffi/reflection/registry.h\n+++ b/include/tvm/ffi/reflection/registry.h\n@@ -296,7 +296,7 @@ class ReflectionDefBase {\n     static_assert(std::is_base_of_v<ObjectRef, Class> || std::is_base_of_v<Object, Class>,\n                   \"Class must be derived from ObjectRef or Object\");\n     if constexpr (std::is_base_of_v<ObjectRef, Class>) {\n-      auto fwrap = [func](const Class target, Args... params) -> R {\n+      auto fwrap = [func](const Class& target, Args... params) -> R {\n         // call method pointer\n         return (target.*func)(std::forward<Args>(params)...);\n       };\ndiff --git a/src/ffi/testing/testing.cc b/src/ffi/testing/testing.cc\nindex 74f235e..cccd89e 100644\n--- a/src/ffi/testing/testing.cc\n+++ b/src/ffi/testing/testing.cc\n@@ -176,6 +176,7 @@ TVM_FFI_NO_INLINE void TestApply(PackedArgs args, Any* ret) {\n   f.CallPacked(args.Slice(1), ret);\n }\n \n+// NOLINTNEXTLINE(bugprone-reserved-identifier)\n int __add_one_c_symbol(void*, const TVMFFIAny* args, int32_t num_args, TVMFFIAny* ret) {\n   TVM_FFI_SAFE_CALL_BEGIN();\n   int x = reinterpret_cast<const AnyView*>(args)[0].cast<int>();\n@@ -261,10 +262,12 @@ TVM_FFI_STATIC_INIT_BLOCK() {\n       .def(\"testing.get_add_one_c_symbol\",\n            []() {\n              TVMFFISafeCallType symbol = __add_one_c_symbol;\n+             // NOLINTNEXTLINE(bugprone-casting-through-void)\n              return reinterpret_cast<int64_t>(reinterpret_cast<void*>(symbol));\n            })\n       .def(\"testing.get_mlir_add_one_c_symbol\",\n            []() {\n+             // NOLINTNEXTLINE(bugprone-casting-through-void)\n              return reinterpret_cast<int64_t>(reinterpret_cast<void*>(_mlir_add_one_c_symbol));\n            })\n       .def_method(\"testing.TestIntPairSum\", &TestIntPair::Sum, \"Get sum of the pair\");",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".cc",
+      ".h"
+    ],
+    "scopes_guess": [
+      "include",
+      "src"
+    ]
+  }
+}

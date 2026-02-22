@@ -1,0 +1,61 @@
+{
+  "sha": "ae346ec92a3c386f1376064ae086aae72947c329",
+  "sha7": "ae346ec",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-11-14T18:40:40-05:00",
+  "subject": "[DTYPE] Align bool parsing to align with DLPack (#262)",
+  "body": "This PR aligns the bool parsing to align with DLPack.",
+  "is_merge": false,
+  "parents": [
+    "7f3f8726156ab6e33f781562afafd9c6f219551f"
+  ],
+  "name_status": [
+    [
+      "M",
+      "python/tvm_ffi/_dtype.py"
+    ],
+    [
+      "M",
+      "src/ffi/dtype.cc"
+    ],
+    [
+      "M",
+      "tests/python/test_dtype.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "python/tvm_ffi/_dtype.py",
+      "additions": 1,
+      "deletions": 0
+    },
+    {
+      "path": "src/ffi/dtype.cc",
+      "additions": 6,
+      "deletions": 7
+    },
+    {
+      "path": "tests/python/test_dtype.py",
+      "additions": 13,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/python/tvm_ffi/_dtype.py b/python/tvm_ffi/_dtype.py\nindex 8e36bb4..216af55 100644\n--- a/python/tvm_ffi/_dtype.py\n+++ b/python/tvm_ffi/_dtype.py\n@@ -33,6 +33,7 @@ class DataTypeCode(IntEnum):\n     FLOAT = 2\n     HANDLE = 3\n     BFLOAT = 4\n+    BOOL = 6\n     Float8E3M4 = 7\n     Float8E4M3 = 8\n     Float8E4M3B11FNUZ = 9\ndiff --git a/src/ffi/dtype.cc b/src/ffi/dtype.cc\nindex 0b875e7..74c9eeb 100644\n--- a/src/ffi/dtype.cc\n+++ b/src/ffi/dtype.cc\n@@ -160,7 +160,7 @@ inline void PrintDLDataTypeCodeAsStr(std::ostream& os, DLDataTypeCode type_code)\n  *  \\return The output stream.\n  */\n inline std::string DLDataTypeToString_(DLDataType dtype) {  // NOLINT(*)\n-  if (dtype.bits == 1 && dtype.lanes == 1 && dtype.code == kDLUInt) {\n+  if (dtype.bits == 8 && dtype.lanes == 1 && dtype.code == kDLBool) {\n     return \"bool\";\n   }\n   // specially handle void\n@@ -177,7 +177,7 @@ inline std::string DLDataTypeToString_(DLDataType dtype) {  // NOLINT(*)\n   }\n   if (dtype.code == kDLOpaqueHandle) return os.str();\n   int16_t lanes = static_cast<int16_t>(dtype.lanes);\n-  if (dtype.code < kDLFloat8_e3m4) {\n+  if (dtype.code < kDLFloat8_e3m4 && (dtype.code != kDLBool || dtype.bits != 8)) {\n     os << static_cast<int>(dtype.bits);\n   }\n   if (lanes > 1) {\n@@ -228,6 +228,10 @@ inline DLDataType StringViewToDLDataType_(std::string_view str) {\n   } else if (str.compare(0, 4, \"uint\") == 0) {\n     dtype.code = kDLUInt;\n     scan = str.data() + 4;\n+  } else if (str.compare(0, 4, \"bool\") == 0) {\n+    dtype.code = kDLBool;\n+    dtype.bits = 8;\n+    scan = str.data() + 4;\n   } else if (str.compare(0, 5, \"float\") == 0) {\n     if (str.compare(5, 2, \"8_\") == 0) {\n       if (str.compare(7, 4, \"e3m4\") == 0) {\n@@ -279,11 +283,6 @@ inline DLDataType StringViewToDLDataType_(std::string_view str) {\n     dtype.code = kDLOpaqueHandle;\n     dtype.bits = 64;  // handle uses 64 bit by default.\n     scan = str.data() + 6;\n-  } else if (str == \"bool\") {\n-    dtype.code = kDLUInt;\n-    dtype.bits = 1;\n-    dtype.lanes = 1;\n-    return dtype;\n   } else if (str.compare(0, 6, \"bfloat\") == 0) {\n     dtype.code = kDLBfloat;\n     dtype.bits = 16;\ndiff --git a/tests/python/test_dtype.py b/tests/python/test_dtype.py\nindex cae5f84..2897faa 100644\n--- a/tests/python/test_dtype.py\n+++ b/tests/python/test_dtype.py\n@@ -169,3 +169,16 @@ def test_dtype_from_dlpack_data_type() -> None:\n     assert dtype.type_code == 0\n     assert dtype.bits == 8\n     assert dtype.lanes == 1\n+\n+\n+def test_dtype_bool() -> None:\n+    dtype = tvm_ffi.dtype(\"bool\")\n+    assert dtype.type_code == 6\n+    assert dtype.bits == 8\n+    assert dtype.lanes == 1\n+\n+    dtype_with_lanes = dtype.with_lanes(4)\n+    assert dtype_with_lanes.type_code == 6\n+    assert dtype_with_lanes.bits == 8\n+    assert dtype_with_lanes.lanes == 4\n+    assert dtype_with_lanes == \"boolx4\"",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".cc",
+      ".py"
+    ],
+    "scopes_guess": [
+      "python",
+      "src",
+      "tests"
+    ]
+  }
+}

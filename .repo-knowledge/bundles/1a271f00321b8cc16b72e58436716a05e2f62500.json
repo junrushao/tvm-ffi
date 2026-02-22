@@ -1,0 +1,59 @@
+{
+  "sha": "1a271f00321b8cc16b72e58436716a05e2f62500",
+  "sha7": "1a271f0",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-08-15T10:41:25-04:00",
+  "subject": "[FFI] Make JSON Parser/Write fastmath safe (#18212)",
+  "body": "This PR adds fallbacks for nan and inf\ndetection/creation under fastmath mode.",
+  "is_merge": false,
+  "parents": [
+    "03e8a6b8c995259d379358ab50ad81609a99083e"
+  ],
+  "name_status": [
+    [
+      "M",
+      "src/ffi/extra/json_parser.cc"
+    ],
+    [
+      "M",
+      "src/ffi/extra/json_writer.cc"
+    ],
+    [
+      "M",
+      "tests/cpp/extra/test_json_parser.cc"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "src/ffi/extra/json_parser.cc",
+      "additions": 30,
+      "deletions": 3
+    },
+    {
+      "path": "src/ffi/extra/json_writer.cc",
+      "additions": 33,
+      "deletions": 2
+    },
+    {
+      "path": "tests/cpp/extra/test_json_parser.cc",
+      "additions": 34,
+      "deletions": 3
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/src/ffi/extra/json_parser.cc b/src/ffi/extra/json_parser.cc\nindex dd3fae3..3107e4d 100644\n--- a/src/ffi/extra/json_parser.cc\n+++ b/src/ffi/extra/json_parser.cc\n@@ -167,7 +167,7 @@ class JSONParserContext {\n       ++cur_;\n       if (cur_ != end_ && *cur_ == 'I') {\n         if (this->MatchLiteral(\"Infinity\", 8)) {\n-          *out = -std::numeric_limits<double>::infinity();\n+          *out = FastMathSafeNegInf();\n           return true;\n         } else {\n           this->SetCurrentPosForBetterErrorMsg(start_pos);\n@@ -177,7 +177,7 @@ class JSONParserContext {\n       }\n     } else if (*cur_ == 'I') {\n       if (this->MatchLiteral(\"Infinity\", 8)) {\n-        *out = std::numeric_limits<double>::infinity();\n+        *out = FastMathSafePosInf();\n         return true;\n       } else {\n         this->SetCurrentPosForBetterErrorMsg(start_pos);\n@@ -186,7 +186,7 @@ class JSONParserContext {\n       }\n     } else if (*cur_ == 'N') {\n       if (this->MatchLiteral(\"NaN\", 3)) {\n-        *out = std::numeric_limits<double>::quiet_NaN();\n+        *out = FastMathSafeNaN();\n         return true;\n       } else {\n         this->SetCurrentPosForBetterErrorMsg(start_pos);\n@@ -296,6 +296,33 @@ class JSONParserContext {\n   void SetErrorExpectingComma() { error_msg_ = GetSyntaxErrorContext(\"Expecting \\',\\' delimiter\"); }\n \n  private:\n+  static double FastMathSafePosInf() {\n+#ifdef __FAST_MATH__\n+    const uint64_t inf_bits = 0x7FF0000000000000ULL;\n+    return *reinterpret_cast<const double*>(&inf_bits);\n+#else\n+    return std::numeric_limits<double>::infinity();\n+#endif\n+  }\n+\n+  static double FastMathSafeNegInf() {\n+#ifdef __FAST_MATH__\n+    const uint64_t inf_bits = 0xFFF0000000000000ULL;\n+    return *reinterpret_cast<const double*>(&inf_bits);\n+#else\n+    return -std::numeric_limits<double>::infinity();\n+#endif\n+  }\n+\n+  static double FastMathSafeNaN() {\n+#ifdef __FAST_MATH__\n+    const uint64_t nan_bits = 0x7FF8000000000000ULL;\n+    return *reinterpret_cast<const double*>(&nan_bits);\n+#else\n+    return std::numeric_limits<double>::quiet_NaN();\n+#endif\n+  }\n+\n   // Full string parsing with escape and unicode handling\n   bool NextStringWithFullHandling(Any* out, const char* start_pos) {\n     // copy over the prefix that was already parsed\ndiff --git a/src/ffi/extra/json_writer.cc b/src/ffi/extra/json_writer.cc\nindex 94ba5e4..81d321d 100644\n--- a/src/ffi/extra/json_writer.cc\n+++ b/src/ffi/extra/json_writer.cc\n@@ -60,6 +60,37 @@ class JSONWriter {\n  private:\n   explicit JSONWriter(int indent) : indent_(indent), out_iter_(result_) {}\n \n+  static bool FastMathSafeIsNaN(double x) {\n+#ifdef __FAST_MATH__\n+    // Bit-level NaN detection (IEEE 754 double)\n+    // IEEE 754 standard: https://en.wikipedia.org/wiki/IEEE_754\n+    // NaN is encoded as all 1s in the exponent and non-zero in the mantissa\n+    static_assert(sizeof(double) == sizeof(uint64_t), \"Unexpected double size\");\n+    uint64_t bits = *reinterpret_cast<const uint64_t*>(&x);\n+    uint64_t exponent = (bits >> 52) & 0x7FF;\n+    uint64_t mantissa = bits & 0xFFFFFFFFFFFFFull;\n+    return (exponent == 0x7FF) && (mantissa != 0);\n+#else\n+    // Safe to use std::isnan when fast-math is off\n+    return std::isnan(x);\n+#endif\n+  }\n+\n+  static bool FastMathSafeIsInf(double x) {\n+#ifdef __FAST_MATH__\n+    // IEEE 754 standard: https://en.wikipedia.org/wiki/IEEE_754\n+    // Inf is encoded as all 1s in the exponent and zero in the mantissa\n+    static_assert(sizeof(double) == sizeof(uint64_t), \"Unexpected double size\");\n+    uint64_t bits = *reinterpret_cast<const uint64_t*>(&x);\n+    uint64_t exponent = (bits >> 52) & 0x7FF;\n+    uint64_t mantissa = bits & 0xFFFFFFFFFFFFFull;\n+    // inf is encoded as all 1s in the exponent and zero in the mantissa\n+    return (exponent == 0x7FF) && (mantissa == 0);\n+#else\n+    return std::isinf(x);\n+#endif\n+  }\n+\n   void WriteValue(const json::Value& value) {\n     switch (value.type_index()) {\n       case TypeIndex::kTVMFFINone: {\n@@ -120,9 +151,9 @@ class JSONWriter {\n     // largest possible string representation of a double is around 24 chars plus\n     // one null terminator keep 32 to be safe\n     char buffer[32];\n-    if (std::isnan(value)) {\n+    if (FastMathSafeIsNaN(value)) {\n       WriteLiteral(\"NaN\", 3);\n-    } else if (std::isinf(value)) {\n+    } else if (FastMathSafeIsInf(value)) {\n       if (value < 0) {\n         WriteLiteral(\"-Infinity\", 9);\n       } else {\ndiff --git a/tests/cpp/extra/test_json_parser.cc b/tests/cpp/extra/test_json_parser.cc\nindex c0332e6..a1cc280 100644\n--- a/tests/cpp/extra/test_json_parser.cc\n+++ b/tests/cpp/extra/test_json_parser.cc\n@@ -28,6 +28,37 @@ namespace {\n \n using namespace tvm::ffi;\n \n+inline bool FastMathSafeIsNaN(double x) {\n+#ifdef __FAST_MATH__\n+  // Bit-level NaN detection (IEEE 754 double)\n+  // IEEE 754 standard: https://en.wikipedia.org/wiki/IEEE_754\n+  // NaN is encoded as all 1s in the exponent and non-zero in the mantissa\n+  static_assert(sizeof(double) == sizeof(uint64_t), \"Unexpected double size\");\n+  uint64_t bits = *reinterpret_cast<const uint64_t*>(&x);\n+  uint64_t exponent = (bits >> 52) & 0x7FF;\n+  uint64_t mantissa = bits & 0xFFFFFFFFFFFFFull;\n+  return (exponent == 0x7FF) && (mantissa != 0);\n+#else\n+  // Safe to use std::isnan when fast-math is off\n+  return std::isnan(x);\n+#endif\n+}\n+\n+inline bool FastMathSafeIsInf(double x) {\n+#ifdef __FAST_MATH__\n+  // IEEE 754 standard: https://en.wikipedia.org/wiki/IEEE_754\n+  // Inf is encoded as all 1s in the exponent and zero in the mantissa\n+  static_assert(sizeof(double) == sizeof(uint64_t), \"Unexpected double size\");\n+  uint64_t bits = *reinterpret_cast<const uint64_t*>(&x);\n+  uint64_t exponent = (bits >> 52) & 0x7FF;\n+  uint64_t mantissa = bits & 0xFFFFFFFFFFFFFull;\n+  // inf is encoded as all 1s in the exponent and zero in the mantissa\n+  return (exponent == 0x7FF) && (mantissa == 0);\n+#else\n+  return std::isinf(x);\n+#endif\n+}\n+\n TEST(JSONParser, BoolNull) {\n   // boolean value\n   EXPECT_EQ(json::Parse(\"true\").cast<bool>(), true);\n@@ -61,11 +92,11 @@ TEST(JSONParser, Number) {\n   // parsing scientific notation\n   EXPECT_EQ(json::Parse(\"1.456e12\").cast<double>(), 1.456e12);\n   // NaN\n-  EXPECT_EQ(std::isnan(json::Parse(\"NaN\").cast<double>()), true);\n+  EXPECT_EQ(FastMathSafeIsNaN(json::Parse(\"NaN\").cast<double>()), true);\n   // Infinity\n-  EXPECT_EQ(std::isinf(json::Parse(\"Infinity\").cast<double>()), true);\n+  EXPECT_EQ(FastMathSafeIsInf(json::Parse(\"Infinity\").cast<double>()), true);\n   // -Infinity\n-  EXPECT_EQ(std::isinf(-json::Parse(\"-Infinity\").cast<double>()), true);\n+  EXPECT_EQ(FastMathSafeIsInf(-json::Parse(\"-Infinity\").cast<double>()), true);\n \n   // Test zero variants\n   EXPECT_EQ(json::Parse(\"0\").cast<int64_t>(), 0);",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".cc"
+    ],
+    "scopes_guess": [
+      "src",
+      "tests"
+    ]
+  }
+}

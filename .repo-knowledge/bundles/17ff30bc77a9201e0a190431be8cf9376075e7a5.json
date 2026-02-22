@@ -1,0 +1,180 @@
+{
+  "sha": "17ff30bc77a9201e0a190431be8cf9376075e7a5",
+  "sha7": "17ff30b",
+  "author_name": "Junru Shao",
+  "author_email": "junrushao@apache.org",
+  "date_iso": "2025-10-13T04:37:33-07:00",
+  "subject": "doc: Auto-extract type annotations from function definition (#106)",
+  "body":
+      "A new plugin `sphinx-autodoc-typehints` is introduced that helps\nautomatically extract type annotations for function definitions.\n\nIt makes it possible, according to DRY (don't repeat yourself) rule, to\navoid defining type annotations the 2nd time inside docstring, which is\nvery much prone to inconsistency.",
+  "is_merge": false,
+  "parents": [
+    "519fc0a1a01c005ac9546e128af2094f4d5c286a"
+  ],
+  "name_status": [
+    [
+      "M",
+      "docs/conf.py"
+    ],
+    [
+      "M",
+      "pyproject.toml"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/_convert.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/_dtype.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/access_path.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/container.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/cpp/load_inline.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/dataclasses/c_class.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/dataclasses/field.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/error.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/libinfo.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/module.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/registry.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/serialization.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/stream.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/testing.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "docs/conf.py",
+      "additions": 16,
+      "deletions": 1
+    },
+    {
+      "path": "pyproject.toml",
+      "additions": 1,
+      "deletions": 0
+    },
+    {
+      "path": "python/tvm_ffi/_convert.py",
+      "additions": 2,
+      "deletions": 2
+    },
+    {
+      "path": "python/tvm_ffi/_dtype.py",
+      "additions": 2,
+      "deletions": 2
+    },
+    {
+      "path": "python/tvm_ffi/access_path.py",
+      "additions": 8,
+      "deletions": 8
+    },
+    {
+      "path": "python/tvm_ffi/container.py",
+      "additions": 10,
+      "deletions": 10
+    },
+    {
+      "path": "python/tvm_ffi/cpp/load_inline.py",
+      "additions": 9,
+      "deletions": 9
+    },
+    {
+      "path": "python/tvm_ffi/dataclasses/c_class.py",
+      "additions": 2,
+      "deletions": 2
+    },
+    {
+      "path": "python/tvm_ffi/dataclasses/field.py",
+      "additions": 3,
+      "deletions": 3
+    },
+    {
+      "path": "python/tvm_ffi/error.py",
+      "additions": 10,
+      "deletions": 10
+    },
+    {
+      "path": "python/tvm_ffi/libinfo.py",
+      "additions": 3,
+      "deletions": 3
+    },
+    {
+      "path": "python/tvm_ffi/module.py",
+      "additions": 20,
+      "deletions": 20
+    },
+    {
+      "path": "python/tvm_ffi/registry.py",
+      "additions": 14,
+      "deletions": 14
+    },
+    {
+      "path": "python/tvm_ffi/serialization.py",
+      "additions": 5,
+      "deletions": 5
+    },
+    {
+      "path": "python/tvm_ffi/stream.py",
+      "additions": 9,
+      "deletions": 9
+    },
+    {
+      "path": "python/tvm_ffi/testing.py",
+      "additions": 3,
+      "deletions": 3
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/docs/conf.py b/docs/conf.py\nindex b380a84..cc421af 100644\n--- a/docs/conf.py\n+++ b/docs/conf.py\n@@ -55,6 +55,7 @@ extensions = [\n     \"sphinx.ext.napoleon\",\n     \"sphinx.ext.viewcode\",\n     \"sphinx.ext.ifconfig\",\n+    \"sphinx_autodoc_typehints\",\n     \"sphinx_copybutton\",\n     \"sphinx_reredirects\",\n     \"sphinx_tabs.tabs\",\n@@ -178,8 +179,22 @@ autodoc_default_options = {\n     \"inherited-members\": False,\n     \"member-order\": \"bysource\",\n }\n-autodoc_typehints = \"description\"\n+autodoc_typehints = \"description\"  # or \"none\"\n+always_use_bars_union = True\n \n+# Preserve how defaults are written in your source (e.g., DEFAULT_SENTINEL)\n+# Requires Sphinx ≥ 4.0\n+autodoc_preserve_defaults = True\n+\n+# Ask the extension to include defaults alongside types\n+# 'braces' works well with NumPy-style \"Parameters\" tables\n+typehints_defaults = \"comma\"  # also accepts: \"comma\", \"braces-after\"\n+\n+# Optional: also add stubs for params you didn't list in the docstring\n+always_document_param_types = True\n+\n+# Optional (pairs nicely with NumPy style)\n+napoleon_use_rtype = False\n # -- Other Options --------------------------------------------------------\n \n templates_path = []\ndiff --git a/pyproject.toml b/pyproject.toml\nindex 24444eb..a76862d 100644\n--- a/pyproject.toml\n+++ b/pyproject.toml\n@@ -64,6 +64,7 @@ docs = [\n   \"sphinx-reredirects==0.1.2\",\n   \"sphinx-tabs==3.4.1\",\n   \"sphinx-toolbox==3.4.0\",\n+  \"sphinx-autodoc-typehints\",\n   \"sphinxcontrib-mermaid\",\n   \"sphinxcontrib-napoleon==0.7\",\n   \"sphinxcontrib_httpdomain==1.8.1\",\ndiff --git a/python/tvm_ffi/_convert.py b/python/tvm_ffi/_convert.py\nindex 05e99da..1ff91af 100644\n--- a/python/tvm_ffi/_convert.py\n+++ b/python/tvm_ffi/_convert.py\n@@ -42,12 +42,12 @@ def convert(value: Any) -> Any:  # noqa: PLR0911,PLR0912\n \n     Parameters\n     ----------\n-    value : Any\n+    value\n         The python object to be converted.\n \n     Returns\n     -------\n-    ffi_obj : Any\n+    ffi_obj\n         The converted TVM FFI object.\n \n     Note\ndiff --git a/python/tvm_ffi/_dtype.py b/python/tvm_ffi/_dtype.py\nindex 8306593..3aae074 100644\n--- a/python/tvm_ffi/_dtype.py\n+++ b/python/tvm_ffi/_dtype.py\n@@ -49,7 +49,7 @@ class dtype(str):\n \n     Parameters\n     ----------\n-    dtype_str : str\n+    dtype_str\n \n     Note\n     ----\n@@ -77,7 +77,7 @@ class dtype(str):\n \n         Parameters\n         ----------\n-        lanes : int\n+        lanes\n             The number of lanes.\n \n         Returns\ndiff --git a/python/tvm_ffi/access_path.py b/python/tvm_ffi/access_path.py\nindex c906347..a048a8a 100644\n--- a/python/tvm_ffi/access_path.py\n+++ b/python/tvm_ffi/access_path.py\n@@ -106,7 +106,7 @@ class AccessPath(Object):\n \n         Parameters\n         ----------\n-        other : AccessPath\n+        other\n             The access path to check if it is a prefix of this access path\n \n         Returns\n@@ -122,7 +122,7 @@ class AccessPath(Object):\n \n         Parameters\n         ----------\n-        attr_key : str\n+        attr_key\n             The key of the attribute to access\n \n         Returns\n@@ -138,7 +138,7 @@ class AccessPath(Object):\n \n         Parameters\n         ----------\n-        attr_key : str\n+        attr_key\n             The key of the attribute to access\n \n         Returns\n@@ -154,7 +154,7 @@ class AccessPath(Object):\n \n         Parameters\n         ----------\n-        index : int\n+        index\n             The index of the item to access\n \n         Returns\n@@ -170,7 +170,7 @@ class AccessPath(Object):\n \n         Parameters\n         ----------\n-        index : int\n+        index\n             The index of the item to access\n \n         Returns\n@@ -186,7 +186,7 @@ class AccessPath(Object):\n \n         Parameters\n         ----------\n-        key : Any\n+        key\n             The key of the item to access\n \n         Returns\n@@ -202,7 +202,7 @@ class AccessPath(Object):\n \n         Parameters\n         ----------\n-        key : Any\n+        key\n             The key of the item to access\n \n         Returns\n@@ -218,7 +218,7 @@ class AccessPath(Object):\n \n         Returns\n         -------\n-        List[AccessStep]\n+        access_steps\n             The list of access steps\n \n         \"\"\"\ndiff --git a/python/tvm_ffi/container.py b/python/tvm_ffi/container.py\nindex d4aa24f..a1b51a4 100644\n--- a/python/tvm_ffi/container.py\n+++ b/python/tvm_ffi/container.py\n@@ -48,21 +48,21 @@ def getitem_helper(\n \n     Parameters\n     ----------\n-    obj: Any\n+    obj\n         The original object\n \n-    elem_getter : Callable[[Any, int], T]\n+    elem_getter\n         A simple function that takes index and return a single element.\n \n-    length : int\n+    length\n         The size of the array\n \n-    idx : SupportsIndex or slice\n+    idx\n         The argument passed to getitem\n \n     Returns\n     -------\n-    result : object\n+    result\n         The element for integer indices or a ``list`` for slices.\n \n     \"\"\"\n@@ -90,7 +90,7 @@ class Array(core.Object, Sequence[T]):\n \n     Parameters\n     ----------\n-    input_list : Iterable[T]\n+    input_list\n         The list of values to be stored in the array.\n \n     See Also\n@@ -231,7 +231,7 @@ class Map(core.Object, Mapping[K, V]):\n \n     Parameters\n     ----------\n-    input_dict : Mapping[K, V]\n+    input_dict\n         The dictionary of values to be stored in the map.\n \n     See Also\n@@ -299,15 +299,15 @@ class Map(core.Object, Mapping[K, V]):\n \n         Parameters\n         ----------\n-        key : object\n+        key\n             The attribute key.\n \n-        default : object\n+        default\n             The default object.\n \n         Returns\n         -------\n-        value: object\n+        value\n             The result value.\n \n         \"\"\"\ndiff --git a/python/tvm_ffi/cpp/load_inline.py b/python/tvm_ffi/cpp/load_inline.py\nindex 623ff88..260ccc2 100644\n--- a/python/tvm_ffi/cpp/load_inline.py\n+++ b/python/tvm_ffi/cpp/load_inline.py\n@@ -399,40 +399,40 @@ def build_inline(  # noqa: PLR0915, PLR0912\n \n     Parameters\n     ----------\n-    name: str\n+    name\n         The name of the tvm ffi module.\n-    cpp_sources: Sequence[str] | str, optional\n+    cpp_sources\n         The C++ source code. It can be a list of sources or a single source.\n-    cuda_sources: Sequence[str] | str, optional\n+    cuda_sources\n         The CUDA source code. It can be a list of sources or a single source.\n-    functions: Mapping[str, str] | Sequence[str] | str, optional\n+    functions\n         The functions in cpp_sources or cuda_source that will be exported to the tvm ffi module. When a mapping is\n         given, the keys are the names of the exported functions, and the values are docstrings for the functions. When\n         a sequence or a single string is given, they are the functions needed to be exported, and the docstrings are set\n         to empty strings. A single function name can also be given as a string. When cpp_sources is given, the functions\n         must be declared (not necessarily defined) in the cpp_sources. When cpp_sources is not given, the functions\n         must be defined in the cuda_sources. If not specified, no function will be exported.\n-    extra_cflags: Sequence[str], optional\n+    extra_cflags\n         The extra compiler flags for C++ compilation.\n         The default flags are:\n \n         - On Linux/macOS: ['-std=c++17', '-fPIC', '-O2']\n         - On Windows: ['/std:c++17', '/O2']\n \n-    extra_cuda_cflags: Sequence[str], optional\n+    extra_cuda_cflags\n         The extra compiler flags for CUDA compilation.\n \n-    extra_ldflags: Sequence[str], optional\n+    extra_ldflags\n         The extra linker flags.\n         The default flags are:\n \n         - On Linux/macOS: ['-shared']\n         - On Windows: ['/DLL']\n \n-    extra_include_paths: Sequence[str], optional\n+    extra_include_paths\n         The extra include paths.\n \n-    build_directory: str, optional\n+    build_directory\n         The build directory. If not specified, a default tvm ffi cache directory will be used. By default, the\n         cache directory is ``~/.cache/tvm-ffi``. You can also set the ``TVM_FFI_CACHE_DIR`` environment variable to\n         specify the cache directory.\ndiff --git a/python/tvm_ffi/dataclasses/c_class.py b/python/tvm_ffi/dataclasses/c_class.py\nindex 42dc4fd..35c22d7 100644\n--- a/python/tvm_ffi/dataclasses/c_class.py\n+++ b/python/tvm_ffi/dataclasses/c_class.py\n@@ -57,12 +57,12 @@ def c_class(\n \n     Parameters\n     ----------\n-    type_key : str\n+    type_key\n         The reflection key that identifies the C++ type in the FFI registry,\n         e.g. ``\"testing.MyClass\"`` as registered in\n         ``src/ffi/extra/testing.cc``.\n \n-    init : bool, default True\n+    init\n         If ``True`` and the Python class does not define ``__init__``, an\n         initializer is auto-generated that mirrors the reflected constructor\n         signature.  The generated initializer calls the C++ ``__init__``\ndiff --git a/python/tvm_ffi/dataclasses/field.py b/python/tvm_ffi/dataclasses/field.py\nindex 92a28cb..b1d7d78 100644\n--- a/python/tvm_ffi/dataclasses/field.py\n+++ b/python/tvm_ffi/dataclasses/field.py\n@@ -67,15 +67,15 @@ def field(\n \n     Parameters\n     ----------\n-    default : Any, optional\n+    default\n         A literal default value that populates the field when no argument\n         is given. At most one of ``default`` or ``default_factory`` may be\n         given.\n-    default_factory : Callable[[], Any], optional\n+    default_factory\n         A zero-argument callable that produces the default.  This matches the\n         semantics of :func:`dataclasses.field` and is useful for mutable\n         defaults such as ``list`` or ``dict``.\n-    init : bool, default True\n+    init\n         If ``True`` the field is included in the generated ``__init__``.\n         If ``False`` the field is omitted from input arguments of ``__init__``.\n \ndiff --git a/python/tvm_ffi/error.py b/python/tvm_ffi/error.py\nindex fd0bf2b..14dd2b0 100644\n--- a/python/tvm_ffi/error.py\n+++ b/python/tvm_ffi/error.py\n@@ -33,12 +33,12 @@ def _parse_backtrace(backtrace: str) -> list[tuple[str, int, str]]:\n \n     Parameters\n     ----------\n-    backtrace : str\n+    backtrace\n         The backtrace string.\n \n     Returns\n     -------\n-    result : List[Tuple[str, int, str]]\n+    result\n         The list of (filename, lineno, func)\n \n     \"\"\"\n@@ -106,18 +106,18 @@ class TracebackManager:\n \n         Parameters\n         ----------\n-        tb : types.TracebackType\n+        tb\n             The traceback to append to.\n-        filename : str\n+        filename\n             The filename of the traceback\n-        lineno : int\n+        lineno\n             The line number of the traceback\n-        func : str\n+        func\n             The function name of the traceback\n \n         Returns\n         -------\n-        new_tb : types.TracebackType\n+        new_tb\n             The new traceback with the appended frame.\n \n         \"\"\"\n@@ -163,15 +163,15 @@ def register_error(\n \n     Parameters\n     ----------\n-    name_or_cls : str or class\n+    name_or_cls\n         The name of the error class.\n \n-    cls : class\n+    cls\n         The class to register.\n \n     Returns\n     -------\n-    fregister : function\n+    fregister\n         Register function if f is not specified.\n \n     Examples\ndiff --git a/python/tvm_ffi/libinfo.py b/python/tvm_ffi/libinfo.py\nindex 8d92df3..fd0e784 100644\n--- a/python/tvm_ffi/libinfo.py\n+++ b/python/tvm_ffi/libinfo.py\n@@ -26,15 +26,15 @@ def split_env_var(env_var: str, split: str) -> list[str]:\n \n     Parameters\n     ----------\n-    env_var : str\n+    env_var\n         Name of environment variable.\n \n-    split : str\n+    split\n         String to split env_var on.\n \n     Returns\n     -------\n-    splits : list(string)\n+    splits\n         If env_var exists, split env_var. Otherwise, empty list.\n \n     \"\"\"\ndiff --git a/python/tvm_ffi/module.py b/python/tvm_ffi/module.py\nindex 9db31a1..ff05f93 100644\n--- a/python/tvm_ffi/module.py\n+++ b/python/tvm_ffi/module.py\n@@ -76,7 +76,7 @@ class Module(core.Object):\n \n         Returns\n         -------\n-        modules : list of Module\n+        modules\n             The module\n \n         \"\"\"\n@@ -95,15 +95,15 @@ class Module(core.Object):\n \n         Parameters\n         ----------\n-        name : str\n+        name\n             The name of the function\n \n-        query_imports : bool\n+        query_imports\n             Whether to also query modules imported by this module.\n \n         Returns\n         -------\n-        b : Bool\n+        b\n             True if module (or one of its imports) has a definition for name.\n \n         \"\"\"\n@@ -123,15 +123,15 @@ class Module(core.Object):\n \n         Parameters\n         ----------\n-        name : str\n+        name\n             The name of the function\n \n-        query_imports : bool\n+        query_imports\n             Whether also query modules imported by this module.\n \n         Returns\n         -------\n-        f : tvm_ffi.Function\n+        f\n             The result function.\n \n         \"\"\"\n@@ -146,7 +146,7 @@ class Module(core.Object):\n \n         Parameters\n         ----------\n-        module : tvm.runtime.Module\n+        module\n             The other module.\n \n         \"\"\"\n@@ -168,12 +168,12 @@ class Module(core.Object):\n \n         Parameters\n         ----------\n-        fmt : str, optional\n+        fmt\n             The specified format.\n \n         Returns\n         -------\n-        source : str\n+        source\n             The result source code.\n \n         \"\"\"\n@@ -188,7 +188,7 @@ class Module(core.Object):\n \n         Returns\n         -------\n-        mask : int\n+        mask\n             Bitmask of runtime module property\n \n         \"\"\"\n@@ -199,7 +199,7 @@ class Module(core.Object):\n \n         Returns\n         -------\n-        b : Bool\n+        b\n             True if the module is binary serializable.\n \n         \"\"\"\n@@ -210,7 +210,7 @@ class Module(core.Object):\n \n         Returns\n         -------\n-        b : Bool\n+        b\n             True if the module is runnable.\n \n         \"\"\"\n@@ -223,7 +223,7 @@ class Module(core.Object):\n \n         Returns\n         -------\n-        b : Bool\n+        b\n             True if the module is compilation exportable.\n \n         \"\"\"\n@@ -238,9 +238,9 @@ class Module(core.Object):\n \n         Parameters\n         ----------\n-        file_name : str\n+        file_name\n             The name of the file.\n-        fmt : str\n+        fmt\n             The format of the file.\n \n         See Also\n@@ -263,13 +263,13 @@ def system_lib(symbol_prefix: str = \"\") -> Module:\n \n     Parameters\n     ----------\n-    symbol_prefix: str = \"\"\n+    symbol_prefix\n         Optional symbol prefix that can be used for search. When we lookup a symbol\n         symbol_prefix + name will first be searched, then the name without symbol_prefix.\n \n     Returns\n     -------\n-    module : runtime.Module\n+    module\n         The system-wide library module.\n \n     \"\"\"\n@@ -281,12 +281,12 @@ def load_module(path: str) -> Module:\n \n     Parameters\n     ----------\n-    path : str\n+    path\n         The path to the module file.\n \n     Returns\n     -------\n-    module : :py:class:`tvm_ffi.Module`\n+    module\n         The loaded module\n \n     Examples\ndiff --git a/python/tvm_ffi/registry.py b/python/tvm_ffi/registry.py\nindex 6a9dad6..3080cce 100644\n--- a/python/tvm_ffi/registry.py\n+++ b/python/tvm_ffi/registry.py\n@@ -34,7 +34,7 @@ def register_object(type_key: str | type | None = None) -> Callable[[type], type\n \n     Parameters\n     ----------\n-    type_key : str or cls\n+    type_key\n         The type key of the node\n \n     Examples\n@@ -88,18 +88,18 @@ def register_global_func(\n \n     Parameters\n     ----------\n-    func_name : str or function\n+    func_name\n         The function name\n \n-    f : function, optional\n+    f\n         The function to be registered.\n \n-    override: boolean optional\n+    override\n         Whether override existing entry.\n \n     Returns\n     -------\n-    fregister : function\n+    fregister\n         Register function if f is not specified.\n \n     Examples\n@@ -156,15 +156,15 @@ def get_global_func(name: str, allow_missing: bool = False) -> core.Function | N\n \n     Parameters\n     ----------\n-    name : str\n+    name\n         The name of the global function\n \n-    allow_missing : bool\n+    allow_missing\n         Whether allow missing function or raise an error.\n \n     Returns\n     -------\n-    func : Function\n+    func\n         The function to be returned, None if function is missing.\n \n     See Also\n@@ -180,7 +180,7 @@ def list_global_func_names() -> list[str]:\n \n     Returns\n     -------\n-    names : list\n+    names\n        List of global functions names.\n \n     \"\"\"\n@@ -194,7 +194,7 @@ def remove_global_func(name: str) -> None:\n \n     Parameters\n     ----------\n-    name : str\n+    name\n         The name of the global function\n \n     \"\"\"\n@@ -206,12 +206,12 @@ def get_global_func_metadata(name: str) -> dict[str, Any]:\n \n     Parameters\n     ----------\n-    name : str\n+    name\n         The name of the global function\n \n     Returns\n     -------\n-    metadata : dict\n+    metadata\n         The metadata of the function\n \n     \"\"\"\n@@ -223,10 +223,10 @@ def init_ffi_api(namespace: str, target_module_name: str | None = None) -> None:\n \n     Parameters\n     ----------\n-    namespace : str\n+    namespace\n        The namespace of the source registry\n \n-    target_module_name : str\n+    target_module_name\n        The target module name if different from namespace\n \n     Examples\ndiff --git a/python/tvm_ffi/serialization.py b/python/tvm_ffi/serialization.py\nindex 6960eda..285d764 100644\n--- a/python/tvm_ffi/serialization.py\n+++ b/python/tvm_ffi/serialization.py\n@@ -32,15 +32,15 @@ def to_json_graph_str(obj: Any, metadata: dict[str, Any] | None = None) -> str:\n \n     Parameters\n     ----------\n-    obj : Any\n+    obj\n         The object to save.\n \n-    metadata : Optional[dict], optional\n+    metadata\n         Extra metadata to save into the json graph string.\n \n     Returns\n     -------\n-    json_str : str\n+    json_str\n         The JSON graph string.\n \n     \"\"\"\n@@ -55,12 +55,12 @@ def from_json_graph_str(json_str: str) -> Any:\n \n     Parameters\n     ----------\n-    json_str : str\n+    json_str\n         The JSON graph string to load.\n \n     Returns\n     -------\n-    obj : Any\n+    obj\n         The loaded object.\n \n     \"\"\"\ndiff --git a/python/tvm_ffi/stream.py b/python/tvm_ffi/stream.py\nindex e00d422..b2083f3 100644\n--- a/python/tvm_ffi/stream.py\n+++ b/python/tvm_ffi/stream.py\n@@ -34,10 +34,10 @@ class StreamContext:\n \n     Parameters\n     ----------\n-    device : Device\n+    device\n         The device to which the stream belongs.\n \n-    stream : Union[int, c_void_p]\n+    stream\n         The stream handle.\n \n     See Also\n@@ -100,12 +100,12 @@ try:\n \n         Parameters\n         ----------\n-        context : Any = None\n+        context\n             The wrapped torch stream or cuda graph.\n \n         Returns\n         -------\n-        context : tvm_ffi.TorchStreamContext\n+        context\n             The ffi stream context wrapping torch stream context.\n \n         Examples\n@@ -139,15 +139,15 @@ def use_raw_stream(device: core.Device, stream: Union[int, c_void_p]) -> StreamC\n \n     Parameters\n     ----------\n-    device : tvm_ffi.Device\n+    device\n         The device to which the stream belongs.\n \n-    stream : Union[int, c_void_p]\n+    stream\n         The stream handle.\n \n     Returns\n     -------\n-    context : tvm_ffi.StreamContext\n+    context\n         The ffi stream context.\n \n     Note\n@@ -168,12 +168,12 @@ def get_raw_stream(device: core.Device) -> int:\n \n     Parameters\n     ----------\n-    device : tvm_ffi.Device\n+    device\n         The device to which the stream belongs.\n \n     Returns\n     -------\n-    stream : int\n+    stream\n         The current ffi stream.\n \n     \"\"\"\ndiff --git a/python/tvm_ffi/testing.py b/python/tvm_ffi/testing.py\nindex 2ea89ce..71467df 100644\n--- a/python/tvm_ffi/testing.py\n+++ b/python/tvm_ffi/testing.py\n@@ -114,14 +114,14 @@ def create_object(type_key: str, **kwargs: Any) -> Object:\n \n     Parameters\n     ----------\n-    type_key : str\n+    type_key\n         The type key of the object.\n-    kwargs : dict\n+    kwargs\n         The keyword arguments to the object.\n \n     Returns\n     -------\n-    obj : object\n+    obj\n         The created object.\n \n     Note",
+  "heuristics": {
+    "tags": [
+      "build",
+      "test"
+    ],
+    "extensions": [
+      ".py",
+      ".toml"
+    ],
+    "scopes_guess": [
+      "docs",
+      "pyproject.toml",
+      "python"
+    ]
+  }
+}

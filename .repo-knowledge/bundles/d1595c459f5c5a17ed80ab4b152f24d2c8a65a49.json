@@ -1,0 +1,70 @@
+{
+  "sha": "d1595c459f5c5a17ed80ab4b152f24d2c8a65a49",
+  "sha7": "d1595c4",
+  "author_name": "Yaxing Cai",
+  "author_email": "caiyaxing666@gmail.com",
+  "date_iso": "2025-11-10T14:38:20-08:00",
+  "subject": "[ADDON] Add torch c dlpack ext wheels for windows (#252)",
+  "body": "This PR adds the torch c dlpack ext wheels for windows.",
+  "is_merge": false,
+  "parents": [
+    "752ac8ed2a76b5dcdf1655116b9449c207b872f0"
+  ],
+  "name_status": [
+    [
+      "M",
+      ".github/workflows/torch_c_dlpack.yml"
+    ],
+    [
+      "A",
+      ".github/workflows/torch_c_dlpack_windows.yml"
+    ],
+    [
+      "A",
+      "addons/torch_c_dlpack_ext/build_aot_wheels.bat"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/utils/_build_optional_torch_c_dlpack.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": ".github/workflows/torch_c_dlpack.yml",
+      "additions": 3,
+      "deletions": 3
+    },
+    {
+      "path": ".github/workflows/torch_c_dlpack_windows.yml",
+      "additions": 80,
+      "deletions": 0
+    },
+    {
+      "path": "addons/torch_c_dlpack_ext/build_aot_wheels.bat",
+      "additions": 109,
+      "deletions": 0
+    },
+    {
+      "path": "python/tvm_ffi/utils/_build_optional_torch_c_dlpack.py",
+      "additions": 10,
+      "deletions": 1
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/.github/workflows/torch_c_dlpack.yml b/.github/workflows/torch_c_dlpack.yml\nindex 93fec23..8d7296e 100644\n--- a/.github/workflows/torch_c_dlpack.yml\n+++ b/.github/workflows/torch_c_dlpack.yml\n@@ -25,7 +25,7 @@ on:\n         required: true\n \n jobs:\n-  build_wheels:\n+  build_wheels_linux:\n     strategy:\n       fail-fast: false\n       matrix:\n@@ -64,7 +64,7 @@ jobs:\n           docker cp build_lib:/tvm-ffi/addons/torch_c_dlpack_ext/wheelhouse/ .\n       - uses: actions/upload-artifact@v4\n         with:\n-          name: pypi-wheels-${{ matrix.arch }}-${{ matrix.python-version }}\n+          name: pypi-wheels-linux-${{ matrix.arch }}-${{ matrix.python-version }}\n           path: ./wheelhouse/*.whl\n   build_source:\n     runs-on: ubuntu-latest\n@@ -90,7 +90,7 @@ jobs:\n           name: pypi-source\n           path: ./tvm-ffi/addons/torch_c_dlpack_ext/dist/*tar.gz\n   upload_pypi:\n-    needs: [build_wheels, build_source]\n+    needs: [build_wheels_linux, build_source]\n     runs-on: ubuntu-latest\n     environment: pypi\n     permissions:\ndiff --git a/.github/workflows/torch_c_dlpack_windows.yml b/.github/workflows/torch_c_dlpack_windows.yml\nnew file mode 100644\nindex 0000000..d893a23\n--- /dev/null\n+++ b/.github/workflows/torch_c_dlpack_windows.yml\n@@ -0,0 +1,80 @@\n+# Licensed to the Apache Software Foundation (ASF) under one\n+# or more contributor license agreements.  See the NOTICE file\n+# distributed with this work for additional information\n+# regarding copyright ownership.  The ASF licenses this file\n+# to you under the Apache License, Version 2.0 (the\n+# \"License\"); you may not use this file except in compliance\n+# with the License.  You may obtain a copy of the License at\n+#\n+#   http://www.apache.org/licenses/LICENSE-2.0\n+#\n+# Unless required by applicable law or agreed to in writing,\n+# software distributed under the License is distributed on an\n+# \"AS IS\" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY\n+# KIND, either express or implied.  See the License for the\n+# specific language governing permissions and limitations\n+# under the License.\n+\n+name: torch c dlpack\n+\n+on:\n+  workflow_dispatch:\n+    inputs:\n+      branch:\n+        description: \"Branch or tag to publish (manual run)\"\n+        required: true\n+\n+jobs:\n+  build_wheels_windows:\n+    strategy:\n+      fail-fast: false\n+      matrix:\n+        arch: [\"x86_64\"]\n+        python-version: [\"cp39\", \"cp310\", \"cp311\", \"cp312\", \"cp313\", \"cp314\"]\n+    runs-on: windows-latest\n+    steps:\n+      - uses: actions/checkout@v5\n+        with:\n+          repository: apache/tvm-ffi\n+          ref: main\n+          fetch-depth: 0\n+          submodules: recursive\n+          path: tvm-ffi\n+      - uses: Jimver/cuda-toolkit@6008063726ffe3309d1b22e413d9e88fed91a2f2\n+        id: cuda-toolkit\n+      - uses: astral-sh/setup-uv@v7\n+      - name: build wheels\n+        env:\n+          CUDA_HOME: ${{steps.cuda-toolkit.outputs.CUDA_PATH}}\n+        shell: cmd\n+        working-directory: ./tvm-ffi\n+        run: ./addons/torch_c_dlpack_ext/build_aot_wheels.bat ${{ matrix.arch }} ${{ matrix.python-version }}\n+      - uses: actions/upload-artifact@v4\n+        with:\n+          name: pypi-wheels-windows-${{ matrix.arch }}-${{ matrix.python-version }}\n+          path: ./tvm-ffi/addons/torch_c_dlpack_ext/wheelhouse/*.whl\n+  upload_pypi:\n+    needs: [build_wheels_windows]\n+    runs-on: ubuntu-latest\n+    environment: pypi\n+    permissions:\n+      id-token: write\n+      attestations: write\n+    if: github.event_name == 'workflow_dispatch'   # <-- publish only on manual trigger\n+    steps:\n+      - uses: actions/download-artifact@v4\n+        with:\n+          pattern: pypi-*\n+          path: dist\n+          merge-multiple: true\n+      - name: Generate artifact attestation for sdist and wheels\n+        uses: actions/attest-build-provenance@v1\n+        with:\n+          subject-path: dist/*\n+      - name: Publish package distributions to PyPI\n+        uses: pypa/gh-action-pypi-publish@release/v1\n+        with:\n+          attestations: true\n+          verbose: true\n+          # testing publish url\n+          # repository-url: https://test.pypi.org/legacy/\ndiff --git a/addons/torch_c_dlpack_ext/build_aot_wheels.bat b/addons/torch_c_dlpack_ext/build_aot_wheels.bat\nnew file mode 100644\nindex 0000000..4b55c04\n--- /dev/null\n+++ b/addons/torch_c_dlpack_ext/build_aot_wheels.bat\n@@ -0,0 +1,109 @@\n+@REM Licensed to the Apache Software Foundation (ASF) under one\n+@REM or more contributor license agreements.  See the NOTICE file\n+@REM distributed with this work for additional information\n+@REM regarding copyright ownership.  The ASF licenses this file\n+@REM to you under the Apache License, Version 2.0 (the\n+@REM \"License\"); you may not use this file except in compliance\n+@REM with the License.  You may obtain a copy of the License at\n+@REM\n+@REM   http://www.apache.org/licenses/LICENSE-2.0\n+@REM\n+@REM Unless required by applicable law or agreed to in writing,\n+@REM software distributed under the License is distributed on an\n+@REM \"AS IS\" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY\n+@REM KIND, either express or implied.  See the License for the\n+@REM specific language governing permissions and limitations\n+@REM under the License.\n+@echo off\n+setlocal enabledelayedexpansion\n+\n+set arch=%~1\n+set python_version=%~2\n+\n+set tvm_ffi=%cd%\n+set torch_c_dlpack_ext=%tvm_ffi%\\addons\\torch_c_dlpack_ext\n+\n+if not exist \"%tvm_ffi%\\.venv\" mkdir \"%tvm_ffi%\\.venv\"\n+if not exist \"%tvm_ffi%\\lib\" mkdir \"%tvm_ffi%\\lib\"\n+for %%P in (2.4 2.5 2.6 2.7 2.8 2.9) do (\n+    call :build_libs %%P\n+)\n+\n+copy %tvm_ffi%\\lib\\*.dll %torch_c_dlpack_ext%\\torch_c_dlpack_ext\n+uv venv %tvm_ffi%\\.venv\\build --python %python_version%\n+call %tvm_ffi%\\.venv\\build\\Scripts\\activate\n+uv pip install build wheel\n+cd %torch_c_dlpack_ext%\n+python -m build -w\n+dir dist\n+for %%f in (dist\\*.whl) do python -m wheel tags \"%%f\" --python-tag=%python_version% --abi-tag=%python_version% --platform-tag=win_amd64\n+dir dist\n+mkdir wheelhouse\n+copy dist\\*-win_amd64.whl wheelhouse\n+dir wheelhouse\n+endlocal\n+exit /b\n+\n+:build_libs\n+    set torch_version=%1\n+    call :check_availability\n+    if %errorlevel%==0 (\n+        call :get_torch_url\n+        uv venv %tvm_ffi%\\.venv\\torch%torch_version% --python %python_version%\n+        call %tvm_ffi%\\.venv\\torch%torch_version%\\Scripts\\activate\n+        uv pip install setuptools ninja\n+        uv pip install torch==%torch_version% --index-url !torch_url!\n+        uv pip install -v .\n+        python -m tvm_ffi.utils._build_optional_torch_c_dlpack --output-dir %tvm_ffi%\\lib\n+        python -m tvm_ffi.utils._build_optional_torch_c_dlpack --output-dir %tvm_ffi%\\lib --build-with-cuda\n+        call deactivate\n+        rmdir -s -q %tvm_ffi%\\.venv\\torch%torch_version%\n+    ) else (\n+        echo Skipping build for torch %torch_version% on %arch% with python %python_version% as it is not available.\n+    )\n+    exit /b 0\n+\n+\n+:check_availability\n+    if %torch_version%==2.4 (\n+        if %python_version%==cp313 exit /b 1\n+        if %python_version%==cp314 exit /b 1\n+        exit /b 0\n+    )\n+    if %torch_version%==2.5 (\n+        if %python_version%==cp314 exit /b 1\n+        exit /b 0\n+    )\n+    if %torch_version%==2.6 (\n+        if %python_version%==cp314 exit /b 1\n+        exit /b 0\n+    )\n+    if %torch_version%==2.7 (\n+        if %python_version%==cp314 exit /b 1\n+        exit /b 0\n+    )\n+    if %torch_version%==2.8 (\n+        if %python_version%==cp314 exit /b 1\n+        exit /b 0\n+    )\n+    if %torch_version%==2.9 (\n+        if %python_version%==cp39 exit /b 1\n+        exit /b 0\n+    )\n+    echo Unknown or unsupported torch version: %torch_version% >&2\n+    exit /b 1\n+\n+:get_torch_url\n+    set cuda_version=\n+    if %torch_version%==2.4 set cuda_version=cu124\n+    if %torch_version%==2.5 set cuda_version=cu124\n+    if %torch_version%==2.6 set cuda_version=cu126\n+    if %torch_version%==2.7 set cuda_version=cu128\n+    if %torch_version%==2.8 set cuda_version=cu129\n+    if %torch_version%==2.9 set cuda_version=cu129\n+    if defined cuda_version (\n+        set torch_url=https://download.pytorch.org/whl/%cuda_version%\n+        exit /b 0\n+    )\n+    echo Unknown or unsupported torch version: %torch_version% >&2\n+    exit /b 1\ndiff --git a/python/tvm_ffi/utils/_build_optional_torch_c_dlpack.py b/python/tvm_ffi/utils/_build_optional_torch_c_dlpack.py\nindex 20705be..294e340 100644\n--- a/python/tvm_ffi/utils/_build_optional_torch_c_dlpack.py\n+++ b/python/tvm_ffi/utils/_build_optional_torch_c_dlpack.py\n@@ -627,7 +627,12 @@ def _generate_ninja_build(\n \n     # append include paths\n     for path in include_paths:\n-        cflags.append(\"-I{}\".format(path.replace(\":\", \"$:\")))\n+        path_str = str(path)\n+        if \" \" in path_str:\n+            path_str = f'\"{path_str}\"'\n+        if IS_WINDOWS:\n+            path_str = path_str.replace(\":\", \"$:\")\n+        cflags.append(f\"-I{path_str}\")\n \n     # flags\n     ninja = []\n@@ -795,9 +800,13 @@ def main() -> None:  # noqa: PLR0912, PLR0915\n         if IS_WINDOWS:\n             # On Windows, use .lib format for linking\n             ldflags.extend([\"c10.lib\", \"torch.lib\", \"torch_cpu.lib\", \"torch_python.lib\"])\n+            if args.build_with_cuda:\n+                ldflags.extend([\"torch_cuda.lib\", \"c10_cuda.lib\"])\n         else:\n             # On Unix/macOS, use -l format for linking\n             ldflags.extend([\"-lc10\", \"-ltorch\", \"-ltorch_cpu\", \"-ltorch_python\"])\n+            if args.build_with_cuda:\n+                ldflags.extend([\"-ltorch_cuda\", \"-lc10_cuda\"])\n \n         # Add Python library linking\n         if IS_WINDOWS:",
+  "heuristics": {
+    "tags": [
+      "ci"
+    ],
+    "extensions": [
+      ".bat",
+      ".py",
+      ".yml"
+    ],
+    "scopes_guess": [
+      "addons",
+      "python"
+    ]
+  }
+}

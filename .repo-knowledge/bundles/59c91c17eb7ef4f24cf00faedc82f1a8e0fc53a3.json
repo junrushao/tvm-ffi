@@ -1,0 +1,41 @@
+{
+  "sha": "59c91c17eb7ef4f24cf00faedc82f1a8e0fc53a3",
+  "sha7": "59c91c1",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-10-15T21:57:23-04:00",
+  "subject": "[TEST] Add testcase about subclassing an ffi.Function (#140)",
+  "body":
+      "Sometimes it is helpful to subclass it and attach more metadata, this pr\nadds a testcase about it.",
+  "is_merge": false,
+  "parents": [
+    "33b37685fdbef6cbecea19160fe784f9fbe83fd8"
+  ],
+  "name_status": [
+    [
+      "M",
+      "tests/python/test_function.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "tests/python/test_function.py",
+      "additions": 34,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/tests/python/test_function.py b/tests/python/test_function.py\nindex cf50dcf..cc932f5 100644\n--- a/tests/python/test_function.py\n+++ b/tests/python/test_function.py\n@@ -263,3 +263,37 @@ def test_function_from_mlir_packed_safe_call() -> None:\n     assert sys.getrefcount(keep_alive) == base_ref_count + 1\n     fadd_one = None\n     assert sys.getrefcount(keep_alive) == base_ref_count\n+\n+\n+def test_function_subclass() -> None:\n+    class JitFunction:\n+        def __init__(self, metadata: Any) -> None:\n+            self.metadata = metadata\n+\n+    class MyFunction(tvm_ffi.Function, JitFunction):\n+        def __init__(self, metadata: Any) -> None:\n+            # Explicitly initialize the mixin. `super()` is not used because `tvm_ffi.Function`\n+            # is an extension type without a standard `__init__`.\n+            JitFunction.__init__(self, metadata)\n+\n+        # When subclassing a Cython cdef class and overriding `__init__`,\n+        # special methods like `__call__` may not be inherited automatically.\n+        # This explicit assignment ensures the subclass remains callable.\n+        __call__ = tvm_ffi.Function.__call__  # type: ignore\n+\n+    f = tvm_ffi.convert(lambda x: x)\n+    assert isinstance(f, tvm_ffi.Function)\n+    f_sub = MyFunction(128)\n+    # move handle from f to f_sub an existing function\n+    f_sub.__move_handle_from__(f)\n+    assert isinstance(f_sub, MyFunction)\n+    assert isinstance(f_sub, JitFunction)\n+    assert f_sub.metadata == 128\n+\n+    y: int = f_sub(2)\n+    assert y == 2\n+    echo = tvm_ffi.get_global_func(\"testing.echo\")\n+    fechoed = echo(f_sub)\n+    assert isinstance(fechoed, tvm_ffi.Function)\n+    assert fechoed.__chandle__() == f_sub.__chandle__()\n+    assert fechoed(10) == 10",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".py"
+    ],
+    "scopes_guess": [
+      "tests"
+    ]
+  }
+}

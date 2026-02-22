@@ -1,0 +1,52 @@
+{
+  "sha": "a7ebc65f14eecd1592d407f1d5c952c65603a9aa",
+  "sha7": "a7ebc65",
+  "author_name": "wrongtest",
+  "author_email": "wrongtest0@gmail.com",
+  "date_iso": "2025-12-18T02:17:15+08:00",
+  "subject": "Allow `tvm_ffi.device(..., id)` where id is numpy or torch scalar (#347)",
+  "body":
+      "Similar to torch.device\n\n```python\ntorch.device(\"cuda\", 0)\ntorch.device(\"cuda\", numpy.int32(1))\ntorch.device(\"cuda\", torch.tensor(1, dtype=torch.int32))\n```\n\n```python\ntvm_ffi.device(\"cuda\", 0)\ntvm_ffi.device(\"cuda\", numpy.int32(1))\ntvm_ffi.device(\"cuda\", torch.tensor(1, dtype=torch.int32))\n```\n\n---------\n\nCo-authored-by: baoxinqi <bao.xinqi@intellif.com>",
+  "is_merge": false,
+  "parents": [
+    "3ab699d48fdea2db341f1306f979ce8d0f773e3c"
+  ],
+  "name_status": [
+    [
+      "M",
+      "python/tvm_ffi/cython/device.pxi"
+    ],
+    [
+      "M",
+      "tests/python/test_device.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "python/tvm_ffi/cython/device.pxi",
+      "additions": 8,
+      "deletions": 3
+    },
+    {
+      "path": "tests/python/test_device.py",
+      "additions": 5,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/python/tvm_ffi/cython/device.pxi b/python/tvm_ffi/cython/device.pxi\nindex 9539827..2eb36fc 100644\n--- a/python/tvm_ffi/cython/device.pxi\n+++ b/python/tvm_ffi/cython/device.pxi\n@@ -15,6 +15,7 @@\n # specific language governing permissions and limitations\n # under the License.\n from enum import IntEnum\n+from numbers import Integral\n from typing import Any, Optional\n \n _CLASS_DEVICE = None\n@@ -129,7 +130,7 @@ cdef class Device:\n         \"trn\": DLDeviceType.kDLTrn,\n     }\n \n-    def __init__(self, device_type: str | int, index: Optional[int] = None) -> None:\n+    def __init__(self, device_type: str | int, index: Optional[Integral] = None) -> None:\n         device_type_or_name = device_type\n         index = index if index is not None else 0\n         if isinstance(device_type_or_name, str):\n@@ -148,8 +149,12 @@ cdef class Device:\n                     raise ValueError(f\"Invalid device index: {parts[1]}\")\n         else:\n             device_type = device_type_or_name\n-        if not isinstance(index, int):\n-            raise TypeError(f\"Invalid device index: {index}\")\n+\n+        if not isinstance(index, Integral):\n+            if hasattr(index, \"item\") and callable(index.item):\n+                index = index.item()\n+            if not isinstance(index, Integral):\n+                raise TypeError(f\"Invalid device index: {index}\")\n         self.cdevice = TVMFFIDLDeviceFromIntPair(device_type, index)\n \n     def __reduce__(self) -> Any:\ndiff --git a/tests/python/test_device.py b/tests/python/test_device.py\nindex 71dc0e4..33b48e8 100644\n--- a/tests/python/test_device.py\n+++ b/tests/python/test_device.py\n@@ -20,6 +20,7 @@ from __future__ import annotations\n import ctypes\n import pickle\n \n+import numpy\n import pytest\n import tvm_ffi\n from tvm_ffi import DLDeviceType\n@@ -69,6 +70,10 @@ def test_device_dlpack_device_type(\n         (DLDeviceType.kDLCUDA, 0, DLDeviceType.kDLCUDA, 0),\n         (\"cuda\", 3, DLDeviceType.kDLCUDA, 3),\n         (DLDeviceType.kDLMetal, 2, DLDeviceType.kDLMetal, 2),\n+        # id from numpy\n+        (\"cpu\", numpy.int32(1), DLDeviceType.kDLCPU, 1),\n+        # id from torch (py dependency not ready in environment)\n+        # (\"cpu\", torch.tensor(1, dtype=torch.int32), DLDeviceType.kDLCPU, 1),\n     ],\n )\n def test_device_with_dev_id(",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".pxi",
+      ".py"
+    ],
+    "scopes_guess": [
+      "python",
+      "tests"
+    ]
+  }
+}

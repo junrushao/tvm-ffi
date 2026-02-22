@@ -1,0 +1,71 @@
+    {
+      "sha": "59a837eb4040843051706cbf5c7b71725fd65364",
+      "sha7": "59a837e",
+      "author_name": "Tianqi Chen",
+      "author_email": "tqchen@users.noreply.github.com",
+      "date_iso": "2025-07-28T11:02:35-04:00",
+      "subject": "[FFI][REFACTOR] Migrate StructuralEqual/Hash to new reflection (#18166)",
+      "body":
+          "This PR migrates the StructuralEqual/Hash to new reflection based approach.\nThe original mechanisms are still kept around and we will phase them out\nin followup PRs.\n\nThe new mechanism unifies the structural equal/hash registration with\nthe normal reflection registeration and also brings cleaner implementation\nfor mismatch detection.",
+      "is_merge": false,
+      "parents": [
+        "2ec11f5f1ed2c2607765b2cfd589cc2adcbea2ec"
+      ],
+      "name_status": [
+        [
+          "M",
+          "include/tvm/ffi/c_api.h"
+        ],
+        [
+          "M",
+          "src/ffi/reflection/structural_equal.cc"
+        ],
+        [
+          "M",
+          "src/ffi/reflection/structural_hash.cc"
+        ],
+        [
+          "M",
+          "tests/cpp/testing_object.h"
+        ]
+      ],
+      "numstat": [
+        {
+          "path": "include/tvm/ffi/c_api.h",
+          "additions": 0,
+          "deletions": 21
+        },
+        {
+          "path": "src/ffi/reflection/structural_equal.cc",
+          "additions": 19,
+          "deletions": 9
+        },
+        {
+          "path": "src/ffi/reflection/structural_hash.cc",
+          "additions": 33,
+          "deletions": 18
+        },
+        {
+          "path": "tests/cpp/testing_object.h",
+          "additions": 6,
+          "deletions": 5
+        }
+      ],
+      "diff_truncated": false,
+      "diff":
+          "diff --git a/include/tvm/ffi/c_api.h b/include/tvm/ffi/c_api.h\nindex e2de610..60743b8 100644\n--- a/include/tvm/ffi/c_api.h\n+++ b/include/tvm/ffi/c_api.h\n@@ -424,27 +424,6 @@ typedef enum {\n    * is only an unique copy of each value.\n    */\n   kTVMFFISEqHashKindUniqueInstance = 5,\n-  /*!\n-   * \\brief provide custom __s_equal__ and __s_hash__ functions through TypeAttrColumn.\n-   *\n-   * The function signatures are(defined via ffi::Function)\n-   *\n-   * \\code\n-   * bool __s_equal__(\n-   *   ObjectRefType self, ObjectRefType other,\n-   *   ffi::TypedFunction<bool(AnyView, AnyView, bool def_region, string field_name)> cmp,\n-   * );\n-   *\n-   * uint64_t __s_hash__(\n-   *   ObjectRefType self, uint64_t type_key_hash,\n-   *   ffi::TypedFunction<uint64_t(AnyView, bool def_region)> hash\n-   * );\n-   * \\endcode\n-   *\n-   * Where the extra string field in cmp is the name of the field that is being compared.\n-   * The function should be registered through TVMFFITypeRegisterAttr via reflection::TypeAttrDef.\n-   */\n-  kTVMFFISEqHashKindCustomTreeNode = 6,\n #ifdef __cplusplus\n };\n #else\ndiff --git a/src/ffi/reflection/structural_equal.cc b/src/ffi/reflection/structural_equal.cc\nindex 03cbdd9..e44a0c3 100644\n--- a/src/ffi/reflection/structural_equal.cc\n+++ b/src/ffi/reflection/structural_equal.cc\n@@ -29,6 +29,7 @@\n #include <tvm/ffi/reflection/structural_equal.h>\n #include <tvm/ffi/string.h>\n \n+#include <cmath>\n #include <unordered_map>\n \n namespace tvm {\n@@ -49,7 +50,12 @@ class StructEqualHandler {\n     if (lhs_data->type_index != rhs_data->type_index) {\n       return false;\n     }\n+\n     if (lhs_data->type_index < TypeIndex::kTVMFFIStaticObjectBegin) {\n+      // specially handle nan for float, as there can be multiple representations of nan\n+      if (lhs_data->type_index == TypeIndex::kTVMFFIFloat && std::isnan(lhs_data->v_float64)) {\n+        return std::isnan(rhs_data->v_float64);\n+      }\n       // this is POD data, we can just compare the value\n       return lhs_data->v_int64 == rhs_data->v_int64;\n     }\n@@ -90,12 +96,18 @@ class StructEqualHandler {\n     // NOTE: invariant: lhs and rhs are already the same type\n     const TVMFFITypeInfo* type_info = TVMFFIGetTypeInfo(lhs->type_index());\n     if (type_info->metadata == nullptr) {\n-      return lhs.same_as(rhs);\n+      TVM_FFI_THROW(TypeError) << \"Type metadata is not set for type `\"\n+                               << String(type_info->type_key)\n+                               << \"`, so StructuralHash is not supported for this type\";\n+    }\n+    if (type_info->metadata->structural_eq_hash_kind == kTVMFFISEqHashKindUnsupported) {\n+      TVM_FFI_THROW(TypeError) << \"_type_s_eq_hash_kind is not set for type `\"\n+                               << String(type_info->type_key)\n+                               << \"`, so StructuralHash is not supported for this type\";\n     }\n-    auto structural_eq_hash_kind = type_info->metadata->structural_eq_hash_kind;\n \n-    if (structural_eq_hash_kind == kTVMFFISEqHashKindUnsupported ||\n-        structural_eq_hash_kind == kTVMFFISEqHashKindUniqueInstance) {\n+    auto structural_eq_hash_kind = type_info->metadata->structural_eq_hash_kind;\n+    if (structural_eq_hash_kind == kTVMFFISEqHashKindUniqueInstance) {\n       // use pointer comparison\n       return lhs.same_as(rhs);\n     }\n@@ -118,8 +130,10 @@ class StructEqualHandler {\n       }\n     }\n \n+    static reflection::TypeAttrColumn custom_s_equal = reflection::TypeAttrColumn(\"__s_equal__\");\n+\n     bool success = true;\n-    if (structural_eq_hash_kind != kTVMFFISEqHashKindCustomTreeNode) {\n+    if (custom_s_equal[type_info->type_index] == nullptr) {\n       // We recursively compare the fields the object\n       ForEachFieldInfoWithEarlyStop(type_info, [&](const TVMFFIFieldInfo* field_info) {\n         // skip fields that are marked as structural eq hash ignore\n@@ -153,7 +167,6 @@ class StructEqualHandler {\n         }\n       });\n     } else {\n-      static reflection::TypeAttrColumn custom_s_equal = reflection::TypeAttrColumn(\"__s_equal__\");\n       // run custom equal function defined via __s_equal__ type attribute\n       if (s_equal_callback_ == nullptr) {\n         s_equal_callback_ = ffi::Function::FromTyped(\n@@ -179,9 +192,6 @@ class StructEqualHandler {\n               return success;\n             });\n       }\n-      TVM_FFI_ICHECK(custom_s_equal[type_info->type_index] != nullptr)\n-          << \"TypeAttr `__s_equal__` is not registered for type `\" << String(type_info->type_key)\n-          << \"`\";\n       success = custom_s_equal[type_info->type_index]\n                     .cast<ffi::Function>()(lhs, rhs, s_equal_callback_)\n                     .cast<bool>();\ndiff --git a/src/ffi/reflection/structural_hash.cc b/src/ffi/reflection/structural_hash.cc\nindex ba47de5..e8ffcf6 100644\n--- a/src/ffi/reflection/structural_hash.cc\n+++ b/src/ffi/reflection/structural_hash.cc\n@@ -30,6 +30,8 @@\n #include <tvm/ffi/reflection/structural_hash.h>\n #include <tvm/ffi/string.h>\n \n+#include <cmath>\n+#include <limits>\n #include <unordered_map>\n #include <utility>\n \n@@ -48,6 +50,13 @@ class StructuralHashHandler {\n     const TVMFFIAny* src_data = AnyUnsafe::TVMFFIAnyPtrFromAny(src);\n \n     if (src_data->type_index < TypeIndex::kTVMFFIStaticObjectBegin) {\n+      // specially handle nan for float, as there can be multiple representations of nan\n+      // make sure they map to the same hash value\n+      if (src_data->type_index == TypeIndex::kTVMFFIFloat && std::isnan(src_data->v_float64)) {\n+        TVMFFIAny temp = *src_data;\n+        temp.v_float64 = std::numeric_limits<double>::quiet_NaN();\n+        return details::StableHashCombine(temp.type_index, temp.v_uint64);\n+      }\n       // this is POD data, we can just hash the value\n       return details::StableHashCombine(src_data->type_index, src_data->v_uint64);\n     }\n@@ -83,9 +92,16 @@ class StructuralHashHandler {\n     // NOTE: invariant: lhs and rhs are already the same type\n     const TVMFFITypeInfo* type_info = TVMFFIGetTypeInfo(obj->type_index());\n     if (type_info->metadata == nullptr) {\n-      // Fallback to pointer hash\n-      return std::hash<const Object*>()(obj.get());\n+      TVM_FFI_THROW(TypeError) << \"Type metadata is not set for type `\"\n+                               << String(type_info->type_key)\n+                               << \"`, so StructuralHash is not supported for this type\";\n     }\n+    if (type_info->metadata->structural_eq_hash_kind == kTVMFFISEqHashKindUnsupported) {\n+      TVM_FFI_THROW(TypeError) << \"_type_s_eq_hash_kind is not set for type `\"\n+                               << String(type_info->type_key)\n+                               << \"`, so StructuralHash is not supported for this type\";\n+    }\n+\n     auto structural_eq_hash_kind = type_info->metadata->structural_eq_hash_kind;\n     if (structural_eq_hash_kind == kTVMFFISEqHashKindUnsupported) {\n       // Fallback to pointer hash\n@@ -97,9 +113,11 @@ class StructuralHashHandler {\n       return it->second;\n     }\n \n+    static reflection::TypeAttrColumn custom_s_hash = reflection::TypeAttrColumn(\"__s_hash__\");\n+\n     // compute the hash value\n     uint64_t hash_value = obj->GetTypeKeyHash();\n-    if (structural_eq_hash_kind != kTVMFFISEqHashKindCustomTreeNode) {\n+    if (custom_s_hash[type_info->type_index] == nullptr) {\n       // go over the content and hash the fields\n       ForEachFieldInfo(type_info, [&](const TVMFFIFieldInfo* field_info) {\n         // skip fields that are marked as structural eq hash ignore\n@@ -119,22 +137,19 @@ class StructuralHashHandler {\n         }\n       });\n     } else {\n-      static reflection::TypeAttrColumn custom_s_hash = reflection::TypeAttrColumn(\"__s_hash__\");\n-      TVM_FFI_ICHECK(custom_s_hash[type_info->type_index] != nullptr)\n-          << \"TypeAttr `__s_hash__` is not registered for type `\" << String(type_info->type_key)\n-          << \"`\";\n       if (s_hash_callback_ == nullptr) {\n-        s_hash_callback_ = ffi::Function::FromTyped([this](AnyView val, bool def_region) {\n-          if (def_region) {\n-            bool allow_free_var = true;\n-            std::swap(allow_free_var, map_free_vars_);\n-            uint64_t hash_value = HashAny(val);\n-            std::swap(allow_free_var, map_free_vars_);\n-            return hash_value;\n-          } else {\n-            return HashAny(val);\n-          }\n-        });\n+        s_hash_callback_ =\n+            ffi::Function::FromTyped([this](AnyView val, uint64_t init_hash, bool def_region) {\n+              if (def_region) {\n+                bool allow_free_var = true;\n+                std::swap(allow_free_var, map_free_vars_);\n+                uint64_t hash_value = HashAny(val);\n+                std::swap(allow_free_var, map_free_vars_);\n+                return details::StableHashCombine(init_hash, hash_value);\n+              } else {\n+                return details::StableHashCombine(init_hash, HashAny(val));\n+              }\n+            });\n       }\n       hash_value = custom_s_hash[type_info->type_index]\n                        .cast<ffi::Function>()(obj, hash_value, s_hash_callback_)\ndiff --git a/tests/cpp/testing_object.h b/tests/cpp/testing_object.h\nindex 63c2b42..3d8b4b2 100644\n--- a/tests/cpp/testing_object.h\n+++ b/tests/cpp/testing_object.h\n@@ -227,10 +227,11 @@ class TCustomFuncObj : public Object {\n     return true;\n   }\n \n-  uint64_t SHash(uint64_t type_key_hash, ffi::TypedFunction<uint64_t(AnyView, bool)> hash) const {\n-    uint64_t hash_value = type_key_hash;\n-    hash_value = tvm::ffi::details::StableHashCombine(hash_value, hash(params, true));\n-    hash_value = tvm::ffi::details::StableHashCombine(hash_value, hash(body, false));\n+  uint64_t SHash(uint64_t init_hash,\n+                 ffi::TypedFunction<uint64_t(AnyView, uint64_t, bool)> hash) const {\n+    uint64_t hash_value = init_hash;\n+    hash_value = hash(params, hash_value, true);\n+    hash_value = hash(body, hash_value, false);\n     return hash_value;\n   }\n \n@@ -246,7 +247,7 @@ class TCustomFuncObj : public Object {\n   }\n \n   static constexpr const char* _type_key = \"test.CustomFunc\";\n-  static constexpr TVMFFISEqHashKind _type_s_eq_hash_kind = kTVMFFISEqHashKindCustomTreeNode;\n+  static constexpr TVMFFISEqHashKind _type_s_eq_hash_kind = kTVMFFISEqHashKindTreeNode;\n   TVM_FFI_DECLARE_FINAL_OBJECT_INFO(TCustomFuncObj, Object);\n };\n ",
+      "heuristics": {
+        "tags": [
+          "test"
+        ],
+        "extensions": [
+          ".cc",
+          ".h"
+        ],
+        "scopes_guess": [
+          "include",
+          "src",
+          "tests"
+        ]
+      }
+    }

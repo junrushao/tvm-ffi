@@ -1,0 +1,51 @@
+{
+  "sha": "8831e880e93621017ded57ce8639d76ecc5ab82e",
+  "sha7": "8831e88",
+  "author_name": "Junru Shao",
+  "author_email": "junrushao@apache.org",
+  "date_iso": "2025-10-16T13:46:20-07:00",
+  "subject": "chore(build): Properly skip macOS cp38 (#152)",
+  "body": "",
+  "is_merge": false,
+  "parents": [
+    "792dc0149693aa7e4d2de4ca758db4bc5fd26801"
+  ],
+  "name_status": [
+    [
+      "M",
+      ".github/workflows/publish_wheel.yml"
+    ],
+    [
+      "M",
+      "pyproject.toml"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": ".github/workflows/publish_wheel.yml",
+      "additions": 0,
+      "deletions": 1
+    },
+    {
+      "path": "pyproject.toml",
+      "additions": 1,
+      "deletions": 1
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/.github/workflows/publish_wheel.yml b/.github/workflows/publish_wheel.yml\nindex c62e5f1..5979feb 100644\n--- a/.github/workflows/publish_wheel.yml\n+++ b/.github/workflows/publish_wheel.yml\n@@ -69,7 +69,6 @@ jobs:\n           CIBW_ARCHS_MACOS: ${{ matrix.arch }}\n           CIBW_ARCHS_LINUX: ${{ matrix.arch }}\n           CIBW_ARCHS_WINDOWS: ${{ matrix.arch }}\n-          CIBW_SKIP: \"cp38-macosx_*\"\n           CIBW_BUILD_VERBOSITY: 1\n           CMAKE_BUILD_PARALLEL_LEVEL: ${{ steps.env_vars.outputs.cpu_count }}\n \ndiff --git a/pyproject.toml b/pyproject.toml\nindex df55c9e..8d643fa 100644\n--- a/pyproject.toml\n+++ b/pyproject.toml\n@@ -228,7 +228,7 @@ manylinux-aarch64-image = \"manylinux2014\"\n # will be abi3 and can be used in future versions\n # ship 314t threaded nogil version\n build = [\"cp38-*\", \"cp39-*\", \"cp310-*\", \"cp311-*\", \"cp312-*\", \"cp314t-*\"]\n-skip = [\"*musllinux*\"]\n+skip = [\"*musllinux*\", \"cp38-macosx_*\"]\n # we only need to test on cp312\n test-skip = [\"cp38-*\", \"cp39-*\", \"cp310-*\", \"cp311-*\"]\n # focus on testing abi3 wheel",
+  "heuristics": {
+    "tags": [
+      "build",
+      "ci"
+    ],
+    "extensions": [
+      ".toml",
+      ".yml"
+    ],
+    "scopes_guess": [
+      "pyproject.toml"
+    ]
+  }
+}

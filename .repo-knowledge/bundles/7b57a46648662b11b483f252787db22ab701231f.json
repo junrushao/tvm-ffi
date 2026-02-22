@@ -1,0 +1,84 @@
+{
+  "sha": "7b57a46648662b11b483f252787db22ab701231f",
+  "sha7": "7b57a46",
+  "author_name": "Junru Shao",
+  "author_email": "junrushao@apache.org",
+  "date_iso": "2025-10-14T04:48:40-07:00",
+  "subject": "fix: Add schema support for `ObjectRef::MemFn` (#113)",
+  "body":
+      "This PR adds specialization of `tvm::ffi::details::FunctionInfo<>` for\n`ObjectRef` types, which fixes downstream compilation error.\n\nFor more context, in downstream TVM usecases, a member function of an\n`ObjectRef` could be registered as a global function, which is not taken\ninto consideration in current project, resulting in compilation issues.",
+  "is_merge": false,
+  "parents": [
+    "58875b99330487e3629778f00a02c2278e3ea851"
+  ],
+  "name_status": [
+    [
+      "M",
+      "cmake/Utils/AddLibbacktrace.cmake"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/function_details.h"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/testing.py"
+    ],
+    [
+      "M",
+      "src/ffi/extra/testing.cc"
+    ],
+    [
+      "M",
+      "tests/python/test_metadata.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "cmake/Utils/AddLibbacktrace.cmake",
+      "additions": 2,
+      "deletions": 0
+    },
+    {
+      "path": "include/tvm/ffi/function_details.h",
+      "additions": 15,
+      "deletions": 5
+    },
+    {
+      "path": "python/tvm_ffi/testing.py",
+      "additions": 1,
+      "deletions": 0
+    },
+    {
+      "path": "src/ffi/extra/testing.cc",
+      "additions": 9,
+      "deletions": 4
+    },
+    {
+      "path": "tests/python/test_metadata.py",
+      "additions": 6,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/cmake/Utils/AddLibbacktrace.cmake b/cmake/Utils/AddLibbacktrace.cmake\nindex eda095a..17b9c8a 100644\n--- a/cmake/Utils/AddLibbacktrace.cmake\n+++ b/cmake/Utils/AddLibbacktrace.cmake\n@@ -42,6 +42,7 @@ function (_libbacktrace_compile)\n     PREFIX libbacktrace\n     SOURCE_DIR ${libbacktrace_source}\n     BINARY_DIR ${libbacktrace_prefix}\n+    LOG_DIR ${libbacktrace_prefix}/logs\n     CONFIGURE_COMMAND\n       \"sh\" #\n       \"${libbacktrace_source}/configure\" #\n@@ -61,6 +62,7 @@ function (_libbacktrace_compile)\n     LOG_CONFIGURE ON\n     LOG_INSTALL ON\n     LOG_BUILD ON\n+    LOG_MERGED_STDOUTERR ON\n     LOG_OUTPUT_ON_FAILURE ON\n   )\n   ExternalProject_Add_Step(\ndiff --git a/include/tvm/ffi/function_details.h b/include/tvm/ffi/function_details.h\nindex d003f4b..e7766fd 100644\n--- a/include/tvm/ffi/function_details.h\n+++ b/include/tvm/ffi/function_details.h\n@@ -107,17 +107,27 @@ struct FunctionInfoHelper<R (T::*)(Args...) const> : FuncFunctorImpl<R, Args...>\n  * \\tparam T The function/functor type.\n  * \\note We need a decltype redirection because this helps lambda types.\n  */\n-template <typename T>\n+template <typename T, typename = void>\n struct FunctionInfo : FunctionInfoHelper<decltype(&T::operator())> {};\n template <typename R, typename... Args>\n-struct FunctionInfo<R(Args...)> : FuncFunctorImpl<R, Args...> {};\n+struct FunctionInfo<R(Args...), void> : FuncFunctorImpl<R, Args...> {};\n template <typename R, typename... Args>\n-struct FunctionInfo<R (*)(Args...)> : FuncFunctorImpl<R, Args...> {};\n+struct FunctionInfo<R (*)(Args...), void> : FuncFunctorImpl<R, Args...> {};\n // Support pointer-to-member functions used in reflection (e.g. &Class::method)\n template <typename Class, typename R, typename... Args>\n-struct FunctionInfo<R (Class::*)(Args...)> : FuncFunctorImpl<R, Class*, Args...> {};\n+struct FunctionInfo<R (Class::*)(Args...), std::enable_if_t<std::is_base_of_v<Object, Class>>>\n+    : FuncFunctorImpl<R, Class*, Args...> {};\n+template <typename Class, typename R, typename... Args>\n+struct FunctionInfo<R (Class::*)(Args...) const, std::enable_if_t<std::is_base_of_v<Object, Class>>>\n+    : FuncFunctorImpl<R, const Class*, Args...> {};\n+\n+template <typename Class, typename R, typename... Args>\n+struct FunctionInfo<R (Class::*)(Args...), std::enable_if_t<std::is_base_of_v<ObjectRef, Class>>>\n+    : FuncFunctorImpl<R, Class, Args...> {};\n template <typename Class, typename R, typename... Args>\n-struct FunctionInfo<R (Class::*)(Args...) const> : FuncFunctorImpl<R, const Class*, Args...> {};\n+struct FunctionInfo<R (Class::*)(Args...) const,\n+                    std::enable_if_t<std::is_base_of_v<ObjectRef, Class>>>\n+    : FuncFunctorImpl<R, const Class, Args...> {};\n \n /*! \\brief Using static function to output typed function signature */\n using FGetFuncSignature = std::string (*)();\ndiff --git a/python/tvm_ffi/testing.py b/python/tvm_ffi/testing.py\nindex 71467df..820fd60 100644\n--- a/python/tvm_ffi/testing.py\n+++ b/python/tvm_ffi/testing.py\n@@ -57,6 +57,7 @@ class TestIntPair(Object):\n         b: int\n         @staticmethod\n         def __c_ffi_init__(_0: int, _1: int, /) -> Object: ...\n+        def sum(_0: TestIntPair, /) -> int: ...\n         # fmt: on\n     # tvm-ffi-stubgen(end)\n \ndiff --git a/src/ffi/extra/testing.cc b/src/ffi/extra/testing.cc\nindex 13f0044..11772ad 100644\n--- a/src/ffi/extra/testing.cc\n+++ b/src/ffi/extra/testing.cc\n@@ -59,6 +59,8 @@ class TestIntPair : public tvm::ffi::ObjectRef {\n     data_ = tvm::ffi::make_object<TestIntPairObj>(a, b);\n   }\n \n+  int64_t Sum() const { return get()->a + get()->b; }\n+\n   // Required: define object reference methods\n   TVM_FFI_DEFINE_OBJECT_REF_METHODS_NULLABLE(TestIntPair, tvm::ffi::ObjectRef, TestIntPairObj);\n };\n@@ -68,7 +70,8 @@ TVM_FFI_STATIC_INIT_BLOCK() {\n   refl::ObjectDef<TestIntPairObj>()\n       .def_ro(\"a\", &TestIntPairObj::a, \"Field `a`\")\n       .def_ro(\"b\", &TestIntPairObj::b, \"Field `b`\")\n-      .def_static(\"__ffi_init__\", refl::init<TestIntPairObj, int64_t, int64_t>);\n+      .def_static(\"__ffi_init__\", refl::init<TestIntPairObj, int64_t, int64_t>)\n+      .def(\"sum\", &TestIntPair::Sum, \"Method to compute sum of a and b\");\n }\n \n class TestObjectBase : public Object {\n@@ -264,9 +267,11 @@ TVM_FFI_STATIC_INIT_BLOCK() {\n              TVMFFISafeCallType symbol = __add_one_c_symbol;\n              return reinterpret_cast<int64_t>(reinterpret_cast<void*>(symbol));\n            })\n-      .def(\"testing.get_mlir_add_one_c_symbol\", []() {\n-        return reinterpret_cast<int64_t>(reinterpret_cast<void*>(_mlir_add_one_c_symbol));\n-      });\n+      .def(\"testing.get_mlir_add_one_c_symbol\",\n+           []() {\n+             return reinterpret_cast<int64_t>(reinterpret_cast<void*>(_mlir_add_one_c_symbol));\n+           })\n+      .def_method(\"testing.TestIntPairSum\", &TestIntPair::Sum, \"Get sum of the pair\");\n }\n \n }  // namespace ffi\ndiff --git a/tests/python/test_metadata.py b/tests/python/test_metadata.py\nindex 22e2ce5..787ed91 100644\n--- a/tests/python/test_metadata.py\n+++ b/tests/python/test_metadata.py\n@@ -189,3 +189,9 @@ def test_metadata_member_method() -> None:\n             break\n     else:\n         raise ValueError(\"Method not found: add_int\")\n+\n+\n+def test_mem_fn_as_global_func() -> None:\n+    metadata: dict[str, Any] = get_global_func_metadata(\"testing.TestIntPairSum\")\n+    type_schema: TypeSchema = TypeSchema.from_json_str(metadata[\"type_schema\"])\n+    assert str(type_schema) == \"Callable[[testing.TestIntPair], int]\"",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".cc",
+      ".cmake",
+      ".h",
+      ".py"
+    ],
+    "scopes_guess": [
+      "cmake",
+      "include",
+      "python",
+      "src",
+      "tests"
+    ]
+  }
+}

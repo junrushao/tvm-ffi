@@ -1,0 +1,42 @@
+{
+  "sha": "0d157dc81551bdf57b26ae9cde62bf37fdc0f8ca",
+  "sha7": "0d157dc",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2026-01-11T14:50:32-05:00",
+  "subject": "[CMAKE] Allow threads to be not found for cross compilation (#397)",
+  "body":
+      "This PR updates the threads linkage to be optional so the library can be\nbuild for cross-compilation targets where threads may not be available.",
+  "is_merge": false,
+  "parents": [
+    "4c712ca3ec72ad18c10e42e5ef8b7f91ec23a803"
+  ],
+  "name_status": [
+    [
+      "M",
+      "CMakeLists.txt"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "CMakeLists.txt",
+      "additions": 7,
+      "deletions": 4
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/CMakeLists.txt b/CMakeLists.txt\nindex 8181138..395bd74 100644\n--- a/CMakeLists.txt\n+++ b/CMakeLists.txt\n@@ -23,8 +23,6 @@ option(TVM_FFI_USE_LIBBACKTRACE \"Enable libbacktrace\" ON)\n option(TVM_FFI_USE_EXTRA_CXX_API \"Enable extra CXX API in shared lib\" ON)\n option(TVM_FFI_BACKTRACE_ON_SEGFAULT \"Set signal handler to print backtrace on segfault\" ON)\n \n-find_package(Threads REQUIRED)\n-\n include(${CMAKE_CURRENT_LIST_DIR}/cmake/Utils/DetectTargetTriple.cmake)\n \n if (TVM_FFI_USE_LIBBACKTRACE)\n@@ -124,8 +122,13 @@ endif ()\n tvm_ffi_add_msvc_flags(tvm_ffi_objs)\n tvm_ffi_add_target_from_obj(tvm_ffi tvm_ffi_objs)\n \n-target_link_libraries(tvm_ffi_shared PRIVATE Threads::Threads)\n-target_link_libraries(tvm_ffi_static INTERFACE Threads::Threads)\n+find_package(Threads)\n+if (Threads_FOUND)\n+  # link to threads library if found on some cross-compilation platforms, the threads library maynot\n+  # be found but downstream may still be able to build extra alternatives via source bundle\n+  target_link_libraries(tvm_ffi_shared PRIVATE Threads::Threads)\n+  target_link_libraries(tvm_ffi_static INTERFACE Threads::Threads)\n+endif ()\n \n if (TVM_FFI_USE_EXTRA_CXX_API AND CMAKE_DL_LIBS)\n   target_link_libraries(tvm_ffi_shared PRIVATE ${CMAKE_DL_LIBS})",
+  "heuristics": {
+    "tags": [
+      "build",
+      "docs"
+    ],
+    "extensions": [
+      ".txt"
+    ],
+    "scopes_guess": [
+      "CMakeLists.txt"
+    ]
+  }
+}

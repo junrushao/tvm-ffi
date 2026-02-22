@@ -1,0 +1,47 @@
+{
+  "sha": "f6aa584a7dbc3679a97ac81c638364ee75f7078c",
+  "sha7": "f6aa584",
+  "author_name": "Yaxing Cai",
+  "author_email": "caiyaxing666@gmail.com",
+  "date_iso": "2025-12-01T16:50:09-08:00",
+  "subject": "[ADDON] Merge torch c dlpack actions (#299)",
+  "body": "Merge Linux, windows and MacOS actions",
+  "is_merge": false,
+  "parents": [
+    "5a82940e76718613de2b96342ca983345cac190b"
+  ],
+  "name_status": [
+    [
+      "M",
+      ".github/workflows/torch_c_dlpack.yml"
+    ],
+    [
+      "D",
+      ".github/workflows/torch_c_dlpack_windows.yml"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": ".github/workflows/torch_c_dlpack.yml",
+      "additions": 29,
+      "deletions": 1
+    },
+    {
+      "path": ".github/workflows/torch_c_dlpack_windows.yml",
+      "additions": 0,
+      "deletions": 80
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/.github/workflows/torch_c_dlpack.yml b/.github/workflows/torch_c_dlpack.yml\nindex 2054352..6174ab2 100644\n--- a/.github/workflows/torch_c_dlpack.yml\n+++ b/.github/workflows/torch_c_dlpack.yml\n@@ -66,6 +66,34 @@ jobs:\n         with:\n           name: pypi-wheels-linux-${{ matrix.arch }}-${{ matrix.python-version }}\n           path: ./wheelhouse/*.whl\n+  build_wheels_windows:\n+    strategy:\n+      fail-fast: false\n+      matrix:\n+        arch: [\"x86_64\"]\n+        python-version: [\"cp39\", \"cp310\", \"cp311\", \"cp312\", \"cp313\", \"cp314\"]\n+    runs-on: windows-latest\n+    steps:\n+      - uses: actions/checkout@v5\n+        with:\n+          repository: apache/tvm-ffi\n+          ref: main\n+          fetch-depth: 0\n+          submodules: recursive\n+          path: tvm-ffi\n+      - uses: Jimver/cuda-toolkit@6008063726ffe3309d1b22e413d9e88fed91a2f2\n+        id: cuda-toolkit\n+      - uses: astral-sh/setup-uv@v7\n+      - name: build wheels\n+        env:\n+          CUDA_HOME: ${{steps.cuda-toolkit.outputs.CUDA_PATH}}\n+        shell: cmd\n+        working-directory: ./tvm-ffi\n+        run: ./addons/torch_c_dlpack_ext/build_aot_wheels.bat ${{ matrix.arch }} ${{ matrix.python-version }}\n+      - uses: actions/upload-artifact@v4\n+        with:\n+          name: pypi-wheels-windows-${{ matrix.arch }}-${{ matrix.python-version }}\n+          path: ./tvm-ffi/addons/torch_c_dlpack_ext/wheelhouse/*.whl\n   build_wheels_macos:\n     strategy:\n       fail-fast: false\n@@ -114,7 +142,7 @@ jobs:\n           name: pypi-source\n           path: ./tvm-ffi/addons/torch_c_dlpack_ext/dist/*tar.gz\n   upload_pypi:\n-    needs: [build_wheels_linux, build_wheels_macos, build_source]\n+    needs: [build_wheels_linux, build_wheels_windows, build_wheels_macos, build_source]\n     runs-on: ubuntu-latest\n     environment: pypi\n     permissions:\ndiff --git a/.github/workflows/torch_c_dlpack_windows.yml b/.github/workflows/torch_c_dlpack_windows.yml\ndeleted file mode 100644\nindex d893a23..0000000\n--- a/.github/workflows/torch_c_dlpack_windows.yml\n+++ /dev/null\n@@ -1,80 +0,0 @@\n-# Licensed to the Apache Software Foundation (ASF) under one\n-# or more contributor license agreements.  See the NOTICE file\n-# distributed with this work for additional information\n-# regarding copyright ownership.  The ASF licenses this file\n-# to you under the Apache License, Version 2.0 (the\n-# \"License\"); you may not use this file except in compliance\n-# with the License.  You may obtain a copy of the License at\n-#\n-#   http://www.apache.org/licenses/LICENSE-2.0\n-#\n-# Unless required by applicable law or agreed to in writing,\n-# software distributed under the License is distributed on an\n-# \"AS IS\" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY\n-# KIND, either express or implied.  See the License for the\n-# specific language governing permissions and limitations\n-# under the License.\n-\n-name: torch c dlpack\n-\n-on:\n-  workflow_dispatch:\n-    inputs:\n-      branch:\n-        description: \"Branch or tag to publish (manual run)\"\n-        required: true\n-\n-jobs:\n-  build_wheels_windows:\n-    strategy:\n-      fail-fast: false\n-      matrix:\n-        arch: [\"x86_64\"]\n-        python-version: [\"cp39\", \"cp310\", \"cp311\", \"cp312\", \"cp313\", \"cp314\"]\n-    runs-on: windows-latest\n-    steps:\n-      - uses: actions/checkout@v5\n-        with:\n-          repository: apache/tvm-ffi\n-          ref: main\n-          fetch-depth: 0\n-          submodules: recursive\n-          path: tvm-ffi\n-      - uses: Jimver/cuda-toolkit@6008063726ffe3309d1b22e413d9e88fed91a2f2\n-        id: cuda-toolkit\n-      - uses: astral-sh/setup-uv@v7\n-      - name: build wheels\n-        env:\n-          CUDA_HOME: ${{steps.cuda-toolkit.outputs.CUDA_PATH}}\n-        shell: cmd\n-        working-directory: ./tvm-ffi\n-        run: ./addons/torch_c_dlpack_ext/build_aot_wheels.bat ${{ matrix.arch }} ${{ matrix.python-version }}\n-      - uses: actions/upload-artifact@v4\n-        with:\n-          name: pypi-wheels-windows-${{ matrix.arch }}-${{ matrix.python-version }}\n-          path: ./tvm-ffi/addons/torch_c_dlpack_ext/wheelhouse/*.whl\n-  upload_pypi:\n-    needs: [build_wheels_windows]\n-    runs-on: ubuntu-latest\n-    environment: pypi\n-    permissions:\n-      id-token: write\n-      attestations: write\n-    if: github.event_name == 'workflow_dispatch'   # <-- publish only on manual trigger\n-    steps:\n-      - uses: actions/download-artifact@v4\n-        with:\n-          pattern: pypi-*\n-          path: dist\n-          merge-multiple: true\n-      - name: Generate artifact attestation for sdist and wheels\n-        uses: actions/attest-build-provenance@v1\n-        with:\n-          subject-path: dist/*\n-      - name: Publish package distributions to PyPI\n-        uses: pypa/gh-action-pypi-publish@release/v1\n-        with:\n-          attestations: true\n-          verbose: true\n-          # testing publish url\n-          # repository-url: https://test.pypi.org/legacy/",
+  "heuristics": {
+    "tags": [
+      "ci"
+    ],
+    "extensions": [
+      ".yml"
+    ],
+    "scopes_guess": []
+  }
+}

@@ -1,0 +1,107 @@
+{
+  "sha": "3a5bf5e68ad1b4108045ef6b336a13efcd2037d9",
+  "sha7": "3a5bf5e",
+  "author_name": "Guan-Ming (Wesley) Chiu",
+  "author_email": "105915352+guan404ming@users.noreply.github.com",
+  "date_iso": "2026-01-18T15:13:10+08:00",
+  "subject": "feat: add kw_only support for dataclass init generation (#384)",
+  "body":
+      "## Related Issue\n\n#356\n\n## Why\n\nPython's standard dataclasses support kw_only parameter to make fields\nkeyword-only in __init__. This feature was missing from @c_class\ndecorator.\n\n## How\n\n- Add `KW_ONLY` sentinel class for marking keyword-only fields\n- Add `kw_only` parameter to field() function and @c_class decorator\n- Update `method_init()` to generate proper signature\n- Add tests",
+  "is_merge": false,
+  "parents": [
+    "2702f2b08721b1ea45f2f7858e3be88b02378731"
+  ],
+  "name_status": [
+    [
+      "M",
+      "python/tvm_ffi/dataclasses/__init__.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/dataclasses/_utils.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/dataclasses/c_class.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/dataclasses/field.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/testing/__init__.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/testing/testing.py"
+    ],
+    [
+      "M",
+      "src/ffi/testing/testing.cc"
+    ],
+    [
+      "M",
+      "tests/python/test_dataclasses_c_class.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "python/tvm_ffi/dataclasses/__init__.py",
+      "additions": 2,
+      "deletions": 2
+    },
+    {
+      "path": "python/tvm_ffi/dataclasses/_utils.py",
+      "additions": 41,
+      "deletions": 17
+    },
+    {
+      "path": "python/tvm_ffi/dataclasses/c_class.py",
+      "additions": 39,
+      "deletions": 8
+    },
+    {
+      "path": "python/tvm_ffi/dataclasses/field.py",
+      "additions": 33,
+      "deletions": 2
+    },
+    {
+      "path": "python/tvm_ffi/testing/__init__.py",
+      "additions": 1,
+      "deletions": 0
+    },
+    {
+      "path": "python/tvm_ffi/testing/testing.py",
+      "additions": 8,
+      "deletions": 0
+    },
+    {
+      "path": "src/ffi/testing/testing.cc",
+      "additions": 20,
+      "deletions": 0
+    },
+    {
+      "path": "tests/python/test_dataclasses_c_class.py",
+      "additions": 55,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/python/tvm_ffi/dataclasses/__init__.py b/python/tvm_ffi/dataclasses/__init__.py\nindex 3185413..bfb4404 100644\n--- a/python/tvm_ffi/dataclasses/__init__.py\n+++ b/python/tvm_ffi/dataclasses/__init__.py\n@@ -19,6 +19,6 @@\n from dataclasses import MISSING\n \n from .c_class import c_class\n-from .field import Field, field\n+from .field import KW_ONLY, Field, field\n \n-__all__ = [\"MISSING\", \"Field\", \"c_class\", \"field\"]\n+__all__ = [\"KW_ONLY\", \"MISSING\", \"Field\", \"c_class\", \"field\"]\ndiff --git a/python/tvm_ffi/dataclasses/_utils.py b/python/tvm_ffi/dataclasses/_utils.py\nindex 5ed4e96..7c0afb4 100644\n--- a/python/tvm_ffi/dataclasses/_utils.py\n+++ b/python/tvm_ffi/dataclasses/_utils.py\n@@ -79,7 +79,13 @@ def type_info_to_cls(\n     return cast(Type[_InputClsType], new_cls)\n \n \n-def fill_dataclass_field(type_cls: type, type_field: TypeField) -> None:\n+def fill_dataclass_field(\n+    type_cls: type,\n+    type_field: TypeField,\n+    *,\n+    class_kw_only: bool = False,\n+    kw_only_from_sentinel: bool = False,\n+) -> None:\n     from .field import Field, field  # noqa: PLC0415\n \n     field_name = type_field.name\n@@ -94,6 +100,14 @@ def fill_dataclass_field(type_cls: type, type_field: TypeField) -> None:\n         raise ValueError(f\"Cannot recognize field: {type_field.name}: {rhs}\")\n     assert isinstance(rhs, Field)\n     rhs.name = type_field.name\n+\n+    # Resolve kw_only: field-level > KW_ONLY sentinel > class-level\n+    if rhs.kw_only is MISSING:\n+        if kw_only_from_sentinel:\n+            rhs.kw_only = True\n+        else:\n+            rhs.kw_only = class_kw_only\n+\n     type_field.dataclass_field = rhs\n \n \n@@ -148,47 +162,56 @@ def method_repr(type_cls: type, type_info: TypeInfo) -> Callable[..., str]:\n     return __repr__\n \n \n-def method_init(type_cls: type, type_info: TypeInfo) -> Callable[..., None]:\n+def method_init(_type_cls: type, type_info: TypeInfo) -> Callable[..., None]:\n     \"\"\"Generate an ``__init__`` that forwards to the FFI constructor.\n \n     The generated initializer has a proper Python signature built from the\n-    reflected field list, supporting default values and ``__post_init__``.\n+    reflected field list, supporting default values, keyword-only args, and ``__post_init__``.\n     \"\"\"\n     # Step 0. Collect all fields from the type hierarchy\n     fields = _get_all_fields(type_info)\n     # sanity check\n-    for type_method in type_info.methods:\n-        if type_method.name == \"__ffi_init__\":\n-            break\n-    else:\n+    if not any(m.name == \"__ffi_init__\" for m in type_info.methods):\n         raise ValueError(f\"Cannot find constructor method: `{type_info.type_key}.__ffi_init__`\")\n     # Step 1. Split args into sections and register default factories\n-    args_no_defaults: list[str] = []\n-    args_with_defaults: list[str] = []\n+    pos_no_defaults: list[str] = []\n+    pos_with_defaults: list[str] = []\n+    kw_no_defaults: list[str] = []\n+    kw_with_defaults: list[str] = []\n     fields_with_defaults: list[tuple[str, bool]] = []\n     ffi_arg_order: list[str] = []\n-    exec_globals = {\"MISSING\": MISSING}\n+    exec_globals: dict[str, Any] = {\"MISSING\": MISSING}\n+\n     for field in fields:\n         assert field.name is not None\n         assert field.dataclass_field is not None\n         dataclass_field = field.dataclass_field\n-        has_default_factory = (default_factory := dataclass_field.default_factory) is not MISSING\n+        has_default = (default_factory := dataclass_field.default_factory) is not MISSING\n+        is_kw_only = dataclass_field.kw_only is True\n+\n         if dataclass_field.init:\n             ffi_arg_order.append(field.name)\n-            if has_default_factory:\n-                args_with_defaults.append(field.name)\n+            if has_default:\n+                (kw_with_defaults if is_kw_only else pos_with_defaults).append(field.name)\n                 fields_with_defaults.append((field.name, True))\n                 exec_globals[f\"_default_factory_{field.name}\"] = default_factory\n             else:\n-                args_no_defaults.append(field.name)\n-        elif has_default_factory:\n+                (kw_no_defaults if is_kw_only else pos_no_defaults).append(field.name)\n+        elif has_default:\n             ffi_arg_order.append(field.name)\n             fields_with_defaults.append((field.name, False))\n             exec_globals[f\"_default_factory_{field.name}\"] = default_factory\n \n+    # Step 2. Build signature\n     args: list[str] = [\"self\"]\n-    args.extend(args_no_defaults)\n-    args.extend(f\"{name}=MISSING\" for name in args_with_defaults)\n+    args.extend(pos_no_defaults)\n+    args.extend(f\"{name}=MISSING\" for name in pos_with_defaults)\n+    if kw_no_defaults or kw_with_defaults:\n+        args.append(\"*\")\n+        args.extend(kw_no_defaults)\n+        args.extend(f\"{name}=MISSING\" for name in kw_with_defaults)\n+\n+    # Step 3. Build body\n     body_lines: list[str] = []\n     for field_name, is_init in fields_with_defaults:\n         if is_init:\n@@ -208,6 +231,7 @@ def method_init(type_cls: type, type_info: TypeInfo) -> Callable[..., None]:\n             \"    fn_post_init()\",\n         ]\n     )\n+\n     source_lines = [f\"def __init__({', '.join(args)}):\"]\n     source_lines.extend(f\"    {line}\" for line in body_lines)\n     source_lines.append(\"    ...\")\ndiff --git a/python/tvm_ffi/dataclasses/c_class.py b/python/tvm_ffi/dataclasses/c_class.py\nindex 8171b1b..8dd5e5a 100644\n--- a/python/tvm_ffi/dataclasses/c_class.py\n+++ b/python/tvm_ffi/dataclasses/c_class.py\n@@ -34,14 +34,14 @@ from typing_extensions import dataclass_transform\n \n from ..core import TypeField, TypeInfo, _lookup_or_register_type_info_from_type_key, _set_type_cls\n from . import _utils\n-from .field import field\n+from .field import KW_ONLY, field\n \n _InputClsType = TypeVar(\"_InputClsType\")\n \n \n-@dataclass_transform(field_specifiers=(field,))\n+@dataclass_transform(field_specifiers=(field,), kw_only_default=False)\n def c_class(\n-    type_key: str, init: bool = True, repr: bool = True\n+    type_key: str, init: bool = True, kw_only: bool = False, repr: bool = True\n ) -> Callable[[Type[_InputClsType]], Type[_InputClsType]]:  # noqa: UP006\n     \"\"\"(Experimental) Create a dataclass-like proxy for a C++ class registered with TVM FFI.\n \n@@ -71,6 +71,12 @@ def c_class(\n         signature.  The generated initializer calls the C++ ``__init__``\n         function registered with ``ObjectDef`` and invokes ``__post_init__`` if\n         it exists on the Python class.\n+\n+    kw_only\n+        If ``True``, all fields become keyword-only parameters in the generated\n+        ``__init__``. Individual fields can override this by setting\n+        ``kw_only=False`` in :func:`field`. Additionally, a ``KW_ONLY`` sentinel\n+        annotation can be used to mark all subsequent fields as keyword-only.\n     repr\n         If ``True`` and the Python class does not define ``__repr__``, a\n         representation method is auto-generated that includes all fields with\n@@ -129,9 +135,15 @@ def c_class(\n         type_info: TypeInfo = _lookup_or_register_type_info_from_type_key(type_key)\n         assert type_info.parent_type_info is not None\n         # Step 2. Reflect all the fields of the type\n-        type_info.fields = _inspect_c_class_fields(super_type_cls, type_info)\n-        for type_field in type_info.fields:\n-            _utils.fill_dataclass_field(super_type_cls, type_field)\n+        type_info.fields, kw_only_start_idx = _inspect_c_class_fields(super_type_cls, type_info)\n+        for idx, type_field in enumerate(type_info.fields):\n+            kw_only_from_sentinel = kw_only_start_idx is not None and idx >= kw_only_start_idx\n+            _utils.fill_dataclass_field(\n+                super_type_cls,\n+                type_field,\n+                class_kw_only=kw_only,\n+                kw_only_from_sentinel=kw_only_from_sentinel,\n+            )\n         # Step 3. Create the proxy class with the fields as properties\n         fn_init = _utils.method_init(super_type_cls, type_info) if init else None\n         fn_repr = _utils.method_repr(super_type_cls, type_info) if repr else None\n@@ -146,7 +158,9 @@ def c_class(\n     return decorator\n \n \n-def _inspect_c_class_fields(type_cls: type, type_info: TypeInfo) -> list[TypeField]:\n+def _inspect_c_class_fields(\n+    type_cls: type, type_info: TypeInfo\n+) -> tuple[list[TypeField], int | None]:\n     if sys.version_info >= (3, 9):\n         type_hints_resolved = get_type_hints(type_cls, include_extras=True)\n     else:\n@@ -159,7 +173,24 @@ def _inspect_c_class_fields(type_cls: type, type_info: TypeInfo) -> list[TypeFie\n             ClassVar,\n             InitVar,\n         ]\n+        and type_hints_resolved[name] is not KW_ONLY\n     }\n+\n+    # Detect KW_ONLY sentinel position\n+    kw_only_start_idx: int | None = None\n+    field_count = 0\n+    for name in getattr(type_cls, \"__annotations__\", {}).keys():\n+        resolved_type = type_hints_resolved.get(name)\n+        if resolved_type is None:\n+            continue\n+        if get_origin(resolved_type) in [ClassVar, InitVar]:\n+            continue\n+        if resolved_type is KW_ONLY:\n+            if kw_only_start_idx is not None:\n+                raise ValueError(f\"KW_ONLY may only be used once per class: {type_cls}\")\n+            kw_only_start_idx = field_count\n+            continue\n+        field_count += 1\n     del type_hints_resolved\n \n     type_fields_cxx: dict[str, TypeField] = {f.name: f for f in type_info.fields}\n@@ -178,4 +209,4 @@ def _inspect_c_class_fields(type_cls: type, type_info: TypeInfo) -> list[TypeFie\n         raise ValueError(\n             f\"Missing fields in `{type_cls}`: {extra_fields}. Defined in C++ but not in Python\"\n         )\n-    return type_fields\n+    return type_fields, kw_only_start_idx\ndiff --git a/python/tvm_ffi/dataclasses/field.py b/python/tvm_ffi/dataclasses/field.py\nindex d0e27b1..a395e50 100644\n--- a/python/tvm_ffi/dataclasses/field.py\n+++ b/python/tvm_ffi/dataclasses/field.py\n@@ -21,7 +21,17 @@ from __future__ import annotations\n from dataclasses import _MISSING_TYPE, MISSING\n from typing import Any, Callable, TypeVar, cast\n \n+try:\n+    from dataclasses import KW_ONLY  # type: ignore[attr-defined]\n+except ImportError:\n+    # Python < 3.10: define our own KW_ONLY sentinel\n+    class _KW_ONLY_Sentinel:\n+        __slots__ = ()\n+\n+    KW_ONLY = _KW_ONLY_Sentinel()\n+\n _FieldValue = TypeVar(\"_FieldValue\")\n+_KW_ONLY_TYPE = type(KW_ONLY)\n \n \n class Field:\n@@ -37,7 +47,7 @@ class Field:\n     way the decorator understands.\n     \"\"\"\n \n-    __slots__ = (\"default_factory\", \"init\", \"name\", \"repr\")\n+    __slots__ = (\"default_factory\", \"init\", \"kw_only\", \"name\", \"repr\")\n \n     def __init__(\n         self,\n@@ -46,12 +56,14 @@ class Field:\n         default_factory: Callable[[], _FieldValue] | _MISSING_TYPE = MISSING,\n         init: bool = True,\n         repr: bool = True,\n+        kw_only: bool | _MISSING_TYPE = MISSING,\n     ) -> None:\n         \"\"\"Do not call directly; use :func:`field` instead.\"\"\"\n         self.name = name\n         self.default_factory = default_factory\n         self.init = init\n         self.repr = repr\n+        self.kw_only = kw_only\n \n \n def field(\n@@ -60,6 +72,7 @@ def field(\n     default_factory: Callable[[], _FieldValue] | _MISSING_TYPE = MISSING,  # type: ignore[assignment]\n     init: bool = True,\n     repr: bool = True,\n+    kw_only: bool | _MISSING_TYPE = MISSING,  # type: ignore[assignment]\n ) -> _FieldValue:\n     \"\"\"(Experimental) Declare a dataclass-style field on a :func:`c_class` proxy.\n \n@@ -84,6 +97,10 @@ def field(\n     repr\n         If ``True`` the field is included in the generated ``__repr__``.\n         If ``False`` the field is omitted from the ``__repr__`` output.\n+    kw_only\n+        If ``True``, the field is a keyword-only argument in ``__init__``.\n+        If ``MISSING``, inherits from the class-level ``kw_only`` setting or\n+        from a preceding ``KW_ONLY`` sentinel annotation.\n \n     Note\n     ----\n@@ -124,6 +141,18 @@ def field(\n         obj = PyBase(v_i64=4)\n         obj.v_i32  # -> 16\n \n+    Use ``kw_only=True`` to make a field keyword-only:\n+\n+    .. code-block:: python\n+\n+        @c_class(\"testing.TestCxxClassBase\")\n+        class PyBase:\n+            v_i64: int\n+            v_i32: int = field(kw_only=True)\n+\n+\n+        obj = PyBase(4, v_i32=8)  # v_i32 must be keyword\n+\n     \"\"\"\n     if default is not MISSING and default_factory is not MISSING:\n         raise ValueError(\"Cannot specify both `default` and `default_factory`\")\n@@ -131,9 +160,11 @@ def field(\n         raise TypeError(\"`init` must be a bool\")\n     if not isinstance(repr, bool):\n         raise TypeError(\"`repr` must be a bool\")\n+    if kw_only is not MISSING and not isinstance(kw_only, bool):\n+        raise TypeError(f\"`kw_only` must be a bool, got {type(kw_only).__name__!r}\")\n     if default is not MISSING:\n         default_factory = _make_default_factory(default)\n-    ret = Field(default_factory=default_factory, init=init, repr=repr)\n+    ret = Field(default_factory=default_factory, init=init, repr=repr, kw_only=kw_only)\n     return cast(_FieldValue, ret)\n \n \ndiff --git a/python/tvm_ffi/testing/__init__.py b/python/tvm_ffi/testing/__init__.py\nindex cd35736..af22210 100644\n--- a/python/tvm_ffi/testing/__init__.py\n+++ b/python/tvm_ffi/testing/__init__.py\n@@ -25,6 +25,7 @@ from .testing import (\n     _TestCxxClassDerived,\n     _TestCxxClassDerivedDerived,\n     _TestCxxInitSubset,\n+    _TestCxxKwOnly,\n     add_one,\n     create_object,\n     make_unregistered_object,\ndiff --git a/python/tvm_ffi/testing/testing.py b/python/tvm_ffi/testing/testing.py\nindex b905b5b..0ffeb49 100644\n--- a/python/tvm_ffi/testing/testing.py\n+++ b/python/tvm_ffi/testing/testing.py\n@@ -178,3 +178,11 @@ class _TestCxxInitSubset:\n     required_field: int\n     optional_field: int = field(init=False)\n     note: str = field(default_factory=lambda: \"py-default\", init=False)\n+\n+\n+@c_class(\"testing.TestCxxKwOnly\", kw_only=True)\n+class _TestCxxKwOnly:\n+    x: int\n+    y: int\n+    z: int\n+    w: int = 100\ndiff --git a/src/ffi/testing/testing.cc b/src/ffi/testing/testing.cc\nindex 7ee6ffd..0df7f1e 100644\n--- a/src/ffi/testing/testing.cc\n+++ b/src/ffi/testing/testing.cc\n@@ -147,6 +147,19 @@ class TestCxxInitSubsetObj : public Object {\n   TVM_FFI_DECLARE_OBJECT_INFO(\"testing.TestCxxInitSubset\", TestCxxInitSubsetObj, Object);\n };\n \n+class TestCxxKwOnly : public Object {\n+ public:\n+  int64_t x;\n+  int64_t y;\n+  int64_t z;\n+  int64_t w;\n+\n+  TestCxxKwOnly(int64_t x, int64_t y, int64_t z, int64_t w) : x(x), y(y), z(z), w(w) {}\n+\n+  static constexpr bool _type_mutable = true;\n+  TVM_FFI_DECLARE_OBJECT_INFO(\"testing.TestCxxKwOnly\", TestCxxKwOnly, Object);\n+};\n+\n class TestUnregisteredBaseObject : public Object {\n  public:\n   int64_t v1;\n@@ -229,6 +242,13 @@ TVM_FFI_STATIC_INIT_BLOCK() {\n       .def_rw(\"optional_field\", &TestCxxInitSubsetObj::optional_field)\n       .def_rw(\"note\", &TestCxxInitSubsetObj::note);\n \n+  refl::ObjectDef<TestCxxKwOnly>()\n+      .def(refl::init<int64_t, int64_t, int64_t, int64_t>())\n+      .def_rw(\"x\", &TestCxxKwOnly::x)\n+      .def_rw(\"y\", &TestCxxKwOnly::y)\n+      .def_rw(\"z\", &TestCxxKwOnly::z)\n+      .def_rw(\"w\", &TestCxxKwOnly::w);\n+\n   refl::ObjectDef<TestUnregisteredBaseObject>()\n       .def(refl::init<int64_t>(), \"Constructor of TestUnregisteredBaseObject\")\n       .def_ro(\"v1\", &TestUnregisteredBaseObject::v1)\ndiff --git a/tests/python/test_dataclasses_c_class.py b/tests/python/test_dataclasses_c_class.py\nindex 5361cb6..3a757d0 100644\n--- a/tests/python/test_dataclasses_c_class.py\n+++ b/tests/python/test_dataclasses_c_class.py\n@@ -15,12 +15,17 @@\n # specific language governing permissions and limitations\n # under the License.\n import inspect\n+from dataclasses import MISSING\n \n+import pytest\n+from tvm_ffi.dataclasses import KW_ONLY, field\n+from tvm_ffi.dataclasses.field import _KW_ONLY_TYPE, Field\n from tvm_ffi.testing import (\n     _TestCxxClassBase,\n     _TestCxxClassDerived,\n     _TestCxxClassDerivedDerived,\n     _TestCxxInitSubset,\n+    _TestCxxKwOnly,\n )\n \n \n@@ -129,3 +134,53 @@ def test_cxx_class_repr_derived_derived() -> None:\n         assert \"v_i32=456\" in repr_str\n         assert \"v_str='hello'\" in repr_str or 'v_str=\"hello\"' in repr_str\n         assert \"v_bool=True\" in repr_str\n+\n+\n+def test_kw_only_class_level_signature() -> None:\n+    sig = inspect.signature(_TestCxxKwOnly.__init__)\n+    params = sig.parameters\n+    assert params[\"x\"].kind == inspect.Parameter.KEYWORD_ONLY\n+    assert params[\"y\"].kind == inspect.Parameter.KEYWORD_ONLY\n+    assert params[\"z\"].kind == inspect.Parameter.KEYWORD_ONLY\n+    assert params[\"w\"].kind == inspect.Parameter.KEYWORD_ONLY\n+\n+\n+def test_kw_only_class_level_call() -> None:\n+    obj = _TestCxxKwOnly(x=1, y=2, z=3, w=4)\n+    assert obj.x == 1\n+    assert obj.y == 2\n+    assert obj.z == 3\n+    assert obj.w == 4\n+\n+\n+def test_kw_only_class_level_with_default() -> None:\n+    obj = _TestCxxKwOnly(x=1, y=2, z=3)\n+    assert obj.w == 100\n+\n+\n+def test_kw_only_class_level_rejects_positional() -> None:\n+    with pytest.raises(TypeError, match=\"positional\"):\n+        _TestCxxKwOnly(1, 2, 3, 4)  # type: ignore[misc]\n+\n+\n+def test_field_kw_only_parameter() -> None:\n+    f1: Field = field(kw_only=True)\n+    assert isinstance(f1, Field)\n+    assert f1.kw_only is True\n+\n+    f2: Field = field(kw_only=False)\n+    assert f2.kw_only is False\n+\n+    f3: Field = field()\n+    assert f3.kw_only is MISSING\n+\n+\n+def test_field_kw_only_with_default() -> None:\n+    f = field(default=42, kw_only=True)\n+    assert isinstance(f, Field)\n+    assert f.kw_only is True\n+    assert f.default_factory() == 42\n+\n+\n+def test_kw_only_sentinel_exists() -> None:\n+    assert isinstance(KW_ONLY, _KW_ONLY_TYPE)",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".cc",
+      ".py"
+    ],
+    "scopes_guess": [
+      "python",
+      "src",
+      "tests"
+    ]
+  }
+}

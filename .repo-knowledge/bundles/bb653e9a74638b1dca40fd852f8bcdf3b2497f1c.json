@@ -1,0 +1,39 @@
+{
+  "sha": "bb653e9a74638b1dca40fd852f8bcdf3b2497f1c",
+  "sha7": "bb653e9",
+  "author_name": "Junru Shao",
+  "author_email": "junrushao@apache.org",
+  "date_iso": "2025-11-30T19:12:59-08:00",
+  "subject": "chore(release): Version bump after v0.1.4 release (#296)",
+  "body":
+      "- Vote thread: https://github.com/apache/tvm-ffi/issues/291\n- Result thread: https://github.com/apache/tvm-ffi/issues/294",
+  "is_merge": false,
+  "parents": [
+    "88d5130d4c640ef157d80cb9b612df4c8050fed4"
+  ],
+  "name_status": [
+    [
+      "M",
+      "include/tvm/ffi/c_api.h"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "include/tvm/ffi/c_api.h",
+      "additions": 1,
+      "deletions": 1
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/include/tvm/ffi/c_api.h b/include/tvm/ffi/c_api.h\nindex ac1ac8a..54fd8e7 100644\n--- a/include/tvm/ffi/c_api.h\n+++ b/include/tvm/ffi/c_api.h\n@@ -62,7 +62,7 @@\n /*! \\brief TVM FFI minor version. */\n #define TVM_FFI_VERSION_MINOR 1\n /*! \\brief TVM FFI patch version. */\n-#define TVM_FFI_VERSION_PATCH 4\n+#define TVM_FFI_VERSION_PATCH 5\n // NOLINTEND(modernize-macro-to-enum)\n \n #ifdef __cplusplus",
+  "heuristics": {
+    "tags": [],
+    "extensions": [
+      ".h"
+    ],
+    "scopes_guess": [
+      "include"
+    ]
+  }
+}

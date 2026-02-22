@@ -1,0 +1,47 @@
+{
+  "sha": "5a4038fc88614c8630fab945419e69cdc53e7c71",
+  "sha7": "5a4038f",
+  "author_name": "Twice",
+  "author_email": "twice@apache.org",
+  "date_iso": "2025-07-06T17:01:06+08:00",
+  "subject": "[FFI] Replace `Arg2Str` with a more powerful `for_each` (#18117)",
+  "body": "[FFI] Replace Arg2Str with a more powerful for_each",
+  "is_merge": false,
+  "parents": [
+    "84cfbeb12bc5ef6d9eb434095949c205433c9e35"
+  ],
+  "name_status": [
+    [
+      "M",
+      "include/tvm/ffi/base_details.h"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/function_details.h"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "include/tvm/ffi/base_details.h",
+      "additions": 20,
+      "deletions": 1
+    },
+    {
+      "path": "include/tvm/ffi/function_details.h",
+      "additions": 8,
+      "deletions": 19
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/include/tvm/ffi/base_details.h b/include/tvm/ffi/base_details.h\nindex fb7be1a..d078a59 100644\n--- a/include/tvm/ffi/base_details.h\n+++ b/include/tvm/ffi/base_details.h\n@@ -29,6 +29,7 @@\n #include <tvm/ffi/endian.h>\n \n #include <cstddef>\n+#include <type_traits>\n #include <utility>\n \n #if defined(_MSC_VER)\n@@ -135,14 +136,32 @@ namespace tvm {\n namespace ffi {\n namespace details {\n \n+// a dependent-name version of false, for static_assert\n+template <typename>\n+inline constexpr bool always_false = false;\n+\n // for each iterator\n struct for_each_dispatcher {\n   template <typename F, typename... Args, size_t... I>\n   static void run(std::index_sequence<I...>, const F& f, Args&&... args) {  // NOLINT(*)\n-    (f(I, std::forward<Args>(args)), ...);\n+    if constexpr (std::conjunction_v<\n+                      std::is_invocable<F, std::integral_constant<size_t, I>, Args>...>) {\n+      (f(std::integral_constant<size_t, I>{}, std::forward<Args>(args)), ...);\n+    } else if constexpr (std::conjunction_v<std::is_invocable<F, size_t, Args>...>) {\n+      (f(I, std::forward<Args>(args)), ...);\n+    } else if constexpr (std::conjunction_v<std::is_invocable<F, Args>...>) {\n+      (f(std::forward<Args>(args)), ...);\n+    } else {\n+      static_assert(always_false<F>, \"The function is not invocable with the provided arguments\");\n+    }\n   }\n };\n \n+// Three kinds of function F are acceptable in `for_each`:\n+// 1. F(size_t, Arg): argument with its index\n+// 2. F(Arg): just the argument\n+// 3. F(std::integral_constant<size_t, I>, Arg): argument with its constexpr index\n+// The third one can make the index available in template arguments and `if constexpr`.\n template <typename F, typename... Args>\n void for_each(const F& f, Args&&... args) {  // NOLINT(*)\n   for_each_dispatcher::run(std::index_sequence_for<Args...>{}, f, std::forward<Args>(args)...);\ndiff --git a/include/tvm/ffi/function_details.h b/include/tvm/ffi/function_details.h\nindex d029c19..34e9979 100644\n--- a/include/tvm/ffi/function_details.h\n+++ b/include/tvm/ffi/function_details.h\n@@ -36,23 +36,6 @@ namespace tvm {\n namespace ffi {\n namespace details {\n \n-template <typename ArgType>\n-struct Arg2Str {\n-  template <size_t i>\n-  TVM_FFI_INLINE static void Apply(std::ostream& os) {\n-    using Arg = std::tuple_element_t<i, ArgType>;\n-    if constexpr (i != 0) {\n-      os << \", \";\n-    }\n-    os << i << \": \" << Type2Str<Arg>::v();\n-  }\n-  template <size_t... I>\n-  TVM_FFI_INLINE static void Run(std::ostream& os, std::index_sequence<I...>) {\n-    using TExpander = int[];\n-    (void)TExpander{0, (Apply<I>(os), 0)...};\n-  }\n-};\n-\n template <typename T>\n static constexpr bool ArgSupported =\n     (std::is_same_v<std::remove_const_t<std::remove_reference_t<T>>, Any> ||\n@@ -78,10 +61,16 @@ struct FuncFunctorImpl {\n #endif\n \n   TVM_FFI_INLINE static std::string Sig() {\n-    using IdxSeq = std::make_index_sequence<sizeof...(Args)>;\n     std::ostringstream ss;\n     ss << \"(\";\n-    Arg2Str<std::tuple<Args...>>::Run(ss, IdxSeq{});\n+    for_each(\n+        [&ss](auto i, const auto& v) {\n+          if constexpr (i() != 0) {\n+            ss << \", \";\n+          }\n+          ss << i() << \": \" << v;\n+        },\n+        Type2Str<Args>::v()...);\n     ss << \") -> \" << Type2Str<R>::v();\n     return ss.str();\n   }",
+  "heuristics": {
+    "tags": [],
+    "extensions": [
+      ".h"
+    ],
+    "scopes_guess": [
+      "include"
+    ]
+  }
+}

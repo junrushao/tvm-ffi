@@ -1,0 +1,40 @@
+{
+  "sha": "79894c32315108e72e2ccc8f7d9e29118ee6919b",
+  "sha7": "79894c3",
+  "author_name": "Junru Shao",
+  "author_email": "junrushao@apache.org",
+  "date_iso": "2025-12-04T16:27:27-08:00",
+  "subject": "chore(test): Fix segfaults (#313)",
+  "body": "",
+  "is_merge": false,
+  "parents": [
+    "3dd7a8173363bdf79806610818121e83e99b3b56"
+  ],
+  "name_status": [
+    [
+      "M",
+      "tests/python/test_stl.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "tests/python/test_stl.py",
+      "additions": 6,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/tests/python/test_stl.py b/tests/python/test_stl.py\nindex de7b982..43037a6 100644\n--- a/tests/python/test_stl.py\n+++ b/tests/python/test_stl.py\n@@ -14,6 +14,7 @@\n # KIND, either express or implied.  See the License for the\n # specific language governing permissions and limitations\n # under the License.\n+import gc\n import pathlib\n \n import pytest\n@@ -52,6 +53,11 @@ def test_stl() -> None:\n             mod.test_function(lambda: 0)(100)\n \n     run_check(mod)\n+    # Force garbage collection to ensure that all objects created from the\n+    # module are destroyed before the module itself is unloaded. This\n+    # prevents segfaults from calling destructors in an unloaded library.\n+    gc.collect()\n+    del mod\n \n \n if __name__ == \"__main__\":",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".py"
+    ],
+    "scopes_guess": [
+      "tests"
+    ]
+  }
+}

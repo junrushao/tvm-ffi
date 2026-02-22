@@ -1,0 +1,71 @@
+{
+  "sha": "4c712ca3ec72ad18c10e42e5ef8b7f91ec23a803",
+  "sha7": "4c712ca",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2026-01-11T12:26:05-05:00",
+  "subject": "[RFC][Error][ABI] Update Error to enable future compact to cause chaining (#396)",
+  "body":
+      "This PR brings a backward compatible update to error ABI to enable\npossible future support of cause chaining. Specifically, we add two\nfields:\n\n- cause_chain is an optional field for chaining errors\n- extra_context can be used to optionally attach opaque object (e.g.\npython error) if needed.\n\nThe change is backward compatible as we only append to the error field.\nMost of the existing usages will simply ignore the two fields and use a\nsingle error.",
+  "is_merge": false,
+  "parents": [
+    "f9b5e7ddeef75d32f042901b25a3f5b40c1c383e"
+  ],
+  "name_status": [
+    [
+      "M",
+      "include/tvm/ffi/c_api.h"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/error.h"
+    ],
+    [
+      "M",
+      "src/ffi/error.cc"
+    ],
+    [
+      "M",
+      "tests/cpp/test_error.cc"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "include/tvm/ffi/c_api.h",
+      "additions": 24,
+      "deletions": 0
+    },
+    {
+      "path": "include/tvm/ffi/error.h",
+      "additions": 69,
+      "deletions": 0
+    },
+    {
+      "path": "src/ffi/error.cc",
+      "additions": 32,
+      "deletions": 0
+    },
+    {
+      "path": "tests/cpp/test_error.cc",
+      "additions": 11,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/include/tvm/ffi/c_api.h b/include/tvm/ffi/c_api.h\nindex fda024f..4da0d4d 100644\n--- a/include/tvm/ffi/c_api.h\n+++ b/include/tvm/ffi/c_api.h\n@@ -394,6 +394,16 @@ typedef struct {\n    */\n   void (*update_backtrace)(TVMFFIObjectHandle self, const TVMFFIByteArray* backtrace,\n                            int32_t update_mode);\n+  /*!\n+   * \\brief Optional cause error chain that caused this error to be raised.\n+   * \\note This handle is owned by the ErrorCell.\n+   */\n+  TVMFFIObjectHandle cause_chain;\n+  /*!\n+   * \\brief Optional extra context that can be used to record additional info about the error.\n+   * \\note This handle is owned by the ErrorCell.\n+   */\n+  TVMFFIObjectHandle extra_context;\n } TVMFFIErrorCell;\n \n /*!\n@@ -631,6 +641,20 @@ TVM_FFI_DLL void TVMFFIErrorSetRaisedFromCStrParts(const char* kind, const char*\n TVM_FFI_DLL int TVMFFIErrorCreate(const TVMFFIByteArray* kind, const TVMFFIByteArray* message,\n                                   const TVMFFIByteArray* backtrace, TVMFFIObjectHandle* out);\n \n+/*!\n+ * \\brief Create an initial error object with cause chain and extra context.\n+ * \\param kind The kind of the error.\n+ * \\param message The error message.\n+ * \\param backtrace The backtrace of the error.\n+ * \\param cause_chain The cause error chain that caused this error to be raised.\n+ * \\param extra_context The extra context that can be used to record additional information.\n+ * \\param out The output error object handle.\n+ * \\return 0 on success, nonzero on failure.\n+ */\n+TVM_FFI_DLL int TVMFFIErrorCreateWithCauseAndExtraContext(\n+    const TVMFFIByteArray* kind, const TVMFFIByteArray* message, const TVMFFIByteArray* backtrace,\n+    TVMFFIObjectHandle cause_chain, TVMFFIObjectHandle extra_context, TVMFFIObjectHandle* out);\n+\n //------------------------------------------------------------\n // Section: DLPack support APIs\n //------------------------------------------------------------\ndiff --git a/include/tvm/ffi/error.h b/include/tvm/ffi/error.h\nindex 91d55c6..b3c2cef 100644\n--- a/include/tvm/ffi/error.h\n+++ b/include/tvm/ffi/error.h\n@@ -32,6 +32,7 @@\n #include <cstring>\n #include <iostream>\n #include <memory>\n+#include <optional>\n #include <sstream>\n #include <string>\n #include <utility>\n@@ -84,6 +85,20 @@ struct EnvErrorAlreadySet : public std::exception {};\n  */\n class ErrorObj : public Object, public TVMFFIErrorCell {\n  public:\n+  ErrorObj() {\n+    this->cause_chain = nullptr;\n+    this->extra_context = nullptr;\n+  }\n+\n+  ~ErrorObj() {\n+    if (this->cause_chain != nullptr) {\n+      details::ObjectUnsafe::DecRefObjectHandle(this->cause_chain);\n+    }\n+    if (this->extra_context != nullptr) {\n+      details::ObjectUnsafe::DecRefObjectHandle(this->extra_context);\n+    }\n+  }\n+\n   /// \\cond Doxygen_Suppress\n   static constexpr const int32_t _type_index = TypeIndex::kTVMFFIError;\n   TVM_FFI_DECLARE_OBJECT_INFO_STATIC(StaticTypeKey::kTVMFFIError, ErrorObj, Object);\n@@ -146,6 +161,29 @@ class Error : public ObjectRef, public std::exception {\n                                                   std::move(backtrace));\n   }\n \n+  /*!\n+   * \\brief Constructor\n+   * \\param kind The kind of the error.\n+   * \\param message The message of the error.\n+   * \\param backtrace The backtrace of the error.\n+   * \\param cause_chain The cause chain of the error.\n+   * \\param extra_context The extra context of the error.\n+   */\n+  Error(std::string kind, std::string message, std::string backtrace,\n+        std::optional<Error> cause_chain, std::optional<ObjectRef> extra_context) {\n+    ObjectPtr<ErrorObj> error_obj = make_object<details::ErrorObjFromStd>(\n+        std::move(kind), std::move(message), std::move(backtrace));\n+    if (cause_chain.has_value()) {\n+      error_obj->cause_chain =\n+          details::ObjectUnsafe::MoveObjectRefToTVMFFIObjectPtr(*std::move(cause_chain));\n+    }\n+    if (extra_context.has_value()) {\n+      error_obj->extra_context =\n+          details::ObjectUnsafe::MoveObjectRefToTVMFFIObjectPtr(*std::move(extra_context));\n+    }\n+    data_ = std::move(error_obj);\n+  }\n+\n   /*!\n    * \\brief Constructor\n    * \\param kind The kind of the error.\n@@ -173,6 +211,37 @@ class Error : public ObjectRef, public std::exception {\n     return std::string(obj->message.data, obj->message.size);\n   }\n \n+  /*!\n+\n+   * \\brief Get the cause chain of the error object.\n+   * \\return The cause chain of the error object.\n+   */\n+  std::optional<Error> cause_chain() const {\n+    ErrorObj* obj = static_cast<ErrorObj*>(data_.get());\n+    if (obj->cause_chain != nullptr) {\n+      return details::ObjectUnsafe::ObjectRefFromObjectPtr<Error>(\n+          details::ObjectUnsafe::ObjectPtrFromUnowned<ErrorObj>(\n+              static_cast<Object*>(obj->cause_chain)));\n+    } else {\n+      return std::nullopt;\n+    }\n+  }\n+\n+  /*!\n+   * \\brief Get the extra context of the error object.\n+   * \\return The extra context of the error object.\n+   */\n+  std::optional<ObjectRef> extra_context() const {\n+    ErrorObj* obj = static_cast<ErrorObj*>(data_.get());\n+    if (obj->extra_context != nullptr) {\n+      return details::ObjectUnsafe::ObjectRefFromObjectPtr<ObjectRef>(\n+          details::ObjectUnsafe::ObjectPtrFromUnowned<Object>(\n+              static_cast<Object*>(obj->extra_context)));\n+    } else {\n+      return std::nullopt;\n+    }\n+  }\n+\n   /*!\n    * \\brief Get the backtrace of the error object.\n    * \\return The backtrace of the error object.\ndiff --git a/src/ffi/error.cc b/src/ffi/error.cc\nindex 6358c75..8dd209c 100644\n--- a/src/ffi/error.cc\n+++ b/src/ffi/error.cc\n@@ -111,3 +111,35 @@ int TVMFFIErrorCreate(const TVMFFIByteArray* kind, const TVMFFIByteArray* messag\n   }\n   TVM_FFI_LOG_EXCEPTION_CALL_END(TVMFFIErrorCreate);\n }\n+\n+int TVMFFIErrorCreateWithCauseAndExtraContext(\n+    const TVMFFIByteArray* kind, const TVMFFIByteArray* message, const TVMFFIByteArray* backtrace,\n+    TVMFFIObjectHandle cause_chain, TVMFFIObjectHandle extra_context, TVMFFIObjectHandle* out) {\n+  // log other errors to the logger\n+  TVM_FFI_LOG_EXCEPTION_CALL_BEGIN();\n+  try {\n+    std::optional<tvm::ffi::Error> cause_chain_error;\n+    if (cause_chain != nullptr) {\n+      cause_chain_error = tvm::ffi::details::ObjectUnsafe::ObjectRefFromObjectPtr<tvm::ffi::Error>(\n+          tvm::ffi::details::ObjectUnsafe::ObjectPtrFromUnowned<tvm::ffi::ErrorObj>(\n+              static_cast<tvm::ffi::ErrorObj*>(cause_chain)));\n+    }\n+    std::optional<tvm::ffi::ObjectRef> extra_context_ref;\n+    if (extra_context != nullptr) {\n+      extra_context_ref =\n+          tvm::ffi::details::ObjectUnsafe::ObjectRefFromObjectPtr<tvm::ffi::ObjectRef>(\n+              tvm::ffi::details::ObjectUnsafe::ObjectPtrFromUnowned<tvm::ffi::Object>(\n+                  static_cast<tvm::ffi::Object*>(extra_context)));\n+    }\n+\n+    tvm::ffi::Error error(std::string(kind->data, kind->size),\n+                          std::string(message->data, message->size),\n+                          std::string(backtrace->data, backtrace->size),\n+                          std::move(cause_chain_error), std::move(extra_context_ref));\n+    *out = tvm::ffi::details::ObjectUnsafe::MoveObjectRefToTVMFFIObjectPtr(std::move(error));\n+    return 0;\n+  } catch (const std::bad_alloc& e) {\n+    return -1;\n+  }\n+  TVM_FFI_LOG_EXCEPTION_CALL_END(TVMFFIErrorCreateWithCauseAndExtraContext);\n+}\ndiff --git a/tests/cpp/test_error.cc b/tests/cpp/test_error.cc\nindex 283e4b9..6a520ee 100644\n--- a/tests/cpp/test_error.cc\n+++ b/tests/cpp/test_error.cc\n@@ -118,4 +118,15 @@ TEST(Error, TracebackMostRecentCallLast) {\n   Error error(\"TypeError\", \"here\", \"test0\\ntest1\\ntest2\\n\");\n   EXPECT_EQ(error.TracebackMostRecentCallLast(), \"test2\\ntest1\\ntest0\\n\");\n }\n+\n+TEST(Error, CauseChain) {\n+  Error original_error(\"TypeError\", \"here\", \"test0\");\n+  Error cause_chain(\"ValueError\", \"cause\", \"test1\", original_error, std::nullopt);\n+  auto opt_cause = cause_chain.cause_chain();\n+  EXPECT_TRUE(opt_cause.has_value());\n+  if (opt_cause.has_value()) {\n+    EXPECT_EQ(opt_cause->kind(), \"TypeError\");\n+  }\n+  EXPECT_TRUE(!cause_chain.extra_context().has_value());\n+}\n }  // namespace",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".cc",
+      ".h"
+    ],
+    "scopes_guess": [
+      "include",
+      "src",
+      "tests"
+    ]
+  }
+}

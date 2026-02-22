@@ -1,0 +1,110 @@
+{
+  "sha": "d2e9aa678b53a67d9e0e757992191b95f9a726e1",
+  "sha7": "d2e9aa6",
+  "author_name": "Junru Shao",
+  "author_email": "junrushao@apache.org",
+  "date_iso": "2025-10-16T10:17:15-07:00",
+  "subject": "chore(build): Distribute manylinux2014 wheels (#146)",
+  "body":
+      "Originally we are releasing manylinux2_28 as the default setting of\ncibuildwheel. However, realistically there are old systems that are not\nequipped with adequate glibc version. Switch to manylinux2014 is fine to\nTVM FFI so we are doing it in this PR",
+  "is_merge": false,
+  "parents": [
+    "5e2a0e53a2a5445082a06796bf86fc28503dc8b6"
+  ],
+  "name_status": [
+    [
+      "M",
+      ".github/workflows/ci_test.yml"
+    ],
+    [
+      "M",
+      "pyproject.toml"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/base.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/container.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/dataclasses/_utils.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/dataclasses/c_class.py"
+    ],
+    [
+      "M",
+      "tests/python/test_container.py"
+    ],
+    [
+      "M",
+      "tests/python/test_dtype.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": ".github/workflows/ci_test.yml",
+      "additions": 2,
+      "deletions": 2
+    },
+    {
+      "path": "pyproject.toml",
+      "additions": 3,
+      "deletions": 1
+    },
+    {
+      "path": "python/tvm_ffi/base.py",
+      "additions": 3,
+      "deletions": 1
+    },
+    {
+      "path": "python/tvm_ffi/container.py",
+      "additions": 24,
+      "deletions": 8
+    },
+    {
+      "path": "python/tvm_ffi/dataclasses/_utils.py",
+      "additions": 4,
+      "deletions": 4
+    },
+    {
+      "path": "python/tvm_ffi/dataclasses/c_class.py",
+      "additions": 9,
+      "deletions": 5
+    },
+    {
+      "path": "tests/python/test_container.py",
+      "additions": 9,
+      "deletions": 1
+    },
+    {
+      "path": "tests/python/test_dtype.py",
+      "additions": 2,
+      "deletions": 1
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/.github/workflows/ci_test.yml b/.github/workflows/ci_test.yml\nindex 0fa1554..b463682 100644\n--- a/.github/workflows/ci_test.yml\n+++ b/.github/workflows/ci_test.yml\n@@ -80,8 +80,8 @@ jobs:\n       matrix:\n         include:\n           - {os: ubuntu-latest, arch: x86_64, python_version: '3.14t'}\n-          - {os: ubuntu-24.04-arm, arch: aarch64, python_version: '3.10'}\n-          - {os: windows-latest, arch: AMD64, python_version: '3.12'}\n+          - {os: ubuntu-24.04-arm, arch: aarch64, python_version: '3.8'}\n+          - {os: windows-latest, arch: AMD64, python_version: '3.9'}\n           - {os: macos-14, arch: arm64, python_version: '3.13'}\n \n     steps:\ndiff --git a/pyproject.toml b/pyproject.toml\nindex 83a87a4..0800264 100644\n--- a/pyproject.toml\n+++ b/pyproject.toml\n@@ -221,6 +221,8 @@ docstring-code-line-length = \"dynamic\"\n \n [tool.cibuildwheel]\n build-verbosity = 1\n+manylinux-x86_64-image = \"manylinux2014\"\n+manylinux-aarch64-image = \"manylinux2014\"\n \n # only build up to cp312, cp312\n # will be abi3 and can be used in future versions\n@@ -245,7 +247,7 @@ environment = { MACOSX_DEPLOYMENT_TARGET = \"10.14\" }\n archs = [\"AMD64\"]\n \n [tool.mypy]\n-python_version = \"3.8\"\n+python_version = \"3.9\"\n show_error_codes = true\n mypy_path = [\"python\", \"examples\", \"tests/python\"]\n files = [\"python/tvm_ffi\", \"examples\", \"tests/python\"]\ndiff --git a/python/tvm_ffi/base.py b/python/tvm_ffi/base.py\nindex 3a3eede..45c9be2 100644\n--- a/python/tvm_ffi/base.py\n+++ b/python/tvm_ffi/base.py\n@@ -29,7 +29,9 @@ logger = logging.getLogger(__name__)\n # ----------------------------\n # Python3 version.\n # ----------------------------\n-if not (sys.version_info[0] >= 3 and sys.version_info[1] >= 8):\n+if sys.version_info[:2] < (3, 8):  # noqa: UP036\n+    # Disables ruff(UP036): Version block is outdated for minimum Python version\n+    # This is to ensure that the error message is sufficiently user friendly\n     PY3STATEMENT = \"The minimal Python requirement is Python 3.8\"\n     raise Exception(PY3STATEMENT)\n \ndiff --git a/python/tvm_ffi/container.py b/python/tvm_ffi/container.py\nindex 046f8c9..a23fa47 100644\n--- a/python/tvm_ffi/container.py\n+++ b/python/tvm_ffi/container.py\n@@ -21,10 +21,6 @@ from __future__ import annotations\n import itertools\n import operator\n import sys\n-from collections.abc import ItemsView as ItemsViewBase\n-from collections.abc import Iterable, Iterator, Mapping, Sequence\n-from collections.abc import KeysView as KeysViewBase\n-from collections.abc import ValuesView as ValuesViewBase\n from typing import (\n     Any,\n     Callable,\n@@ -37,18 +33,38 @@ from typing import (\n from . import _ffi_api, core\n from .registry import register_object\n \n-# workarounds for python 3.8\n-if not (sys.version_info[0] == 3 and sys.version_info[1] <= 8):\n-    from typing import (\n+if sys.version_info >= (3, 9):\n+    # PEP 585 generics\n+    from collections.abc import (\n         ItemsView as ItemsViewBase,\n     )\n-    from typing import (\n+    from collections.abc import (\n+        Iterable,\n+        Iterator,\n+        Mapping,\n+        Sequence,\n+    )\n+    from collections.abc import (\n         KeysView as KeysViewBase,\n     )\n+    from collections.abc import (\n+        ValuesView as ValuesViewBase,\n+    )\n+else:  # Python 3.8\n+    # workarounds for python 3.8\n+    # typing-module generics (subscriptable on 3.8)\n     from typing import (\n+        ItemsView as ItemsViewBase,\n+    )\n+    from typing import (\n+        Iterable,\n+        Iterator,\n         Mapping,\n         Sequence,\n     )\n+    from typing import (\n+        KeysView as KeysViewBase,\n+    )\n     from typing import (\n         ValuesView as ValuesViewBase,\n     )\ndiff --git a/python/tvm_ffi/dataclasses/_utils.py b/python/tvm_ffi/dataclasses/_utils.py\nindex 60f31fb..bd647a6 100644\n--- a/python/tvm_ffi/dataclasses/_utils.py\n+++ b/python/tvm_ffi/dataclasses/_utils.py\n@@ -20,7 +20,7 @@ from __future__ import annotations\n \n import functools\n from dataclasses import MISSING\n-from typing import Any, Callable, TypeVar, cast\n+from typing import Any, Callable, Type, TypeVar, cast\n \n from ..core import (\n     Object,\n@@ -33,9 +33,9 @@ _InputClsType = TypeVar(\"_InputClsType\")\n \n def type_info_to_cls(\n     type_info: TypeInfo,\n-    cls: type[_InputClsType],\n+    cls: Type[_InputClsType],  # noqa: UP006\n     methods: dict[str, Callable[..., Any] | None],\n-) -> type[_InputClsType]:\n+) -> Type[_InputClsType]:  # noqa: UP006\n     assert type_info.type_cls is None, \"Type class is already created\"\n     # Step 1. Determine the base classes\n     cls_bases = cls.__bases__\n@@ -77,7 +77,7 @@ def type_info_to_cls(\n     new_cls = type(cls.__name__, cls_bases, attrs)\n     new_cls.__module__ = cls.__module__\n     new_cls = functools.wraps(cls, updated=())(new_cls)  # type: ignore\n-    return cast(type[_InputClsType], new_cls)\n+    return cast(Type[_InputClsType], new_cls)\n \n \n def fill_dataclass_field(type_cls: type, type_field: TypeField) -> None:\ndiff --git a/python/tvm_ffi/dataclasses/c_class.py b/python/tvm_ffi/dataclasses/c_class.py\nindex 0a09740..0bc273c 100644\n--- a/python/tvm_ffi/dataclasses/c_class.py\n+++ b/python/tvm_ffi/dataclasses/c_class.py\n@@ -25,9 +25,10 @@ method is synthesized to call the FFI constructor when requested.\n \n from __future__ import annotations\n \n+import sys\n from collections.abc import Callable\n from dataclasses import InitVar\n-from typing import ClassVar, TypeVar, get_origin, get_type_hints\n+from typing import ClassVar, Type, TypeVar, get_origin, get_type_hints\n \n from typing_extensions import dataclass_transform\n \n@@ -41,7 +42,7 @@ _InputClsType = TypeVar(\"_InputClsType\")\n @dataclass_transform(field_specifiers=(field,))\n def c_class(\n     type_key: str, init: bool = True\n-) -> Callable[[type[_InputClsType]], type[_InputClsType]]:\n+) -> Callable[[Type[_InputClsType]], Type[_InputClsType]]:  # noqa: UP006\n     \"\"\"(Experimental) Create a dataclass-like proxy for a C++ class registered with TVM FFI.\n \n     The decorator reads the reflection metadata that was registered on the C++\n@@ -114,7 +115,7 @@ def c_class(\n \n     \"\"\"\n \n-    def decorator(super_type_cls: type[_InputClsType]) -> type[_InputClsType]:\n+    def decorator(super_type_cls: Type[_InputClsType]) -> Type[_InputClsType]:  # noqa: UP006\n         nonlocal init\n         init = init and \"__init__\" not in super_type_cls.__dict__\n         # Step 1. Retrieve `type_info` from registry\n@@ -126,7 +127,7 @@ def c_class(\n             _utils.fill_dataclass_field(super_type_cls, type_field)\n         # Step 3. Create the proxy class with the fields as properties\n         fn_init = _utils.method_init(super_type_cls, type_info) if init else None\n-        type_cls: type[_InputClsType] = _utils.type_info_to_cls(\n+        type_cls: Type[_InputClsType] = _utils.type_info_to_cls(  # noqa: UP006\n             type_info=type_info,\n             cls=super_type_cls,\n             methods={\"__init__\": fn_init},\n@@ -138,7 +139,10 @@ def c_class(\n \n \n def _inspect_c_class_fields(type_cls: type, type_info: TypeInfo) -> list[TypeField]:\n-    type_hints_resolved = get_type_hints(type_cls, include_extras=True)\n+    if sys.version_info >= (3, 9):\n+        type_hints_resolved = get_type_hints(type_cls, include_extras=True)\n+    else:\n+        type_hints_resolved = get_type_hints(type_cls)\n     type_hints_py = {\n         name: type_hints_resolved[name]\n         for name in getattr(type_cls, \"__annotations__\", {}).keys()\ndiff --git a/tests/python/test_container.py b/tests/python/test_container.py\nindex 3f3465e..e15f00b 100644\n--- a/tests/python/test_container.py\n+++ b/tests/python/test_container.py\n@@ -15,12 +15,20 @@\n # specific language governing permissions and limitations\n # under the License.\n import pickle\n-from collections.abc import Sequence\n+import sys\n from typing import Any\n \n import pytest\n import tvm_ffi\n \n+if sys.version_info >= (3, 9):\n+    # PEP 585 generics\n+    from collections.abc import Sequence\n+else:  # Python 3.8\n+    # workarounds for python 3.8\n+    # typing-module generics (subscriptable on 3.8)\n+    from typing import Sequence\n+\n \n def test_array() -> None:\n     a = tvm_ffi.convert([1, 2, 3])\ndiff --git a/tests/python/test_dtype.py b/tests/python/test_dtype.py\nindex 6c45416..38e72fb 100644\n--- a/tests/python/test_dtype.py\n+++ b/tests/python/test_dtype.py\n@@ -122,7 +122,8 @@ def test_torch_dtype_conversion() -> None:\n     _check_dtype(torch.float8_e4m3fnuz, 11, 8, 1)\n     _check_dtype(torch.float8_e5m2, 12, 8, 1)\n     _check_dtype(torch.float8_e5m2fnuz, 13, 8, 1)\n-    _check_dtype(torch.float8_e8m0fnu, 14, 8, 1)\n+    if hasattr(torch, \"float8_e8m0fnu\"):\n+        _check_dtype(torch.float8_e8m0fnu, 14, 8, 1)\n \n \n def test_numpy_dtype_conversion() -> None:",
+  "heuristics": {
+    "tags": [
+      "build",
+      "ci",
+      "test"
+    ],
+    "extensions": [
+      ".py",
+      ".toml",
+      ".yml"
+    ],
+    "scopes_guess": [
+      "pyproject.toml",
+      "python",
+      "tests"
+    ]
+  }
+}

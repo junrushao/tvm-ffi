@@ -1,0 +1,52 @@
+{
+  "sha": "ec56178e587a5ca585fecac60823b8e55fa267d7",
+  "sha7": "ec56178",
+  "author_name": "Guan-Ming (Wesley) Chiu",
+  "author_email": "105915352+guan404ming@users.noreply.github.com",
+  "date_iso": "2026-01-03T07:39:03+08:00",
+  "subject": "fix: add negative index bounds check in ArrayObj (#376)",
+  "body":
+      "## Why\n\n`ArrayObj::operator[]` and `ArrayObj::SetItem` were missing negative\nindex validation, causing undefined behavior when accessing arrays with\nnegative indices.\n\n## How\n\n- Add `i < 0` check to `ArrayObj::operator[]` and `ArrayObj::SetItem`\nbounds validation\n- Add test case",
+  "is_merge": false,
+  "parents": [
+    "c22e10e8aed646b58d6afa9cbd0597989ce51587"
+  ],
+  "name_status": [
+    [
+      "M",
+      "include/tvm/ffi/container/array.h"
+    ],
+    [
+      "M",
+      "tests/cpp/test_array.cc"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "include/tvm/ffi/container/array.h",
+      "additions": 2,
+      "deletions": 2
+    },
+    {
+      "path": "tests/cpp/test_array.cc",
+      "additions": 31,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/include/tvm/ffi/container/array.h b/include/tvm/ffi/container/array.h\nindex 60fa6fe..32c1a22 100644\n--- a/include/tvm/ffi/container/array.h\n+++ b/include/tvm/ffi/container/array.h\n@@ -70,7 +70,7 @@ class ArrayObj : public Object, public details::InplaceArrayBase<ArrayObj, TVMFF\n    * \\return the i-th element.\n    */\n   const Any& operator[](int64_t i) const {\n-    if (i >= size_) {\n+    if (i < 0 || i >= size_) {\n       TVM_FFI_THROW(IndexError) << \"Index \" << i << \" out of bounds \" << size_;\n     }\n     return static_cast<Any*>(data_)[i];\n@@ -91,7 +91,7 @@ class ArrayObj : public Object, public details::InplaceArrayBase<ArrayObj, TVMFF\n    * \\param item The value to be set\n    */\n   void SetItem(int64_t i, Any item) {\n-    if (i >= size_) {\n+    if (i < 0 || i >= size_) {\n       TVM_FFI_THROW(IndexError) << \"Index \" << i << \" out of bounds \" << size_;\n     }\n     static_cast<Any*>(data_)[i] = std::move(item);\ndiff --git a/tests/cpp/test_array.cc b/tests/cpp/test_array.cc\nindex a86cc29..b7d1fa3 100644\n--- a/tests/cpp/test_array.cc\n+++ b/tests/cpp/test_array.cc\n@@ -312,4 +312,35 @@ TEST(Array, Contains) {\n   EXPECT_FALSE(f(str_arr, String(\"foo\")).cast<bool>());\n }\n \n+TEST(Array, NegativeIndexThrows) {\n+  Array<int> arr = {1, 2, 3};\n+  // Directly test ArrayObj methods, which are the ones modified in this PR.\n+  // The Array<T> wrapper methods already had negative index checks.\n+  ArrayObj* arr_obj = arr.GetArrayObj();\n+\n+  // Test ArrayObj::at (which calls operator[])\n+  EXPECT_THROW(\n+      {\n+        try {\n+          [[maybe_unused]] const auto& val = arr_obj->at(-1);\n+        } catch (const Error& error) {\n+          EXPECT_EQ(error.kind(), \"IndexError\");\n+          throw;\n+        }\n+      },\n+      ::tvm::ffi::Error);\n+\n+  // Test ArrayObj::SetItem\n+  EXPECT_THROW(\n+      {\n+        try {\n+          arr_obj->SetItem(-1, Any(42));\n+        } catch (const Error& error) {\n+          EXPECT_EQ(error.kind(), \"IndexError\");\n+          throw;\n+        }\n+      },\n+      ::tvm::ffi::Error);\n+}\n+\n }  // namespace",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".cc",
+      ".h"
+    ],
+    "scopes_guess": [
+      "include",
+      "tests"
+    ]
+  }
+}

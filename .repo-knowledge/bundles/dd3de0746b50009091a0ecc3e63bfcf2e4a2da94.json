@@ -1,0 +1,51 @@
+{
+  "sha": "dd3de0746b50009091a0ecc3e63bfcf2e4a2da94",
+  "sha7": "dd3de07",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-11-17T10:45:17-05:00",
+  "subject": "[TEST] Add test for Optional<TensorView> (#274)",
+  "body": "This PR adds tests for Optional<TensorView> to ensure correct behavior.",
+  "is_merge": false,
+  "parents": [
+    "889bfb360b5afa6f7b50774cba53e7e625ea1e8f"
+  ],
+  "name_status": [
+    [
+      "M",
+      "src/ffi/testing/testing.cc"
+    ],
+    [
+      "M",
+      "tests/python/test_tensor.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "src/ffi/testing/testing.cc",
+      "additions": 2,
+      "deletions": 0
+    },
+    {
+      "path": "tests/python/test_tensor.py",
+      "additions": 11,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/src/ffi/testing/testing.cc b/src/ffi/testing/testing.cc\nindex bccc5c0..056ac68 100644\n--- a/src/ffi/testing/testing.cc\n+++ b/src/ffi/testing/testing.cc\n@@ -270,6 +270,8 @@ TVM_FFI_STATIC_INIT_BLOCK() {\n              // NOLINTNEXTLINE(bugprone-casting-through-void)\n              return reinterpret_cast<int64_t>(reinterpret_cast<void*>(_mlir_add_one_c_symbol));\n            })\n+      .def(\"testing.optional_tensor_view_has_value\",\n+           [](Optional<TensorView> t) { return t.has_value(); })\n       .def_method(\"testing.TestIntPairSum\", &TestIntPair::Sum, \"Get sum of the pair\");\n }\n \ndiff --git a/tests/python/test_tensor.py b/tests/python/test_tensor.py\nindex 7a257cd..0551d14 100644\n--- a/tests/python/test_tensor.py\n+++ b/tests/python/test_tensor.py\n@@ -131,5 +131,16 @@ def test_tensor_from_pytorch_rocm() -> None:\n     assert device_type == \"rocm\"\n \n \n+def test_optional_tensor_view() -> None:\n+    optional_tensor_view_has_value = tvm_ffi.get_global_func(\n+        \"testing.optional_tensor_view_has_value\"\n+    )\n+    assert not optional_tensor_view_has_value(None)\n+    x = np.zeros((128,), dtype=\"float32\")\n+    if not hasattr(x, \"__dlpack__\"):\n+        return\n+    assert optional_tensor_view_has_value(x)\n+\n+\n if __name__ == \"__main__\":\n     pytest.main([__file__])",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".cc",
+      ".py"
+    ],
+    "scopes_guess": [
+      "src",
+      "tests"
+    ]
+  }
+}

@@ -1,0 +1,39 @@
+{
+  "sha": "181e1b8b5d81599a4c6215375d07162d3d750438",
+  "sha7": "181e1b8",
+  "author_name": "Guan-Ming (Wesley) Chiu",
+  "author_email": "105915352+guan404ming@users.noreply.github.com",
+  "date_iso": "2026-01-09T03:16:48+08:00",
+  "subject": "ci: add clang-tidy to ci_test (#389)",
+  "body":
+      "## Why\n\nPR CI passed but main CI failed after merge because clang-tidy only ran\non main branch (in ci_mainline_only.yml), not on PRs.\n\n## How\n\n- Add `clang-tidy` hook to `ci_test`",
+  "is_merge": false,
+  "parents": [
+    "ae30cd67763ac7bb36a8fccd322590763bcbeed9"
+  ],
+  "name_status": [
+    [
+      "M",
+      ".github/workflows/ci_test.yml"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": ".github/workflows/ci_test.yml",
+      "additions": 33,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/.github/workflows/ci_test.yml b/.github/workflows/ci_test.yml\nindex 4ac2a9c..4191f01 100644\n--- a/.github/workflows/ci_test.yml\n+++ b/.github/workflows/ci_test.yml\n@@ -33,6 +33,8 @@ jobs:\n     outputs:\n       should_skip_ci_commit: ${{ steps.detect.outputs.should_skip_ci_commit }}\n       should_skip_ci_docs_only: ${{ steps.detect.outputs.should_skip_ci_docs_only }}\n+      cpp_changed: ${{ steps.cpp_files.outputs.changed }}\n+      cpp_files: ${{ steps.cpp_files.outputs.files }}\n     steps:\n       - uses: actions/checkout@v5\n         with:\n@@ -45,6 +47,13 @@ jobs:\n           github_event_name: ${{ github.event_name }}\n           pr_base_ref: ${{ github.event.pull_request.base.ref || '' }}\n           pr_head_sha: ${{ github.event.pull_request.head.sha || '' }}\n+      - name: Get changed C++ files\n+        id: cpp_files\n+        run: |\n+          FILES=$(git diff --name-only --diff-filter=ACMR origin/${{ github.base_ref }}...HEAD -- \\\n+            '*.c' '*.cc' '*.cpp' '*.cxx' | tr '\\n' ' ')\n+          echo \"files=$FILES\" >> $GITHUB_OUTPUT\n+          [ -n \"$FILES\" ] && echo \"changed=true\" >> $GITHUB_OUTPUT || echo \"changed=false\" >> $GITHUB_OUTPUT\n \n   lint:\n     needs: [prepare]\n@@ -56,6 +65,30 @@ jobs:\n           fetch-tags: true\n       - uses: pre-commit/action@2c7b3805fd2a0fd8c1884dcaebf91fc102a13ecd  # v3.0.1\n \n+  clang-tidy:\n+    needs: [prepare]\n+    if: needs.prepare.outputs.cpp_changed == 'true'\n+    runs-on: ubuntu-latest\n+    steps:\n+      - uses: actions/checkout@v5\n+        with:\n+          submodules: recursive\n+          fetch-depth: 0\n+          fetch-tags: true\n+      - name: Set up uv\n+        uses: astral-sh/setup-uv@b75a909f75acd358c2196fb9a5f1299a9a8868a4  # v6.7.0\n+        with:\n+          python-version: 3.13\n+      - uses: ./.github/actions/detect-env-vars\n+        id: env_vars\n+      - name: Run clang-tidy\n+        run: |\n+          uv run --no-project --with \"clang-tidy==21.1.1\"     \\\n+            python tests/lint/clang_tidy_precommit.py         \\\n+              --build-dir=build-pre-commit                    \\\n+              --jobs=${{ steps.env_vars.outputs.cpu_count }}  \\\n+              ${{ needs.prepare.outputs.cpp_files }}\n+\n   doc:\n     needs: [lint, prepare]\n     runs-on: ubuntu-latest",
+  "heuristics": {
+    "tags": [
+      "ci"
+    ],
+    "extensions": [
+      ".yml"
+    ],
+    "scopes_guess": []
+  }
+}

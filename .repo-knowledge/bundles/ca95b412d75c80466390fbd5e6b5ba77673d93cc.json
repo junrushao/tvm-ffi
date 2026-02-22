@@ -1,0 +1,60 @@
+{
+  "sha": "ca95b412d75c80466390fbd5e6b5ba77673d93cc",
+  "sha7": "ca95b41",
+  "author_name": "Yaxing Cai",
+  "author_email": "caiyaxing666@gmail.com",
+  "date_iso": "2025-09-06T04:39:33-07:00",
+  "subject": "[FFI] Construct NDArray.strides by default (#18272)",
+  "body": "This PR updates NDArray.strides to construct strides by default",
+  "is_merge": false,
+  "parents": [
+    "83805ec949227620d05e61358a4ecb4f0c931979"
+  ],
+  "name_status": [
+    [
+      "M",
+      "include/tvm/ffi/container/ndarray.h"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/container/shape.h"
+    ],
+    [
+      "M",
+      "tests/cpp/test_ndarray.cc"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "include/tvm/ffi/container/ndarray.h",
+      "additions": 8,
+      "deletions": 4
+    },
+    {
+      "path": "include/tvm/ffi/container/shape.h",
+      "additions": 11,
+      "deletions": 0
+    },
+    {
+      "path": "tests/cpp/test_ndarray.cc",
+      "additions": 4,
+      "deletions": 2
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/include/tvm/ffi/container/ndarray.h b/include/tvm/ffi/container/ndarray.h\nindex 6acdbc3..f65e386 100644\n--- a/include/tvm/ffi/container/ndarray.h\n+++ b/include/tvm/ffi/container/ndarray.h\n@@ -151,6 +151,7 @@ class NDArrayObj : public Object, public DLTensor {\n  protected:\n   // backs up the shape of the NDArray\n   Optional<Shape> shape_data_;\n+  Optional<Shape> stride_data_;\n \n   static void DLManagedTensorDeleter(DLManagedTensor* tensor) {\n     NDArrayObj* obj = static_cast<NDArrayObj*>(tensor->manager_ctx);\n@@ -184,9 +185,11 @@ class NDArrayObjFromNDAlloc : public NDArrayObj {\n     this->ndim = static_cast<int>(shape.size());\n     this->dtype = dtype;\n     this->shape = const_cast<int64_t*>(shape.data());\n-    this->strides = nullptr;\n+    Shape strides = Shape(details::MakeStridesFromShape(this->ndim, this->shape));\n+    this->strides = const_cast<int64_t*>(strides.data());\n     this->byte_offset = 0;\n     this->shape_data_ = std::move(shape);\n+    this->stride_data_ = std::move(strides);\n     alloc_.AllocData(static_cast<DLTensor*>(this), std::forward<ExtraArgs>(extra_args)...);\n   }\n \n@@ -202,9 +205,10 @@ class NDArrayObjFromDLPack : public NDArrayObj {\n  public:\n   explicit NDArrayObjFromDLPack(TDLPackManagedTensor* tensor) : tensor_(tensor) {\n     *static_cast<DLTensor*>(this) = tensor_->dl_tensor;\n-    // set strides to nullptr if the tensor is contiguous.\n-    if (IsContiguous(tensor->dl_tensor)) {\n-      this->strides = nullptr;\n+    if (tensor_->dl_tensor.strides == nullptr) {\n+      Shape strides = Shape(details::MakeStridesFromShape(ndim, shape));\n+      this->strides = const_cast<int64_t*>(strides.data());\n+      this->stride_data_ = std::move(strides);\n     }\n   }\n \ndiff --git a/include/tvm/ffi/container/shape.h b/include/tvm/ffi/container/shape.h\nindex 2fccc02..6360fcd 100644\n--- a/include/tvm/ffi/container/shape.h\n+++ b/include/tvm/ffi/container/shape.h\n@@ -91,6 +91,17 @@ TVM_FFI_INLINE ObjectPtr<ShapeObj> MakeInplaceShape(IterType begin, IterType end\n   return p;\n }\n \n+TVM_FFI_INLINE ObjectPtr<ShapeObj> MakeStridesFromShape(int64_t ndim, int64_t* shape) {\n+  int64_t* strides_data;\n+  ObjectPtr<ShapeObj> strides = details::MakeEmptyShape(ndim, &strides_data);\n+  int64_t stride = 1;\n+  for (int i = ndim - 1; i >= 0; --i) {\n+    strides_data[i] = stride;\n+    stride *= shape[i];\n+  }\n+  return strides;\n+}\n+\n }  // namespace details\n \n /*!\ndiff --git a/tests/cpp/test_ndarray.cc b/tests/cpp/test_ndarray.cc\nindex 3d7b00c..0196bfc 100644\n--- a/tests/cpp/test_ndarray.cc\n+++ b/tests/cpp/test_ndarray.cc\n@@ -69,7 +69,9 @@ TEST(NDArray, DLPack) {\n   EXPECT_EQ(dlpack->dl_tensor.device.device_type, kDLCPU);\n   EXPECT_EQ(dlpack->dl_tensor.device.device_id, 0);\n   EXPECT_EQ(dlpack->dl_tensor.byte_offset, 0);\n-  EXPECT_EQ(dlpack->dl_tensor.strides, nullptr);\n+  EXPECT_EQ(dlpack->dl_tensor.strides[0], 6);\n+  EXPECT_EQ(dlpack->dl_tensor.strides[1], 3);\n+  EXPECT_EQ(dlpack->dl_tensor.strides[2], 1);\n   EXPECT_EQ(nd.use_count(), 2);\n   {\n     NDArray nd2 = NDArray::FromDLPack(dlpack);\n@@ -96,7 +98,7 @@ TEST(NDArray, DLPackVersioned) {\n   EXPECT_EQ(dlpack->dl_tensor.device.device_type, kDLCPU);\n   EXPECT_EQ(dlpack->dl_tensor.device.device_id, 0);\n   EXPECT_EQ(dlpack->dl_tensor.byte_offset, 0);\n-  EXPECT_EQ(dlpack->dl_tensor.strides, nullptr);\n+  EXPECT_EQ(dlpack->dl_tensor.strides[0], 1);\n \n   EXPECT_EQ(nd.use_count(), 2);\n   {",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".cc",
+      ".h"
+    ],
+    "scopes_guess": [
+      "include",
+      "tests"
+    ]
+  }
+}

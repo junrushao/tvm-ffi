@@ -1,0 +1,69 @@
+{
+  "sha": "1b824e88743a89343ad7493691bbdf5fdf2830c9",
+  "sha7": "1b824e8",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-09-08T10:56:48-04:00",
+  "subject": "[FFI] Relax default alignment and continguous requirement (#18282)",
+  "body":
+      "This PR relax default alignment and continguous requirement in dlpack import.\nThis allows the ffi to be useful in most settings.\nWe also provide utility for users to check these requirements themselves.",
+  "is_merge": false,
+  "parents": [
+    "e9d29465ff70c5adcd5c551a69695922d8b03ea6"
+  ],
+  "name_status": [
+    [
+      "M",
+      "include/tvm/ffi/container/tensor.h"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/_convert.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/cython/function.pxi"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/cython/tensor.pxi"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "include/tvm/ffi/container/tensor.h",
+      "additions": 17,
+      "deletions": 5
+    },
+    {
+      "path": "python/tvm_ffi/_convert.py",
+      "additions": 1,
+      "deletions": 3
+    },
+    {
+      "path": "python/tvm_ffi/cython/function.pxi",
+      "additions": 2,
+      "deletions": 3
+    },
+    {
+      "path": "python/tvm_ffi/cython/tensor.pxi",
+      "additions": 21,
+      "deletions": 22
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/include/tvm/ffi/container/tensor.h b/include/tvm/ffi/container/tensor.h\nindex b5be116..99fb29d 100644\n--- a/include/tvm/ffi/container/tensor.h\n+++ b/include/tvm/ffi/container/tensor.h\n@@ -35,6 +35,16 @@\n namespace tvm {\n namespace ffi {\n \n+/*!\n+ * \\brief Check if the device uses direct address, where address of data indicate alignment.\n+ * \\param device The input device.\n+ * \\return True if the device uses direct address, false otherwise.\n+ */\n+inline bool IsDirectAddressDevice(const DLDevice& device) {\n+  return device.device_type <= kDLCUDAHost || device.device_type == kDLCUDAManaged ||\n+         device.device_type == kDLROCM || device.device_type == kDLROCMHost;\n+}\n+\n /*!\n  * \\brief check if a DLTensor is contiguous.\n  * \\param arr The input DLTensor.\n@@ -67,11 +77,7 @@ inline bool IsContiguous(const DLTensor& arr) {\n  * \\return True if the data is aligned to the given alignment, false otherwise.\n  */\n inline bool IsAligned(const DLTensor& arr, size_t alignment) {\n-  // whether the device uses direct address mapping instead of indirect buffer\n-  bool direct_address = arr.device.device_type <= kDLCUDAHost ||\n-                        arr.device.device_type == kDLCUDAManaged ||\n-                        arr.device.device_type == kDLROCM || arr.device.device_type == kDLROCMHost;\n-  if (direct_address) {\n+  if (IsDirectAddressDevice(arr.device)) {\n     return (reinterpret_cast<size_t>(static_cast<char*>(arr.data) + arr.byte_offset) % alignment ==\n             0);\n   } else {\n@@ -278,6 +284,12 @@ class Tensor : public ObjectRef {\n    * \\return True if the Tensor is contiguous, false otherwise.\n    */\n   bool IsContiguous() const { return tvm::ffi::IsContiguous(*get()); }\n+  /*!\n+   * \\brief Check if the Tensor data is aligned to the given alignment.\n+   * \\param alignment The alignment to check.\n+   * \\return True if the Tensor data is aligned to the given alignment, false otherwise.\n+   */\n+  bool IsAligned(size_t alignment) const { return tvm::ffi::IsAligned(*get(), alignment); }\n   /*!\n    * \\brief Create a Tensor from a NDAllocator.\n    * \\param alloc The NDAllocator.\ndiff --git a/python/tvm_ffi/_convert.py b/python/tvm_ffi/_convert.py\nindex 168dd15..b1b9726 100644\n--- a/python/tvm_ffi/_convert.py\n+++ b/python/tvm_ffi/_convert.py\n@@ -61,9 +61,7 @@ def convert(value: Any) -> Any:\n     elif value is None:\n         return None\n     elif hasattr(value, \"__dlpack__\"):\n-        return core.from_dlpack(\n-            value, required_alignment=core.__dlpack_auto_import_required_alignment__\n-        )\n+        return core.from_dlpack(value)\n     elif isinstance(value, Exception):\n         return core._convert_to_ffi_error(value)\n     else:\ndiff --git a/python/tvm_ffi/cython/function.pxi b/python/tvm_ffi/cython/function.pxi\nindex 0161ec4..28d4ba5 100644\n--- a/python/tvm_ffi/cython/function.pxi\n+++ b/python/tvm_ffi/cython/function.pxi\n@@ -109,8 +109,7 @@ cdef inline int make_args(tuple py_args, TVMFFIAny* out, list temp_args,\n             out[i].v_ptr = (<Object>arg).chandle\n         elif torch is not None and isinstance(arg, torch.Tensor):\n             is_cuda = arg.is_cuda\n-            arg = from_dlpack(torch.utils.dlpack.to_dlpack(arg),\n-                              required_alignment=__dlpack_auto_import_required_alignment__)\n+            arg = from_dlpack(torch.utils.dlpack.to_dlpack(arg))\n             out[i].type_index = kTVMFFITensor\n             out[i].v_ptr = (<Tensor>arg).chandle\n             temp_dltensor = TVMFFITensorGetDLTensorPtr((<Tensor>arg).chandle)\n@@ -123,7 +122,7 @@ cdef inline int make_args(tuple py_args, TVMFFIAny* out, list temp_args,\n                 ctx_stream[0] = <TVMFFIStreamHandle>temp_ptr\n             temp_args.append(arg)\n         elif hasattr(arg, \"__dlpack__\"):\n-            arg = from_dlpack(arg, required_alignment=__dlpack_auto_import_required_alignment__)\n+            arg = from_dlpack(arg)\n             out[i].type_index = kTVMFFITensor\n             out[i].v_ptr = (<Tensor>arg).chandle\n             temp_args.append(arg)\ndiff --git a/python/tvm_ffi/cython/tensor.pxi b/python/tvm_ffi/cython/tensor.pxi\nindex b09ac42..4658422 100644\n--- a/python/tvm_ffi/cython/tensor.pxi\n+++ b/python/tvm_ffi/cython/tensor.pxi\n@@ -16,7 +16,6 @@\n # under the License.\n \n __dlpack_version__ = (1, 1)\n-__dlpack_auto_import_required_alignment__ = 8\n _CLASS_TENSOR = None\n \n \n@@ -45,13 +44,13 @@ cdef void _c_dlpack_versioned_deleter(object pycaps):\n \n \n cdef inline int _from_dlpack(\n-    object dltensor, int required_alignment,\n-    int required_contiguous, TVMFFIObjectHandle* out\n+    object dltensor, int require_alignment,\n+    int require_contiguous, TVMFFIObjectHandle* out\n ) except -1:\n     cdef DLManagedTensor* ptr\n     cdef int c_api_ret_code\n-    cdef int c_req_alignment = required_alignment\n-    cdef int c_req_contiguous = required_contiguous\n+    cdef int c_req_alignment = require_alignment\n+    cdef int c_req_contiguous = require_contiguous\n     if pycapsule.PyCapsule_IsValid(dltensor, _c_str_dltensor):\n         ptr = <DLManagedTensor*>pycapsule.PyCapsule_GetPointer(dltensor, _c_str_dltensor)\n         with nogil:\n@@ -66,13 +65,13 @@ cdef inline int _from_dlpack(\n \n \n cdef inline int _from_dlpack_versioned(\n-    object dltensor, int required_alignment,\n-    int required_contiguous, TVMFFIObjectHandle* out\n+    object dltensor, int require_alignment,\n+    int require_contiguous, TVMFFIObjectHandle* out\n ) except -1:\n     cdef DLManagedTensorVersioned* ptr\n     cdef int c_api_ret_code\n-    cdef int c_req_alignment = required_alignment\n-    cdef int c_req_contiguous = required_contiguous\n+    cdef int c_req_alignment = require_alignment\n+    cdef int c_req_contiguous = require_contiguous\n     if pycapsule.PyCapsule_IsValid(dltensor, _c_str_dltensor_versioned):\n         ptr = <DLManagedTensorVersioned*>pycapsule.PyCapsule_GetPointer(\n             dltensor, _c_str_dltensor_versioned)\n@@ -87,7 +86,7 @@ cdef inline int _from_dlpack_versioned(\n     raise ValueError(\"Expect a dltensor_versioned field, PyCapsule can only be consumed once\")\n \n \n-def from_dlpack(ext_tensor, *, required_alignment=8, required_contiguous=True):\n+def from_dlpack(ext_tensor, *, require_alignment=0, require_contiguous=False):\n     \"\"\"\n     Convert an external tensor to an Tensor.\n \n@@ -96,10 +95,10 @@ def from_dlpack(ext_tensor, *, required_alignment=8, required_contiguous=True):\n     ext_tensor : object\n         The external tensor to convert.\n \n-    required_alignment : int\n+    require_alignment : int\n         The minimum required alignment to check for the tensor.\n \n-    required_contiguous : bool\n+    require_contiguous : bool\n         Whether to check for contiguous memory.\n \n     Returns\n@@ -116,38 +115,38 @@ def from_dlpack(ext_tensor, *, required_alignment=8, required_contiguous=True):\n         if favor_legacy_dlpack:\n             _from_dlpack(\n                     ext_tensor.__dlpack__(),\n-                required_alignment,\n-                required_contiguous,\n+                require_alignment,\n+                require_contiguous,\n                 &chandle\n             )\n         else:\n             try:\n                 _from_dlpack_versioned(\n                     ext_tensor.__dlpack__(max_version=__dlpack_version__),\n-                    required_alignment,\n-                    required_contiguous,\n+                    require_alignment,\n+                    require_contiguous,\n                     &chandle\n                 )\n             except TypeError:\n                 _from_dlpack(\n                     ext_tensor.__dlpack__(),\n-                    required_alignment,\n-                    required_contiguous,\n+                    require_alignment,\n+                    require_contiguous,\n                     &chandle\n                 )\n     else:\n         if pycapsule.PyCapsule_IsValid(ext_tensor, _c_str_dltensor_versioned):\n             _from_dlpack_versioned(\n                 ext_tensor,\n-                required_alignment,\n-                required_contiguous,\n+                require_alignment,\n+                require_contiguous,\n                 &chandle\n             )\n         elif pycapsule.PyCapsule_IsValid(ext_tensor, _c_str_dltensor):\n             _from_dlpack(\n                 ext_tensor,\n-                required_alignment,\n-                required_contiguous,\n+                require_alignment,\n+                require_contiguous,\n                 &chandle\n             )\n         else:",
+  "heuristics": {
+    "tags": [],
+    "extensions": [
+      ".h",
+      ".pxi",
+      ".py"
+    ],
+    "scopes_guess": [
+      "include",
+      "python"
+    ]
+  }
+}

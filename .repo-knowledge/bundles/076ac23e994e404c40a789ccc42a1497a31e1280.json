@@ -1,0 +1,68 @@
+{
+  "sha": "076ac23e994e404c40a789ccc42a1497a31e1280",
+  "sha7": "076ac23",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-05-11T13:40:23-04:00",
+  "subject": "[REFACTOR][FFI][Web] Upgrade Web Runtime to new FFI (#17946)",
+  "body":
+      "This PR refactors the web runtime to the new FFI protocol.\nTested through RPC tests and local tests.",
+  "is_merge": false,
+  "parents": [
+    "296e2f7e6cce7c477e7bd3a124e1a6bb0983bd71"
+  ],
+  "name_status": [
+    [
+      "M",
+      "include/tvm/ffi/c_api.h"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/dtype.h"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/error.h"
+    ],
+    [
+      "M",
+      "src/ffi/dtype.cc"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "include/tvm/ffi/c_api.h",
+      "additions": 3,
+      "deletions": 1
+    },
+    {
+      "path": "include/tvm/ffi/dtype.h",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "include/tvm/ffi/error.h",
+      "additions": 8,
+      "deletions": 2
+    },
+    {
+      "path": "src/ffi/dtype.cc",
+      "additions": 2,
+      "deletions": 2
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/include/tvm/ffi/c_api.h b/include/tvm/ffi/c_api.h\nindex 1d495d9..131f2e7 100644\n--- a/include/tvm/ffi/c_api.h\n+++ b/include/tvm/ffi/c_api.h\n@@ -579,8 +579,10 @@ TVM_FFI_DLL int TVMFFIDataTypeFromString(const TVMFFIByteArray* str, DLDataType*\n  * \\return 0 when success, nonzero when failure happens\n  * \\note out is a String object that needs to be freed by the caller via TVMFFIObjectFree.\n          The content of string can be accessed via TVMFFIObjectGetByteArrayPtr.\n+\n+ * \\note The input dtype is a pointer to the DLDataType to avoid ABI compatibility issues.\n  */\n-TVM_FFI_DLL int TVMFFIDataTypeToString(DLDataType dtype, TVMFFIObjectHandle* out);\n+TVM_FFI_DLL int TVMFFIDataTypeToString(const DLDataType* dtype, TVMFFIObjectHandle* out);\n \n //------------------------------------------------------------\n // Section: Backend noexcept functions for internal use\ndiff --git a/include/tvm/ffi/dtype.h b/include/tvm/ffi/dtype.h\nindex 99eb227..a1a6b58 100644\n--- a/include/tvm/ffi/dtype.h\n+++ b/include/tvm/ffi/dtype.h\n@@ -121,7 +121,7 @@ inline DLDataType StringToDLDataType(const String& str) {\n \n inline String DLDataTypeToString(DLDataType dtype) {\n   TVMFFIObjectHandle out;\n-  TVM_FFI_CHECK_SAFE_CALL(TVMFFIDataTypeToString(dtype, &out));\n+  TVM_FFI_CHECK_SAFE_CALL(TVMFFIDataTypeToString(&dtype, &out));\n   return String(details::ObjectUnsafe::ObjectPtrFromOwned<Object>(static_cast<TVMFFIObject*>(out)));\n }\n \ndiff --git a/include/tvm/ffi/error.h b/include/tvm/ffi/error.h\nindex 239a0e5..de754bd 100644\n--- a/include/tvm/ffi/error.h\n+++ b/include/tvm/ffi/error.h\n@@ -51,6 +51,10 @@\n #define TVM_FFI_BACKTRACE_ON_SEGFAULT 1\n #endif\n \n+#ifndef TVM_FFI_ALWAYS_LOG_BEFORE_THROW\n+#define TVM_FFI_ALWAYS_LOG_BEFORE_THROW 0\n+#endif\n+\n namespace tvm {\n namespace ffi {\n \n@@ -212,8 +216,10 @@ class ErrorBuilder {\n  *\n  * \\endcode\n  */\n-#define TVM_FFI_THROW(ErrorKind) \\\n-  ::tvm::ffi::details::ErrorBuilder(#ErrorKind, TVM_FFI_TRACEBACK_HERE, false).stream()\n+#define TVM_FFI_THROW(ErrorKind)                                        \\\n+  ::tvm::ffi::details::ErrorBuilder(#ErrorKind, TVM_FFI_TRACEBACK_HERE, \\\n+                                    TVM_FFI_ALWAYS_LOG_BEFORE_THROW)    \\\n+      .stream()\n \n /*!\n  * \\brief Explicitly log error in stderr and then throw the error.\ndiff --git a/src/ffi/dtype.cc b/src/ffi/dtype.cc\nindex 7661ab4..cb0bd49 100644\n--- a/src/ffi/dtype.cc\n+++ b/src/ffi/dtype.cc\n@@ -320,9 +320,9 @@ int TVMFFIDataTypeFromString(const TVMFFIByteArray* str, DLDataType* out) {\n   TVM_FFI_SAFE_CALL_END();\n }\n \n-int TVMFFIDataTypeToString(DLDataType dtype, TVMFFIObjectHandle* out) {\n+int TVMFFIDataTypeToString(const DLDataType* dtype, TVMFFIObjectHandle* out) {\n   TVM_FFI_SAFE_CALL_BEGIN();\n-  tvm::ffi::String out_str(tvm::ffi::DLDataTypeToString_(dtype));\n+  tvm::ffi::String out_str(tvm::ffi::DLDataTypeToString_(*dtype));\n   *out = tvm::ffi::details::ObjectUnsafe::MoveObjectRefToTVMFFIObjectPtr(std::move(out_str));\n   TVM_FFI_SAFE_CALL_END();\n }",
+  "heuristics": {
+    "tags": [],
+    "extensions": [
+      ".cc",
+      ".h"
+    ],
+    "scopes_guess": [
+      "include",
+      "src"
+    ]
+  }
+}

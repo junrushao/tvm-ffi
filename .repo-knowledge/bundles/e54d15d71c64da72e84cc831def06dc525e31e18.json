@@ -1,0 +1,62 @@
+{
+  "sha": "e54d15d71c64da72e84cc831def06dc525e31e18",
+  "sha7": "e54d15d",
+  "author_name": "Guan-Ming (Wesley) Chiu",
+  "author_email": "105915352+guan404ming@users.noreply.github.com",
+  "date_iso": "2026-01-02T02:45:26+08:00",
+  "subject": "fix: add bounds checking for size() and stride() methods (#375)",
+  "body":
+      "## Why\n\nsize() and stride() methods could access memory out of bounds when given\ninvalid indices\n\n## How\n\n- Add bounds checking after adjusting negative indices\n- Throw IndexError with descriptive message when index is out of bounds\n- Add tests for both Tensor and TensorView classes",
+  "is_merge": false,
+  "parents": [
+    "c51e519b2253c2c8754bebaf2f9af0434d89e1fc"
+  ],
+  "name_status": [
+    [
+      "M",
+      "include/tvm/ffi/container/tensor.h"
+    ],
+    [
+      "M",
+      "tests/cpp/test_tensor.cc"
+    ],
+    [
+      "M",
+      "tests/python/test_tensor.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "include/tvm/ffi/container/tensor.h",
+      "additions": 28,
+      "deletions": 4
+    },
+    {
+      "path": "tests/cpp/test_tensor.cc",
+      "additions": 14,
+      "deletions": 0
+    },
+    {
+      "path": "tests/python/test_tensor.py",
+      "additions": 5,
+      "deletions": 4
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/include/tvm/ffi/container/tensor.h b/include/tvm/ffi/container/tensor.h\nindex 3675bb5..eb6c9fe 100644\n--- a/include/tvm/ffi/container/tensor.h\n+++ b/include/tvm/ffi/container/tensor.h\n@@ -325,7 +325,12 @@ class Tensor : public ObjectRef {\n    */\n   int64_t size(int64_t idx) const {\n     const TensorObj* ptr = get();\n-    return ptr->shape[idx >= 0 ? idx : (ptr->ndim + idx)];\n+    int64_t adjusted_idx = idx >= 0 ? idx : (ptr->ndim + idx);\n+    if (adjusted_idx < 0 || adjusted_idx >= ptr->ndim) {\n+      TVM_FFI_THROW(IndexError) << \"Index \" << idx << \" out of bounds for tensor with \" << ptr->ndim\n+                                << \" dimensions\";\n+    }\n+    return ptr->shape[adjusted_idx];\n   }\n \n   /*!\n@@ -336,7 +341,12 @@ class Tensor : public ObjectRef {\n    */\n   int64_t stride(int64_t idx) const {\n     const TensorObj* ptr = get();\n-    return ptr->strides[idx >= 0 ? idx : (ptr->ndim + idx)];\n+    int64_t adjusted_idx = idx >= 0 ? idx : (ptr->ndim + idx);\n+    if (adjusted_idx < 0 || adjusted_idx >= ptr->ndim) {\n+      TVM_FFI_THROW(IndexError) << \"Index \" << idx << \" out of bounds for tensor with \" << ptr->ndim\n+                                << \" dimensions\";\n+    }\n+    return ptr->strides[adjusted_idx];\n   }\n \n   /*!\n@@ -754,7 +764,14 @@ class TensorView {\n    * \\param idx The index of the size.\n    * \\return The size of the idx-th dimension.\n    */\n-  int64_t size(int64_t idx) const { return tensor_.shape[idx >= 0 ? idx : tensor_.ndim + idx]; }\n+  int64_t size(int64_t idx) const {\n+    int64_t adjusted_idx = idx >= 0 ? idx : (tensor_.ndim + idx);\n+    if (adjusted_idx < 0 || adjusted_idx >= tensor_.ndim) {\n+      TVM_FFI_THROW(IndexError) << \"Index \" << idx << \" out of bounds for tensor with \"\n+                                << tensor_.ndim << \" dimensions\";\n+    }\n+    return tensor_.shape[adjusted_idx];\n+  }\n \n   /*!\n    * \\brief Get the stride of the idx-th dimension. If the idx is negative,\n@@ -762,7 +779,14 @@ class TensorView {\n    * \\param idx The index of the stride.\n    * \\return The stride of the idx-th dimension.\n    */\n-  int64_t stride(int64_t idx) const { return tensor_.strides[idx >= 0 ? idx : tensor_.ndim + idx]; }\n+  int64_t stride(int64_t idx) const {\n+    int64_t adjusted_idx = idx >= 0 ? idx : (tensor_.ndim + idx);\n+    if (adjusted_idx < 0 || adjusted_idx >= tensor_.ndim) {\n+      TVM_FFI_THROW(IndexError) << \"Index \" << idx << \" out of bounds for tensor with \"\n+                                << tensor_.ndim << \" dimensions\";\n+    }\n+    return tensor_.strides[adjusted_idx];\n+  }\n \n   /*!\n    * \\brief Get the byte offset of the Tensor.\ndiff --git a/tests/cpp/test_tensor.cc b/tests/cpp/test_tensor.cc\nindex b5c82bc..1b14e6f 100644\n--- a/tests/cpp/test_tensor.cc\n+++ b/tests/cpp/test_tensor.cc\n@@ -365,4 +365,18 @@ TEST(Tensor, AsStrided) {\n   EXPECT_EQ(offset_data2[0 * 3 + 0 * 1], 2.0f);  // Points to data[2]\n }\n \n+TEST(Tensor, SizeStrideOutOfBounds) {\n+  Tensor tensor = Empty({2, 3, 4}, DLDataType({kDLFloat, 32, 1}), DLDevice({kDLCPU, 0}));\n+  EXPECT_THROW({ tensor.size(3); }, tvm::ffi::Error);\n+  EXPECT_THROW({ tensor.size(-4); }, tvm::ffi::Error);\n+  EXPECT_THROW({ tensor.stride(3); }, tvm::ffi::Error);\n+  EXPECT_THROW({ tensor.stride(-4); }, tvm::ffi::Error);\n+\n+  TensorView tensor_view = tensor;\n+  EXPECT_THROW({ tensor_view.size(3); }, tvm::ffi::Error);\n+  EXPECT_THROW({ tensor_view.size(-4); }, tvm::ffi::Error);\n+  EXPECT_THROW({ tensor_view.stride(3); }, tvm::ffi::Error);\n+  EXPECT_THROW({ tensor_view.stride(-4); }, tvm::ffi::Error);\n+}\n+\n }  // namespace\ndiff --git a/tests/python/test_tensor.py b/tests/python/test_tensor.py\nindex 9c938a8..d091d85 100644\n--- a/tests/python/test_tensor.py\n+++ b/tests/python/test_tensor.py\n@@ -20,6 +20,7 @@ from __future__ import annotations\n from types import ModuleType\n from typing import Any, NamedTuple\n \n+import numpy.typing as npt\n import pytest\n \n torch: ModuleType | None\n@@ -33,7 +34,7 @@ import tvm_ffi\n \n \n def test_tensor_attributes() -> None:\n-    data = np.zeros((10, 8, 4, 2), dtype=\"int16\")\n+    data: npt.NDArray[Any] = np.zeros((10, 8, 4, 2), dtype=\"int16\")\n     if not hasattr(data, \"__dlpack__\"):\n         return\n     x = tvm_ffi.from_dlpack(data)\n@@ -84,7 +85,7 @@ def test_tensor_class_override() -> None:\n     old_tensor = tvm_ffi.core._CLASS_TENSOR\n     tvm_ffi.core._set_class_tensor(MyTensor)\n \n-    data = np.zeros((10, 8, 4, 2), dtype=\"int16\")\n+    data: npt.NDArray[Any] = np.zeros((10, 8, 4, 2), dtype=\"int16\")\n     if not hasattr(data, \"__dlpack__\"):\n         return\n     x = tvm_ffi.from_dlpack(data)\n@@ -105,7 +106,7 @@ def test_tvm_ffi_tensor_compatible() -> None:\n             \"\"\"Implement __tvm_ffi_object__ protocol.\"\"\"\n             return self._tensor\n \n-    data = np.zeros((10, 8, 4, 2), dtype=\"int32\")\n+    data: npt.NDArray[Any] = np.zeros((10, 8, 4, 2), dtype=\"int32\")\n     if not hasattr(data, \"__dlpack__\"):\n         return\n     x = tvm_ffi.from_dlpack(data)\n@@ -159,7 +160,7 @@ def test_optional_tensor_view() -> None:\n         \"testing.optional_tensor_view_has_value\"\n     )\n     assert not optional_tensor_view_has_value(None)\n-    x = np.zeros((128,), dtype=\"float32\")\n+    x: npt.NDArray[Any] = np.zeros((128,), dtype=\"float32\")\n     if not hasattr(x, \"__dlpack__\"):\n         return\n     assert optional_tensor_view_has_value(x)",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".cc",
+      ".h",
+      ".py"
+    ],
+    "scopes_guess": [
+      "include",
+      "tests"
+    ]
+  }
+}

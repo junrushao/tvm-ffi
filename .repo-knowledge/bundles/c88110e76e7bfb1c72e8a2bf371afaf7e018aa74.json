@@ -1,0 +1,52 @@
+{
+  "sha": "c88110e76e7bfb1c72e8a2bf371afaf7e018aa74",
+  "sha7": "c88110e",
+  "author_name": "Junru Shao",
+  "author_email": "junrushao@apache.org",
+  "date_iso": "2025-09-23T06:56:39-07:00",
+  "subject": "fix(Map): `Map.get` should never throw when element is missing (#48)",
+  "body":
+      "This PR fixes missing element handling within `Map` by correcting the\nexception type thrown from `IndexError` to `KeyError`. Additionally, it\nintroduces a new test to confirm that the `Map.get` method behaves as\nexpected, i.e. returning `None` for absent keys.",
+  "is_merge": false,
+  "parents": [
+    "95825407609f1da8e59bdcafb1d0a6d0b09c14c1"
+  ],
+  "name_status": [
+    [
+      "M",
+      "include/tvm/ffi/container/map.h"
+    ],
+    [
+      "M",
+      "tests/python/test_container.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "include/tvm/ffi/container/map.h",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "tests/python/test_container.py",
+      "additions": 6,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/include/tvm/ffi/container/map.h b/include/tvm/ffi/container/map.h\nindex df41d3f..08f9a47 100644\n--- a/include/tvm/ffi/container/map.h\n+++ b/include/tvm/ffi/container/map.h\n@@ -691,7 +691,7 @@ class DenseMapObj : public MapObj {\n   mapped_type& At(const key_type& key) const {\n     ListNode iter = Search(key);\n     if (iter.IsNone()) {\n-      TVM_FFI_THROW(IndexError) << \"key is not in Map\";\n+      TVM_FFI_THROW(KeyError) << \"key is not in Map\";\n     }\n     return iter.Val();\n   }\ndiff --git a/tests/python/test_container.py b/tests/python/test_container.py\nindex f42e9b3..a025062 100644\n--- a/tests/python/test_container.py\n+++ b/tests/python/test_container.py\n@@ -124,3 +124,9 @@ def test_serialization() -> None:\n     a = tvm_ffi.convert([1, 2, 3])\n     b = pickle.loads(pickle.dumps(a))\n     assert str(b) == \"[1, 2, 3]\"\n+\n+\n+def test_large_map_get() -> None:\n+    amap = tvm_ffi.convert({k: k**2 for k in range(100)})\n+    assert amap.get(101) is None\n+    assert amap.get(3) == 9",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".h",
+      ".py"
+    ],
+    "scopes_guess": [
+      "include",
+      "tests"
+    ]
+  }
+}

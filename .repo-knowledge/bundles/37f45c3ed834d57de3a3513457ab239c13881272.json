@@ -1,0 +1,49 @@
+{
+  "sha": "37f45c3ed834d57de3a3513457ab239c13881272",
+  "sha7": "37f45c3",
+  "author_name": "Yichen Yan",
+  "author_email": "oraluben@outlook.com",
+  "date_iso": "2026-02-08T09:43:50+08:00",
+  "subject": "Reliability update (#435)",
+  "body":
+      "Closes #433 in a way that do not bailout when compiling in environment\nwithout torch.\n\nAlso fixes that dlpack ext's symbols does not match with torch (e.g. in\nngc container)",
+  "is_merge": false,
+  "parents": [
+    "761966953fec7e8ceba0fcc20dc003e39cf2692d"
+  ],
+  "name_status": [
+    [
+      "M",
+      "addons/torch_c_dlpack_ext/build_backend.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/_optional_torch_c_dlpack.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "addons/torch_c_dlpack_ext/build_backend.py",
+      "additions": 5,
+      "deletions": 2
+    },
+    {
+      "path": "python/tvm_ffi/_optional_torch_c_dlpack.py",
+      "additions": 5,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/addons/torch_c_dlpack_ext/build_backend.py b/addons/torch_c_dlpack_ext/build_backend.py\nindex 639977e..3371ec4 100644\n--- a/addons/torch_c_dlpack_ext/build_backend.py\n+++ b/addons/torch_c_dlpack_ext/build_backend.py\n@@ -21,6 +21,7 @@ from __future__ import annotations\n import os\n import subprocess\n import sys\n+from contextlib import suppress\n from pathlib import Path\n \n from setuptools import build_meta as orig\n@@ -62,10 +63,12 @@ def build_wheel(\n     metadata_directory: orig.StrPath | None = None,\n ) -> str:\n     \"\"\"Build wheel.\"\"\"\n-    if not _is_lib_prebuilt():\n-        # build wheel from sdist package, compile the torch c dlpack ext library locally.\n+    torch = None\n+    with suppress(ModuleNotFoundError):\n         import torch  # noqa: PLC0415\n \n+    if torch is not None and not _is_lib_prebuilt():\n+        # build wheel from sdist package, compile the torch c dlpack ext library locally.\n         if hasattr(torch.Tensor, \"__dlpack_c_exchange_api__\") or hasattr(\n             torch.Tensor, \"__c_dlpack_exchange_api__\"\n         ):\ndiff --git a/python/tvm_ffi/_optional_torch_c_dlpack.py b/python/tvm_ffi/_optional_torch_c_dlpack.py\nindex 415e151..ca73f16 100644\n--- a/python/tvm_ffi/_optional_torch_c_dlpack.py\n+++ b/python/tvm_ffi/_optional_torch_c_dlpack.py\n@@ -109,6 +109,11 @@ def load_torch_c_dlpack_extension() -> Any:  # noqa: PLR0912, PLR0915\n             return None\n     except ImportError:\n         pass\n+    except AttributeError:\n+        # When torch_c_dlpack_ext and torch have different ABI\n+        # `ctypes.CDLL` will raise an `AttributeError`.\n+        # Keep trying JIT\n+        pass\n \n     try:\n         # check whether a JIT shared library is built in cache",
+  "heuristics": {
+    "tags": [],
+    "extensions": [
+      ".py"
+    ],
+    "scopes_guess": [
+      "addons",
+      "python"
+    ]
+  }
+}

@@ -1,0 +1,48 @@
+{
+  "sha": "eb5492a1d2feaff5f11a51f32cf5ad339c789665",
+  "sha7": "eb5492a",
+  "author_name": "Zihao Ye",
+  "author_email": "zihaoye.cs@gmail.com",
+  "date_iso": "2025-09-25T02:42:09-07:00",
+  "subject": "fix: Compatibility with torch <= 2.8 (#54)",
+  "body": "Note that `Float8_e8m0fnu` is also introduced in torch 2.8 and should be\nguarded.",
+  "is_merge": false,
+  "parents": [
+    "daeb235a29c576d8702d447fa5f4773170bb1e8f"
+  ],
+  "name_status": [
+    [
+      "M",
+      "python/tvm_ffi/_optional_torch_c_dlpack.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/cython/dtype.pxi"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "python/tvm_ffi/_optional_torch_c_dlpack.py",
+      "additions": 4,
+      "deletions": 2
+    },
+    {
+      "path": "python/tvm_ffi/cython/dtype.pxi",
+      "additions": 4,
+      "deletions": 1
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/python/tvm_ffi/_optional_torch_c_dlpack.py b/python/tvm_ffi/_optional_torch_c_dlpack.py\nindex cc40b31..bd88bff 100644\n--- a/python/tvm_ffi/_optional_torch_c_dlpack.py\n+++ b/python/tvm_ffi/_optional_torch_c_dlpack.py\n@@ -120,10 +120,10 @@ DLDataType getDLDataTypeForDLPackv1(const Tensor& t) {\n     case ScalarType::Float8_e4m3fnuz:\n       dtype.code = DLDataTypeCode::kDLFloat8_e4m3fnuz;\n       break;\n+#if TORCH_VERSION_MAJOR >= 2 && TORCH_VERSION_MINOR >= 8\n     case ScalarType::Float8_e8m0fnu:\n       dtype.code = DLDataTypeCode::kDLFloat8_e8m0fnu;\n       break;\n-#if TORCH_VERSION_MAJOR >= 2 && TORCH_VERSION_MINOR >= 8\n     case ScalarType::Float4_e2m1fn_x2:\n       dtype.code = DLDataTypeCode::kDLFloat4_e2m1fn;\n       dtype.lanes = 2;\n@@ -269,11 +269,13 @@ static Device getATenDeviceForDLPackv1(DLDeviceType type, c10::DeviceIndex index\n \n ScalarType toScalarTypeForDLPackv1(const DLDataType& dtype) {\n   ScalarType stype = ScalarType::Undefined;\n+#if TORCH_VERSION_MAJOR >= 2 && TORCH_VERSION_MINOR >= 8\n   if (dtype.code != DLDataTypeCode::kDLFloat4_e2m1fn) {\n     TORCH_CHECK(\n         dtype.lanes == 1,\n         \"ATen does not support lanes != 1 for dtype code\", std::to_string(dtype.code));\n   }\n+#endif\n   switch (dtype.code) {\n     case DLDataTypeCode::kDLUInt:\n       switch (dtype.bits) {\n@@ -405,6 +407,7 @@ ScalarType toScalarTypeForDLPackv1(const DLDataType& dtype) {\n               false, \"Unsupported kDLFloat8_e4m3fnuz bits \", std::to_string(dtype.bits));\n       }\n       break;\n+#if TORCH_VERSION_MAJOR >= 2 && TORCH_VERSION_MINOR >= 8\n     case DLDataTypeCode::kDLFloat8_e8m0fnu:\n       switch (dtype.bits) {\n         case 8:\n@@ -415,7 +418,6 @@ ScalarType toScalarTypeForDLPackv1(const DLDataType& dtype) {\n               false, \"Unsupported kDLFloat8_e8m0fnu bits \", std::to_string(dtype.bits));\n       }\n       break;\n-#if TORCH_VERSION_MAJOR >= 2 && TORCH_VERSION_MINOR >= 8\n     case DLDataTypeCode::kDLFloat4_e2m1fn:\n       switch (dtype.bits) {\n         case 4:\ndiff --git a/python/tvm_ffi/cython/dtype.pxi b/python/tvm_ffi/cython/dtype.pxi\nindex 7649885..9d76be6 100644\n--- a/python/tvm_ffi/cython/dtype.pxi\n+++ b/python/tvm_ffi/cython/dtype.pxi\n@@ -172,8 +172,11 @@ if torch is not None:\n         torch.float8_e4m3fnuz: DLDataType(11, 8, 1),\n         torch.float8_e5m2: DLDataType(12, 8, 1),\n         torch.float8_e5m2fnuz: DLDataType(13, 8, 1),\n-        torch.float8_e8m0fnu: DLDataType(14, 8, 1),\n     }\n+    if hasattr(torch, \"float8_e8m0fnu\"):\n+        TORCH_DTYPE_TO_DTYPE[torch.float8_e8m0fnu] = DLDataType(14, 8, 1)\n+    if hasattr(torch, \"float4_e2m1fn_x2\"):\n+        TORCH_DTYPE_TO_DTYPE[torch.float4_e2m1fn_x2] = DLDataType(17, 4, 2)\n \n     def _convert_torch_dtype_to_ffi_dtype(torch_dtype):\n         cdef DLDataType cdtype = TORCH_DTYPE_TO_DTYPE[torch_dtype]",
+  "heuristics": {
+    "tags": [],
+    "extensions": [
+      ".pxi",
+      ".py"
+    ],
+    "scopes_guess": [
+      "python"
+    ]
+  }
+}

@@ -1,0 +1,39 @@
+{
+  "sha": "a06d0dfa2df9bbc3921d6ba6e6a67dd98ac5510a",
+  "sha7": "a06d0df",
+  "author_name": "Yaoyao Ding",
+  "author_email": "dingyaoyao.cs@gmail.com",
+  "date_iso": "2025-10-30T17:13:13-04:00",
+  "subject": "[Fix] Remove python lib during building torch c dlpack ext (#210)",
+  "body":
+      "This PR removes the following ldflags when building torch-c-dlpack ext\non linux platform.\n```\n-L <python-lib-dir> -lpython3\n```\nto fix https://github.com/apache/tvm-ffi/actions/runs/18935308302\n\nAfter some trial-and-error, what I've observed:\n- on linux, we don't need to link `libtorch_python`, thus there is no\nneed to link `python.so`\n- on macos and windows, both require `libtorch_python`, otherwise there\nwill be some symbols related to pybind11 not found => raise error. To\nlink `libtorch_python`, we need python's shared library on these two\nplatforms.\n\nAfter this PR:\nhttps://github.com/yaoyaoding/tvm-ffi/actions/runs/18954559833/job/54127883692",
+  "is_merge": false,
+  "parents": [
+    "9c0b86932aaa1abbe033f8cfec916cd35971d91e"
+  ],
+  "name_status": [
+    [
+      "M",
+      "python/tvm_ffi/utils/_build_optional_torch_c_dlpack.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "python/tvm_ffi/utils/_build_optional_torch_c_dlpack.py",
+      "additions": 5,
+      "deletions": 4
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/python/tvm_ffi/utils/_build_optional_torch_c_dlpack.py b/python/tvm_ffi/utils/_build_optional_torch_c_dlpack.py\nindex 0c0724c..77900ff 100644\n--- a/python/tvm_ffi/utils/_build_optional_torch_c_dlpack.py\n+++ b/python/tvm_ffi/utils/_build_optional_torch_c_dlpack.py\n@@ -34,6 +34,7 @@ import torch.utils.cpp_extension\n # Important: to avoid cyclic dependency, we avoid import tvm_ffi names at top level here.\n \n IS_WINDOWS = sys.platform == \"win32\"\n+IS_DARWIN = sys.platform == \"darwin\"\n \n cpp_source = \"\"\"\n #include <dlpack/dlpack.h>\n@@ -769,7 +770,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915\n             python_lib = f\"python{sys.version_info.major}.lib\"\n             python_libdir_list = [\n                 sysconfig.get_config_var(\"LIBDIR\"),\n-                sysconfig.get_path(\"include\"),\n+                str(Path(sys.base_exec_prefix) / \"libs\"),\n             ]\n             if (\n                 sysconfig.get_path(\"include\") is not None\n@@ -781,13 +782,13 @@ def main() -> None:  # noqa: PLR0912, PLR0915\n             for python_libdir in python_libdir_list:\n                 if python_libdir and (Path(python_libdir) / python_lib).exists():\n                     ldflags.append(f\"/LIBPATH:{python_libdir.replace(':', '$:')}\")\n-                    ldflags.append(python_lib)\n                     break\n-        else:\n+\n+        if IS_DARWIN:\n             python_libdir = sysconfig.get_config_var(\"LIBDIR\")\n             if python_libdir:\n-                ldflags.append(f\"-L{python_libdir}\")\n                 py_version = f\"python{sysconfig.get_python_version()}\"\n+                ldflags.append(f\"-L{python_libdir}\")\n                 ldflags.append(f\"-l{py_version}\")\n \n         # generate ninja build file",
+  "heuristics": {
+    "tags": [],
+    "extensions": [
+      ".py"
+    ],
+    "scopes_guess": [
+      "python"
+    ]
+  }
+}

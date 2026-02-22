@@ -1,0 +1,39 @@
+{
+  "sha": "4a8a0b01f45f726147cbf75742d6b772eceab369",
+  "sha7": "4a8a0b0",
+  "author_name": "Guan-Ming (Wesley) Chiu",
+  "author_email": "105915352+guan404ming@users.noreply.github.com",
+  "date_iso": "2026-01-07T10:28:42+08:00",
+  "subject": "chore: replace C-style cast with static_cast in String::substr (#386)",
+  "body":
+      "## Related\n\n\nhttps://github.com/apache/tvm-ffi/actions/runs/20755375337/job/59595882892\n\n## Why\n\nclang-tidy fails with google-readability-casting error due to C-style\ncast in default parameter.\n\n## How\n\nReplace size_t(-1) with `nops` in String::substr method",
+  "is_merge": false,
+  "parents": [
+    "bd12b26ac36ae6e770d128710fba13108957ee52"
+  ],
+  "name_status": [
+    [
+      "M",
+      "include/tvm/ffi/string.h"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "include/tvm/ffi/string.h",
+      "additions": 1,
+      "deletions": 1
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/include/tvm/ffi/string.h b/include/tvm/ffi/string.h\nindex b93c3a9..59addfa 100644\n--- a/include/tvm/ffi/string.h\n+++ b/include/tvm/ffi/string.h\n@@ -647,7 +647,7 @@ class String {\n    * \\param count The length of the substring (default: until end of string)\n    * \\return A string containing the substring\n    */\n-  String substr(size_t pos = 0, size_t count = size_t(-1)) const {\n+  String substr(size_t pos = 0, size_t count = npos) const {\n     if (pos > size()) {\n       throw std::out_of_range(\"tvm::String substr index out of bounds\");\n     }",
+  "heuristics": {
+    "tags": [],
+    "extensions": [
+      ".h"
+    ],
+    "scopes_guess": [
+      "include"
+    ]
+  }
+}

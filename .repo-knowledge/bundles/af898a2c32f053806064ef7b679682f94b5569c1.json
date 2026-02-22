@@ -1,0 +1,38 @@
+{
+  "sha": "af898a2c32f053806064ef7b679682f94b5569c1",
+  "sha7": "af898a2",
+  "author_name": "Tunghohin",
+  "author_email": "88049360+Tunghohin@users.noreply.github.com",
+  "date_iso": "2025-10-24T07:26:39+08:00",
+  "subject": "feat: Enhance load_module to accept PathLike objects (#187)",
+  "body": "Closes #158",
+  "is_merge": false,
+  "parents": [
+    "a23c5a0350fcab899d1623b4db7fa3b84f12daaa"
+  ],
+  "name_status": [
+    [
+      "M",
+      "python/tvm_ffi/module.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "python/tvm_ffi/module.py",
+      "additions": 12,
+      "deletions": 4
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/python/tvm_ffi/module.py b/python/tvm_ffi/module.py\nindex 1b53d89..3b09df7 100644\n--- a/python/tvm_ffi/module.py\n+++ b/python/tvm_ffi/module.py\n@@ -21,6 +21,7 @@ from __future__ import annotations\n \n from collections.abc import Sequence\n from enum import IntEnum\n+from os import PathLike, fspath\n from typing import TYPE_CHECKING, Any, ClassVar, cast\n \n from . import _ffi_api, core\n@@ -305,12 +306,12 @@ def system_lib(symbol_prefix: str = \"\") -> Module:\n     return _ffi_api.SystemLib(symbol_prefix)\n \n \n-def load_module(path: str) -> Module:\n+def load_module(path: str | PathLike) -> Module:\n     \"\"\"Load module from file.\n \n     Parameters\n     ----------\n-    path\n+    path : str | PathLike\n         The path to the module file.\n \n     Returns\n@@ -322,12 +323,19 @@ def load_module(path: str) -> Module:\n     --------\n     .. code-block:: python\n \n-      mod = tvm_ffi.load_module(\"path/to/module.so\")\n-      mod.func_name(*args)\n+        # Works with string paths\n+        mod = tvm_ffi.load_module(\"path/to/module.so\")\n+        mod.func_name(*args)\n+\n+        # Also works with pathlib.Path objects\n+        from pathlib import Path\n+        mod = tvm_ffi.load_module(Path(\"path/to/module.so\"))\n+        mod.func_name(*args)\n \n     See Also\n     --------\n     :py:class:`tvm_ffi.Module`\n \n     \"\"\"\n+    path = fspath(path)\n     return _ffi_api.ModuleLoadFromFile(path)",
+  "heuristics": {
+    "tags": [],
+    "extensions": [
+      ".py"
+    ],
+    "scopes_guess": [
+      "python"
+    ]
+  }
+}

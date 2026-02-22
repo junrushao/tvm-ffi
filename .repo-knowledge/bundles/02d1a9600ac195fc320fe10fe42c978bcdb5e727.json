@@ -1,0 +1,52 @@
+{
+  "sha": "02d1a9600ac195fc320fe10fe42c978bcdb5e727",
+  "sha7": "02d1a96",
+  "author_name": "Guan-Ming (Wesley) Chiu",
+  "author_email": "105915352+guan404ming@users.noreply.github.com",
+  "date_iso": "2026-01-09T15:36:26+08:00",
+  "subject": "feat: add starts_with and ends_with to String (#388)",
+  "body":
+      "## Why\n\nString pattern matching is essential for validation and parsing in\ncompiler infrastructure. Users currently lack efficient prefix/suffix\nchecking methods.\n\n## How\n\n- Add `starts_with(prefix)` method supporting String, const char*, and\nraw pointer with length\n- Add `ends_with(suffix)` method with same overload variants\n- Add tests",
+  "is_merge": false,
+  "parents": [
+    "181e1b8b5d81599a4c6215375d07162d3d750438"
+  ],
+  "name_status": [
+    [
+      "M",
+      "include/tvm/ffi/string.h"
+    ],
+    [
+      "M",
+      "tests/cpp/test_string.cc"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "include/tvm/ffi/string.h",
+      "additions": 70,
+      "deletions": 0
+    },
+    {
+      "path": "tests/cpp/test_string.cc",
+      "additions": 46,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/include/tvm/ffi/string.h b/include/tvm/ffi/string.h\nindex 59addfa..9c1057a 100644\n--- a/include/tvm/ffi/string.h\n+++ b/include/tvm/ffi/string.h\n@@ -655,6 +655,76 @@ class String {\n     return String(data() + pos, rcount);\n   }\n \n+  /*!\n+   * \\brief Check if the string starts with a prefix\n+   * \\param prefix The prefix to check for\n+   * \\return true if the string starts with prefix, false otherwise\n+   */\n+  bool starts_with(const String& prefix) const { return starts_with(prefix.data(), prefix.size()); }\n+\n+  /*!\n+   * \\brief Check if the string starts with a prefix\n+   * \\param prefix The prefix to check for\n+   * \\return true if the string starts with prefix, false otherwise\n+   */\n+  bool starts_with(std::string_view prefix) const {\n+    return starts_with(prefix.data(), prefix.size());\n+  }\n+\n+  /*!\n+   * \\brief Check if the string starts with a prefix\n+   * \\param prefix The prefix to check for\n+   * \\return true if the string starts with prefix, false otherwise\n+   */\n+  bool starts_with(const char* prefix) const { return starts_with(prefix, std::strlen(prefix)); }\n+\n+  /*!\n+   * \\brief Check if the string starts with a prefix\n+   * \\param prefix The prefix to check for\n+   * \\param count The length of the prefix\n+   * \\return true if the string starts with prefix, false otherwise\n+   */\n+  bool starts_with(const char* prefix, size_t count) const {\n+    if (count > size()) {\n+      return false;\n+    }\n+    return std::memcmp(data(), prefix, count) == 0;\n+  }\n+\n+  /*!\n+   * \\brief Check if the string ends with a suffix\n+   * \\param suffix The suffix to check for\n+   * \\return true if the string ends with suffix, false otherwise\n+   */\n+  bool ends_with(const String& suffix) const { return ends_with(suffix.data(), suffix.size()); }\n+\n+  /*!\n+   * \\brief Check if the string ends with a suffix\n+   * \\param suffix The suffix to check for\n+   * \\return true if the string ends with suffix, false otherwise\n+   */\n+  bool ends_with(std::string_view suffix) const { return ends_with(suffix.data(), suffix.size()); }\n+\n+  /*!\n+   * \\brief Check if the string ends with a suffix\n+   * \\param suffix The suffix to check for\n+   * \\return true if the string ends with suffix, false otherwise\n+   */\n+  bool ends_with(const char* suffix) const { return ends_with(suffix, std::strlen(suffix)); }\n+\n+  /*!\n+   * \\brief Check if the string ends with a suffix\n+   * \\param suffix The suffix to check for\n+   * \\param count The length of the suffix\n+   * \\return true if the string ends with suffix, false otherwise\n+   */\n+  bool ends_with(const char* suffix, size_t count) const {\n+    if (count > size()) {\n+      return false;\n+    }\n+    return std::memcmp(data() + size() - count, suffix, count) == 0;\n+  }\n+\n   /*!\n    * \\brief Convert String to an std::string object\n    *\ndiff --git a/tests/cpp/test_string.cc b/tests/cpp/test_string.cc\nindex afcb651..020cc41 100644\n--- a/tests/cpp/test_string.cc\n+++ b/tests/cpp/test_string.cc\n@@ -482,4 +482,50 @@ TEST(String, Substr) {\n   EXPECT_THROW(empty.substr(1), std::out_of_range);\n }\n \n+TEST(String, StartsWith) {\n+  String s{\"hello world\"};\n+  EXPECT_TRUE(s.starts_with(\"hello\"));\n+  EXPECT_TRUE(s.starts_with(\"h\"));\n+  EXPECT_TRUE(s.starts_with(\"\"));\n+  EXPECT_TRUE(s.starts_with(String{\"hello\"}));\n+  EXPECT_TRUE(s.starts_with(std::string_view{\"hello\"}));\n+  EXPECT_FALSE(s.starts_with(\"world\"));\n+  EXPECT_FALSE(s.starts_with(\"Hello\"));\n+  EXPECT_FALSE(s.starts_with(\"hello world extra\"));\n+  EXPECT_FALSE(s.starts_with(std::string_view{\"world\"}));\n+\n+  String empty{\"\"};\n+  EXPECT_TRUE(empty.starts_with(\"\"));\n+  EXPECT_TRUE(empty.starts_with(std::string_view{\"\"}));\n+  EXPECT_FALSE(empty.starts_with(\"x\"));\n+\n+  String single{\"x\"};\n+  EXPECT_TRUE(single.starts_with(\"x\"));\n+  EXPECT_TRUE(single.starts_with(\"\"));\n+  EXPECT_FALSE(single.starts_with(\"xy\"));\n+}\n+\n+TEST(String, EndsWith) {\n+  String s{\"hello world\"};\n+  EXPECT_TRUE(s.ends_with(\"world\"));\n+  EXPECT_TRUE(s.ends_with(\"d\"));\n+  EXPECT_TRUE(s.ends_with(\"\"));\n+  EXPECT_TRUE(s.ends_with(String{\"world\"}));\n+  EXPECT_TRUE(s.ends_with(std::string_view{\"world\"}));\n+  EXPECT_FALSE(s.ends_with(\"hello\"));\n+  EXPECT_FALSE(s.ends_with(\"World\"));\n+  EXPECT_FALSE(s.ends_with(\"extra hello world\"));\n+  EXPECT_FALSE(s.ends_with(std::string_view{\"hello\"}));\n+\n+  String empty{\"\"};\n+  EXPECT_TRUE(empty.ends_with(\"\"));\n+  EXPECT_TRUE(empty.ends_with(std::string_view{\"\"}));\n+  EXPECT_FALSE(empty.ends_with(\"x\"));\n+\n+  String single{\"x\"};\n+  EXPECT_TRUE(single.ends_with(\"x\"));\n+  EXPECT_TRUE(single.ends_with(\"\"));\n+  EXPECT_FALSE(single.ends_with(\"yx\"));\n+}\n+\n }  // namespace",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".cc",
+      ".h"
+    ],
+    "scopes_guess": [
+      "include",
+      "tests"
+    ]
+  }
+}

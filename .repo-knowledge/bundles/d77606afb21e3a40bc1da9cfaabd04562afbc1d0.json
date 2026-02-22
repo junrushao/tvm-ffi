@@ -1,0 +1,81 @@
+{
+  "sha": "d77606afb21e3a40bc1da9cfaabd04562afbc1d0",
+  "sha7": "d77606a",
+  "author_name": "Yaxing Cai",
+  "author_email": "caiyaxing666@gmail.com",
+  "date_iso": "2025-09-19T13:09:27-07:00",
+  "subject": "feat: Enable torch/numpy/ml_dtypes dtype as ffi input (#25)",
+  "body":
+      "This PR enables `torch.dtype` and `numpy.dtypes` as ffi input and\nconverts the `torch.dtype` to `DLDataType`.",
+  "is_merge": false,
+  "parents": [
+    "53b2e00ef90a34f2dfa79014877dc6ca53e78c0f"
+  ],
+  "name_status": [
+    [
+      "M",
+      "include/tvm/ffi/dtype.h"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/_convert.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/cython/dtype.pxi"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/cython/function.pxi"
+    ],
+    [
+      "M",
+      "tests/python/test_dtype.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "include/tvm/ffi/dtype.h",
+      "additions": 3,
+      "deletions": 0
+    },
+    {
+      "path": "python/tvm_ffi/_convert.py",
+      "additions": 15,
+      "deletions": 1
+    },
+    {
+      "path": "python/tvm_ffi/cython/dtype.pxi",
+      "additions": 113,
+      "deletions": 0
+    },
+    {
+      "path": "python/tvm_ffi/cython/function.pxi",
+      "additions": 37,
+      "deletions": 0
+    },
+    {
+      "path": "tests/python/test_dtype.py",
+      "additions": 79,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/include/tvm/ffi/dtype.h b/include/tvm/ffi/dtype.h\nindex a9e09d2..c0f9f68 100644\n--- a/include/tvm/ffi/dtype.h\n+++ b/include/tvm/ffi/dtype.h\n@@ -65,6 +65,9 @@ inline const char* DLDataTypeCodeAsCStr(DLDataTypeCode type_code) {  // NOLINT(*\n     case kDLBfloat: {\n       return \"bfloat\";\n     }\n+    case kDLBool: {\n+      return \"bool\";\n+    }\n     case kDLFloat8_e3m4: {\n       return \"float8_e3m4\";\n     }\ndiff --git a/python/tvm_ffi/_convert.py b/python/tvm_ffi/_convert.py\nindex cdeccbc..6313c8e 100644\n--- a/python/tvm_ffi/_convert.py\n+++ b/python/tvm_ffi/_convert.py\n@@ -21,8 +21,18 @@ from typing import Any\n \n from . import container, core\n \n+try:\n+    import torch\n+except ImportError:\n+    torch = None\n \n-def convert(value: Any) -> Any:  # noqa: PLR0911\n+try:\n+    import numpy\n+except ImportError:\n+    numpy = None\n+\n+\n+def convert(value: Any) -> Any:  # noqa: PLR0911,PLR0912\n     \"\"\"Convert a python object to ffi values.\n \n     Parameters\n@@ -60,6 +70,10 @@ def convert(value: Any) -> Any:  # noqa: PLR0911\n         return None\n     elif hasattr(value, \"__dlpack__\"):\n         return core.from_dlpack(value)\n+    elif torch is not None and isinstance(value, torch.dtype):\n+        return core._convert_torch_dtype_to_ffi_dtype(value)\n+    elif numpy is not None and isinstance(value, numpy.dtype):\n+        return core._convert_numpy_dtype_to_ffi_dtype(value)\n     elif isinstance(value, Exception):\n         return core._convert_to_ffi_error(value)\n     else:\ndiff --git a/python/tvm_ffi/cython/dtype.pxi b/python/tvm_ffi/cython/dtype.pxi\nindex 0036c80..7649885 100644\n--- a/python/tvm_ffi/cython/dtype.pxi\n+++ b/python/tvm_ffi/cython/dtype.pxi\n@@ -15,6 +15,32 @@\n # KIND, either express or implied.  See the License for the\n # specific language governing permissions and limitations\n # under the License.\n+import os\n+\n+\n+if os.environ.get(\"TVM_FFI_BUILD_DOCS\", \"0\") == \"0\":\n+    try:\n+        # optionally import torch and setup torch related utils\n+        import torch\n+    except ImportError:\n+        torch = None\n+\n+    try:\n+        # optionally import numpy\n+        import numpy\n+    except ImportError:\n+        numpy = None\n+\n+    try:\n+        # optionally import ml_dtypes\n+        import ml_dtypes\n+    except ImportError:\n+        ml_dtypes = None\n+else:\n+    torch = None\n+    numpy = None\n+    ml_dtypes = None\n+\n \n _CLASS_DTYPE = None\n \n@@ -115,3 +141,90 @@ cdef inline object make_ret_dtype(TVMFFIAny result):\n     val = str.__new__(_CLASS_DTYPE, cdtype.__str__())\n     val.__tvm_ffi_dtype__ = cdtype\n     return val\n+\n+\n+cdef TORCH_DTYPE_TO_DTYPE = {}\n+cdef NUMPY_DTYPE_TO_DTYPE = {}\n+cdef MLDTYPES_DTYPE_TO_DTYPE = {}\n+\n+if torch is not None:\n+    TORCH_DTYPE_TO_DTYPE = {\n+        torch.int8: DLDataType(0, 8, 1),\n+        torch.short: DLDataType(0, 16, 1),\n+        torch.int16: DLDataType(0, 16, 1),\n+        torch.int32: DLDataType(0, 32, 1),\n+        torch.int: DLDataType(0, 32, 1),\n+        torch.int64: DLDataType(0, 64, 1),\n+        torch.long: DLDataType(0, 64, 1),\n+        torch.uint8: DLDataType(1, 8, 1),\n+        torch.uint16: DLDataType(1, 16, 1),\n+        torch.uint32: DLDataType(1, 32, 1),\n+        torch.uint64: DLDataType(1, 64, 1),\n+        torch.float16: DLDataType(2, 16, 1),\n+        torch.half: DLDataType(2, 16, 1),\n+        torch.float32: DLDataType(2, 32, 1),\n+        torch.float: DLDataType(2, 32, 1),\n+        torch.float64: DLDataType(2, 64, 1),\n+        torch.double: DLDataType(2, 64, 1),\n+        torch.bfloat16: DLDataType(4, 16, 1),\n+        torch.bool: DLDataType(6, 8, 1),\n+        torch.float8_e4m3fn: DLDataType(10, 8, 1),\n+        torch.float8_e4m3fnuz: DLDataType(11, 8, 1),\n+        torch.float8_e5m2: DLDataType(12, 8, 1),\n+        torch.float8_e5m2fnuz: DLDataType(13, 8, 1),\n+        torch.float8_e8m0fnu: DLDataType(14, 8, 1),\n+    }\n+\n+    def _convert_torch_dtype_to_ffi_dtype(torch_dtype):\n+        cdef DLDataType cdtype = TORCH_DTYPE_TO_DTYPE[torch_dtype]\n+        ret = DataType.__new__(DataType, str(cdtype))\n+        (<DataType>ret).cdtype = cdtype\n+        return ret\n+else:\n+    def _convert_torch_dtype_to_ffi_dtype(torch_dtype):\n+        raise ValueError(\"torch not found\")\n+\n+if ml_dtypes is not None:\n+    MLDTYPES_DTYPE_TO_DTYPE = {\n+        numpy.dtype(ml_dtypes.int2): DLDataType(0, 2, 1),\n+        numpy.dtype(ml_dtypes.int4): DLDataType(0, 4, 1),\n+        numpy.dtype(ml_dtypes.uint2): DLDataType(1, 2, 1),\n+        numpy.dtype(ml_dtypes.uint4): DLDataType(1, 4, 1),\n+        numpy.dtype(ml_dtypes.bfloat16): DLDataType(4, 16, 1),\n+        numpy.dtype(ml_dtypes.float8_e3m4): DLDataType(7, 8, 1),\n+        numpy.dtype(ml_dtypes.float8_e4m3): DLDataType(8, 8, 1),\n+        numpy.dtype(ml_dtypes.float8_e4m3b11fnuz): DLDataType(9, 8, 1),\n+        numpy.dtype(ml_dtypes.float8_e4m3fn): DLDataType(10, 8, 1),\n+        numpy.dtype(ml_dtypes.float8_e4m3fnuz): DLDataType(11, 8, 1),\n+        numpy.dtype(ml_dtypes.float8_e5m2): DLDataType(12, 8, 1),\n+        numpy.dtype(ml_dtypes.float8_e5m2fnuz): DLDataType(13, 8, 1),\n+        numpy.dtype(ml_dtypes.float8_e8m0fnu): DLDataType(14, 8, 1),\n+        numpy.dtype(ml_dtypes.float6_e2m3fn): DLDataType(15, 6, 1),\n+        numpy.dtype(ml_dtypes.float6_e3m2fn): DLDataType(16, 6, 1),\n+        numpy.dtype(ml_dtypes.float4_e2m1fn): DLDataType(17, 4, 1),\n+    }\n+\n+if numpy is not None:\n+    NUMPY_DTYPE_TO_DTYPE = {\n+        numpy.dtype(numpy.int8): DLDataType(0, 8, 1),\n+        numpy.dtype(numpy.int16): DLDataType(0, 16, 1),\n+        numpy.dtype(numpy.int32): DLDataType(0, 32, 1),\n+        numpy.dtype(numpy.int64): DLDataType(0, 64, 1),\n+        numpy.dtype(numpy.uint8): DLDataType(1, 8, 1),\n+        numpy.dtype(numpy.uint16): DLDataType(1, 16, 1),\n+        numpy.dtype(numpy.uint32): DLDataType(1, 32, 1),\n+        numpy.dtype(numpy.uint64): DLDataType(1, 64, 1),\n+        numpy.dtype(numpy.float16): DLDataType(2, 16, 1),\n+        numpy.dtype(numpy.float32): DLDataType(2, 32, 1),\n+        numpy.dtype(numpy.float64): DLDataType(2, 64, 1),\n+        **MLDTYPES_DTYPE_TO_DTYPE,\n+    }\n+\n+    def _convert_numpy_dtype_to_ffi_dtype(numpy_dtype):\n+        cdef DLDataType cdtype = NUMPY_DTYPE_TO_DTYPE[numpy_dtype]\n+        ret = DataType.__new__(DataType, str(cdtype))\n+        (<DataType>ret).cdtype = cdtype\n+        return ret\n+else:\n+    def _convert_torch_dtype_to_ffi_dtype(torch_dtype):\n+        raise ValueError(\"numpy not found\")\ndiff --git a/python/tvm_ffi/cython/function.pxi b/python/tvm_ffi/cython/function.pxi\nindex f4503ec..0df3c00 100644\n--- a/python/tvm_ffi/cython/function.pxi\n+++ b/python/tvm_ffi/cython/function.pxi\n@@ -25,8 +25,15 @@ if os.environ.get(\"TVM_FFI_BUILD_DOCS\", \"0\") == \"0\":\n         import torch\n     except ImportError:\n         torch = None\n+\n+    try:\n+        # optionally import numpy\n+        import numpy\n+    except ImportError:\n+        numpy = None\n else:\n     torch = None\n+    numpy = None\n \n \n cdef int _RELEASE_GIL_BY_DEFAULT = int(\n@@ -470,6 +477,30 @@ cdef int TVMFFIPyArgSetterFallback_(\n     TVMFFIPyPushTempFFIObject(ctx, chandle)\n \n \n+cdef int TVMFFIPyArgSetterDTypeFromTorch_(\n+    TVMFFIPyArgSetter* handle, TVMFFIPyCallContext* ctx,\n+    PyObject* py_arg, TVMFFIAny* out\n+) except -1:\n+    \"\"\"Setter for torch dtype\"\"\"\n+    cdef py_obj = <object>py_arg\n+    if py_obj not in TORCH_DTYPE_TO_DTYPE:\n+        raise ValueError(\"Unsupported torch dtype: \", py_obj)\n+    out.type_index = kTVMFFIDataType\n+    out.v_dtype = TORCH_DTYPE_TO_DTYPE[py_obj]\n+    return 0\n+\n+cdef int TVMFFIPyArgSetterDTypeFromNumpy_(\n+    TVMFFIPyArgSetter* handle, TVMFFIPyCallContext* ctx,\n+    PyObject* py_arg, TVMFFIAny* out\n+) except -1:\n+    \"\"\"Setter for torch dtype\"\"\"\n+    cdef py_obj = <object>py_arg\n+    if py_obj not in NUMPY_DTYPE_TO_DTYPE:\n+        raise ValueError(\"Unsupported numpy or ml_dtypes dtype: \", py_obj)\n+    out.type_index = kTVMFFIDataType\n+    out.v_dtype = NUMPY_DTYPE_TO_DTYPE[py_obj]\n+    return 0\n+\n cdef int TVMFFIPyArgSetterFactory_(PyObject* value, TVMFFIPyArgSetter* out) except -1:\n     \"\"\"\n     Factory function that creates an argument setter for a given Python argument type.\n@@ -560,6 +591,12 @@ cdef int TVMFFIPyArgSetterFactory_(PyObject* value, TVMFFIPyArgSetter* out) exce\n     if callable(arg):\n         out.func = TVMFFIPyArgSetterCallable_\n         return 0\n+    if torch is not None and isinstance(arg, torch.dtype):\n+        out.func = TVMFFIPyArgSetterDTypeFromTorch_\n+        return 0\n+    if numpy is not None and isinstance(arg, numpy.dtype):\n+        out.func = TVMFFIPyArgSetterDTypeFromNumpy_\n+        return 0\n     if isinstance(arg, Exception):\n         out.func = TVMFFIPyArgSetterException_\n         return 0\ndiff --git a/tests/python/test_dtype.py b/tests/python/test_dtype.py\nindex 61a0b7b..6c45416 100644\n--- a/tests/python/test_dtype.py\n+++ b/tests/python/test_dtype.py\n@@ -16,6 +16,7 @@\n # under the License.\n \n import pickle\n+from typing import Any\n \n import numpy as np\n import pytest\n@@ -80,3 +81,81 @@ def test_dtype_with_lanes(dtype_str: str) -> None:\n     assert dtype_with_lanes.type_code == dtype.type_code\n     assert dtype_with_lanes.bits == dtype.bits\n     assert dtype_with_lanes.lanes == 4\n+\n+\n+_fecho = tvm_ffi.get_global_func(\"testing.echo\")\n+\n+\n+def _check_dtype(dtype: Any, code: int, bits: int, lanes: int) -> None:\n+    echo_dtype = _fecho(dtype)\n+    assert echo_dtype.type_code == code\n+    assert echo_dtype.bits == bits\n+    assert echo_dtype.lanes == lanes\n+    converted_dtype = tvm_ffi.convert(dtype)\n+    assert converted_dtype.type_code == code\n+    assert converted_dtype.bits == bits\n+    assert converted_dtype.lanes == lanes\n+\n+\n+def test_torch_dtype_conversion() -> None:\n+    torch = pytest.importorskip(\"torch\")\n+    _check_dtype(torch.int8, 0, 8, 1)\n+    _check_dtype(torch.short, 0, 16, 1)\n+    _check_dtype(torch.int16, 0, 16, 1)\n+    _check_dtype(torch.int32, 0, 32, 1)\n+    _check_dtype(torch.int, 0, 32, 1)\n+    _check_dtype(torch.int64, 0, 64, 1)\n+    _check_dtype(torch.long, 0, 64, 1)\n+    _check_dtype(torch.uint8, 1, 8, 1)\n+    _check_dtype(torch.uint16, 1, 16, 1)\n+    _check_dtype(torch.uint32, 1, 32, 1)\n+    _check_dtype(torch.uint64, 1, 64, 1)\n+    _check_dtype(torch.float16, 2, 16, 1)\n+    _check_dtype(torch.half, 2, 16, 1)\n+    _check_dtype(torch.float32, 2, 32, 1)\n+    _check_dtype(torch.float, 2, 32, 1)\n+    _check_dtype(torch.float64, 2, 64, 1)\n+    _check_dtype(torch.double, 2, 64, 1)\n+    _check_dtype(torch.bfloat16, 4, 16, 1)\n+    _check_dtype(torch.bool, 6, 8, 1)\n+    _check_dtype(torch.float8_e4m3fn, 10, 8, 1)\n+    _check_dtype(torch.float8_e4m3fnuz, 11, 8, 1)\n+    _check_dtype(torch.float8_e5m2, 12, 8, 1)\n+    _check_dtype(torch.float8_e5m2fnuz, 13, 8, 1)\n+    _check_dtype(torch.float8_e8m0fnu, 14, 8, 1)\n+\n+\n+def test_numpy_dtype_conversion() -> None:\n+    np = pytest.importorskip(\"numpy\")\n+    _check_dtype(np.dtype(np.int8), 0, 8, 1)\n+    _check_dtype(np.dtype(np.int16), 0, 16, 1)\n+    _check_dtype(np.dtype(np.int32), 0, 32, 1)\n+    _check_dtype(np.dtype(np.int64), 0, 64, 1)\n+    _check_dtype(np.dtype(np.uint8), 1, 8, 1)\n+    _check_dtype(np.dtype(np.uint16), 1, 16, 1)\n+    _check_dtype(np.dtype(np.uint32), 1, 32, 1)\n+    _check_dtype(np.dtype(np.uint64), 1, 64, 1)\n+    _check_dtype(np.dtype(np.float16), 2, 16, 1)\n+    _check_dtype(np.dtype(np.float32), 2, 32, 1)\n+    _check_dtype(np.dtype(np.float64), 2, 64, 1)\n+\n+\n+def test_ml_dtypes_dtype_conversion() -> None:\n+    np = pytest.importorskip(\"numpy\")\n+    ml_dtypes = pytest.importorskip(\"ml_dtypes\")\n+    _check_dtype(np.dtype(ml_dtypes.int2), 0, 2, 1)\n+    _check_dtype(np.dtype(ml_dtypes.int4), 0, 4, 1)\n+    _check_dtype(np.dtype(ml_dtypes.uint2), 1, 2, 1)\n+    _check_dtype(np.dtype(ml_dtypes.uint4), 1, 4, 1)\n+    _check_dtype(np.dtype(ml_dtypes.bfloat16), 4, 16, 1)\n+    _check_dtype(np.dtype(ml_dtypes.float8_e3m4), 7, 8, 1)\n+    _check_dtype(np.dtype(ml_dtypes.float8_e4m3), 8, 8, 1)\n+    _check_dtype(np.dtype(ml_dtypes.float8_e4m3b11fnuz), 9, 8, 1)\n+    _check_dtype(np.dtype(ml_dtypes.float8_e4m3fn), 10, 8, 1)\n+    _check_dtype(np.dtype(ml_dtypes.float8_e4m3fnuz), 11, 8, 1)\n+    _check_dtype(np.dtype(ml_dtypes.float8_e5m2), 12, 8, 1)\n+    _check_dtype(np.dtype(ml_dtypes.float8_e5m2fnuz), 13, 8, 1)\n+    _check_dtype(np.dtype(ml_dtypes.float8_e8m0fnu), 14, 8, 1)\n+    _check_dtype(np.dtype(ml_dtypes.float6_e2m3fn), 15, 6, 1)\n+    _check_dtype(np.dtype(ml_dtypes.float6_e3m2fn), 16, 6, 1)\n+    _check_dtype(np.dtype(ml_dtypes.float4_e2m1fn), 17, 4, 1)",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".h",
+      ".pxi",
+      ".py"
+    ],
+    "scopes_guess": [
+      "include",
+      "python",
+      "tests"
+    ]
+  }
+}

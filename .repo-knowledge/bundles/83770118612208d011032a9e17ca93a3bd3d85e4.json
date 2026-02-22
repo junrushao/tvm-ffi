@@ -1,0 +1,93 @@
+{
+  "sha": "83770118612208d011032a9e17ca93a3bd3d85e4",
+  "sha7": "8377011",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-10-12T12:56:03-04:00",
+  "subject": "[CYTHON] Expose Tensor.strides (#102)",
+  "body": "This PR updates the Tensor class to expose strides, also bump DLPack to\nv1.2",
+  "is_merge": false,
+  "parents": [
+    "22a78943b78306a73011757fa635afa9dce35114"
+  ],
+  "name_status": [
+    [
+      "M",
+      "3rdparty/dlpack"
+    ],
+    [
+      "M",
+      "pyproject.toml"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/__init__.py"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/core.pyi"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/cython/tensor.pxi"
+    ],
+    [
+      "M",
+      "tests/python/test_tensor.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "3rdparty/dlpack",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "pyproject.toml",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "python/tvm_ffi/__init__.py",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "python/tvm_ffi/core.pyi",
+      "additions": 3,
+      "deletions": 0
+    },
+    {
+      "path": "python/tvm_ffi/cython/tensor.pxi",
+      "additions": 19,
+      "deletions": 0
+    },
+    {
+      "path": "tests/python/test_tensor.py",
+      "additions": 1,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/3rdparty/dlpack b/3rdparty/dlpack\nindex 1117366..93c8f2a 160000\n--- a/3rdparty/dlpack\n+++ b/3rdparty/dlpack\n@@ -1 +1 @@\n-Subproject commit 111736618e8d1028b23605f76dcaa6a38cfea809\n+Subproject commit 93c8f2a3c774b84af6f652b1992c48164fae60fc\ndiff --git a/pyproject.toml b/pyproject.toml\nindex 25a8137..a0a00c9 100644\n--- a/pyproject.toml\n+++ b/pyproject.toml\n@@ -17,7 +17,7 @@\n \n [project]\n name = \"apache-tvm-ffi\"\n-version = \"0.1.0b15\"\n+version = \"0.1.0b16\"\n description = \"tvm ffi\"\n \n authors = [{ name = \"TVM FFI team\" }]\ndiff --git a/python/tvm_ffi/__init__.py b/python/tvm_ffi/__init__.py\nindex e46a7aa..6ddf32f 100644\n--- a/python/tvm_ffi/__init__.py\n+++ b/python/tvm_ffi/__init__.py\n@@ -17,7 +17,7 @@\n \"\"\"TVM FFI Python package.\"\"\"\n \n # version\n-__version__ = \"0.1.0b15\"\n+__version__ = \"0.1.0b16\"\n \n # order matters here so we need to skip isort here\n # isort: skip_file\ndiff --git a/python/tvm_ffi/core.pyi b/python/tvm_ffi/core.pyi\nindex 05e5a04..3496ece 100644\n--- a/python/tvm_ffi/core.pyi\n+++ b/python/tvm_ffi/core.pyi\n@@ -410,6 +410,9 @@ class Tensor(Object):\n     def shape(self) -> tuple[int, ...]:\n         \"\"\"Tensor shape as a tuple of integers.\"\"\"\n     @property\n+    def strides(self) -> tuple[int, ...]:\n+        \"\"\"Tensor strides as a tuple of integers.\"\"\"\n+    @property\n     def dtype(self) -> Any:\n         \"\"\"Data type as :class:`tvm_ffi.dtype` (``str`` subclass).\"\"\"\n     @property\ndiff --git a/python/tvm_ffi/cython/tensor.pxi b/python/tvm_ffi/cython/tensor.pxi\nindex 4ebc515..acdb4fd 100644\n--- a/python/tvm_ffi/cython/tensor.pxi\n+++ b/python/tvm_ffi/cython/tensor.pxi\n@@ -179,6 +179,18 @@ def _shape_obj_get_py_tuple(obj):\n     return tuple(shape.data[i] for i in range(shape.size))\n \n \n+def _make_strides_from_shape(tuple shape):\n+    cdef int64_t expected_stride = 1\n+    cdef list strides = []\n+    cdef int64_t ndim = len(shape)\n+    cdef int64_t reverse_index\n+    for i in range(ndim):\n+        reverse_index = ndim - i - 1\n+        strides.append(expected_stride)\n+        expected_stride *= shape[reverse_index]\n+    return tuple(reversed(strides))\n+\n+\n cdef class Tensor(Object):\n     \"\"\"Tensor object that represents a managed n-dimensional array.\n     \"\"\"\n@@ -189,6 +201,13 @@ cdef class Tensor(Object):\n         \"\"\"Shape of this array\"\"\"\n         return tuple(self.cdltensor.shape[i] for i in range(self.cdltensor.ndim))\n \n+    @property\n+    def strides(self):\n+        \"\"\"Strides of this array\"\"\"\n+        if self.cdltensor.strides == NULL:\n+            return _make_strides_from_shape(self.shape)\n+        return tuple(self.cdltensor.strides[i] for i in range(self.cdltensor.ndim))\n+\n     @property\n     def dtype(self):\n         \"\"\"Data type of this array\"\"\"\ndiff --git a/tests/python/test_tensor.py b/tests/python/test_tensor.py\nindex 186d91b..9b73ce9 100644\n--- a/tests/python/test_tensor.py\n+++ b/tests/python/test_tensor.py\n@@ -38,6 +38,7 @@ def test_tensor_attributes() -> None:\n     x = tvm_ffi.from_dlpack(data)\n     assert isinstance(x, tvm_ffi.Tensor)\n     assert x.shape == (10, 8, 4, 2)\n+    assert x.strides == (64, 8, 2, 1)\n     assert x.dtype == tvm_ffi.dtype(\"int16\")\n     assert x.device.dlpack_device_type() == tvm_ffi.DLDeviceType.kDLCPU\n     assert x.device.index == 0",
+  "heuristics": {
+    "tags": [
+      "build",
+      "test"
+    ],
+    "extensions": [
+      "",
+      ".pxi",
+      ".py",
+      ".pyi",
+      ".toml"
+    ],
+    "scopes_guess": [
+      "3rdparty",
+      "pyproject.toml",
+      "python",
+      "tests"
+    ]
+  }
+}

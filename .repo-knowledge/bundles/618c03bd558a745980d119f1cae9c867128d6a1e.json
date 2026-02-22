@@ -1,0 +1,62 @@
+{
+  "sha": "618c03bd558a745980d119f1cae9c867128d6a1e",
+  "sha7": "618c03b",
+  "author_name": "Junru Shao",
+  "author_email": "junrushao@apache.org",
+  "date_iso": "2025-10-20T21:12:55-07:00",
+  "subject": "doc: Handle builtin and inheritance (#177)",
+  "body":
+      "This PR does two things to the doc:\n- **Change A**. Skip member methods of builtin classes;\n- **Change B**. Clearly mark which base class a method inherits from.\n\n**Change A**. To give an example, `tvm_ffi.dtype`, as a subclass of\nPython's native `str`, is shown to have the following methods inherited\nfrom `str`:\n\n| Method | Description |\n|---|---|\n| `capitalize()` | Return a capitalized version of the string. |\n| `casefold()` | Return a version of the string suitable for caseless\ncomparisons. |\n| `center(width[, fillchar])` | Return a centered string of length\n`width`. |\n| `count(sub[, start[, end]])` | Return the number of non-overlapping\noccurrences of substring `sub` in `S[start:end]`. |\n| `encode([encoding, errors])` | Encode the string using the codec\nregistered for `encoding`. |\n| `endswith(suffix[, start[, end]])` | Return `True` if the string ends\nwith the specified `suffix`, `False` otherwise. |\n| `expandtabs([tabsize])` | Return a copy where all tab characters are\nexpanded using spaces. |\n| `find(sub[, start[, end]])` | Return the lowest index in `S` where\nsubstring `sub` is found, such that `sub` is contained within\n`S[start:end]`. |\n| `format(*args, **kwargs)` | Return a formatted version of the string,\nusing substitutions from `args` and `kwargs`. |\n| `format_map(mapping, /)` | Return a formatted version of the string,\nusing substitutions from `mapping`. |\n\n, which adds quite a lot of noise because they are irrelevant to `dtype`\nusecases.\n\n**Change B**. For inherited methods, e.g. `Tensor.same_as` which is from\n`Object.same_as` - currently it's not clickable and doesn't have a\ndetailed documentation for it, which is quite inconvenient. This PR\nreplaces its description to:\n\n```\nDefined in [Object](link/to/reference/python/generated/tvm_ffi.Object.html#tvm_ffi.Object).`\n```",
+  "is_merge": false,
+  "parents": [
+    "0f8bf9fc582fff89e838cadf2aacbfb2a5724ddf"
+  ],
+  "name_status": [
+    [
+      "M",
+      "docs/conf.py"
+    ],
+    [
+      "M",
+      "pyproject.toml"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/__init__.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "docs/conf.py",
+      "additions": 79,
+      "deletions": 3
+    },
+    {
+      "path": "pyproject.toml",
+      "additions": 7,
+      "deletions": 7
+    },
+    {
+      "path": "python/tvm_ffi/__init__.py",
+      "additions": 14,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/docs/conf.py b/docs/conf.py\nindex ddd69b7..befe7c1 100644\n--- a/docs/conf.py\n+++ b/docs/conf.py\n@@ -19,6 +19,8 @@\n # -*- coding: utf-8 -*-\n from __future__ import annotations\n \n+import importlib\n+import inspect\n import os\n import shutil\n import subprocess\n@@ -242,15 +244,71 @@ def setup(app: sphinx.application.Sphinx) -> None:\n     app.add_config_value(\"build_rust_docs\", build_rust_docs, \"env\")\n     app.connect(\"config-inited\", _apply_config_overrides)\n     app.connect(\"build-finished\", _copy_rust_docs_to_output)\n-    app.connect(\"autodoc-skip-member\", _never_skip_selected_dunders)\n+    app.connect(\"autodoc-skip-member\", _filter_inherited_members)\n+    app.connect(\"autodoc-process-docstring\", _link_inherited_members)\n \n \n-def _never_skip_selected_dunders(app, what, name, obj, skip, options):  # noqa: ANN001, ANN202\n+def _filter_inherited_members(app, what, name, obj, skip, options):  # noqa: ANN001, ANN202\n     if name in _autodoc_always_show:\n-        return False  # do not skip\n+        return False\n+    if \"built-in method \" in str(obj):\n+        # Skip: `str.maketrans`, `EnumType.from_bytes`\n+        return True\n+    if getattr(obj, \"__objclass__\", None) in _py_native_classes:\n+        return True\n     return None\n \n \n+def _link_inherited_members(app, what, name, obj, options, lines) -> None:  # noqa: ANN001\n+    # Only act on members (methods/attributes/properties)\n+    if what not in {\"method\", \"attribute\", \"property\"}:\n+        return\n+    cls = _import_cls(name.rsplit(\".\", 1)[0])\n+    if cls is None:\n+        return\n+\n+    member_name = name.rsplit(\".\", 1)[-1]  # just \"foo\"\n+    base = _defining_class(cls, member_name)\n+\n+    # If we can't find a base or this class defines it, nothing to do\n+    if base is None or base is cls:\n+        return\n+\n+    # If it comes from builtins we already hide it; no link needed\n+    if base in _py_native_classes or getattr(base, \"__module__\", \"\") == \"builtins\":\n+        return\n+    owner_fq = f\"{base.__module__}.{base.__qualname__}\"\n+    role = \"attr\" if what in {\"attribute\", \"property\"} else \"meth\"\n+    lines.clear()\n+    lines.append(\n+        f\"*Defined in* :class:`~{owner_fq}` *as {what}* :{role}:`~{owner_fq}.{member_name}`.\"\n+    )\n+\n+\n+def _defining_class(cls: type | None, attr_name: str) -> type | None:\n+    \"\"\"Find the first class in cls.__mro__ that defines attr_name in its __dict__.\"\"\"\n+    if not isinstance(cls, type):\n+        return None\n+    method = getattr(cls, attr_name, None)\n+    if method is None:\n+        return None\n+    for base in reversed(inspect.getmro(cls)):\n+        d = getattr(base, \"__dict__\", {})\n+        if d.get(attr_name, None) is method:\n+            return base\n+    return None\n+\n+\n+def _import_cls(cls_name: str) -> type | None:\n+    \"\"\"Import and return the class object given its module and class name.\"\"\"\n+    try:\n+        mod, clsname = cls_name.rsplit(\".\", 1)\n+        m = importlib.import_module(mod)\n+        return getattr(m, clsname, None)\n+    except Exception:\n+        return None\n+\n+\n autodoc_mock_imports = [\"torch\"]\n autodoc_default_options = {\n     \"members\": True,\n@@ -263,9 +321,27 @@ _autodoc_always_show = {\n     \"__dlpack__\",\n     \"__dlpack_device__\",\n     \"__device_type_name__\",\n+    \"__ffi_init__\",\n     \"__from_extern_c__\",\n     \"__from_mlir_packed_safe_call__\",\n }\n+# If a member method comes from one of these native types, hide it in the docs\n+_py_native_classes: tuple[type, ...] = (\n+    str,\n+    tuple,\n+    list,\n+    dict,\n+    set,\n+    frozenset,\n+    bytes,\n+    bytearray,\n+    memoryview,\n+    int,\n+    float,\n+    complex,\n+    bool,\n+    object,\n+)\n \n autodoc_typehints = \"description\"  # or \"none\"\n always_use_bars_union = True\ndiff --git a/pyproject.toml b/pyproject.toml\nindex df528ee..92e1fce 100644\n--- a/pyproject.toml\n+++ b/pyproject.toml\n@@ -77,16 +77,16 @@ docs = [\n   \"sphinx-book-theme\",\n   \"sphinx-copybutton\",\n   \"sphinx-design\",\n-  \"sphinx-reredirects==0.1.2\",\n-  \"sphinx-tabs==3.4.1\",\n-  \"sphinx-toolbox==3.4.0\",\n+  \"sphinx-reredirects\",\n+  \"sphinx-tabs\",\n+  \"sphinx-toolbox\",\n   \"sphinx-autodoc-typehints\",\n   \"sphinxcontrib-mermaid\",\n-  \"sphinxcontrib-napoleon==0.7\",\n-  \"sphinxcontrib_httpdomain==1.8.1\",\n-  \"setuptools<81\",\n+  \"sphinxcontrib-napoleon\",\n+  \"sphinxcontrib_httpdomain\",\n+  \"setuptools\",\n   \"tomli\",\n-  \"urllib3>=2.5.0\",\n+  \"urllib3\",\n ]\n \n [project.scripts]\ndiff --git a/python/tvm_ffi/__init__.py b/python/tvm_ffi/__init__.py\nindex 21c28f2..8043524 100644\n--- a/python/tvm_ffi/__init__.py\n+++ b/python/tvm_ffi/__init__.py\n@@ -95,3 +95,17 @@ __all__ = [\n     \"use_raw_stream\",\n     \"use_torch_stream\",\n ]\n+\n+\n+def _update_module() -> None:\n+    for name in __all__:\n+        obj = globals()[name]\n+        if not getattr(obj, \"__module__\", \"tvm_ffi\").startswith(\"tvm_ffi\"):\n+            try:\n+                obj.__module__ = \"tvm_ffi\"\n+            except (AttributeError, TypeError):\n+                # some types don't allow setting __module__\n+                pass\n+\n+\n+_update_module()",
+  "heuristics": {
+    "tags": [
+      "build"
+    ],
+    "extensions": [
+      ".py",
+      ".toml"
+    ],
+    "scopes_guess": [
+      "docs",
+      "pyproject.toml",
+      "python"
+    ]
+  }
+}

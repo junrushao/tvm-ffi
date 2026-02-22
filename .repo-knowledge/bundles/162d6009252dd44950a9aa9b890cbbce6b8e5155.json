@@ -1,0 +1,107 @@
+{
+  "sha": "162d6009252dd44950a9aa9b890cbbce6b8e5155",
+  "sha7": "162d600",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-07-22T17:02:46-04:00",
+  "subject": "[FFI][REFACTOR] Introduce TypeAttr in reflection (#18160)",
+  "body":
+      "This PR introduces TypeAttr to reflection to bring extra\noptional attribute registration that can be used to extend behaviors such\nas structural equality. Also renames TypeExtraInfo to TypeMetadata for better clarity.",
+  "is_merge": false,
+  "parents": [
+    "9445fe734839cffc8bdf881788528b7763f7be03"
+  ],
+  "name_status": [
+    [
+      "M",
+      "include/tvm/ffi/c_api.h"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/reflection/accessor.h"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/reflection/registry.h"
+    ],
+    [
+      "M",
+      "src/ffi/object.cc"
+    ],
+    [
+      "M",
+      "src/ffi/reflection/structural_equal.cc"
+    ],
+    [
+      "M",
+      "src/ffi/reflection/structural_hash.cc"
+    ],
+    [
+      "M",
+      "tests/cpp/test_reflection_accessor.cc"
+    ],
+    [
+      "M",
+      "tests/cpp/testing_object.h"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "include/tvm/ffi/c_api.h",
+      "additions": 36,
+      "deletions": 5
+    },
+    {
+      "path": "include/tvm/ffi/reflection/accessor.h",
+      "additions": 23,
+      "deletions": 0
+    },
+    {
+      "path": "include/tvm/ffi/reflection/registry.h",
+      "additions": 65,
+      "deletions": 3
+    },
+    {
+      "path": "src/ffi/object.cc",
+      "additions": 63,
+      "deletions": 13
+    },
+    {
+      "path": "src/ffi/reflection/structural_equal.cc",
+      "additions": 2,
+      "deletions": 2
+    },
+    {
+      "path": "src/ffi/reflection/structural_hash.cc",
+      "additions": 2,
+      "deletions": 2
+    },
+    {
+      "path": "tests/cpp/test_reflection_accessor.cc",
+      "additions": 5,
+      "deletions": 0
+    },
+    {
+      "path": "tests/cpp/testing_object.h",
+      "additions": 4,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/include/tvm/ffi/c_api.h b/include/tvm/ffi/c_api.h\nindex 188f530..59b6877 100644\n--- a/include/tvm/ffi/c_api.h\n+++ b/include/tvm/ffi/c_api.h\n@@ -534,7 +534,22 @@ typedef struct {\n    * \\brief Optional meta-data for structural eq/hash.\n    */\n   TVMFFISEqHashKind structural_eq_hash_kind;\n-} TVMFFITypeExtraInfo;\n+} TVMFFITypeMetadata;\n+\n+/*\n+ * \\brief Column array that stores extra attributes about types\n+ *\n+ * The attributes stored in column arrays that can be looked up by type index.\n+ *\n+ * \\note\n+ * \\sa TVMFFIRegisterTypeAttr\n+ */\n+typedef struct {\n+  /*! \\brief The data of the column. */\n+  const TVMFFIAny* data;\n+  /*! \\brief The size of the column. */\n+  size_t size;\n+} TVMFFITypeAttrColumn;\n \n /*!\n  * \\brief Runtime type information for object type checking.\n@@ -567,7 +582,7 @@ typedef struct TVMFFITypeInfo {\n   /*! \\brief The reflection method. */\n   const TVMFFIMethodInfo* methods;\n   /*! \\brief The extra information of the type. */\n-  const TVMFFITypeExtraInfo* extra_info;\n+  const TVMFFITypeMetadata* metadata;\n } TVMFFITypeInfo;\n \n //------------------------------------------------------------\n@@ -738,11 +753,27 @@ TVM_FFI_DLL int TVMFFITypeRegisterMethod(int32_t type_index, const TVMFFIMethodI\n /*!\n  * \\brief Register type creator information for runtime reflection.\n  * \\param type_index The type index\n- * \\param extra_info The extra information to be registered.\n+ * \\param metadata The extra information to be registered.\n  * \\return 0 when success, nonzero when failure happens\n  */\n-TVM_FFI_DLL int TVMFFITypeRegisterExtraInfo(int32_t type_index,\n-                                            const TVMFFITypeExtraInfo* extra_info);\n+TVM_FFI_DLL int TVMFFITypeRegisterMetadata(int32_t type_index, const TVMFFITypeMetadata* metadata);\n+\n+/*!\n+ * \\brief Register extra type attributes that can be looked up during runtime.\n+ * \\param type_index The type index\n+ * \\param attr_value The attribute value to be registered.\n+ * \\return 0 when success, nonzero when failure happens\n+ */\n+TVM_FFI_DLL int TVMFFITypeRegisterAttr(int32_t type_index, const TVMFFIByteArray* attr_name,\n+                                       const TVMFFIAny* attr_value);\n+\n+/*!\n+ * \\brief Get the type attribute column by name.\n+ * \\param attr_name The name of the attribute.\n+ * \\return The pointer to the type attribute column.\n+ * \\return NULL if the attribute was not registered in the system\n+ */\n+TVM_FFI_DLL const TVMFFITypeAttrColumn* TVMFFIGetTypeAttrColumn(const TVMFFIByteArray* attr_name);\n \n //------------------------------------------------------------\n // Section: DLPack support APIs\ndiff --git a/include/tvm/ffi/reflection/accessor.h b/include/tvm/ffi/reflection/accessor.h\nindex 17cd1db..40adfa3 100644\n--- a/include/tvm/ffi/reflection/accessor.h\n+++ b/include/tvm/ffi/reflection/accessor.h\n@@ -104,6 +104,29 @@ class FieldSetter {\n   const TVMFFIFieldInfo* field_info_;\n };\n \n+class TypeAttrColumn {\n+ public:\n+  explicit TypeAttrColumn(std::string_view attr_name) {\n+    TVMFFIByteArray attr_name_array = {attr_name.data(), attr_name.size()};\n+    column_ = TVMFFIGetTypeAttrColumn(&attr_name_array);\n+    if (column_ == nullptr) {\n+      TVM_FFI_THROW(RuntimeError) << \"Cannot find type attribute \" << attr_name;\n+    }\n+  }\n+\n+  AnyView operator[](int32_t type_index) const {\n+    size_t tindex = static_cast<size_t>(type_index);\n+    if (tindex >= column_->size) {\n+      return AnyView();\n+    }\n+    const AnyView* any_view_data = reinterpret_cast<const AnyView*>(column_->data);\n+    return any_view_data[tindex];\n+  }\n+\n+ private:\n+  const TVMFFITypeAttrColumn* column_;\n+};\n+\n /*!\n  * \\brief helper function to get reflection method info by type key and method name\n  *\ndiff --git a/include/tvm/ffi/reflection/registry.h b/include/tvm/ffi/reflection/registry.h\nindex abd1851..14b4939 100644\n--- a/include/tvm/ffi/reflection/registry.h\n+++ b/include/tvm/ffi/reflection/registry.h\n@@ -150,7 +150,7 @@ class ReflectionDefBase {\n   }\n \n   template <typename T>\n-  TVM_FFI_INLINE static void ApplyExtraInfoTrait(TVMFFITypeExtraInfo* info, const T& value) {\n+  TVM_FFI_INLINE static void ApplyExtraInfoTrait(TVMFFITypeMetadata* info, const T& value) {\n     if constexpr (std::is_same_v<std::decay_t<T>, char*>) {\n       info->doc = TVMFFIByteArray{value, std::char_traits<char>::length(value)};\n     }\n@@ -381,7 +381,7 @@ class ObjectDef : public ReflectionDefBase {\n  private:\n   template <typename... ExtraArgs>\n   void RegisterExtraInfo(ExtraArgs&&... extra_args) {\n-    TVMFFITypeExtraInfo info;\n+    TVMFFITypeMetadata info;\n     info.total_size = sizeof(Class);\n     info.structural_eq_hash_kind = Class::_type_s_eq_hash_kind;\n     info.creator = nullptr;\n@@ -391,7 +391,7 @@ class ObjectDef : public ReflectionDefBase {\n     }\n     // apply extra info traits\n     ((ApplyExtraInfoTrait(&info, std::forward<ExtraArgs>(extra_args)), ...));\n-    TVM_FFI_CHECK_SAFE_CALL(TVMFFITypeRegisterExtraInfo(type_index_, &info));\n+    TVM_FFI_CHECK_SAFE_CALL(TVMFFITypeRegisterMetadata(type_index_, &info));\n   }\n \n   template <typename T, typename BaseClass, typename... ExtraArgs>\n@@ -446,6 +446,68 @@ class ObjectDef : public ReflectionDefBase {\n   const char* type_key_;\n };\n \n+template <typename Class, typename = std::enable_if_t<std::is_base_of_v<Object, Class>>>\n+class TypeAttrDef : public ReflectionDefBase {\n+ public:\n+  template <typename... ExtraArgs>\n+  explicit TypeAttrDef(ExtraArgs&&... extra_args)\n+      : type_index_(Class::RuntimeTypeIndex()), type_key_(Class::_type_key) {}\n+\n+  /*\n+   * \\brief Define a function-valued type attribute.\n+   *\n+   * \\tparam Func The function type.\n+   *\n+   * \\param name The name of the function.\n+   * \\param func The function to be registered.\n+   *\n+   * \\return The TypeAttrDef object.\n+   */\n+  template <typename Func>\n+  TypeAttrDef& def(const char* name, Func&& func) {\n+    TVMFFIByteArray name_array = {name, std::char_traits<char>::length(name)};\n+    ffi::Function ffi_func =\n+        GetMethod<Class>(std::string(type_key_) + \".\" + name, std::forward<Func>(func));\n+    TVMFFIAny value_any = AnyView(ffi_func).CopyToTVMFFIAny();\n+    TVM_FFI_CHECK_SAFE_CALL(TVMFFITypeRegisterAttr(type_index_, &name_array, &value_any));\n+    return *this;\n+  }\n+\n+  /*\n+   * \\brief Define a constant-valued type attribute.\n+   *\n+   * \\tparam T The type of the value.\n+   *\n+   * \\param name The name of the attribute.\n+   * \\param value The value of the attribute.\n+   *\n+   * \\return The TypeAttrDef object.\n+   */\n+  template <typename T>\n+  TypeAttrDef& attr(const char* name, T value) {\n+    TVMFFIByteArray name_array = {name, std::char_traits<char>::length(name)};\n+    TVMFFIAny value_any = AnyView(value).CopyToTVMFFIAny();\n+    TVM_FFI_CHECK_SAFE_CALL(TVMFFITypeRegisterAttr(type_index_, &name_array, &value_any));\n+    return *this;\n+  }\n+\n+ private:\n+  int32_t type_index_;\n+  const char* type_key_;\n+};\n+\n+/*!\n+ * \\brief Ensure the type attribute column is presented in the system.\n+ *\n+ * \\param name The name of the type attribute.\n+ */\n+inline void EnsureTypeAttrColumn(std::string_view name) {\n+  TVMFFIByteArray name_array = {name.data(), name.size()};\n+  AnyView any_view(nullptr);\n+  TVM_FFI_CHECK_SAFE_CALL(TVMFFITypeRegisterAttr(kTVMFFINone, &name_array,\n+                                                 reinterpret_cast<const TVMFFIAny*>(&any_view)));\n+}\n+\n }  // namespace reflection\n }  // namespace ffi\n }  // namespace tvm\ndiff --git a/src/ffi/object.cc b/src/ffi/object.cc\nindex a0d7a2f..863b43b 100644\n--- a/src/ffi/object.cc\n+++ b/src/ffi/object.cc\n@@ -59,7 +59,7 @@ class TypeTable {\n     /*! \\brief type methods informaton */\n     std::vector<TVMFFIMethodInfo> type_methods_data;\n     /*! \\brief extra information */\n-    TVMFFITypeExtraInfo extra_info_data;\n+    TVMFFITypeMetadata metadata_data;\n     // NOTE: the indices in [index, index + num_reserved_slots) are\n     // reserved for the child-class of this type.\n     /*! \\brief Total number of slots reserved for the type and its children. */\n@@ -100,10 +100,14 @@ class TypeTable {\n       this->num_methods = 0;\n       this->fields = nullptr;\n       this->methods = nullptr;\n-      this->extra_info = nullptr;\n+      this->metadata = nullptr;\n     }\n   };\n \n+  struct TypeAttrColumnData : public TVMFFITypeAttrColumn {\n+    std::vector<Any> data_;\n+  };\n+\n   int32_t GetOrAllocTypeIndex(String type_key, int32_t static_type_index, int32_t type_depth,\n                               int32_t num_child_slots, bool child_slots_can_overflow,\n                               int32_t parent_type_index) {\n@@ -219,9 +223,9 @@ class TypeTable {\n     entry->num_methods = static_cast<int32_t>(entry->type_methods_data.size());\n   }\n \n-  void RegisterTypeExtraInfo(int32_t type_index, const TVMFFITypeExtraInfo* extra_info) {\n+  void RegisterTypeMetadata(int32_t type_index, const TVMFFITypeMetadata* metadata) {\n     Entry* entry = GetTypeEntry(type_index);\n-    if (entry->extra_info != nullptr) {\n+    if (entry->metadata != nullptr) {\n       TVM_FFI_LOG_AND_THROW(RuntimeError)\n           << \"Overriding \" << ToStringView(entry->type_key) << \", possible causes:\\n\"\n           << \"- two ObjectDef<T>() calls for the same T \\n\"\n@@ -229,9 +233,39 @@ class TypeTable {\n           << \"- another type with the same key is already registered\\n\"\n           << \"Cross check the reflection registration.\";\n     }\n-    entry->extra_info_data = *extra_info;\n-    entry->extra_info_data.doc = this->CopyString(extra_info->doc);\n-    entry->extra_info = &(entry->extra_info_data);\n+    entry->metadata_data = *metadata;\n+    entry->metadata_data.doc = this->CopyString(metadata->doc);\n+    entry->metadata = &(entry->metadata_data);\n+  }\n+\n+  void RegisterTypeAttr(int32_t type_index, const TVMFFIByteArray* name, const TVMFFIAny* value) {\n+    AnyView value_view = AnyView::CopyFromTVMFFIAny(*value);\n+    String name_str(*name);\n+    size_t column_index = 0;\n+    auto it = type_attr_name_to_column_index_.find(name_str);\n+    if (it == type_attr_name_to_column_index_.end()) {\n+      column_index = type_attr_columns_.size();\n+      type_attr_columns_.emplace_back(std::make_unique<TypeAttrColumnData>());\n+      type_attr_name_to_column_index_.Set(name_str, column_index);\n+    }\n+    TypeAttrColumnData* column = type_attr_columns_[column_index].get();\n+    if (column->data_.size() < static_cast<size_t>(type_index + 1)) {\n+      column->data_.resize(type_index + 1, Any(nullptr));\n+      column->data = reinterpret_cast<const TVMFFIAny*>(column->data_.data());\n+      column->size = column->data_.size();\n+    }\n+    if (type_index == kTVMFFINone) return;\n+    if (column->data_[type_index] != nullptr) {\n+      TVM_FFI_THROW(RuntimeError) << \"Type attribute `\" << name_str << \"` is already set for type `\"\n+                                  << TypeIndexToTypeKey(type_index) << \"`\";\n+    }\n+    column->data_[type_index] = value_view;\n+  }\n+  const TVMFFITypeAttrColumn* GetTypeAttrColumn(const TVMFFIByteArray* name) {\n+    String name_str(*name);\n+    auto it = type_attr_name_to_column_index_.find(name_str);\n+    if (it == type_attr_name_to_column_index_.end()) return nullptr;\n+    return type_attr_columns_[(*it).second].get();\n   }\n \n   void Dump(int min_children_count) {\n@@ -284,11 +318,11 @@ class TypeTable {\n     this->GetOrAllocTypeIndex(Object::_type_key, Object::_type_index, Object::_type_depth,\n                               Object::_type_child_slots, Object::_type_child_slots_can_overflow,\n                               -1);\n-    TVMFFITypeExtraInfo info;\n+    TVMFFITypeMetadata info;\n     info.total_size = sizeof(Object);\n     info.creator = nullptr;\n     info.doc = TVMFFIByteArray{nullptr, 0};\n-    RegisterTypeExtraInfo(Object::_type_index, &info);\n+    RegisterTypeMetadata(Object::_type_index, &info);\n     // reserve the static types\n     ReserveBuiltinTypeIndex(StaticTypeKey::kTVMFFINone, TypeIndex::kTVMFFINone);\n     ReserveBuiltinTypeIndex(StaticTypeKey::kTVMFFIInt, TypeIndex::kTVMFFIInt);\n@@ -328,6 +362,9 @@ class TypeTable {\n   std::vector<std::unique_ptr<Entry>> type_table_;\n   Map<String, int64_t> type_key2index_;\n   std::vector<Any> any_pool_;\n+  // type attribute columns\n+  std::vector<std::unique_ptr<TypeAttrColumnData>> type_attr_columns_;\n+  Map<String, int64_t> type_attr_name_to_column_index_;\n };\n \n void MakeObjectFromPackedArgs(ffi::PackedArgs args, Any* ret) {\n@@ -343,12 +380,12 @@ void MakeObjectFromPackedArgs(ffi::PackedArgs args, Any* ret) {\n   TVM_FFI_ICHECK(args.size() % 2 == 1);\n   const TVMFFITypeInfo* type_info = TVMFFIGetTypeInfo(type_index);\n \n-  if (type_info->extra_info == nullptr || type_info->extra_info->creator == nullptr) {\n+  if (type_info->metadata == nullptr || type_info->metadata->creator == nullptr) {\n     TVM_FFI_THROW(RuntimeError) << \"Type `\" << TypeIndexToTypeKey(type_index)\n                                 << \"` does not support reflection creation\";\n   }\n   TVMFFIObjectHandle handle;\n-  TVM_FFI_CHECK_SAFE_CALL(type_info->extra_info->creator(&handle));\n+  TVM_FFI_CHECK_SAFE_CALL(type_info->metadata->creator(&handle));\n   ObjectPtr<Object> ptr =\n       details::ObjectUnsafe::ObjectPtrFromOwned<Object>(static_cast<TVMFFIObject*>(handle));\n \n@@ -437,12 +474,25 @@ int TVMFFITypeRegisterMethod(int32_t type_index, const TVMFFIMethodInfo* info) {\n   TVM_FFI_SAFE_CALL_END();\n }\n \n-int TVMFFITypeRegisterExtraInfo(int32_t type_index, const TVMFFITypeExtraInfo* extra_info) {\n+int TVMFFITypeRegisterMetadata(int32_t type_index, const TVMFFITypeMetadata* metadata) {\n   TVM_FFI_SAFE_CALL_BEGIN();\n-  tvm::ffi::TypeTable::Global()->RegisterTypeExtraInfo(type_index, extra_info);\n+  tvm::ffi::TypeTable::Global()->RegisterTypeMetadata(type_index, metadata);\n   TVM_FFI_SAFE_CALL_END();\n }\n \n+int TVMFFITypeRegisterAttr(int32_t type_index, const TVMFFIByteArray* name,\n+                           const TVMFFIAny* value) {\n+  TVM_FFI_SAFE_CALL_BEGIN();\n+  tvm::ffi::TypeTable::Global()->RegisterTypeAttr(type_index, name, value);\n+  TVM_FFI_SAFE_CALL_END();\n+}\n+\n+const TVMFFITypeAttrColumn* TVMFFIGetTypeAttrColumn(const TVMFFIByteArray* name) {\n+  TVM_FFI_LOG_EXCEPTION_CALL_BEGIN();\n+  return tvm::ffi::TypeTable::Global()->GetTypeAttrColumn(name);\n+  TVM_FFI_LOG_EXCEPTION_CALL_END(TVMFFIGetTypeAttrColumn);\n+}\n+\n int32_t TVMFFITypeGetOrAllocIndex(const TVMFFIByteArray* type_key, int32_t static_type_index,\n                                   int32_t type_depth, int32_t num_child_slots,\n                                   int32_t child_slots_can_overflow, int32_t parent_type_index) {\ndiff --git a/src/ffi/reflection/structural_equal.cc b/src/ffi/reflection/structural_equal.cc\nindex 622a487..6716644 100644\n--- a/src/ffi/reflection/structural_equal.cc\n+++ b/src/ffi/reflection/structural_equal.cc\n@@ -89,10 +89,10 @@ class StructEqualHandler {\n   bool CompareObject(ObjectRef lhs, ObjectRef rhs) {\n     // NOTE: invariant: lhs and rhs are already the same type\n     const TVMFFITypeInfo* type_info = TVMFFIGetTypeInfo(lhs->type_index());\n-    if (type_info->extra_info == nullptr) {\n+    if (type_info->metadata == nullptr) {\n       return lhs.same_as(rhs);\n     }\n-    auto structural_eq_hash_kind = type_info->extra_info->structural_eq_hash_kind;\n+    auto structural_eq_hash_kind = type_info->metadata->structural_eq_hash_kind;\n \n     if (structural_eq_hash_kind == kTVMFFISEqHashKindUnsupported ||\n         structural_eq_hash_kind == kTVMFFISEqHashKindUniqueInstance) {\ndiff --git a/src/ffi/reflection/structural_hash.cc b/src/ffi/reflection/structural_hash.cc\nindex dd4167c..fc44790 100644\n--- a/src/ffi/reflection/structural_hash.cc\n+++ b/src/ffi/reflection/structural_hash.cc\n@@ -82,11 +82,11 @@ class StructuralHashHandler {\n   uint64_t HashObject(ObjectRef obj) {\n     // NOTE: invariant: lhs and rhs are already the same type\n     const TVMFFITypeInfo* type_info = TVMFFIGetTypeInfo(obj->type_index());\n-    if (type_info->extra_info == nullptr) {\n+    if (type_info->metadata == nullptr) {\n       // Fallback to pointer hash\n       return std::hash<const Object*>()(obj.get());\n     }\n-    auto structural_eq_hash_kind = type_info->extra_info->structural_eq_hash_kind;\n+    auto structural_eq_hash_kind = type_info->metadata->structural_eq_hash_kind;\n     if (structural_eq_hash_kind == kTVMFFISEqHashKindUnsupported) {\n       // Fallback to pointer hash\n       return std::hash<const Object*>()(obj.get());\ndiff --git a/tests/cpp/test_reflection_accessor.cc b/tests/cpp/test_reflection_accessor.cc\nindex b657f5f..6450bd6 100644\n--- a/tests/cpp/test_reflection_accessor.cc\n+++ b/tests/cpp/test_reflection_accessor.cc\n@@ -143,6 +143,11 @@ TEST(Reflection, ForEachFieldInfo) {\n   EXPECT_EQ(field_name_to_offset[\"z\"], 16 + sizeof(TVMFFIObject));\n }\n \n+TEST(Reflection, TypeAttrColumn) {\n+  reflection::TypeAttrColumn size_attr(\"test.size\");\n+  EXPECT_EQ(size_attr[TIntObj::_type_index].cast<int>(), sizeof(TIntObj));\n+}\n+\n TVM_FFI_STATIC_INIT_BLOCK({\n   namespace refl = tvm::ffi::reflection;\n   refl::GlobalDef().def_method(\"testing.Int_GetValue\", &TIntObj::GetValue);\ndiff --git a/tests/cpp/testing_object.h b/tests/cpp/testing_object.h\nindex 8786d19..37fb741 100644\n--- a/tests/cpp/testing_object.h\n+++ b/tests/cpp/testing_object.h\n@@ -83,6 +83,10 @@ inline void TIntObj::RegisterReflection() {\n   refl::ObjectDef<TIntObj>()\n       .def_ro(\"value\", &TIntObj::value)\n       .def_static(\"static_add\", &TInt::StaticAdd, \"static add method\");\n+  // define extra type attributes\n+  refl::TypeAttrDef<TIntObj>()\n+      .def(\"test.GetValue\", &TIntObj::GetValue)\n+      .attr(\"test.size\", sizeof(TIntObj));\n }\n \n class TFloatObj : public TNumberObj {",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".cc",
+      ".h"
+    ],
+    "scopes_guess": [
+      "include",
+      "src",
+      "tests"
+    ]
+  }
+}

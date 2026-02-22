@@ -1,0 +1,51 @@
+{
+  "sha": "9a1539943bcd1bcf66d8cc21586f8cb5615dd208",
+  "sha7": "9a15399",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-11-17T13:51:41-05:00",
+  "subject": "[LINT][MINOR] Fix clang-tidy (#275)",
+  "body": "Fix two clang-tidy in two recent changes.",
+  "is_merge": false,
+  "parents": [
+    "dd3de0746b50009091a0ecc3e63bfcf2e4a2da94"
+  ],
+  "name_status": [
+    [
+      "M",
+      "include/tvm/ffi/function.h"
+    ],
+    [
+      "M",
+      "src/ffi/testing/testing.cc"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "include/tvm/ffi/function.h",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "src/ffi/testing/testing.cc",
+      "additions": 1,
+      "deletions": 1
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/include/tvm/ffi/function.h b/include/tvm/ffi/function.h\nindex 6db5435..b339c8c 100644\n--- a/include/tvm/ffi/function.h\n+++ b/include/tvm/ffi/function.h\n@@ -770,7 +770,7 @@ class TypedFunction<R(Args...)> {\n    * \\param args The arguments\n    * \\returns The return value.\n    */\n-  TVM_FFI_INLINE R operator()(Args... args) const {\n+  TVM_FFI_INLINE R operator()(Args... args) const {  // NOLINT(performance-unnecessary-value-param)\n     if constexpr (std::is_same_v<R, void>) {\n       packed_(std::forward<Args>(args)...);\n     } else {\ndiff --git a/src/ffi/testing/testing.cc b/src/ffi/testing/testing.cc\nindex 056ac68..8d068b4 100644\n--- a/src/ffi/testing/testing.cc\n+++ b/src/ffi/testing/testing.cc\n@@ -271,7 +271,7 @@ TVM_FFI_STATIC_INIT_BLOCK() {\n              return reinterpret_cast<int64_t>(reinterpret_cast<void*>(_mlir_add_one_c_symbol));\n            })\n       .def(\"testing.optional_tensor_view_has_value\",\n-           [](Optional<TensorView> t) { return t.has_value(); })\n+           [](const Optional<TensorView>& t) { return t.has_value(); })\n       .def_method(\"testing.TestIntPairSum\", &TestIntPair::Sum, \"Get sum of the pair\");\n }\n ",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".cc",
+      ".h"
+    ],
+    "scopes_guess": [
+      "include",
+      "src"
+    ]
+  }
+}

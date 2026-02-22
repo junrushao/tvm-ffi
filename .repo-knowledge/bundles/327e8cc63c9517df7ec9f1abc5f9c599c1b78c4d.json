@@ -1,0 +1,51 @@
+{
+  "sha": "327e8cc63c9517df7ec9f1abc5f9c599c1b78c4d",
+  "sha7": "327e8cc",
+  "author_name": "Kathryn (Jinqi) Chen",
+  "author_email": "65606304+Kathryn-cat@users.noreply.github.com",
+  "date_iso": "2025-09-28T17:27:14-07:00",
+  "subject": "[ERROR] TVM_FFI_CHECK throw error condition (#69)",
+  "body": "",
+  "is_merge": false,
+  "parents": [
+    "fde8dabbba8aa0ea8133a02fcd9ff0190d830948"
+  ],
+  "name_status": [
+    [
+      "M",
+      "include/tvm/ffi/error.h"
+    ],
+    [
+      "M",
+      "tests/cpp/test_error.cc"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "include/tvm/ffi/error.h",
+      "additions": 3,
+      "deletions": 0
+    },
+    {
+      "path": "tests/cpp/test_error.cc",
+      "additions": 44,
+      "deletions": 0
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/include/tvm/ffi/error.h b/include/tvm/ffi/error.h\nindex b4d9d3a..c22747e 100644\n--- a/include/tvm/ffi/error.h\n+++ b/include/tvm/ffi/error.h\n@@ -362,6 +362,9 @@ TVM_FFI_CHECK_FUNC(_NE, !=)\n #define TVM_FFI_ICHECK(x) \\\n   if (!(x)) TVM_FFI_THROW(InternalError) << \"Check failed: (\" #x << \") is false: \"\n \n+#define TVM_FFI_CHECK(ErrorKind, cond) \\\n+  if (!(cond)) TVM_FFI_THROW(ErrorKind) << \"Check failed: (\" #cond << \") is false: \"\n+\n #define TVM_FFI_ICHECK_LT(x, y) TVM_FFI_ICHECK_BINARY_OP(_LT, <, x, y)\n #define TVM_FFI_ICHECK_GT(x, y) TVM_FFI_ICHECK_BINARY_OP(_GT, >, x, y)\n #define TVM_FFI_ICHECK_LE(x, y) TVM_FFI_ICHECK_BINARY_OP(_LE, <=, x, y)\ndiff --git a/tests/cpp/test_error.cc b/tests/cpp/test_error.cc\nindex 157673d..f224af4 100644\n--- a/tests/cpp/test_error.cc\n+++ b/tests/cpp/test_error.cc\n@@ -61,6 +61,50 @@ TEST(CheckError, Backtrace) {\n       ::tvm::ffi::Error);\n }\n \n+TEST(CheckError, ValueError) {\n+  int value = -5;\n+  EXPECT_THROW(\n+      {\n+        try {\n+          TVM_FFI_CHECK(ValueError, value >= 0) << \"Value must be non-negative, got \" << value;\n+        } catch (const Error& error) {\n+          EXPECT_EQ(error.kind(), \"ValueError\");\n+          std::string what = error.what();\n+          EXPECT_NE(what.find(\"line\"), std::string::npos);\n+          EXPECT_NE(what.find(\"Check failed: (value >= 0) is false\"), std::string::npos);\n+          EXPECT_NE(what.find(\"Value must be non-negative, got -5\"), std::string::npos);\n+          throw;\n+        }\n+      },\n+      ::tvm::ffi::Error);\n+}\n+\n+TEST(CheckError, IndexError) {\n+  int index = 10;\n+  int array_size = 5;\n+  EXPECT_THROW(\n+      {\n+        try {\n+          TVM_FFI_CHECK(IndexError, index < array_size)\n+              << \"Index \" << index << \" out of bounds for array of size \" << array_size;\n+        } catch (const Error& error) {\n+          EXPECT_EQ(error.kind(), \"IndexError\");\n+          std::string what = error.what();\n+          EXPECT_NE(what.find(\"line\"), std::string::npos);\n+          EXPECT_NE(what.find(\"Check failed: (index < array_size) is false\"), std::string::npos);\n+          EXPECT_NE(what.find(\"Index 10 out of bounds for array of size 5\"), std::string::npos);\n+          throw;\n+        }\n+      },\n+      ::tvm::ffi::Error);\n+}\n+\n+TEST(CheckError, PassingCondition) {\n+  // This should not throw\n+  EXPECT_NO_THROW(TVM_FFI_CHECK(ValueError, true));\n+  EXPECT_NO_THROW(TVM_FFI_CHECK(IndexError, 5 < 10));\n+}\n+\n TEST(Error, AnyConvert) {\n   Any any = Error(\"TypeError\", \"here\", \"test0\");\n   Optional<Error> opt_err = any.as<Error>();",
+  "heuristics": {
+    "tags": [
+      "test"
+    ],
+    "extensions": [
+      ".cc",
+      ".h"
+    ],
+    "scopes_guess": [
+      "include",
+      "tests"
+    ]
+  }
+}

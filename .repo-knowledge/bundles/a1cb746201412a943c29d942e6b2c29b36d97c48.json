@@ -1,0 +1,108 @@
+{
+  "sha": "a1cb746201412a943c29d942e6b2c29b36d97c48",
+  "sha7": "a1cb746",
+  "author_name": "Junru Shao",
+  "author_email": "junrushao@apache.org",
+  "date_iso": "2025-12-22T10:15:18-08:00",
+  "subject": "build: Rename Import Targets (#354)",
+  "body":
+      "This PR renames imported targets in `tvm_ffi-config.cmake`\n- `tvm_ffi_shared` => `tvm_ffi::shared`\n- `tvm_ffi_header` => `tvm_ffi::header`\n\nin order to avoid name conflicts with targets defined in\n`CMakeLists.txt`",
+  "is_merge": false,
+  "parents": [
+    "dc0dd2f6e8367e3bb244e0dc09c6a1a41495499d"
+  ],
+  "name_status": [
+    [
+      "M",
+      "cmake/Utils/EmbedCubin.cmake"
+    ],
+    [
+      "M",
+      "cmake/Utils/Library.cmake"
+    ],
+    [
+      "M",
+      "cmake/tvm_ffi-config.cmake"
+    ],
+    [
+      "M",
+      "docs/get_started/quickstart.rst"
+    ],
+    [
+      "M",
+      "examples/cubin_launcher/dynamic_cubin/CMakeLists.txt"
+    ],
+    [
+      "M",
+      "examples/cubin_launcher/embedded_cubin/CMakeLists.txt"
+    ],
+    [
+      "M",
+      "examples/quickstart/CMakeLists.txt"
+    ],
+    [
+      "M",
+      "examples/stable_c_abi/CMakeLists.txt"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "cmake/Utils/EmbedCubin.cmake",
+      "additions": 12,
+      "deletions": 2
+    },
+    {
+      "path": "cmake/Utils/Library.cmake",
+      "additions": 12,
+      "deletions": 11
+    },
+    {
+      "path": "cmake/tvm_ffi-config.cmake",
+      "additions": 10,
+      "deletions": 11
+    },
+    {
+      "path": "docs/get_started/quickstart.rst",
+      "additions": 2,
+      "deletions": 2
+    },
+    {
+      "path": "examples/cubin_launcher/dynamic_cubin/CMakeLists.txt",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "examples/cubin_launcher/embedded_cubin/CMakeLists.txt",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "examples/quickstart/CMakeLists.txt",
+      "additions": 3,
+      "deletions": 5
+    },
+    {
+      "path": "examples/stable_c_abi/CMakeLists.txt",
+      "additions": 2,
+      "deletions": 4
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/cmake/Utils/EmbedCubin.cmake b/cmake/Utils/EmbedCubin.cmake\nindex 7244f0f..26af6d8 100644\n--- a/cmake/Utils/EmbedCubin.cmake\n+++ b/cmake/Utils/EmbedCubin.cmake\n@@ -173,8 +173,18 @@ function (tvm_ffi_embed_cubin)\n   get_filename_component(OUTPUT_NAME \"${ARG_OUTPUT_ABS}\" NAME_WE)\n   set(INTERMEDIATE_OBJ \"${OUTPUT_DIR}/${OUTPUT_NAME}_intermediate.o\")\n \n-  # Get include directories from tvm_ffi_header\n-  get_target_property(TVM_FFI_INCLUDES tvm_ffi_header INTERFACE_INCLUDE_DIRECTORIES)\n+  # Get include directories from tvm_ffi header target\n+  if (TARGET tvm_ffi::header)\n+    set(TVM_FFI_HEADER_TARGET tvm_ffi::header)\n+  elseif (TARGET tvm_ffi_header)\n+    set(TVM_FFI_HEADER_TARGET tvm_ffi_header)\n+  else ()\n+    message(\n+      FATAL_ERROR\n+        \"tvm_ffi_embed_cubin: required target 'tvm_ffi::header' or 'tvm_ffi_header' does not exist.\"\n+    )\n+  endif ()\n+  get_target_property(TVM_FFI_INCLUDES ${TVM_FFI_HEADER_TARGET} INTERFACE_INCLUDE_DIRECTORIES)\n \n   # Convert list to -I flags\n   set(INCLUDE_FLAGS \"\")\ndiff --git a/cmake/Utils/Library.cmake b/cmake/Utils/Library.cmake\nindex 012b3ca..e6d4e2d 100644\n--- a/cmake/Utils/Library.cmake\n+++ b/cmake/Utils/Library.cmake\n@@ -145,17 +145,18 @@ endfunction ()\n #   [STUB_INIT ON|OFF] [STUB_DIR <dir>] [STUB_PKG <pkg>] [STUB_PREFIX <prefix>]\n # )\n # Configure a target to integrate with TVM-FFI CMake utilities:\n-#   - Optionally link against tvm_ffi_header and/or tvm_ffi_shared\n+#   - Link against tvm_ffi::header and/or tvm_ffi::shared\n #   - Always apply tvm_ffi_add_prefix_map(target_name <current source dir>)\n-#   - Optionally enable Apple dSYM generation via tvm_ffi_add_apple_dsymutil(target_name)\n-#   - Optionally apply MSVC-specific flags via tvm_ffi_add_msvc_flags(target_name)\n+#   - Enable Apple dSYM generation via tvm_ffi_add_apple_dsymutil(target_name)\n+#   - Apply MSVC-specific flags via tvm_ffi_add_msvc_flags(target_name)\n+#   - Add post-build step to generate Python stubs via tvm_ffi.stub.cli\n #\n # Parameters:\n #   target_name: Existing CMake target to modify (positional, required)\n #\n # Keyword parameters:\n-#   LINK_SHARED:  Whether to link tvm_ffi_shared into the target (default: ON; ON/OFF-style)\n-#   LINK_HEADER:  Whether to link tvm_ffi_header into the target (default: ON; ON/OFF-style)\n+#   LINK_SHARED:  Whether to link tvm_ffi::shared into the target (default: ON; ON/OFF-style)\n+#   LINK_HEADER:  Whether to link tvm_ffi::header into the target (default: ON; ON/OFF-style)\n #   DEBUG_SYMBOL: Whether to enable debug symbol post-processing hooks.\n #                 On Apple this calls tvm_ffi_add_apple_dsymutil(target_name) (default: ON; ON/OFF-style)\n #                 On non-Apple platforms this is currently a no-op unless you extend it. (default: ON)\n@@ -257,24 +258,24 @@ function (tvm_ffi_configure_target target)\n \n   # LINK_HEADER\n   if (tvm_ffi_arg__LINK_HEADER)\n-    if (TARGET tvm_ffi_header)\n-      target_link_libraries(\"${target}\" PRIVATE tvm_ffi_header)\n+    if (TARGET tvm_ffi::header)\n+      target_link_libraries(\"${target}\" PRIVATE tvm_ffi::header)\n     else ()\n       message(\n         FATAL_ERROR\n-          \"tvm_ffi_configure_target(${target}): LINK_HEADER requested but target 'tvm_ffi_header' does not exist.\"\n+          \"tvm_ffi_configure_target(${target}): LINK_HEADER requested but targets 'tvm_ffi::header' do not exist.\"\n       )\n     endif ()\n   endif ()\n \n   # LINK_SHARED\n   if (tvm_ffi_arg__LINK_SHARED)\n-    if (TARGET tvm_ffi_shared)\n-      target_link_libraries(\"${target}\" PRIVATE tvm_ffi_shared)\n+    if (TARGET tvm_ffi::shared)\n+      target_link_libraries(\"${target}\" PRIVATE tvm_ffi::shared)\n     else ()\n       message(\n         FATAL_ERROR\n-          \"tvm_ffi_configure_target(${target}): LINK_SHARED requested but target 'tvm_ffi_shared' does not exist.\"\n+          \"tvm_ffi_configure_target(${target}): LINK_SHARED requested but targets 'tvm_ffi::shared' do not exist.\"\n       )\n     endif ()\n   endif ()\ndiff --git a/cmake/tvm_ffi-config.cmake b/cmake/tvm_ffi-config.cmake\nindex 2129193..63333da 100644\n--- a/cmake/tvm_ffi-config.cmake\n+++ b/cmake/tvm_ffi-config.cmake\n@@ -42,23 +42,22 @@ execute_process(\n \n message(STATUS \"Finding libfiles ${tvm_ffi_LIB_FILES}\")\n \n-add_library(tvm_ffi_header INTERFACE)\n-target_compile_features(tvm_ffi_header INTERFACE cxx_std_17)\n-target_include_directories(tvm_ffi_header INTERFACE \"${tvm_ffi_INCLUDE_DIR}\")\n-target_include_directories(tvm_ffi_header INTERFACE \"${tvm_ffi_DLPACK_INCLUDE_DIR}\")\n+add_library(tvm_ffi::header INTERFACE IMPORTED)\n+target_compile_features(tvm_ffi::header INTERFACE cxx_std_17)\n+target_include_directories(tvm_ffi::header INTERFACE \"${tvm_ffi_INCLUDE_DIR}\")\n+target_include_directories(tvm_ffi::header INTERFACE \"${tvm_ffi_DLPACK_INCLUDE_DIR}\")\n \n-add_library(tvm_ffi_shared SHARED IMPORTED)\n-target_compile_features(tvm_ffi_shared INTERFACE cxx_std_17)\n+add_library(tvm_ffi::shared SHARED IMPORTED)\n+target_compile_features(tvm_ffi::shared INTERFACE cxx_std_17)\n \n if (WIN32)\n-  set_target_properties(tvm_ffi_shared PROPERTIES IMPORTED_IMPLIB \"${tvm_ffi_LIB_FILES}\")\n+  set_target_properties(tvm_ffi::shared PROPERTIES IMPORTED_IMPLIB \"${tvm_ffi_LIB_FILES}\")\n else ()\n-  set_target_properties(tvm_ffi_shared PROPERTIES IMPORTED_LOCATION \"${tvm_ffi_LIB_FILES}\")\n+  set_target_properties(tvm_ffi::shared PROPERTIES IMPORTED_LOCATION \"${tvm_ffi_LIB_FILES}\")\n endif ()\n-# cmake-lint: disable=C0307\n set_target_properties(\n-  tvm_ffi_shared PROPERTIES INTERFACE_INCLUDE_DIRECTORIES\n-                            \"${tvm_ffi_INCLUDE_DIR};${tvm_ffi_DLPACK_INCLUDE_DIR}\"\n+  tvm_ffi::shared PROPERTIES INTERFACE_INCLUDE_DIRECTORIES\n+                             \"${tvm_ffi_INCLUDE_DIR};${tvm_ffi_DLPACK_INCLUDE_DIR}\"\n )\n \n include(${CMAKE_CURRENT_LIST_DIR}/Utils/Library.cmake)\ndiff --git a/docs/get_started/quickstart.rst b/docs/get_started/quickstart.rst\nindex c702c7c..958b0a4 100644\n--- a/docs/get_started/quickstart.rst\n+++ b/docs/get_started/quickstart.rst\n@@ -132,7 +132,7 @@ TVM-FFI natively integrates with CMake via ``find_package`` as demonstrated belo\n       execute_process(COMMAND \"${Python_EXECUTABLE}\" -m tvm_ffi.config --cmakedir OUTPUT_STRIP_TRAILING_WHITESPACE OUTPUT_VARIABLE tvm_ffi_ROOT)\n       find_package(tvm_ffi CONFIG REQUIRED)\n \n-      # Link C++ target to `tvm_ffi_header` and `tvm_ffi_shared`\n+      # Link C++ target to `tvm_ffi::header` and `tvm_ffi::shared`\n       add_library(add_one_cpu SHARED compile/add_one_cpu.cc)\n       tvm_ffi_configure_target(add_one_cpu)\n \n@@ -146,7 +146,7 @@ TVM-FFI natively integrates with CMake via ``find_package`` as demonstrated belo\n       execute_process(COMMAND \"${Python_EXECUTABLE}\" -m tvm_ffi.config --cmakedir OUTPUT_STRIP_TRAILING_WHITESPACE OUTPUT_VARIABLE tvm_ffi_ROOT)\n       find_package(tvm_ffi CONFIG REQUIRED)\n \n-      # Link CUDA target to `tvm_ffi_header` and `tvm_ffi_shared`\n+      # Link CUDA target to `tvm_ffi::header` and `tvm_ffi::shared`\n       add_library(add_one_cuda SHARED compile/add_one_cuda.cu)\n       tvm_ffi_configure_target(add_one_cuda)\n \ndiff --git a/examples/cubin_launcher/dynamic_cubin/CMakeLists.txt b/examples/cubin_launcher/dynamic_cubin/CMakeLists.txt\nindex 3ca7462..dd30d8b 100644\n--- a/examples/cubin_launcher/dynamic_cubin/CMakeLists.txt\n+++ b/examples/cubin_launcher/dynamic_cubin/CMakeLists.txt\n@@ -52,7 +52,7 @@ add_custom_target(\n \n # Step 2: Build lib_dynamic shared library (loads CUBIN from file at runtime)\n add_library(lib_dynamic SHARED src/lib_dynamic.cc)\n-target_link_libraries(lib_dynamic PRIVATE tvm_ffi_header tvm_ffi_shared CUDA::cudart)\n+target_link_libraries(lib_dynamic PRIVATE tvm_ffi::header tvm_ffi::shared CUDA::cudart)\n add_dependencies(lib_dynamic generate_cubin)\n set_target_properties(\n   lib_dynamic\ndiff --git a/examples/cubin_launcher/embedded_cubin/CMakeLists.txt b/examples/cubin_launcher/embedded_cubin/CMakeLists.txt\nindex 5286565..4480417 100644\n--- a/examples/cubin_launcher/embedded_cubin/CMakeLists.txt\n+++ b/examples/cubin_launcher/embedded_cubin/CMakeLists.txt\n@@ -58,7 +58,7 @@ tvm_ffi_embed_cubin(\n \n # Step 3: Build lib_embedded shared library (with embedded CUBIN)\n add_library(lib_embedded SHARED ${CMAKE_CURRENT_BINARY_DIR}/lib_embedded_with_cubin.o)\n-target_link_libraries(lib_embedded PRIVATE tvm_ffi_header tvm_ffi_shared CUDA::cudart)\n+target_link_libraries(lib_embedded PRIVATE tvm_ffi::header tvm_ffi::shared CUDA::cudart)\n set_target_properties(\n   lib_embedded\n   PROPERTIES LIBRARY_OUTPUT_DIRECTORY \"${CMAKE_BINARY_DIR}/\"\ndiff --git a/examples/quickstart/CMakeLists.txt b/examples/quickstart/CMakeLists.txt\nindex eaf7659..0ce0c21 100644\n--- a/examples/quickstart/CMakeLists.txt\n+++ b/examples/quickstart/CMakeLists.txt\n@@ -61,22 +61,20 @@ find_package(tvm_ffi CONFIG REQUIRED)\n if (EXAMPLE_NAME STREQUAL \"compile_cpu\")\n   # Example 1. C++ `add_one`\n   add_library(add_one_cpu SHARED compile/add_one_cpu.cc)\n-  target_link_libraries(add_one_cpu PRIVATE tvm_ffi_header)\n-  target_link_libraries(add_one_cpu PRIVATE tvm_ffi_shared)\n+  target_link_libraries(add_one_cpu PRIVATE tvm_ffi::header tvm_ffi::shared)\n   set_target_properties(add_one_cpu PROPERTIES PREFIX \"\" SUFFIX \".so\")\n   set_flat_output_dirs(add_one_cpu)\n elseif (EXAMPLE_NAME STREQUAL \"compile_cuda\")\n   # Example 2. CUDA `add_one`\n   enable_language(CUDA)\n   add_library(add_one_cuda SHARED compile/add_one_cuda.cu)\n-  target_link_libraries(add_one_cuda PRIVATE tvm_ffi_shared)\n+  target_link_libraries(add_one_cuda PRIVATE tvm_ffi::header tvm_ffi::shared)\n   set_target_properties(add_one_cuda PROPERTIES PREFIX \"\" SUFFIX \".so\")\n   set_flat_output_dirs(add_one_cuda)\n elseif (EXAMPLE_NAME STREQUAL \"load_cpp\")\n   # Example 3. Load C++ shared library\n   add_executable(load_cpp load/load_cpp.cc)\n-  target_link_libraries(load_cpp PRIVATE tvm_ffi_header)\n-  target_link_libraries(load_cpp PRIVATE tvm_ffi_shared)\n+  target_link_libraries(load_cpp PRIVATE tvm_ffi::header tvm_ffi::shared)\n   set_flat_output_dirs(load_cpp)\n else ()\n   message(FATAL_ERROR \"Unknown EXAMPLE_NAME option: ${EXAMPLE_NAME}. \"\ndiff --git a/examples/stable_c_abi/CMakeLists.txt b/examples/stable_c_abi/CMakeLists.txt\nindex a313034..f1d01d3 100644\n--- a/examples/stable_c_abi/CMakeLists.txt\n+++ b/examples/stable_c_abi/CMakeLists.txt\n@@ -58,8 +58,7 @@ find_package(tvm_ffi CONFIG REQUIRED)\n if (EXAMPLE_NAME STREQUAL \"kernel\")\n   # Example 1. `add_one_cpu` in C\n   add_library(add_one_cpu SHARED src/add_one_cpu.c)\n-  target_link_libraries(add_one_cpu PRIVATE tvm_ffi_header)\n-  target_link_libraries(add_one_cpu PRIVATE tvm_ffi_shared)\n+  target_link_libraries(add_one_cpu PRIVATE tvm_ffi::header tvm_ffi::shared)\n   set_target_properties(\n     add_one_cpu\n     PROPERTIES LIBRARY_OUTPUT_DIRECTORY \"${CMAKE_BINARY_DIR}/\"\n@@ -73,8 +72,7 @@ if (EXAMPLE_NAME STREQUAL \"kernel\")\n elseif (EXAMPLE_NAME STREQUAL \"load\")\n   # Example 2. Load `add_one_cpu` shared library in C\n   add_executable(load src/load.c)\n-  target_link_libraries(load PRIVATE tvm_ffi_header)\n-  target_link_libraries(load PRIVATE tvm_ffi_shared)\n+  target_link_libraries(load PRIVATE tvm_ffi::header tvm_ffi::shared)\n   set_target_properties(\n     load\n     PROPERTIES LIBRARY_OUTPUT_DIRECTORY \"${CMAKE_BINARY_DIR}/\"",
+  "heuristics": {
+    "tags": [
+      "build"
+    ],
+    "extensions": [
+      ".cmake",
+      ".rst",
+      ".txt"
+    ],
+    "scopes_guess": [
+      "cmake",
+      "docs",
+      "examples"
+    ]
+  }
+}

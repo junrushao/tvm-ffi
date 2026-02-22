@@ -1,0 +1,38 @@
+{
+  "sha": "f4a65cd1794f624b8d2a9548377a9edd956e4061",
+  "sha7": "f4a65cd",
+  "author_name": "Kathryn (Jinqi) Chen",
+  "author_email": "65606304+Kathryn-cat@users.noreply.github.com",
+  "date_iso": "2025-09-29T11:30:02-07:00",
+  "subject": "[DLPack] completely remove normalization (#72)",
+  "body": "",
+  "is_merge": false,
+  "parents": [
+    "ae06434d8363c9a668a63152bd35cb878209da9f"
+  ],
+  "name_status": [
+    [
+      "M",
+      "python/tvm_ffi/_optional_torch_c_dlpack.py"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "python/tvm_ffi/_optional_torch_c_dlpack.py",
+      "additions": 4,
+      "deletions": 15
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/python/tvm_ffi/_optional_torch_c_dlpack.py b/python/tvm_ffi/_optional_torch_c_dlpack.py\nindex bd88bff..c1bb1ef 100644\n--- a/python/tvm_ffi/_optional_torch_c_dlpack.py\n+++ b/python/tvm_ffi/_optional_torch_c_dlpack.py\n@@ -208,27 +208,16 @@ void fillVersion<DLManagedTensorVersioned>(\n // constructed out of ATen tensor\n template <class T>\n T* toDLPackImpl(const Tensor& src) {\n-  auto view = src;\n-\n-  bool need_normalize_strides = src.dim() == 1 && src.size(0) == 1 && src.stride(0) != 1;\n-  // less common case, try normalizing the strides\n-  if (need_normalize_strides) {\n-    // create a new tensor with possibly normalized strides\n-    // gh-83069\n-    auto shape = src.sizes();\n-    view = src.as_strided(shape, {1}, src.storage_offset());\n-  }\n-\n   ATenDLMTensor<T>* atDLMTensor(new ATenDLMTensor<T>);\n-  atDLMTensor->handle = view;\n+  atDLMTensor->handle = src;\n   atDLMTensor->tensor.manager_ctx = atDLMTensor;\n   atDLMTensor->tensor.deleter = &deleter<T>;\n-  atDLMTensor->tensor.dl_tensor.data = view.data_ptr();\n+  atDLMTensor->tensor.dl_tensor.data = src.data_ptr();\n   atDLMTensor->tensor.dl_tensor.device = torchDeviceToDLDeviceForDLPackv1(src.device());\n   atDLMTensor->tensor.dl_tensor.ndim = static_cast<int32_t>(src.dim());\n   atDLMTensor->tensor.dl_tensor.dtype = getDLDataTypeForDLPackv1(src);\n-  atDLMTensor->tensor.dl_tensor.shape = const_cast<int64_t*>(view.sizes().data());\n-  atDLMTensor->tensor.dl_tensor.strides = const_cast<int64_t*>(view.strides().data());\n+  atDLMTensor->tensor.dl_tensor.shape = const_cast<int64_t*>(src.sizes().data());\n+  atDLMTensor->tensor.dl_tensor.strides = const_cast<int64_t*>(src.strides().data());\n   atDLMTensor->tensor.dl_tensor.byte_offset = 0;\n   fillVersion(&atDLMTensor->tensor);\n   return &(atDLMTensor->tensor);",
+  "heuristics": {
+    "tags": [],
+    "extensions": [
+      ".py"
+    ],
+    "scopes_guess": [
+      "python"
+    ]
+  }
+}

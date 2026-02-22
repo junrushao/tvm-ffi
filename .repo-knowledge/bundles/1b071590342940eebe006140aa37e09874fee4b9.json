@@ -1,0 +1,52 @@
+{
+  "sha": "1b071590342940eebe006140aa37e09874fee4b9",
+  "sha7": "1b07159",
+  "author_name": "Tianqi Chen",
+  "author_email": "tqchen@users.noreply.github.com",
+  "date_iso": "2025-09-04T07:22:38-04:00",
+  "subject": "[FFI] Update torch stream getter to use native torch c api (#18266)",
+  "body":
+      "This PR updates the torch stream getter to use  _cuda_getCurrentRawStream\nin the torch C API that is also used by dynamo, saves us from load_inline\nthe custom module.",
+  "is_merge": false,
+  "parents": [
+    "86ba210e02e8b1376cc1786fd6e2762f6d22e256"
+  ],
+  "name_status": [
+    [
+      "M",
+      "pyproject.toml"
+    ],
+    [
+      "M",
+      "python/tvm_ffi/cython/function.pxi"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "pyproject.toml",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "python/tvm_ffi/cython/function.pxi",
+      "additions": 2,
+      "deletions": 38
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/pyproject.toml b/pyproject.toml\nindex 083a60f..ab2a7f8 100644\n--- a/pyproject.toml\n+++ b/pyproject.toml\n@@ -17,7 +17,7 @@\n \n [project]\n name = \"apache-tvm-ffi\"\n-version = \"0.1.0a6\"\n+version = \"0.1.0a7\"\n description = \"tvm ffi\"\n \n authors = [{ name = \"TVM FFI team\" }]\ndiff --git a/python/tvm_ffi/cython/function.pxi b/python/tvm_ffi/cython/function.pxi\nindex a223da9..064473e 100644\n--- a/python/tvm_ffi/cython/function.pxi\n+++ b/python/tvm_ffi/cython/function.pxi\n@@ -24,41 +24,6 @@ except ImportError:\n     torch = None\n \n \n-def load_torch_get_current_cuda_stream():\n-    \"\"\"Create a faster get_current_cuda_stream for torch through cpp extension.\n-    \"\"\"\n-    source = \"\"\"\n-    #include <c10/cuda/CUDAStream.h>\n-\n-    int64_t get_current_cuda_stream(int device_id) {\n-        at::cuda::CUDAStream stream = at::cuda::getCurrentCUDAStream(device_id);\n-        // fast invariant, default stream is always 0\n-        if (stream.id() == 0) return 0;\n-        // convert to cudaStream_t\n-        return reinterpret_cast<int64_t>(static_cast<cudaStream_t>(stream));\n-    }\n-    \"\"\"\n-    def fallback_get_current_cuda_stream(device_id):\n-        \"\"\"Fallback with python api\"\"\"\n-        return torch.cuda.current_stream(device_id).cuda_stream\n-    try:\n-        from torch.utils import cpp_extension\n-        result = cpp_extension.load_inline(\n-            name=\"get_current_cuda_stream\",\n-            cpp_sources=[source],\n-            cuda_sources=[],\n-            extra_cflags=[\"-O3\"],\n-            extra_include_paths=cpp_extension.include_paths(\"cuda\"),\n-            functions=[\"get_current_cuda_stream\"],\n-        )\n-        return result.get_current_cuda_stream\n-    except Exception:\n-        return fallback_get_current_cuda_stream\n-\n-\n-torch_get_current_cuda_stream = None\n-\n-\n cdef inline object make_ret_small_str(TVMFFIAny result):\n     \"\"\"convert small string to return value.\"\"\"\n     cdef TVMFFIByteArray bytes\n@@ -146,9 +111,8 @@ cdef inline int make_args(tuple py_args, TVMFFIAny* out, list temp_args,\n             if is_cuda and ctx_dev_type != NULL and ctx_dev_type[0] == -1:\n                 ctx_dev_type[0] = temp_dltensor.device.device_type\n                 ctx_dev_id[0] = temp_dltensor.device.device_id\n-                if torch_get_current_cuda_stream is None:\n-                    torch_get_current_cuda_stream = load_torch_get_current_cuda_stream()\n-                temp_ptr = torch_get_current_cuda_stream(temp_dltensor.device.device_id)\n+                # This is an API that dynamo and other uses to get the raw stream from torch\n+                temp_ptr = torch._C._cuda_getCurrentRawStream(temp_dltensor.device.device_id)\n                 ctx_stream[0] = <TVMFFIStreamHandle>temp_ptr\n             temp_args.append(arg)\n         elif hasattr(arg, \"__dlpack__\"):",
+  "heuristics": {
+    "tags": [
+      "build"
+    ],
+    "extensions": [
+      ".pxi",
+      ".toml"
+    ],
+    "scopes_guess": [
+      "pyproject.toml",
+      "python"
+    ]
+  }
+}

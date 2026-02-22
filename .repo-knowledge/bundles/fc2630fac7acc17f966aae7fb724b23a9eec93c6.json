@@ -1,0 +1,93 @@
+{
+  "sha": "fc2630fac7acc17f966aae7fb724b23a9eec93c6",
+  "sha7": "fc2630f",
+  "author_name": "Yixin Dong",
+  "author_email": "ubospica@gmail.com",
+  "date_iso": "2025-10-15T08:52:26-07:00",
+  "subject": "feat: Add a method to define initializer (#127)",
+  "body":
+      "This PR defines a `def(init<Args...>())` method to define a static\ninitializer function. This replaces the previous method of\n`def_static(\"__ffi_init__\", ...)`, and fully aligns with\nnanobind/pybind.",
+  "is_merge": false,
+  "parents": [
+    "a97b7c600885a33023c5332d74ef63c40a0ce3e4"
+  ],
+  "name_status": [
+    [
+      "M",
+      "docs/guides/cpp_guide.md"
+    ],
+    [
+      "M",
+      "docs/guides/python_guide.md"
+    ],
+    [
+      "M",
+      "include/tvm/ffi/reflection/registry.h"
+    ],
+    [
+      "M",
+      "src/ffi/testing/testing.cc"
+    ],
+    [
+      "M",
+      "tests/cpp/CMakeLists.txt"
+    ],
+    [
+      "M",
+      "tests/cpp/test_reflection.cc"
+    ]
+  ],
+  "numstat": [
+    {
+      "path": "docs/guides/cpp_guide.md",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "docs/guides/python_guide.md",
+      "additions": 5,
+      "deletions": 7
+    },
+    {
+      "path": "include/tvm/ffi/reflection/registry.h",
+      "additions": 79,
+      "deletions": 34
+    },
+    {
+      "path": "src/ffi/testing/testing.cc",
+      "additions": 7,
+      "deletions": 11
+    },
+    {
+      "path": "tests/cpp/CMakeLists.txt",
+      "additions": 1,
+      "deletions": 1
+    },
+    {
+      "path": "tests/cpp/test_reflection.cc",
+      "additions": 2,
+      "deletions": 2
+    }
+  ],
+  "diff_truncated": false,
+  "diff":
+      "diff --git a/docs/guides/cpp_guide.md b/docs/guides/cpp_guide.md\nindex e37058b..ef69ed3 100644\n--- a/docs/guides/cpp_guide.md\n+++ b/docs/guides/cpp_guide.md\n@@ -105,7 +105,7 @@ class MyIntPairObj : public tvm::ffi::Object {\n \n   // Required: declare type information\n   // to register a dynamic type index through the system\n-TVM_FFI_DECLARE_OBJECT_INFO_FINAL(\"example.MyIntPair\", MyIntPairObj, tvm::ffi::Object);\n+  TVM_FFI_DECLARE_OBJECT_INFO_FINAL(\"example.MyIntPair\", MyIntPairObj, tvm::ffi::Object);\n };\n \n void ExampleObjectPtr() {\ndiff --git a/docs/guides/python_guide.md b/docs/guides/python_guide.md\nindex dc34cfe..434f3ce 100644\n--- a/docs/guides/python_guide.md\n+++ b/docs/guides/python_guide.md\n@@ -235,7 +235,7 @@ public:\n   TestIntPairObj(int64_t a, int64_t b) : a(a), b(b) {}\n \n   // Required: declare type information\n-TVM_FFI_DECLARE_OBJECT_INFO_FINAL(\"testing.TestIntPair\", TestIntPairObj, tvm::ffi::Object);\n+  TVM_FFI_DECLARE_OBJECT_INFO_FINAL(\"testing.TestIntPair\", TestIntPairObj, tvm::ffi::Object);\n };\n \n // Step 2: Define the reference wrapper (user-facing interface)\n@@ -253,13 +253,11 @@ public:\n TVM_FFI_STATIC_INIT_BLOCK() {\n   namespace refl = tvm::ffi::reflection;\n   // register the object into the system\n-  // register field accessors and a global static function `__create__` as ffi::Function\n+  // register field accessors and a global static function `__ffi_init__` as ffi::Function\n   refl::ObjectDef<TestIntPairObj>()\n+    .def(refl::init<int64_t, int64_t>())\n     .def_ro(\"a\", &TestIntPairObj::a)\n-    .def_ro(\"b\", &TestIntPairObj::b)\n-    .def_static(\"__create__\", [](int64_t a, int64_t b) -> TestIntPair {\n-      return TestIntPair(a, b);\n-    });\n+    .def_ro(\"b\", &TestIntPairObj::b);\n }\n ```\n \n@@ -274,7 +272,7 @@ class TestIntPair(tvm_ffi.Object):\n     def __init__(self, a, b):\n         # This is a special method to call an FFI function whose return\n         # value exactly initializes the object handle of the object\n-        self.__init_handle_by_constructor__(TestIntPair.__create__, a, b)\n+        self.__ffi_init__(a, b)\n \n test_int_pair = TestIntPair(1, 2)\n # We can access the fields by name\ndiff --git a/include/tvm/ffi/reflection/registry.h b/include/tvm/ffi/reflection/registry.h\nindex 78ab7e8..124fc47 100644\n--- a/include/tvm/ffi/reflection/registry.h\n+++ b/include/tvm/ffi/reflection/registry.h\n@@ -406,6 +406,56 @@ class GlobalDef : public ReflectionDefBase {\n   }\n };\n \n+/*!\n+ * \\brief Helper class to register a constructor method for object types.\n+ *\n+ * This helper is used with `ObjectDef::def()` to register an `__init__` method\n+ * that constructs an object instance with the specified argument types.\n+ *\n+ * \\tparam Args The argument types for the constructor.\n+ *\n+ * Example usage:\n+ * \\code\n+ *   class ExampleObject : public Object {\n+ *    public:\n+ *      int64_t v_i64;\n+ *      int32_t v_i32;\n+ *\n+ *      ExampleObject(int64_t v_i64, int32_t v_i32) : v_i64(v_i64), v_i32(v_i32) {}\n+ *      TVM_FFI_DECLARE_OBJECT_INFO(\"example.ExampleObject\", ExampleObject, Object);\n+ *   };\n+ *\n+ *   // Register the constructor\n+ *   refl::ObjectDef<ExampleObject>()\n+ *      .def(refl::init<int64_t, int32_t>());\n+ * \\endcode\n+ *\n+ * \\note The object type is automatically deduced from the `ObjectDef` context.\n+ */\n+template <typename... Args>\n+struct init {\n+  // Allow ObjectDef to access the execute function\n+  template <typename Class>\n+  friend class ObjectDef;\n+\n+  /*!\n+   * \\brief Constructor\n+   */\n+  init() {}\n+\n+ private:\n+  /*!\n+   * \\brief Execute the constructor\n+   * \\tparam Class The class type.\n+   * \\param args The arguments to be passed to the constructor.\n+   * \\return The constructed object wrapped in an `ObjectRef`.\n+   */\n+  template <typename Class>\n+  static inline ObjectRef execute(Args&&... args) {\n+    return ObjectRef(ffi::make_object<Class>(std::forward<Args>(args)...));\n+  }\n+};\n+\n /*!\n  * \\brief Helper to register Object's reflection metadata.\n  * \\tparam Class The class type.\n@@ -504,6 +554,34 @@ class ObjectDef : public ReflectionDefBase {\n     return *this;\n   }\n \n+  /*!\n+   * \\brief Register a constructor for this object type.\n+   *\n+   * This method registers a static `__init__` method that constructs an instance\n+   * of the object with the specified argument types. The constructor can be invoked\n+   * from Python or other FFI bindings.\n+   *\n+   * \\tparam Args The argument types for the constructor.\n+   * \\tparam Extra Additional arguments (e.g., docstring).\n+   *\n+   * \\param init_func An instance of `init<Args...>` specifying constructor signature.\n+   * \\param extra Optional additional metadata such as docstring.\n+   *\n+   * \\return Reference to this `ObjectDef` for method chaining.\n+   *\n+   * Example:\n+   * \\code\n+   *   refl::ObjectDef<MyObject>()\n+   *       .def(refl::init<int64_t, std::string>(), \"Constructor docstring\");\n+   * \\endcode\n+   */\n+  template <typename... Args, typename... Extra>\n+  TVM_FFI_INLINE ObjectDef& def(init<Args...> init_func, Extra&&... extra) {\n+    RegisterMethod(INIT_METHOD_NAME, true, &init<Args...>::template execute<Class>,\n+                   std::forward<Extra>(extra)...);\n+    return *this;\n+  }\n+\n  private:\n   template <typename... ExtraArgs>\n   void RegisterExtraInfo(ExtraArgs&&... extra_args) {\n@@ -576,6 +654,7 @@ class ObjectDef : public ReflectionDefBase {\n \n   int32_t type_index_;\n   const char* type_key_;\n+  static constexpr const char* INIT_METHOD_NAME = \"__ffi_init__\";\n };\n \n /*!\n@@ -656,40 +735,6 @@ inline void EnsureTypeAttrColumn(std::string_view name) {\n                                                  reinterpret_cast<const TVMFFIAny*>(&any_view)));\n }\n \n-/*!\n- * \\brief Invokes the constructor of a particular object type and returns an `ObjectRef`.\n- * \\tparam T The object type to be constructed.\n- * \\tparam Args The argument types.\n- * \\param args The arguments to be passed to the constructor.\n- * \\return The constructed object wrapped in an `ObjectRef`.\n- * \\note This is usually used in FFI reflection boundary to register `__init__` methods.\n- *\n- * Example\n- *\n- * \\code\n- *\n- *   class ExampleObject : public Object {\n- *    public:\n- *      int64_t v_i64;\n- *      int32_t v_i32;\n- *\n- *      ExampleObject(int64_t v_i64, int32_t v_i32) : v_i64(v_i64), v_i32(v_i32) {}\n- *      TVM_FFI_DECLARE_OBJECT_INFO(\"example.ExampleObject\", ExampleObject, Object);\n- *   };\n- *   refl::ObjectDef<ExampleObject>()\n- *      .def_static(\"__init__\", refl::init<ExampleObject, int64_t, int32_t>);\n- * \\endcode\n- */\n-template <typename T, typename... Args>\n-inline ObjectRef init(Args&&... args) {\n-  if constexpr (std::is_base_of_v<Object, T>) {\n-    return ObjectRef(ffi::make_object<T>(std::forward<Args>(args)...));\n-  } else {\n-    using U = typename T::ContainerType;\n-    return ObjectRef(ffi::make_object<U>(std::forward<Args>(args)...));\n-  }\n-}\n-\n }  // namespace reflection\n }  // namespace ffi\n }  // namespace tvm\ndiff --git a/src/ffi/testing/testing.cc b/src/ffi/testing/testing.cc\nindex 95c8b30..74f235e 100644\n--- a/src/ffi/testing/testing.cc\n+++ b/src/ffi/testing/testing.cc\n@@ -68,9 +68,9 @@ class TestIntPair : public tvm::ffi::ObjectRef {\n TVM_FFI_STATIC_INIT_BLOCK() {\n   namespace refl = tvm::ffi::reflection;\n   refl::ObjectDef<TestIntPairObj>()\n+      .def(refl::init<int64_t, int64_t>())\n       .def_ro(\"a\", &TestIntPairObj::a, \"Field `a`\")\n       .def_ro(\"b\", &TestIntPairObj::b, \"Field `b`\")\n-      .def_static(\"__ffi_init__\", refl::init<TestIntPairObj, int64_t, int64_t>)\n       .def(\"sum\", &TestIntPair::Sum, \"Method to compute sum of a and b\");\n }\n \n@@ -206,40 +206,36 @@ TVM_FFI_STATIC_INIT_BLOCK() {\n       .def_ro(\"v_array\", &TestObjectDerived::v_array);\n \n   refl::ObjectDef<TestCxxClassBase>()\n-      .def_static(\"__ffi_init__\", refl::init<TestCxxClassBase, int64_t, int32_t>)\n+      .def(refl::init<int64_t, int32_t>())\n       .def_rw(\"v_i64\", &TestCxxClassBase::v_i64)\n       .def_rw(\"v_i32\", &TestCxxClassBase::v_i32);\n \n   refl::ObjectDef<TestCxxClassDerived>()\n-      .def_static(\"__ffi_init__\", refl::init<TestCxxClassDerived, int64_t, int32_t, double, float>)\n+      .def(refl::init<int64_t, int32_t, double, float>())\n       .def_rw(\"v_f64\", &TestCxxClassDerived::v_f64)\n       .def_rw(\"v_f32\", &TestCxxClassDerived::v_f32);\n \n   refl::ObjectDef<TestCxxClassDerivedDerived>()\n-      .def_static(\n-          \"__ffi_init__\",\n-          refl::init<TestCxxClassDerivedDerived, int64_t, int32_t, double, float, String, bool>)\n+      .def(refl::init<int64_t, int32_t, double, float, String, bool>())\n       .def_rw(\"v_str\", &TestCxxClassDerivedDerived::v_str)\n       .def_rw(\"v_bool\", &TestCxxClassDerivedDerived::v_bool);\n \n   refl::ObjectDef<TestCxxInitSubsetObj>()\n-      .def_static(\"__ffi_init__\", refl::init<TestCxxInitSubsetObj, int64_t, String>)\n+      .def(refl::init<int64_t, String>())\n       .def_rw(\"required_field\", &TestCxxInitSubsetObj::required_field)\n       .def_rw(\"optional_field\", &TestCxxInitSubsetObj::optional_field)\n       .def_rw(\"note\", &TestCxxInitSubsetObj::note);\n \n   refl::ObjectDef<TestUnregisteredBaseObject>()\n+      .def(refl::init<int64_t>(), \"Constructor of TestUnregisteredBaseObject\")\n       .def_ro(\"v1\", &TestUnregisteredBaseObject::v1)\n-      .def_static(\"__ffi_init__\", refl::init<TestUnregisteredBaseObject, int64_t>,\n-                  \"Constructor of TestUnregisteredBaseObject\")\n       .def(\"get_v1_plus_one\", &TestUnregisteredBaseObject::GetV1PlusOne,\n            \"Get (v1 + 1) from TestUnregisteredBaseObject\");\n \n   refl::ObjectDef<TestUnregisteredObject>()\n+      .def(refl::init<int64_t, int64_t>(), \"Constructor of TestUnregisteredObject\")\n       .def_ro(\"v1\", &TestUnregisteredObject::v1)\n       .def_ro(\"v2\", &TestUnregisteredObject::v2)\n-      .def_static(\"__ffi_init__\", refl::init<TestUnregisteredObject, int64_t, int64_t>,\n-                  \"Constructor of TestUnregisteredObject\")\n       .def(\"get_v2_plus_two\", &TestUnregisteredObject::GetV2PlusTwo,\n            \"Get (v2 + 2) from TestUnregisteredObject\");\n \ndiff --git a/tests/cpp/CMakeLists.txt b/tests/cpp/CMakeLists.txt\nindex 7ab3c2a..e08b2f8 100644\n--- a/tests/cpp/CMakeLists.txt\n+++ b/tests/cpp/CMakeLists.txt\n@@ -5,7 +5,7 @@ if (TVM_FFI_USE_EXTRA_CXX_API)\n   list(APPEND _test_sources ${_test_extra_sources})\n endif ()\n \n-add_executable(tvm_ffi_tests EXCLUDE_FROM_ALL ${_test_sources})\n+add_executable(tvm_ffi_tests ${_test_sources})\n \n set_target_properties(\n   tvm_ffi_tests\ndiff --git a/tests/cpp/test_reflection.cc b/tests/cpp/test_reflection.cc\nindex c81a20b..8fe6a18 100644\n--- a/tests/cpp/test_reflection.cc\n+++ b/tests/cpp/test_reflection.cc\n@@ -63,11 +63,11 @@ TVM_FFI_STATIC_INIT_BLOCK() {\n   TCustomFuncObj::RegisterReflection();\n \n   refl::ObjectDef<TestObjA>()\n-      .def_static(\"__ffi_init__\", refl::init<TestObjA, int64_t, int64_t>)\n+      .def(refl::init<int64_t, int64_t>())\n       .def_ro(\"x\", &TestObjA::x)\n       .def_rw(\"y\", &TestObjA::y);\n   refl::ObjectDef<TestObjADerived>()\n-      .def_static(\"__ffi_init__\", refl::init<TestObjRefADerived, int64_t, int64_t, int64_t>)\n+      .def(refl::init<int64_t, int64_t, int64_t>())\n       .def_ro(\"z\", &TestObjADerived::z);\n }\n ",
+  "heuristics": {
+    "tags": [
+      "build",
+      "test"
+    ],
+    "extensions": [
+      ".cc",
+      ".h",
+      ".md",
+      ".txt"
+    ],
+    "scopes_guess": [
+      "docs",
+      "include",
+      "src",
+      "tests"
+    ]
+  }
+}
