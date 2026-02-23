@@ -61,11 +61,17 @@ Table of Contents
 
    concepts/abi_overview.rst
    concepts/any.rst
+   concepts/type_traits.rst
+   concepts/memory.rst
    concepts/containers.rst
    concepts/object_and_class.rst
+   concepts/reflection.rst
    concepts/tensor.rst
    concepts/func_module.rst
    concepts/exception_handling.rst
+   concepts/serialization.rst
+   concepts/structural_ops.rst
+   concepts/python_bindings.rst
 
 .. toctree::
    :maxdepth: 1
@@ -91,3 +97,4 @@ Table of Contents
    dev/doc_build.rst
    dev/ci_cd.rst
    dev/release_process.rst
+   dev/adrs/README.md
