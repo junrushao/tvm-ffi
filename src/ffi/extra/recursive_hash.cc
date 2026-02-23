@@ -286,8 +286,8 @@ class RecursiveHasher {
 
   uint64_t HashShape(const Shape& shape) {
     uint64_t h = details::StableHashCombine(shape->GetTypeKeyHash(), shape.size());
-    for (size_t i = 0; i < shape.size(); ++i) {
-      h = details::StableHashCombine(h, static_cast<uint64_t>(shape[i]));
+    for (int64_t dim : shape) {
+      h = details::StableHashCombine(h, static_cast<uint64_t>(dim));
     }
     return h;
   }
