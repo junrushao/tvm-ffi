@@ -568,6 +568,7 @@ def _install_dataclass_dunders(
     cls: type,
     *,
     init: bool,
+    repr: bool,
     eq: bool,
     order: bool,
     unsafe_hash: bool,
@@ -584,6 +585,8 @@ def _install_dataclass_dunders(
         The class to install dunders on.
     init
         If True, install ``__init__`` from C++ reflection metadata.
+    repr
+        If True, install :func:`~tvm_ffi.core.object_repr` as ``__repr__``.
     eq
         If True, install ``__eq__`` and ``__ne__``.
     order
@@ -593,6 +596,11 @@ def _install_dataclass_dunders(
 
     """
     _install_init(cls, enabled=init)
+
+    if repr and "__repr__" not in cls.__dict__:
+        from .core import object_repr  # noqa: PLC0415
+
+        cls.__repr__ = object_repr  # type: ignore[attr-defined]
 
     from . import _ffi_api  # noqa: PLC0415
 
