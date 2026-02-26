@@ -567,10 +567,10 @@ def _install_init(cls: type, *, enabled: bool) -> None:
 def _install_dataclass_dunders(
     cls: type,
     *,
-    init: bool = True,
-    eq: bool = True,
-    order: bool = False,
-    unsafe_hash: bool = False,
+    init: bool,
+    eq: bool,
+    order: bool,
+    unsafe_hash: bool,
 ) -> None:
     """Install structural dunder methods on *cls*.
 

@@ -31,7 +31,8 @@ def c_class(
     type_key: str,
     *,
     init: bool = True,
-    eq: bool = True,
+    repr: bool = True,
+    eq: bool = False,
     order: bool = False,
     unsafe_hash: bool = False,
     slots: bool = True,
@@ -47,6 +48,9 @@ def c_class(
         The reflection key that identifies the C++ type in the FFI registry.
     init
         If True, install ``__init__`` from C++ reflection metadata.
+    repr
+        If True and the class does not already define ``__repr__``,
+        install :func:`~tvm_ffi.core.object_repr` as the repr method.
     eq
         If True, install ``__eq__`` and ``__ne__``.
     order
@@ -89,6 +93,10 @@ def c_class(
                     f"`class {cls.__name__}(Object, slots=False)`."
                 )
         cls = register_object(type_key)(cls)
+        if repr and "__repr__" not in cls.__dict__:
+            from ..core import object_repr  # noqa: PLC0415
+
+            cls.__repr__ = object_repr  # type: ignore[attr-defined]
         _install_dataclass_dunders(cls, init=init, eq=eq, order=order, unsafe_hash=unsafe_hash)
         return cls
 
