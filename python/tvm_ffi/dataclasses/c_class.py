@@ -32,7 +32,7 @@ def c_class(
     *,
     init: bool = True,
     repr: bool = True,
-    eq: bool = False,
+    eq: bool = True,
     order: bool = False,
     unsafe_hash: bool = False,
     slots: bool = True,
