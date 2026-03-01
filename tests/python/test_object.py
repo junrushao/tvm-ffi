@@ -35,7 +35,7 @@ def test_make_object() -> None:
 
 
 def test_make_object_via_init() -> None:
-    obj0 = tvm_ffi.testing.TestIntPair(1, 2)  # ty: ignore[too-many-positional-arguments]
+    obj0 = tvm_ffi.testing.TestIntPair(1, 2)
     assert obj0.a == 1
     assert obj0.b == 2
 
@@ -49,7 +49,7 @@ def test_method() -> None:
 
 
 def test_attribute() -> None:
-    obj = tvm_ffi.testing.TestIntPair(3, 4)  # ty: ignore[too-many-positional-arguments]
+    obj = tvm_ffi.testing.TestIntPair(3, 4)
     assert obj.a == 3
     assert obj.b == 4
     assert type(obj).a.__doc__ == "Field `a`"
@@ -137,14 +137,40 @@ def test_opaque_type_error() -> None:
 
 
 def test_object_init() -> None:
+    # Registered class with auto-generated __ffi_init__ (all fields have defaults)
+    obj = tvm_ffi.testing.TestObjectBase()
+    assert obj.v_i64 == 10
+    assert obj.v_f64 == 10.0
+    assert obj.v_str == "hello"
+
     # Registered class with __c_ffi_init__ should work fine
-    pair = tvm_ffi.testing.TestIntPair(3, 4)  # ty: ignore[too-many-positional-arguments]
+    pair = tvm_ffi.testing.TestIntPair(3, 4)
     assert pair.a == 3 and pair.b == 4
 
     # FFI-returned objects should work fine
     obj = tvm_ffi.testing.create_object("testing.TestObjectBase", v_i64=7)
     assert obj.__chandle__() != 0
     assert obj.v_i64 == 7  # ty: ignore[unresolved-attribute]
+
+
+def test_register_object_wires_init() -> None:
+    """Regression: register_object must wire __init__ from __ffi_init__.
+
+    Without _install_init in register_object, calling TestIntPair(1, 2)
+    falls through to object.__init__ which silently ignores args on
+    Cython extension types (CObject has custom tp_new).  The result is
+    chandle = NULL.  Any subsequent field access dereferences
+    chandle + offset → segfault.
+    """
+    # Construction must produce a live handle, not NULL.
+    pair = tvm_ffi.testing.TestIntPair(3, 7)
+    assert pair.__chandle__() != 0
+    assert pair.a == 3
+    assert pair.b == 7
+
+    # __new__ alone must NOT produce a usable object (chandle stays NULL).
+    bare = tvm_ffi.testing.TestIntPair.__new__(tvm_ffi.testing.TestIntPair)
+    assert bare.__chandle__() == 0
 
 
 def test_object_protocol() -> None:
@@ -194,7 +220,7 @@ def test_unregistered_object_fallback() -> None:
         ),
         (
             tvm_ffi.testing.TestIntPair,
-            lambda: tvm_ffi.testing.TestIntPair(1, 2),  # ty: ignore[too-many-positional-arguments]
+            lambda: tvm_ffi.testing.TestIntPair(1, 2),
         ),
         (
             tvm_ffi.testing.TestObjectDerived,
