@@ -16,9 +16,16 @@
 # under the License.
 import dataclasses
 import json
+import typing
+import collections.abc
 from functools import cached_property
 from typing import Optional, Any
 from io import StringIO
+
+try:
+    from types import UnionType as _UnionType
+except ImportError:
+    _UnionType = None
 
 
 cdef class FieldGetter:
@@ -254,6 +261,153 @@ class TypeSchema:
             origin = _type_index_to_key(type_index)
         return TypeSchema(origin, args, origin_type_index=type_index)
 
+    @staticmethod
+    def from_annotation(annotation: object) -> "TypeSchema":
+        """Construct a :class:`TypeSchema` from a Python type annotation.
+
+        Parameters
+        ----------
+        annotation : object
+            A Python type annotation such as ``int``, ``list[int]``,
+            ``Optional[str]``, ``Union[int, str]``, ``Callable[[int], str]``,
+            or a registered :class:`CObject` subclass.
+
+        Returns
+        -------
+        TypeSchema
+            The corresponding schema.
+
+        Raises
+        ------
+        TypeError
+            If the annotation cannot be mapped to a TypeSchema.
+
+        Examples
+        --------
+        >>> TypeSchema.from_annotation(int)
+        int
+        >>> TypeSchema.from_annotation(list[int])
+        List[int]
+        >>> TypeSchema.from_annotation(tuple[int, ...])
+        Array[int]
+        """
+        # --- Singletons ---
+        if annotation is type(None) or annotation is None:
+            return TypeSchema("None")
+        if annotation is typing.Any:
+            return TypeSchema("Any")
+
+        # --- Bare builtin scalar types ---
+        if annotation is bool:
+            return TypeSchema("bool")
+        if annotation is int:
+            return TypeSchema("int")
+        if annotation is float:
+            return TypeSchema("float")
+        if annotation is str:
+            return TypeSchema("str")
+        if annotation is bytes:
+            return TypeSchema("bytes")
+
+        # --- Bare container types (unparameterised) ---
+        if annotation is list:
+            return TypeSchema("List")
+        if annotation is dict:
+            return TypeSchema("Dict")
+        if annotation is tuple:
+            return TypeSchema("tuple")
+
+        # --- Python 3.10+ union syntax  (X | Y) ---
+        if _UnionType is not None and isinstance(annotation, _UnionType):
+            return _annotation_union(typing.get_args(annotation))
+
+        # --- Generic aliases (list[int], Optional[T], etc.) ---
+        origin = typing.get_origin(annotation)
+        targs = typing.get_args(annotation)
+
+        if origin is typing.Union:
+            return _annotation_union(targs)
+
+        if origin is list:
+            if len(targs) > 1:
+                raise TypeError(
+                    f"list takes at most 1 type argument, got {len(targs)}"
+                )
+            if targs:
+                return TypeSchema("List", (TypeSchema.from_annotation(targs[0]),))
+            return TypeSchema("List")
+
+        if origin is dict:
+            if len(targs) == 1 or len(targs) > 2:
+                raise TypeError(
+                    f"dict requires 0 or 2 type arguments, got {len(targs)}"
+                )
+            if len(targs) == 2:
+                return TypeSchema("Dict", (
+                    TypeSchema.from_annotation(targs[0]),
+                    TypeSchema.from_annotation(targs[1]),
+                ))
+            return TypeSchema("Dict")
+
+        if origin is tuple:
+            if len(targs) == 2 and targs[1] is Ellipsis:
+                # tuple[T, ...] → homogeneous variable-length → Array
+                return TypeSchema("Array", (TypeSchema.from_annotation(targs[0]),))
+            if targs:
+                return TypeSchema(
+                    "tuple",
+                    tuple(TypeSchema.from_annotation(a) for a in targs),
+                )
+            return TypeSchema("tuple")
+
+        if origin is collections.abc.Callable:
+            if len(targs) == 2:
+                params, ret = targs
+                ret_schema = TypeSchema.from_annotation(ret)
+                if isinstance(params, list):
+                    # Callable[[P1, P2], R] → (R, P1, P2)
+                    param_schemas = tuple(
+                        TypeSchema.from_annotation(p) for p in params
+                    )
+                    return TypeSchema("Callable", (ret_schema,) + param_schemas)
+                # Callable[..., R]
+                return TypeSchema("Callable", (ret_schema,))
+            return TypeSchema("Callable")
+
+        # --- Parameterised CObject subclasses (Array[int], Dict[str, V], …) ---
+        if isinstance(origin, type) and issubclass(origin, CObject):
+            return _annotation_cobject(origin, targs)
+
+        # --- Bare (unparameterised) CObject subclasses ---
+        if isinstance(annotation, type) and issubclass(annotation, CObject):
+            return _annotation_cobject(annotation, ())
+
+        # --- PyNativeObject subclasses (String, Bytes) ---
+        if isinstance(annotation, type) and issubclass(annotation, PyNativeObject):
+            if issubclass(annotation, str):
+                return TypeSchema("str")
+            if issubclass(annotation, bytes):
+                return TypeSchema("bytes")
+
+        # --- Non-CObject cdef classes with known origins ---
+        if annotation is DataType:
+            return TypeSchema("dtype")
+        if annotation is Device:
+            return TypeSchema("Device")
+
+        # --- ctypes.c_void_p ---
+        import ctypes as _ctypes
+        if annotation is _ctypes.c_void_p:
+            return TypeSchema("ctypes.c_void_p")
+
+        # --- Types with __dlpack__ protocol (e.g. torch.Tensor) → Tensor ---
+        if isinstance(annotation, type) and hasattr(annotation, "__dlpack__"):
+            return TypeSchema("Tensor")
+
+        raise TypeError(
+            f"Cannot convert {annotation!r} to TypeSchema"
+        )
+
     def check_value(self, value: object) -> None:
         """Validate that *value* is compatible with this type schema.
 
@@ -271,24 +425,13 @@ class TypeSchema:
         # _type_schema_check_value is defined in type_check.pxi
         _type_schema_check_value(self, value)
 
-    def try_check_value(self, value: object) -> "Optional[str]":
-        """Check if *value* is compatible with this type schema.
-
-        Returns
-        -------
-        str or None
-            ``None`` if the value is compatible, or an error message
-            string describing the mismatch.
-        """
-        # _type_schema_try_check_value is defined in type_check.pxi
-        return _type_schema_try_check_value(self, value)
-
-    def convert(self, value: object) -> object:
-        """Convert *value* according to this type schema.
+    def convert(self, value: object) -> "CAny":
+        """Convert *value* according to this type schema, returning a :class:`CAny`.
 
         Applies the same implicit conversions as the C++ FFI
-        ``TypeTraits<T>::TryCastFromAnyView`` rules.  For example,
-        ``TypeSchema("float").convert(42)`` returns ``42.0``.
+        ``TypeTraits<T>::TryCastFromAnyView`` rules.  The result is
+        always a :class:`CAny` instance that owns the converted value.
+        Use ``result.to_py()`` to recover the Python object.
 
         Parameters
         ----------
@@ -297,8 +440,8 @@ class TypeSchema:
 
         Returns
         -------
-        object
-            The converted value.
+        CAny
+            The converted value wrapped in a CAny.
 
         Raises
         ------
@@ -307,19 +450,6 @@ class TypeSchema:
         """
         # _type_schema_convert is defined in type_check.pxi
         return _type_schema_convert(self, value)
-
-    def try_convert(self, value: object) -> "tuple[bool, object]":
-        """Try to convert *value* according to this type schema.
-
-        Returns
-        -------
-        tuple[bool, object]
-            A ``(success, result)`` pair.  On success, ``result`` is the
-            converted value (which may be ``None`` for e.g. ``Optional``).
-            On failure, ``result`` is an error message string.
-        """
-        # _type_schema_try_convert is defined in type_check.pxi
-        return _type_schema_try_convert(self, value)
 
     def repr(self, ty_map: "Optional[Callable[[str], str]]" = None) -> str:
         """Render a human-readable representation of this schema.
@@ -381,6 +511,46 @@ class TypeSchema:
         else:
             args = ", ".join(args)
             return f"{origin}[{args}]"
+
+
+def _annotation_union(args):
+    """Convert Union type args to a TypeSchema (Optional or Union)."""
+    non_none = tuple(a for a in args if a is not type(None))
+    has_none = len(non_none) < len(args)
+    converted = tuple(TypeSchema.from_annotation(a) for a in non_none)
+    if has_none:
+        if len(non_none) == 1:
+            return TypeSchema("Optional", converted)
+        return TypeSchema("Optional", (TypeSchema("Union", converted),))
+    return TypeSchema("Union", converted)
+
+
+def _annotation_cobject(cls, targs):
+    """Handle a CObject subclass (bare or parameterised) in from_annotation."""
+    info = TYPE_CLS_TO_INFO.get(cls)
+    if info is None:
+        raise TypeError(
+            f"CObject subclass {cls!r} is not registered "
+            f"in TYPE_CLS_TO_INFO; use @register_object to register it"
+        )
+    # Prefer canonical short origin from _TYPE_INDEX_TO_ORIGIN (e.g. "Array")
+    # over the registered type_key (e.g. "ffi.Array") when available.
+    origin = _TYPE_INDEX_TO_ORIGIN.get(info.type_index, info.type_key)
+    n = len(targs)
+    if n > 0:
+        if origin in ("Array", "List"):
+            if n != 1:
+                raise TypeError(
+                    f"{origin} requires 1 type argument, got {n}"
+                )
+        elif origin in ("Map", "Dict"):
+            if n != 2:
+                raise TypeError(
+                    f"{origin} requires 2 type arguments, got {n}"
+                )
+        arg_schemas = tuple(TypeSchema.from_annotation(a) for a in targs)
+        return TypeSchema(origin, arg_schemas, origin_type_index=info.type_index)
+    return TypeSchema(origin, origin_type_index=info.type_index)
 
 
 @dataclasses.dataclass(eq=False)
