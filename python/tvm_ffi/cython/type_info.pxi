@@ -38,15 +38,17 @@ cdef class FieldGetter:
 
 cdef class FieldSetter:
     cdef dict __dict__
-    cdef TVMFFIFieldSetter setter
+    cdef void* setter_ptr
     cdef int64_t offset
+    cdef int64_t flags
 
     def __call__(self, CObject obj, value):
         cdef int c_api_ret_code
         cdef void* field_ptr = (<char*>(<CObject>obj).chandle) + self.offset
-        TVMFFIPyCallFieldSetter(
+        TVMFFIPyCallFieldSetterDispatch(
             TVMFFIPyArgSetterFactory_,
-            self.setter,
+            self.setter_ptr,
+            self.flags,
             field_ptr,
             <PyObject*>value,
             &c_api_ret_code

@@ -831,6 +831,29 @@ typedef int (*TVMFFIFieldGetter)(void* field, TVMFFIAny* result);
 typedef int (*TVMFFIFieldSetter)(void* field, const TVMFFIAny* value);
 
 /*!
+ * \brief Setter that takes an extra context pointer alongside the field address.
+ * \param ctx  Opaque context supplied when the setter was registered.
+ * \param field The raw address of the field.
+ * \param value The value to set.
+ * \return 0 on success, nonzero on failure.
+ */
+typedef int (*TVMFFIFieldSetterWithContext)(void* ctx, void* field, const TVMFFIAny* value);
+
+/*!
+ * \brief A closure pairing a context pointer with a TVMFFIFieldSetterWithContext.
+ *
+ * Used when kTVMFFIFieldFlagBitSetterHasContext is set on a field.
+ * The TVMFFIFieldInfo::setter pointer is reinterpreted as a
+ * pointer to this struct.
+ */
+typedef struct {
+  /*! \brief Opaque context pointer passed to the setter. */
+  void* ctx;
+  /*! \brief The setter function that receives the context. */
+  TVMFFIFieldSetterWithContext setter;
+} TVMFFIFieldSetterWithContextClosure;
+
+/*!
  * \brief Function that creates a new instance of the type.
  * \param result The new object handle
  * \return 0 on success, nonzero on failure.
@@ -913,6 +936,13 @@ typedef enum {
    * By default this flag is off (meaning the field accepts positional arguments).
    */
   kTVMFFIFieldFlagBitMaskKwOnly = 1 << 10,
+  /*!
+   * \brief The setter field carries a TVMFFIFieldSetterWithContextClosure.
+   *
+   * When set, TVMFFIFieldInfo::setter is a pointer to a
+   * TVMFFIFieldSetterWithContextClosure struct rather than a bare TVMFFIFieldSetter.
+   */
+  kTVMFFIFieldFlagBitSetterHasContext = 1 << 11,
 #ifdef __cplusplus
 };
 #else
@@ -1008,9 +1038,14 @@ typedef struct {
   TVMFFIFieldGetter getter;
   /*!
    * \brief The setter to access the field.
+   *
+   * By default this is a bare TVMFFIFieldSetter cast to void*.
+   * When kTVMFFIFieldFlagBitSetterHasContext is set in flags,
+   * this is a pointer to a TVMFFIFieldSetterWithContextClosure struct.
+   *
    * \note The setter is set even if the field is readonly for serialization.
    */
-  TVMFFIFieldSetter setter;
+  void* setter;
   /*!
    * \brief The default value or default factory of the field.
    *

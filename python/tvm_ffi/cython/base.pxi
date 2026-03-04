@@ -207,10 +207,16 @@ cdef extern from "tvm/ffi/c_api.h":
         kTVMFFIFieldFlagBitMaskDefaultFromFactory = 1 << 5
         kTVMFFIFieldFlagBitMaskInitOff = 1 << 9
         kTVMFFIFieldFlagBitMaskKwOnly = 1 << 10
+        kTVMFFIFieldFlagBitSetterHasContext = 1 << 11
 
     ctypedef int (*TVMFFIFieldGetter)(void* field, TVMFFIAny* result) noexcept
     ctypedef int (*TVMFFIFieldSetter)(void* field, const TVMFFIAny* value) noexcept
+    ctypedef int (*TVMFFIFieldSetterWithContext)(void* ctx, void* field, const TVMFFIAny* value) noexcept
     ctypedef int (*TVMFFIObjectCreator)(TVMFFIObjectHandle* result) noexcept
+
+    ctypedef struct TVMFFIFieldSetterWithContextClosure:
+        void* ctx
+        TVMFFIFieldSetterWithContext setter
 
     ctypedef struct TVMFFIFieldInfo:
         TVMFFIByteArray name
@@ -221,7 +227,7 @@ cdef extern from "tvm/ffi/c_api.h":
         int64_t alignment
         int64_t offset
         TVMFFIFieldGetter getter
-        TVMFFIFieldSetter setter
+        void* setter
         TVMFFIAny default_value_or_factory
         int32_t field_static_type_index
 
@@ -355,9 +361,10 @@ cdef extern from "tvm_ffi_python_helpers.h":
         TVMFFIPyCallContext* parent_ctx
     ) except -1
 
-    int TVMFFIPyCallFieldSetter(
+    int TVMFFIPyCallFieldSetterDispatch(
         TVMFFIPyArgSetterFactory setter_factory,
-        TVMFFIFieldSetter field_setter,
+        void* setter,
+        int64_t flags,
         void* field_ptr,
         PyObject* py_arg,
         int* c_api_ret_code

@@ -53,6 +53,25 @@ inline const TVMFFIFieldInfo* GetFieldInfo(std::string_view type_key, const char
 }
 
 /*!
+ * \brief Dispatch a field setter call, handling both bare and context-closure forms.
+ *
+ * When kTVMFFIFieldFlagBitSetterHasContext is set, interprets info->setter
+ * as a TVMFFIFieldSetterWithContextClosure*; otherwise casts it to TVMFFIFieldSetter.
+ *
+ * \param info       The field info.
+ * \param field_addr The address of the field in the object.
+ * \param value      The value to set.
+ * \return 0 on success, nonzero on failure.
+ */
+inline int CallFieldSetter(const TVMFFIFieldInfo* info, void* field_addr, const TVMFFIAny* value) {
+  if (info->flags & kTVMFFIFieldFlagBitSetterHasContext) {
+    auto* s = static_cast<const TVMFFIFieldSetterWithContextClosure*>(info->setter);
+    return s->setter(s->ctx, field_addr, value);
+  }
+  return reinterpret_cast<TVMFFIFieldSetter>(info->setter)(field_addr, value);
+}
+
+/*!
  * \brief helper wrapper class to obtain a getter.
  */
 class FieldGetter {
@@ -118,8 +137,8 @@ class FieldSetter {
    */
   void operator()(const Object* obj_ptr, AnyView value) const {
     const void* addr = reinterpret_cast<const char*>(obj_ptr) + field_info_->offset;
-    TVM_FFI_CHECK_SAFE_CALL(
-        field_info_->setter(const_cast<void*>(addr), reinterpret_cast<const TVMFFIAny*>(&value)));
+    TVM_FFI_CHECK_SAFE_CALL(CallFieldSetter(field_info_, const_cast<void*>(addr),
+                                            reinterpret_cast<const TVMFFIAny*>(&value)));
   }
 
   void operator()(const ObjectPtr<Object>& obj_ptr, AnyView value) const {
@@ -215,9 +234,9 @@ inline void SetFieldToDefault(const TVMFFIFieldInfo* field_info, void* field_add
     Function factory =
         AnyView::CopyFromTVMFFIAny(field_info->default_value_or_factory).cast<Function>();
     Any default_val = factory();
-    field_info->setter(field_addr, reinterpret_cast<const TVMFFIAny*>(&default_val));
+    CallFieldSetter(field_info, field_addr, reinterpret_cast<const TVMFFIAny*>(&default_val));
   } else {
-    field_info->setter(field_addr, &(field_info->default_value_or_factory));
+    CallFieldSetter(field_info, field_addr, &(field_info->default_value_or_factory));
   }
 }
 

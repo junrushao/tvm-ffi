@@ -264,6 +264,19 @@ pub type TVMFFIFieldGetter =
 pub type TVMFFIFieldSetter =
     unsafe extern "C" fn(field: *mut c_void, value: *const TVMFFIAny) -> i32;
 
+/// Field setter with context function pointer type
+pub type TVMFFIFieldSetterWithContext =
+    unsafe extern "C" fn(ctx: *mut c_void, field: *mut c_void, value: *const TVMFFIAny) -> i32;
+
+/// A closure pairing a context pointer with a TVMFFIFieldSetterWithContext.
+///
+/// Used when kTVMFFIFieldFlagBitSetterHasContext is set on a field.
+#[repr(C)]
+pub struct TVMFFIFieldSetterWithContextClosure {
+    pub ctx: *mut c_void,
+    pub setter: TVMFFIFieldSetterWithContext,
+}
+
 /// Information support for optional object reflection
 #[repr(C)]
 pub struct TVMFFIFieldInfo {
@@ -283,9 +296,14 @@ pub struct TVMFFIFieldInfo {
     pub offset: i64,
     /// The getter to access the field
     pub getter: Option<TVMFFIFieldGetter>,
-    /// The setter to access the field
-    /// The setter is set even if the field is readonly for serialization
-    pub setter: Option<TVMFFIFieldSetter>,
+    /// The setter to access the field.
+    ///
+    /// By default a bare TVMFFIFieldSetter cast to `*mut c_void`.
+    /// When `kTVMFFIFieldFlagBitSetterHasContext` is set in flags,
+    /// this is a pointer to a `TVMFFIFieldSetterWithContextClosure` struct.
+    ///
+    /// The setter is set even if the field is readonly for serialization.
+    pub setter: *mut c_void,
     /// The default value or factory of the field, this field holds AnyView.
     /// Valid when flags set kTVMFFIFieldFlagBitMaskHasDefault.
     /// When kTVMFFIFieldFlagBitMaskDefaultFromFactory is also set,
