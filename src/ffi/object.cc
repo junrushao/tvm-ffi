@@ -359,6 +359,7 @@ class TypeTable {
                               -1);
     TVMFFITypeMetadata info;
     info.total_size = sizeof(Object);
+    info.structural_eq_hash_kind = kTVMFFISEqHashKindUnsupported;
     info.creator = nullptr;
     info.doc = TVMFFIByteArray{nullptr, 0};
     RegisterTypeMetadata(Object::_type_index, &info);

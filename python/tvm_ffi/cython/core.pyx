@@ -45,3 +45,5 @@ MISSING = _get_global_func("ffi.GetInvalidObject", False)()
 
 # Global kwargs sentinel used by auto-generated __ffi_init__
 KWARGS = _get_global_func("ffi.GetKwargsObject", False)()
+
+include "./py_class.pxi"

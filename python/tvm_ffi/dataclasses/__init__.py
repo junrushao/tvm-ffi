@@ -17,5 +17,6 @@
 """C++ FFI classes with structural comparison and hashing."""
 
 from .c_class import c_class
+from .field import Field
 
-__all__ = ["c_class"]
+__all__ = ["Field", "c_class"]
