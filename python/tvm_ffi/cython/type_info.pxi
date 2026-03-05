@@ -514,6 +514,15 @@ class TypeSchema:
             args = ", ".join(args)
             return f"{origin}[{args}]"
 
+    def to_json(self) -> dict[str, Any]:
+        """Convert a TypeSchema to a JSON-compatible dict."""
+        if self.args:
+            return {
+                "type": self.origin,
+                "args": [a.to_json() for a in self.args],
+            }
+        return {"type": self.origin}
+
 
 def _annotation_union(args):
     """Convert Union type args to a TypeSchema (Optional or Union)."""
