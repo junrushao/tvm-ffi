@@ -583,7 +583,8 @@ def _lookup_type_attr(type_index: int32_t, attr_key: str) -> Any:
     offset = type_index - column.begin_index
     if offset < 0 or offset >= column.size:
         return None
-    return make_ret(column.data[offset])
+    CHECK_CALL(TVMFFIAnyViewToOwnedAny(&(column.data[offset]), &data))
+    return make_ret(data)
 
 
 def _type_cls_to_type_info(type_cls: type) -> TypeInfo | None:

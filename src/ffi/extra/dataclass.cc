@@ -1725,6 +1725,18 @@ TVM_FFI_STATIC_INIT_BLOCK() {
   namespace refl = tvm::ffi::reflection;
   // MakeInit
   refl::GlobalDef().def("ffi.MakeInit", refl::MakeInit);
+  // MakeNew: create a closure that allocates an uninitialized object of a given type
+  refl::GlobalDef().def("ffi.MakeNew", [](void* type_info_ptr) -> Function {
+    return Function::FromTyped([type_info_ptr]() -> ObjectRef {
+      const TVMFFITypeInfo* type_info = static_cast<const TVMFFITypeInfo*>(type_info_ptr);
+      void* obj_ptr = std::malloc(type_info->metadata->total_size);
+      TVMFFIObject* ffi_obj = reinterpret_cast<TVMFFIObject*>(obj_ptr);
+      ffi_obj->type_index = type_info->type_index;
+      ffi_obj->combined_ref_count = details::kCombinedRefCountBothOne;
+      Object* obj = reinterpret_cast<Object*>(obj_ptr);
+      return ObjectRef(details::ObjectUnsafe::ObjectPtrFromOwned<Object>(obj));
+    });
+  });
   // Deep copy
   refl::EnsureTypeAttrColumn(refl::type_attr::kShallowCopy);
   refl::GlobalDef().def("ffi.DeepCopy", DeepCopy);

@@ -163,12 +163,18 @@ class TypeSchema:
     :py:meth:`repr`.
     """
     origin: str
-    args: tuple[TypeSchema, ...] = ()
+    args: tuple["TypeSchema", ...] | None = None
     origin_type_index: int = dataclasses.field(default=_ORIGIN_TYPE_INDEX_UNKNOWN, repr=False)
 
     def __post_init__(self):
         origin = self.origin
         args = self.args
+        if args is not None and not isinstance(args, tuple):
+            args = tuple(args)
+            self.args = args
+        if origin != "tuple" and args is None:
+            args = ()
+            self.args = args
         if origin == "Union":
             if len(args) < 2:
                 raise ValueError("Union must have at least two arguments")
@@ -225,7 +231,9 @@ class TypeSchema:
             )
         origin = obj["type"]
         origin = _TYPE_SCHEMA_ORIGIN_CONVERTER.get(origin, origin)
-        raw_args = obj.get("args", ())
+        if "args" not in obj:
+            return TypeSchema(origin)
+        raw_args = obj["args"]
         if not isinstance(raw_args, (list, tuple)):
             raw_args = ()
         args = tuple(
@@ -318,6 +326,8 @@ class TypeSchema:
             return TypeSchema("Dict")
         if annotation is tuple:
             return TypeSchema("tuple")
+        if annotation is collections.abc.Callable:
+            return TypeSchema("Callable")
 
         # --- Python 3.10+ union syntax  (X | Y) ---
         if _UnionType is not None and isinstance(annotation, _UnionType):
@@ -360,6 +370,8 @@ class TypeSchema:
                     "tuple",
                     tuple(TypeSchema.from_annotation(a) for a in targs),
                 )
+            if annotation is not tuple:
+                return TypeSchema("tuple", ())
             return TypeSchema("tuple")
 
         if origin is collections.abc.Callable:
@@ -424,8 +436,15 @@ class TypeSchema:
             If the value is not compatible with the schema, with a
             human-readable error message describing the mismatch.
         """
-        # _type_schema_check_value is defined in type_check.pxi
-        _type_schema_check_value(self, value)
+        try:
+            _type_convert_impl(self._converter, value)
+        except RecursionError:
+            raise TypeError(
+                f"type check failed for {self!r}: "
+                f"infinite __tvm_ffi_value__ cycle detected"
+            ) from None
+        except _ConvertError as err:
+            raise TypeError(f"type check failed for {self!r}: {err.message}") from None
 
     def convert(self, value: object) -> "CAny":
         """Convert *value* according to this type schema, returning a :class:`CAny`.
@@ -450,8 +469,15 @@ class TypeSchema:
         TypeError
             If the value cannot be converted to this schema's type.
         """
-        # _type_schema_convert is defined in type_check.pxi
-        return _type_schema_convert(self, value)
+        try:
+            return _type_convert_impl(self._converter, value)
+        except RecursionError:
+            raise TypeError(
+                f"type conversion failed for {self!r}: "
+                f"infinite __tvm_ffi_value__ cycle detected"
+            ) from None
+        except _ConvertError as err:
+            raise TypeError(f"type conversion failed for {self!r}: {err.message}") from None
 
     def repr(self, ty_map: "Optional[Callable[[str], str]]" = None) -> str:
         """Render a human-readable representation of this schema.
@@ -496,7 +522,8 @@ class TypeSchema:
             origin = self.origin
         else:
             origin = ty_map(self.origin)
-        args = [i.repr(ty_map) for i in self.args]
+        schema_args = self.args
+        args = [i.repr(ty_map) for i in (() if schema_args is None else schema_args)]
         if origin == "Union":
             return " | ".join(args)
         elif origin == "Optional":
@@ -508,6 +535,8 @@ class TypeSchema:
                 ret = args[0]
                 args = ", ".join(args[1:])
                 return f"Callable[[{args}], {ret}]"
+        elif origin == "tuple" and schema_args == ():
+            return "tuple[()]"
         elif not args:
             return origin
         else:
@@ -516,7 +545,7 @@ class TypeSchema:
 
     def to_json(self) -> dict[str, Any]:
         """Convert a TypeSchema to a JSON-compatible dict."""
-        if self.args:
+        if self.args is not None and (self.args or self.origin == "tuple"):
             return {
                 "type": self.origin,
                 "args": [a.to_json() for a in self.args],
