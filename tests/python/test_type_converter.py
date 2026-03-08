@@ -261,12 +261,6 @@ class TestObjectTypes:
         f = tvm_ffi.get_global_func("testing.echo")
         A(Callable).check_value(f)
 
-    def test_make_new_exists(self) -> None:
-        """ffi.MakeNew should be registered when available in the build."""
-        fn = tvm_ffi.get_global_func("ffi.MakeNew", allow_missing=True)
-        if fn is None:
-            pytest.skip("ffi.MakeNew not registered")
-
     def test_function_from_extern_c_exists(self) -> None:
         """ffi.FunctionFromExternC should be registered."""
         fn = tvm_ffi.get_global_func("ffi.FunctionFromExternC", allow_missing=True)
