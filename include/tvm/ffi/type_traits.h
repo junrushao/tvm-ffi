@@ -550,6 +550,20 @@ struct TypeTraits<DLTensor*> : public TypeTraitsBase {
   TVM_FFI_INLINE static std::string TypeSchema() { return R"({"type":"DLTensor*"})"; }
 };
 
+namespace details {
+/*!
+ * \brief Promote a non-object str/bytes value to its heap-allocated Object form.
+ *
+ * Handles kTVMFFISmallStr, kTVMFFIRawStr -> StringObj (kTVMFFIStr),
+ * and kTVMFFISmallBytes -> BytesObj (kTVMFFIBytes).
+ *
+ * \param src The source AnyView to promote.
+ * \param dst On success, receives the promoted value with an owned object reference.
+ * \return true if promotion was performed, false if src is not a promotable type.
+ */
+bool PromoteSmallStrBytesToAny(const TVMFFIAny* src, TVMFFIAny* dst);
+}  // namespace details
+
 // Traits for ObjectRef, None to ObjectRef will always fail.
 // use std::optional<ObjectRef> instead for nullable references.
 template <typename TObjRef>
@@ -628,6 +642,15 @@ struct ObjectRefTypeTraitsBase : public TypeTraitsBase {
         return details::ObjectUnsafe::ObjectRefFromObjectPtr<TObjRef>(
             details::ObjectUnsafe::ObjectPtrFromUnowned<ContainerType>(src->v_obj));
       }
+    }
+    // Promote non-object str/bytes (small str, raw str, small bytes) to heap objects.
+    TVMFFIAny promoted;
+    if (details::PromoteSmallStrBytesToAny(src, &promoted)) {
+      if (details::IsObjectInstance<ContainerType>(promoted.type_index)) {
+        return details::ObjectUnsafe::ObjectRefFromObjectPtr<TObjRef>(
+            details::ObjectUnsafe::ObjectPtrFromOwned<ContainerType>(promoted.v_obj));
+      }
+      details::ObjectUnsafe::DecRefObjectHandle(promoted.v_obj);
     }
     return std::nullopt;
   }

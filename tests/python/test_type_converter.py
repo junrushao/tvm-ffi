@@ -3269,12 +3269,10 @@ class TestObjectMarshalFallback:
         with pytest.raises(TypeError, match=r"got .*Custom"):
             A(TestIntPair).check_value(Custom())
 
-    @pytest.mark.xfail(reason="SmallStr -> ObjectRef conversion is not supported yet")
     def test_str_accepted_by_object_schema(self) -> None:
         """TypeSchema('Object') accepts str (-> ffi.String IS-A Object)."""
         A(tvm_ffi.core.Object).check_value("hello")
 
-    @pytest.mark.xfail(reason="SmallBytes -> ObjectRef conversion is not supported yet")
     def test_bytes_accepted_by_object_schema(self) -> None:
         """TypeSchema('Object') accepts bytes (-> ffi.Bytes IS-A Object)."""
         A(tvm_ffi.core.Object).check_value(b"hello")

@@ -501,7 +501,6 @@ cdef CAny _tc_convert_union(_TypeConverter conv, object value, bint* changed) ex
 
 cdef CAny _tc_convert_object(_TypeConverter conv, object value, bint* changed) except *:
     """Convert *value* to an object compatible with ``conv.type_index``."""
-    # TODO: SmallStr and SmallBytes => ObjectRef conversion is not supported yet
     cdef int32_t actual_type_index = kTVMFFINone
     cdef CAny packed
     cdef CAny converted

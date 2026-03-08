@@ -1207,4 +1207,34 @@ struct hash<::tvm::ffi::String> {
 };
 }  // namespace std
 /// \endcond
+
+namespace tvm {
+namespace ffi {
+namespace details {
+
+inline bool PromoteSmallStrBytesToAny(const TVMFFIAny* src, TVMFFIAny* dst) {
+  if (src->type_index == TypeIndex::kTVMFFISmallStr ||
+      src->type_index == TypeIndex::kTVMFFIRawStr) {
+    const char* str_data =
+        (src->type_index == TypeIndex::kTVMFFISmallStr) ? src->v_bytes : src->v_c_str;
+    size_t str_size = (src->type_index == TypeIndex::kTVMFFISmallStr)
+                          ? src->small_str_len
+                          : std::char_traits<char>::length(src->v_c_str);
+    // Force heap allocation via std::string rvalue to bypass small-string optimization.
+    String promoted(std::string(str_data, str_size));
+    TypeTraits<String>::MoveToAny(std::move(promoted), dst);
+    return true;
+  }
+  if (src->type_index == TypeIndex::kTVMFFISmallBytes) {
+    Bytes promoted(std::string(src->v_bytes, src->small_str_len));
+    TypeTraits<Bytes>::MoveToAny(std::move(promoted), dst);
+    return true;
+  }
+  return false;
+}
+
+}  // namespace details
+}  // namespace ffi
+}  // namespace tvm
+
 #endif  // TVM_FFI_STRING_H_

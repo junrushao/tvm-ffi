@@ -71,3 +71,36 @@ def test_string_find_substr() -> None:
     assert s[0:5] == "hello"
     assert s[6:] == "world"
     assert s[:5] == "hello"
+
+
+def test_small_str_to_object_ref() -> None:
+    """Small strings (<=7 bytes) should be accepted by ObjectRef parameters."""
+    f = tvm_ffi.get_global_func("testing.schema_id_object")
+    # Small string (uses inline kTVMFFISmallStr storage)
+    result = f("small")
+    assert result == "small"
+    # Empty string (smallest possible small string)
+    result = f("")
+    assert result == ""
+    # Exactly 7 bytes (max small string length)
+    result = f("1234567")
+    assert result == "1234567"
+    # 8 bytes (crosses into heap-allocated kTVMFFIStr)
+    result = f("12345678")
+    assert result == "12345678"
+    # Long string (already heap-allocated, should still work)
+    result = f("long long string")
+    assert result == "long long string"
+
+
+def test_small_bytes_to_object_ref() -> None:
+    """Small bytes (<=7 bytes) should be accepted by ObjectRef parameters."""
+    f = tvm_ffi.get_global_func("testing.schema_id_object")
+    result = f(b"small")
+    assert result == b"small"
+    result = f(b"")
+    assert result == b""
+    result = f(b"1234567")
+    assert result == b"1234567"
+    result = f(b"12345678")
+    assert result == b"12345678"
