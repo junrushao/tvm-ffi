@@ -25,6 +25,7 @@
 
 #include <tvm/ffi/any.h>
 #include <tvm/ffi/c_api.h>
+#include <tvm/ffi/cast.h>
 #include <tvm/ffi/function.h>
 #include <tvm/ffi/function_details.h>
 #include <tvm/ffi/object.h>
@@ -41,6 +42,20 @@
 namespace tvm {
 namespace ffi {
 namespace reflection {
+
+namespace details {
+
+template <typename TObjectRef>
+TObjectRef CastFromAny(AnyView input) {
+  TVMFFIAny input_pod = input.CopyToTVMFFIAny();
+  if (auto opt = TypeTraits<TObjectRef>::TryCastFromAnyView(&input_pod)) {
+    return *std::move(opt);
+  }
+  TVM_FFI_THROW(TypeError) << "Cannot cast from `" << TypeIndexToTypeKey(input_pod.type_index)
+                           << "` to `" << TypeTraits<TObjectRef>::TypeStr() << "`";
+}
+
+}  // namespace details
 
 /*!
  * \brief Create a packed ``__ffi_init__`` constructor for the given type.
@@ -212,7 +227,7 @@ inline void RegisterAutoInit(int32_t type_index) {
   info.flags = kTVMFFIFieldFlagBitMaskIsStaticMethod;
   info.method = AnyView(auto_init_fn).CopyToTVMFFIAny();
   static const std::string kMetadata =
-      "{\"type_schema\":" + std::string(details::TypeSchemaImpl<Function>::v()) +
+      "{\"type_schema\":" + std::string(::tvm::ffi::details::TypeSchemaImpl<Function>::v()) +
       ",\"auto_init\":true}";
   info.metadata = TVMFFIByteArray{kMetadata.c_str(), kMetadata.size()};
   TVM_FFI_CHECK_SAFE_CALL(TVMFFITypeRegisterMethod(type_index, &info));
