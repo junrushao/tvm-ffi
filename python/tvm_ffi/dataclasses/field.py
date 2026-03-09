@@ -45,6 +45,7 @@ class Field:
         Whether this field participates in recursive hashing.
     compare : bool
         Whether this field participates in recursive comparison.
+        Default is False for Python-defined fields.
     kw_only : bool
         Whether this field is keyword-only in ``__init__``.
     doc : str | None
@@ -85,12 +86,17 @@ class Field:
         init: bool = True,
         repr: bool = True,
         hash: bool = True,
-        compare: bool = True,
+        compare: bool = False,
         kw_only: bool = False,
         doc: str | None = None,
     ) -> None:
         if default is not MISSING and default_factory is not MISSING:
             raise ValueError("cannot specify both default and default_factory")
+        if default_factory is not MISSING:
+            if not callable(default_factory):
+                raise TypeError(
+                    f"default_factory must be a callable, got {type(default_factory).__name__}"
+                )
         self.name = name
         self.ty = ty
         self.default = default
