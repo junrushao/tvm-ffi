@@ -641,6 +641,26 @@ def _register_py_class(parent_type_info, str type_key, object type_cls):
     return info
 
 
+def _rollback_py_class(object type_info):
+    """Roll back a ``_register_py_class`` call from the Python-level registry.
+
+    Called by ``@py_class`` when phase-2 (field validation) fails, so
+    the type key can be reused after the user fixes the error.  The
+    C-level type index is permanently consumed (cannot be reclaimed),
+    but the Python dicts are cleaned up so that a retry does not hit
+    "already registered".
+    """
+    cdef int32_t idx = type_info.type_index
+    cdef str key = type_info.type_key
+    cdef object cls = type_info.type_cls
+    TYPE_KEY_TO_INFO.pop(key, None)
+    if cls is not None:
+        TYPE_CLS_TO_INFO.pop(cls, None)
+    if 0 <= idx < len(TYPE_INDEX_TO_INFO):
+        TYPE_INDEX_TO_INFO[idx] = None
+        TYPE_INDEX_TO_CLS[idx] = None
+
+
 def _lookup_type_attr(type_index: int32_t, attr_key: str) -> Any:
     cdef ByteArrayArg attr_key_bytes = ByteArrayArg(c_str(attr_key))
     cdef const TVMFFITypeAttrColumn* column = TVMFFIGetTypeAttrColumn(&attr_key_bytes.cdata)
