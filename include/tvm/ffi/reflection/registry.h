@@ -697,6 +697,12 @@ inline constexpr const char* kCompare = "__ffi_compare__";
 inline constexpr const char* kConvert = "__ffi_convert__";
 }  // namespace type_attr
 
+/*!
+ * \brief Register the __ffi_convert__ type attribute for a reflected object type.
+ * \tparam TObjectRef The object reference type to register conversion for.
+ * \param type_index The runtime type index of the object.
+ * \param type_key The type key string of the object.
+ */
 template <typename TObjectRef>
 inline void RegisterConvertTypeAttr(int32_t type_index, const char* type_key) {
   TVMFFIByteArray attr_name = {type_attr::kConvert,
@@ -791,15 +797,6 @@ class ObjectDef : public ReflectionDefBase {
     return *this;
   }
 
-  template <typename TObjectRef>
-  TVM_FFI_INLINE ObjectDef& ref() {
-    static_assert(
-        std::is_same_v<typename TObjectRef::ContainerType, Class>,
-        "ObjectDef<Class>::ref<TObjectRef>() requires TObjectRef::ContainerType == Class");
-    RegisterConvertTypeAttr<TObjectRef>(type_index_, type_key_);
-    return *this;
-  }
-
   /*!
    * \brief Define a method.
    *
@@ -833,6 +830,21 @@ class ObjectDef : public ReflectionDefBase {
   template <typename Func, typename... Extra>
   TVM_FFI_INLINE ObjectDef& def_static(const char* name, Func&& func, Extra&&... extra) {
     RegisterMethod(name, true, std::forward<Func>(func), std::forward<Extra>(extra)...);
+    return *this;
+  }
+
+  /*!
+   * \brief Register ``__ffi_convert__`` for the object reference wrapper.
+   *
+   * This enables typed ``AnyView -> TObjectRef`` conversion through
+   * ``TypeTraits<TObjectRef>::TryCastFromAnyView``.
+   */
+  template <typename TObjectRef>
+  TVM_FFI_INLINE ObjectDef& ref() {
+    static_assert(
+        std::is_same_v<typename TObjectRef::ContainerType, Class>,
+        "ObjectDef<Class>::ref<TObjectRef>() requires TObjectRef::ContainerType == Class");
+    RegisterConvertTypeAttr<TObjectRef>(type_index_, type_key_);
     return *this;
   }
 
@@ -933,7 +945,7 @@ class ObjectDef : public ReflectionDefBase {
       info.flags |= kTVMFFIFieldFlagBitMaskWritable;
     }
     info.getter = FieldGetter<T>;
-    info.setter = FieldSetter<T>;
+    info.setter = reinterpret_cast<void*>(FieldSetter<T>);
     // initialize default value to nullptr
     info.default_value_or_factory = AnyView(nullptr).CopyToTVMFFIAny();
     info.doc = TVMFFIByteArray{nullptr, 0};
