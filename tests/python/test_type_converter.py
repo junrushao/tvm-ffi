@@ -21,7 +21,8 @@ from __future__ import annotations
 import collections.abc
 import ctypes
 import sys
-from typing import Callable
+import typing
+from typing import Callable, Iterator, Optional, Union
 
 import pytest
 import tvm_ffi
@@ -253,3 +254,202 @@ class TestObjectTypes:
         """ffi.FunctionFromExternC should be registered."""
         fn = tvm_ffi.get_global_func("ffi.FunctionFromExternC", allow_missing=True)
         assert fn is not None, "ffi.FunctionFromExternC not registered"
+
+
+# ---------------------------------------------------------------------------
+# Category 6: Optional
+# ---------------------------------------------------------------------------
+class TestOptional:
+    def test_none_passes(self) -> None:
+        """Test none passes."""
+        A(Optional[int]).check_value(None)
+
+    def test_inner_type_passes(self) -> None:
+        """Test inner type passes."""
+        A(Optional[int]).check_value(42)
+
+    def test_wrong_type_fails(self) -> None:
+        """Test wrong type fails."""
+        with pytest.raises(TypeError, match="expected int"):
+            A(Optional[int]).check_value("hello")
+
+    def test_nested_optional(self) -> None:
+        """Test nested optional."""
+        schema = A(Optional[Optional[int]])
+        schema.check_value(None)
+        schema.check_value(42)
+
+
+# ---------------------------------------------------------------------------
+# Category 7: Union / Variant
+# ---------------------------------------------------------------------------
+class TestUnion:
+    def test_first_alt_passes(self) -> None:
+        """Test first alt passes."""
+        A(Union[int, str]).check_value(42)
+
+    def test_second_alt_passes(self) -> None:
+        """Test second alt passes."""
+        A(Union[int, str]).check_value("hello")
+
+    def test_no_alt_matches(self) -> None:
+        """Test no alt matches."""
+        with pytest.raises(TypeError, match="got float"):
+            A(Union[int, str]).check_value(3.14)
+
+    def test_bool_matches_int_alt(self) -> None:
+        """Bool is accepted by the int alternative."""
+        A(Union[int, str]).check_value(True)
+
+
+# ---------------------------------------------------------------------------
+# Category 8: Containers
+# ---------------------------------------------------------------------------
+class TestContainers:
+    @requires_py39
+    def test_array_list_pass(self) -> None:
+        """Test array list pass."""
+        A(tuple[int, ...]).check_value([1, 2, 3])
+
+    @requires_py39
+    def test_array_tuple_pass(self) -> None:
+        """Test array tuple pass."""
+        A(tuple[int, ...]).check_value((1, 2, 3))
+
+    @requires_py39
+    def test_array_wrong_element(self) -> None:
+        """Test array wrong element."""
+        with pytest.raises(TypeError, match=r"element \[1\].*expected int"):
+            A(tuple[int, ...]).check_value([1, "x"])
+
+    @requires_py39
+    def test_array_empty_pass(self) -> None:
+        """Test array empty pass."""
+        A(tuple[int, ...]).check_value([])
+
+    @requires_py39
+    def test_array_any_pass(self) -> None:
+        """Test array any pass."""
+        A(tuple[typing.Any, ...]).check_value([1, "x", None])
+
+    @requires_py39
+    def test_array_wrong_container_type(self) -> None:
+        """Test array wrong container type."""
+        with pytest.raises(TypeError, match="expected Array"):
+            A(tuple[int, ...]).check_value(42)
+
+    @requires_py39
+    def test_array_rejects_generator(self) -> None:
+        """Generators are not accepted by Array schemas."""
+
+        def gen() -> Iterator[int]:
+            yield 1
+            yield 2
+
+        with pytest.raises(TypeError, match="expected Array"):
+            A(tuple[int, ...]).check_value(gen())
+
+    @requires_py39
+    def test_array_rejects_string(self) -> None:
+        """Strings are not accepted by Array schemas."""
+        with pytest.raises(TypeError, match="expected Array"):
+            A(tuple[int, ...]).check_value("hello")
+
+    @requires_py39
+    def test_list_pass(self) -> None:
+        """Test list pass."""
+        A(list[str]).check_value(["a", "b"])
+
+    @requires_py39
+    def test_map_pass(self) -> None:
+        """Test map pass."""
+        A(tvm_ffi.Map[str, int]).check_value({"a": 1, "b": 2})
+
+    @requires_py39
+    def test_map_wrong_key(self) -> None:
+        """Test map wrong key."""
+        with pytest.raises(TypeError, match="expected str"):
+            A(tvm_ffi.Map[str, int]).check_value({1: 2})
+
+    @requires_py39
+    def test_map_wrong_value(self) -> None:
+        """Test map wrong value."""
+        with pytest.raises(TypeError, match="expected int"):
+            A(tvm_ffi.Map[str, int]).check_value({"a": "b"})
+
+    @requires_py39
+    def test_map_empty_pass(self) -> None:
+        """Test map empty pass."""
+        A(tvm_ffi.Map[str, int]).check_value({})
+
+    @requires_py39
+    def test_dict_pass(self) -> None:
+        """Test dict pass."""
+        A(dict[str, int]).check_value({"a": 1})
+
+    @requires_py39
+    def test_map_wrong_container(self) -> None:
+        """Test map wrong container."""
+        with pytest.raises(TypeError, match="expected Map"):
+            A(tvm_ffi.Map[str, int]).check_value([1, 2])
+
+    @requires_py39
+    def test_map_rejects_non_mapping_pairs(self) -> None:
+        """Lists of pairs are not accepted by Map schemas."""
+        with pytest.raises(TypeError, match="expected Map"):
+            A(tvm_ffi.Map[str, int]).check_value([("a", 1)])
+
+
+# ---------------------------------------------------------------------------
+# Category 9: Nested types
+# ---------------------------------------------------------------------------
+class TestNestedTypes:
+    @requires_py39
+    def test_array_optional_int(self) -> None:
+        """Test array optional int."""
+        A(tuple[Optional[int], ...]).check_value([1, None, 2])
+
+    @requires_py39
+    def test_map_str_array_int(self) -> None:
+        """Test map str array int."""
+        A(tvm_ffi.Map[str, tuple[int, ...]]).check_value({"a": [1, 2]})
+
+    @requires_py39
+    def test_map_str_array_int_nested_fail(self) -> None:
+        """Test map str array int nested fail."""
+        with pytest.raises(TypeError, match="expected int"):
+            A(tvm_ffi.Map[str, tuple[int, ...]]).check_value({"a": [1, "x"]})
+
+    @requires_py39
+    def test_union_with_containers(self) -> None:
+        """Test union with containers."""
+        schema = A(Union[int, tuple[str, ...]])
+        schema.check_value(42)
+        schema.check_value(["a", "b"])
+        with pytest.raises(TypeError):
+            schema.check_value(3.14)
+
+
+# ---------------------------------------------------------------------------
+# Category 10: Any
+# ---------------------------------------------------------------------------
+class TestAny:
+    def test_int(self) -> None:
+        """Test int."""
+        A(typing.Any).check_value(42)
+
+    def test_none(self) -> None:
+        """Test none."""
+        A(typing.Any).check_value(None)
+
+    def test_str(self) -> None:
+        """Test str."""
+        A(typing.Any).check_value("hello")
+
+    def test_list(self) -> None:
+        """Test list."""
+        A(typing.Any).check_value([1, 2, 3])
+
+    def test_object(self) -> None:
+        """Test object."""
+        A(typing.Any).check_value(object())
