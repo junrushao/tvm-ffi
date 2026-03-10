@@ -680,6 +680,10 @@ def _install_dataclass_dunders(
         dunders["__gt__"] = __gt__
         dunders["__ge__"] = __ge__
 
+    # Install dunders respecting user-defined overrides.
+    # Semantic families (__eq__/__ne__, __lt__/__le__/__gt__/__ge__) are
+    # treated as a unit: if the user defines any member, the whole family
+    # is skipped so generated and user-defined methods don't disagree.
     _eq_family = {"__eq__", "__ne__"}
     _order_family = {"__lt__", "__le__", "__gt__", "__ge__"}
     skip_eq = bool(_eq_family & set(cls.__dict__))
