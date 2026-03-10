@@ -356,16 +356,30 @@ def _make_init(type_cls: type, type_info: TypeInfo) -> Callable[..., None]:
     """
     sig = _make_init_signature(type_info)
     kwargs_obj = core.KWARGS
+    has_post_init = hasattr(type_cls, "__post_init__")
 
-    def __init__(self: Any, *args: Any, **kwargs: Any) -> None:
-        ffi_args: list[Any] = list(args)
-        ffi_args.append(kwargs_obj)
-        for key, val in kwargs.items():
-            ffi_args.append(key)
-            ffi_args.append(val)
-        self.__ffi_init__(*ffi_args)
+    if has_post_init:
 
-    __init__.__signature__ = sig  # ty: ignore[unresolved-attribute]
+        def __init__(self: Any, *args: Any, **kwargs: Any) -> None:
+            ffi_args: list[Any] = list(args)
+            ffi_args.append(kwargs_obj)
+            for key, val in kwargs.items():
+                ffi_args.append(key)
+                ffi_args.append(val)
+            self.__ffi_init__(*ffi_args)
+            self.__post_init__()
+
+    else:
+
+        def __init__(self: Any, *args: Any, **kwargs: Any) -> None:
+            ffi_args: list[Any] = list(args)
+            ffi_args.append(kwargs_obj)
+            for key, val in kwargs.items():
+                ffi_args.append(key)
+                ffi_args.append(val)
+            self.__ffi_init__(*ffi_args)
+
+    __init__.__signature__ = sig  # ty: ignore[invalid-assignment]
     __init__.__qualname__ = f"{type_cls.__qualname__}.__init__"
     __init__.__module__ = type_cls.__module__
     return __init__

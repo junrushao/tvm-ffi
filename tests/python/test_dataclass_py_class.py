@@ -19,13 +19,15 @@
 # ruff: noqa: D102
 from __future__ import annotations
 
+import inspect
 import itertools
 import sys
+from typing import ClassVar
 
 import pytest
 from tvm_ffi import core
 from tvm_ffi.core import Object, TypeInfo
-from tvm_ffi.dataclasses import Field, field, py_class
+from tvm_ffi.dataclasses import KW_ONLY, Field, field, py_class
 from tvm_ffi.registry import _add_class_attrs, _install_dataclass_dunders
 
 _needs_310 = pytest.mark.skipif(sys.version_info < (3, 10), reason="X | Y syntax requires 3.10+")
@@ -271,3 +273,246 @@ class TestDefaults:
 
 
 # ###########################################################################
+#  4. KW_ONLY
+# ###########################################################################
+class TestKwOnly:
+    """Keyword-only field support."""
+
+    def test_kw_only_sentinel(self) -> None:
+        @py_class(_unique_key("KWSent"))
+        class KWSent(Object):
+            a: int
+            _: KW_ONLY
+            b: int = 10
+
+        obj = KWSent(1, b=20)  # ty: ignore[missing-argument]
+        assert obj.a == 1
+        assert obj.b == 20
+        with pytest.raises(TypeError):
+            KWSent(1, 2)  # ty: ignore[invalid-argument-type]
+
+    def test_decorator_level_kw_only(self) -> None:
+        @py_class(_unique_key("DecKW"), kw_only=True)
+        class DecKW(Object):
+            a: int
+            b: int = 10
+
+        obj = DecKW(a=1)
+        assert obj.a == 1
+        assert obj.b == 10
+        with pytest.raises(TypeError):
+            DecKW(1)  # ty: ignore[missing-argument,too-many-positional-arguments]
+
+    def test_field_level_kw_only_override(self) -> None:
+        @py_class(_unique_key("FldKW"))
+        class FldKW(Object):
+            a: int
+            b: int = field(default=10, kw_only=True)
+
+        obj = FldKW(1)
+        assert obj.a == 1
+        assert obj.b == 10
+        with pytest.raises(TypeError):
+            FldKW(1, 2)  # b is keyword-only
+
+
+# ###########################################################################
+#  5. ClassVar
+# ###########################################################################
+class TestClassVar:
+    """ClassVar annotations are skipped."""
+
+    def test_classvar_skipped(self) -> None:
+        @py_class(_unique_key("CV"))
+        class CV(Object):
+            x: int
+            count: ClassVar[int] = 0
+
+        info = _get_type_info(CV)
+        field_names = [f.name for f in info.fields]
+        assert "x" in field_names
+        assert "count" not in field_names
+
+    def test_classvar_preserved_on_class(self) -> None:
+        @py_class(_unique_key("CVPres"))
+        class CVPres(Object):
+            x: int
+            tag: ClassVar[str] = "hello"
+
+        assert CVPres.tag == "hello"
+
+
+# ###########################################################################
+#  6. Init generation
+# ###########################################################################
+class TestInit:
+    """Auto-generated __init__."""
+
+    def test_positional_args(self) -> None:
+        @py_class(_unique_key("Pos"))
+        class Pos(Object):
+            a: int
+            b: str
+
+        obj = Pos(1, "hello")
+        assert obj.a == 1
+        assert obj.b == "hello"
+
+    def test_keyword_args(self) -> None:
+        @py_class(_unique_key("Kw"))
+        class Kw(Object):
+            a: int
+            b: str
+
+        obj = Kw(a=1, b="hello")
+        assert obj.a == 1
+        assert obj.b == "hello"
+
+    def test_init_false_field(self) -> None:
+        @py_class(_unique_key("NoInit"))
+        class NoInit(Object):
+            a: int
+            b: int = field(default=99, init=False)
+
+        obj = NoInit(a=1)
+        assert obj.a == 1
+        assert obj.b == 99
+
+    def test_user_defined_init_preserved(self) -> None:
+        @py_class(_unique_key("UserInit"), init=False)
+        class UserInit(Object):
+            a: int
+
+            def __init__(self, val: int) -> None:
+                self.__ffi_init__(val)
+
+        obj = UserInit(42)
+        assert obj.a == 42
+
+    def test_required_after_optional_reordered(self) -> None:
+        """Required positional fields are reordered before optional ones in __init__."""
+
+        @py_class(_unique_key("ReorderOwn"))
+        class ReorderOwn(Object):
+            x: int = 0
+            y: int  # ty: ignore[dataclass-field-order]
+
+        sig = inspect.signature(ReorderOwn.__init__)
+        param_names = [n for n in sig.parameters if n != "self"]
+        assert param_names[0] == "y"  # required comes first
+        assert param_names[1] == "x"  # optional comes second
+
+        obj = ReorderOwn(y=1)  # ty: ignore[missing-argument]
+        assert obj.x == 0
+        assert obj.y == 1
+
+    def test_required_after_optional_in_parent(self) -> None:
+        """Child required fields are reordered before parent optional fields."""
+
+        @py_class(_unique_key("OptParent"))
+        class OptParent(Object):
+            x: int
+            y: int = 0
+
+        @py_class(_unique_key("ReqChild"))
+        class ReqChild(OptParent):
+            z: int
+
+        sig = inspect.signature(ReqChild.__init__)
+        param_names = [n for n in sig.parameters if n != "self"]
+        # required (x, z) before optional (y)
+        assert param_names == ["x", "z", "y"]
+
+        obj = ReqChild(x=1, z=3)
+        assert obj.x == 1
+        assert obj.y == 0
+        assert obj.z == 3
+
+    def test_kw_only_exempt_from_reorder(self) -> None:
+        """kw_only fields are not reordered with positional fields."""
+
+        @py_class(_unique_key("KwReorder"))
+        class KwReorder(Object):
+            x: int = 0
+            _: KW_ONLY  # ty: ignore[dataclass-field-order]
+            y: int  # ty: ignore[dataclass-field-order]
+
+        sig = inspect.signature(KwReorder.__init__)
+        params = sig.parameters
+        assert params["x"].kind == inspect.Parameter.POSITIONAL_OR_KEYWORD
+        assert params["y"].kind == inspect.Parameter.KEYWORD_ONLY
+
+        obj = KwReorder(y=1)  # ty: ignore[missing-argument]
+        assert obj.x == 0
+        assert obj.y == 1
+
+    def test_mixed_positional_and_kw_only_with_defaults(self) -> None:
+        """Mixed positional/kw_only fields with defaults produce correct signature."""
+
+        @py_class(_unique_key("MixedSig"))
+        class MixedSig(Object):
+            a: int = 0
+            b: int  # ty: ignore[dataclass-field-order]
+            _: KW_ONLY  # ty: ignore[dataclass-field-order]
+            c: int = 10
+            d: int  # ty: ignore[dataclass-field-order]
+
+        sig = inspect.signature(MixedSig.__init__)
+        param_names = [n for n in sig.parameters if n != "self"]
+        # positional: b (required) before a (optional); kw_only: d (required) before c (optional)
+        assert param_names == ["b", "a", "d", "c"]
+
+        obj = MixedSig(b=2, d=4)  # ty: ignore[missing-argument]
+        assert obj.a == 0
+        assert obj.b == 2
+        assert obj.c == 10
+        assert obj.d == 4
+
+    def test_init_false_excluded_from_signature(self) -> None:
+        """init=False fields do not appear in __init__ signature."""
+
+        @py_class(_unique_key("InitFalseSig"))
+        class InitFalseSig(Object):
+            a: int
+            b: int = field(default=99, init=False)
+            c: str
+
+        sig = inspect.signature(InitFalseSig.__init__)
+        param_names = [n for n in sig.parameters if n != "self"]
+        assert "b" not in param_names
+        assert "a" in param_names
+        assert "c" in param_names
+
+
+# ###########################################################################
+#  7. __post_init__
+# ###########################################################################
+class TestPostInit:
+    """__post_init__ support."""
+
+    def test_post_init_called(self) -> None:
+        post_init_called = False
+
+        @py_class(_unique_key("PostInit"))
+        class PostInit(Object):
+            x: int
+
+            def __post_init__(self) -> None:
+                nonlocal post_init_called
+                post_init_called = True
+
+        PostInit(x=1)
+        assert post_init_called
+
+    def test_post_init_sees_field_values(self) -> None:
+        @py_class(_unique_key("PostInitVal"))
+        class PostInitVal(Object):
+            x: int
+            y: int = 10
+
+            def __post_init__(self) -> None:
+                # Fields should be set before __post_init__ is called
+                assert self.x is not None
+                assert self.y == 10
+
+        PostInitVal(x=5)
