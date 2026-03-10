@@ -68,8 +68,8 @@ class ObjectCreator {
   Any operator()(const Map<String, Any>& fields) const {
     TVMFFIObjectHandle handle;
     TVM_FFI_CHECK_SAFE_CALL(type_info_->metadata->creator(&handle));
-    ObjectPtr<Object> ptr =
-        details::ObjectUnsafe::ObjectPtrFromOwned<Object>(static_cast<TVMFFIObject*>(handle));
+    ObjectPtr<Object> ptr = ::tvm::ffi::details::ObjectUnsafe::ObjectPtrFromOwned<Object>(
+        static_cast<TVMFFIObject*>(handle));
     size_t match_field_count = 0;
     ForEachFieldInfo(type_info_, [&](const TVMFFIFieldInfo* field_info) {
       String field_name(field_info->name);

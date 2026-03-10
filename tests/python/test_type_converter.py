@@ -40,6 +40,10 @@ requires_py39 = pytest.mark.skipif(
 from tvm_ffi.testing import (
     TestIntPair,
     TestObjectBase,
+    TestObjectDerived,
+    _TestCxxClassBase,
+    _TestCxxClassDerived,
+    _TestCxxClassDerivedDerived,
 )
 
 
@@ -1586,3 +1590,346 @@ class TestNestedErrorPropagation:
         arr = tvm_ffi.Array([1, "bad", 3])
         with pytest.raises(TypeError, match=r"element \[1\].*expected int"):
             A(tuple[int, ...]).convert(arr)
+
+
+# ---------------------------------------------------------------------------
+# Category 30: Custom object type exact match
+# ---------------------------------------------------------------------------
+class TestCustomObjectExactMatch:
+    def test_test_int_pair_pass(self) -> None:
+        """TestIntPair passes TypeSchema('testing.TestIntPair')."""
+        obj = TestIntPair(1, 2)
+        A(TestIntPair).check_value(obj)
+
+    def test_test_object_base_pass(self) -> None:
+        """TestObjectBase passes its own schema."""
+        obj = TestObjectBase(v_i64=10, v_f64=1.5, v_str="hi")
+        A(TestObjectBase).check_value(obj)
+
+    def test_test_object_derived_pass(self) -> None:
+        """TestObjectDerived passes its own schema."""
+        obj = TestObjectDerived(v_map={"a": 1}, v_array=[1], v_i64=0, v_f64=0.0, v_str="")
+        A(TestObjectDerived).check_value(obj)
+
+    def test_cxx_class_base_pass(self) -> None:
+        """_TestCxxClassBase passes its own schema."""
+        obj = _TestCxxClassBase(v_i64=1, v_i32=2)
+        A(_TestCxxClassBase).check_value(obj)
+
+    def test_cxx_class_derived_pass(self) -> None:
+        """_TestCxxClassDerived passes its own schema."""
+        obj = _TestCxxClassDerived(v_i64=1, v_i32=2, v_f64=3.0)
+        A(_TestCxxClassDerived).check_value(obj)
+
+    def test_cxx_class_derived_derived_pass(self) -> None:
+        """_TestCxxClassDerivedDerived passes its own schema."""
+        obj = _TestCxxClassDerivedDerived(v_i64=1, v_i32=2, v_f64=3.0, v_bool=True)
+        A(_TestCxxClassDerivedDerived).check_value(obj)
+
+
+# ---------------------------------------------------------------------------
+# Category 31: Custom object type hierarchy (subclass passes parent schema)
+# ---------------------------------------------------------------------------
+class TestCustomObjectHierarchy:
+    def test_derived_passes_base_schema(self) -> None:
+        """TestObjectDerived passes TypeSchema('testing.TestObjectBase')."""
+        obj = TestObjectDerived(v_map={"a": 1}, v_array=[1], v_i64=0, v_f64=0.0, v_str="")
+        A(TestObjectBase).check_value(obj)
+
+    def test_derived_passes_object_schema(self) -> None:
+        """TestObjectDerived passes TypeSchema('Object')."""
+        obj = TestObjectDerived(v_map={"a": 1}, v_array=[1], v_i64=0, v_f64=0.0, v_str="")
+        A(tvm_ffi.core.Object).check_value(obj)
+
+    def test_cxx_derived_passes_base(self) -> None:
+        """_TestCxxClassDerived passes TestCxxClassBase schema."""
+        obj = _TestCxxClassDerived(v_i64=1, v_i32=2, v_f64=3.0)
+        A(_TestCxxClassBase).check_value(obj)
+
+    def test_cxx_derived_derived_passes_base(self) -> None:
+        """_TestCxxClassDerivedDerived passes TestCxxClassBase schema (2-level up)."""
+        obj = _TestCxxClassDerivedDerived(v_i64=1, v_i32=2, v_f64=3.0, v_bool=True)
+        A(_TestCxxClassBase).check_value(obj)
+
+    def test_cxx_derived_derived_passes_derived(self) -> None:
+        """_TestCxxClassDerivedDerived passes TestCxxClassDerived schema (1-level up)."""
+        obj = _TestCxxClassDerivedDerived(v_i64=1, v_i32=2, v_f64=3.0, v_bool=True)
+        A(_TestCxxClassDerived).check_value(obj)
+
+    def test_all_custom_objects_pass_object_schema(self) -> None:
+        """Every custom object passes the generic Object schema."""
+        objs = [
+            TestIntPair(1, 2),
+            TestObjectBase(v_i64=10, v_f64=1.5, v_str="hi"),
+            _TestCxxClassBase(v_i64=1, v_i32=2),
+            _TestCxxClassDerived(v_i64=1, v_i32=2, v_f64=3.0),
+            _TestCxxClassDerivedDerived(v_i64=1, v_i32=2, v_f64=3.0, v_bool=True),
+        ]
+        schema = A(tvm_ffi.core.Object)
+        for obj in objs:
+            schema.check_value(obj)
+
+
+# ---------------------------------------------------------------------------
+# Category 32: Custom object type rejection
+# ---------------------------------------------------------------------------
+class TestCustomObjectRejection:
+    def test_wrong_object_type(self) -> None:
+        """TestIntPair fails TypeSchema('testing.TestObjectBase')."""
+        obj = TestIntPair(1, 2)
+        with pytest.raises(TypeError, match=r"testing.TestIntPair"):
+            A(TestObjectBase).check_value(obj)
+
+    def test_base_fails_derived_schema(self) -> None:
+        """Parent object fails child schema (TestObjectBase fails TestObjectDerived)."""
+        obj = TestObjectBase(v_i64=10, v_f64=1.5, v_str="hi")
+        with pytest.raises(TypeError, match=r"testing.TestObjectBase"):
+            A(TestObjectDerived).check_value(obj)
+
+    def test_non_object_fails_custom_schema(self) -> None:
+        """Plain int fails custom object schema."""
+        with pytest.raises(TypeError, match=r"expected testing\.TestIntPair.*got int"):
+            A(TestIntPair).check_value(42)
+
+    def test_none_fails_custom_schema(self) -> None:
+        """None fails custom object schema."""
+        with pytest.raises(TypeError, match="got None"):
+            A(TestIntPair).check_value(None)
+
+    def test_string_fails_custom_schema(self) -> None:
+        """String fails custom object schema."""
+        with pytest.raises(TypeError, match="got str"):
+            A(TestIntPair).check_value("hello")
+
+    def test_cxx_base_fails_derived_schema(self) -> None:
+        """_TestCxxClassBase fails _TestCxxClassDerived schema."""
+        obj = _TestCxxClassBase(v_i64=1, v_i32=2)
+        with pytest.raises(TypeError):
+            A(_TestCxxClassDerived).check_value(obj)
+
+    def test_sibling_types_reject_each_other(self) -> None:
+        """TestIntPair and TestCxxClassBase are unrelated -- reject each other."""
+        pair = TestIntPair(1, 2)
+        base = _TestCxxClassBase(v_i64=1, v_i32=2)
+        with pytest.raises(TypeError):
+            A(_TestCxxClassBase).check_value(pair)
+        with pytest.raises(TypeError):
+            A(TestIntPair).check_value(base)
+
+
+# ---------------------------------------------------------------------------
+# Category 33: Custom objects in containers
+# ---------------------------------------------------------------------------
+class TestCustomObjectInContainers:
+    @requires_py39
+    def test_array_of_custom_objects(self) -> None:
+        """Array[testing.TestIntPair] with matching elements."""
+        objs = [TestIntPair(1, 2), TestIntPair(3, 4)]
+        A(tuple[TestIntPair, ...]).check_value(objs)
+
+    @requires_py39
+    def test_array_of_custom_objects_wrong_type(self) -> None:
+        """Array[testing.TestIntPair] with wrong element type fails."""
+        objs = [TestIntPair(1, 2), _TestCxxClassBase(v_i64=1, v_i32=2)]
+        with pytest.raises(TypeError, match=r"element \[1\]"):
+            A(tuple[TestIntPair, ...]).check_value(objs)
+
+    @requires_py39
+    def test_array_of_base_with_derived_elements(self) -> None:
+        """Array[testing.TestObjectBase] accepts derived elements via hierarchy."""
+        base = TestObjectBase(v_i64=1, v_f64=1.0, v_str="a")
+        derived = TestObjectDerived(v_map={"a": 1}, v_array=[1], v_i64=0, v_f64=0.0, v_str="")
+        A(tuple[TestObjectBase, ...]).check_value([base, derived])
+
+    @requires_py39
+    def test_map_str_to_custom_object(self) -> None:
+        """Map[str, testing.TestIntPair] pass."""
+        objs = {"a": TestIntPair(1, 2), "b": TestIntPair(3, 4)}
+        A(tvm_ffi.Map[str, TestIntPair]).check_value(objs)
+
+    @requires_py39
+    def test_map_str_to_custom_object_wrong_value(self) -> None:
+        """Map[str, testing.TestIntPair] with int value fails."""
+        data = {"a": TestIntPair(1, 2), "b": 42}
+        with pytest.raises(TypeError, match="value for key 'b'"):
+            A(tvm_ffi.Map[str, TestIntPair]).check_value(data)
+
+    @requires_py39
+    def test_ffi_array_of_custom_objects(self) -> None:
+        """tvm_ffi.Array of custom objects passes Array[Object]."""
+        arr = tvm_ffi.Array([TestIntPair(1, 2), TestObjectBase(v_i64=1, v_f64=2.0, v_str="s")])
+        A(tuple[tvm_ffi.core.Object, ...]).check_value(arr)
+
+    @requires_py39
+    def test_ffi_array_of_custom_objects_specific_type(self) -> None:
+        """tvm_ffi.Array of TestIntPair passes Array[testing.TestIntPair]."""
+        arr = tvm_ffi.Array([TestIntPair(1, 2), TestIntPair(3, 4)])
+        A(tuple[TestIntPair, ...]).check_value(arr)
+
+    @requires_py39
+    def test_ffi_map_with_custom_object_values(self) -> None:
+        """tvm_ffi.Map with custom object values passes."""
+        m = tvm_ffi.Map({"x": TestIntPair(1, 2), "y": TestIntPair(3, 4)})
+        A(tvm_ffi.Map[str, TestIntPair]).check_value(m)
+
+
+# ---------------------------------------------------------------------------
+# Category 34: Optional/Union with custom objects
+# ---------------------------------------------------------------------------
+class TestCustomObjectOptionalUnion:
+    def test_optional_custom_object_with_value(self) -> None:
+        """Optional[testing.TestIntPair] with actual object."""
+        obj = TestIntPair(1, 2)
+        A(Optional[TestIntPair]).check_value(obj)
+
+    def test_optional_custom_object_with_none(self) -> None:
+        """Optional[testing.TestIntPair] with None."""
+        A(Optional[TestIntPair]).check_value(None)
+
+    def test_optional_custom_object_wrong_type(self) -> None:
+        """Optional[testing.TestIntPair] with wrong object type."""
+        obj = _TestCxxClassBase(v_i64=1, v_i32=2)
+        with pytest.raises(TypeError):
+            A(Optional[TestIntPair]).check_value(obj)
+
+    def test_union_custom_object_and_int(self) -> None:
+        """Union[testing.TestIntPair, int] with object."""
+        obj = TestIntPair(1, 2)
+        A(Union[TestIntPair, int]).check_value(obj)
+
+    def test_union_custom_object_and_int_with_int(self) -> None:
+        """Union[testing.TestIntPair, int] with int."""
+        A(Union[TestIntPair, int]).check_value(42)
+
+    def test_union_custom_object_and_int_with_wrong(self) -> None:
+        """Union[testing.TestIntPair, int] with str fails."""
+        with pytest.raises(TypeError):
+            A(Union[TestIntPair, int]).check_value("bad")
+
+    def test_union_two_custom_objects(self) -> None:
+        """Union of two custom types accepts both."""
+        pair = TestIntPair(1, 2)
+        base = _TestCxxClassBase(v_i64=1, v_i32=2)
+        schema = A(Union[TestIntPair, _TestCxxClassBase])
+        schema.check_value(pair)
+        schema.check_value(base)
+
+    def test_union_two_custom_objects_rejects_third(self) -> None:
+        """Union of two custom types rejects a third."""
+        obj = TestObjectBase(v_i64=1, v_f64=2.0, v_str="s")
+        with pytest.raises(TypeError):
+            A(Union[TestIntPair, _TestCxxClassBase]).check_value(obj)
+
+
+# ---------------------------------------------------------------------------
+# Category 35: Custom objects with from_type_index
+# ---------------------------------------------------------------------------
+class TestCustomObjectFromTypeIndex:
+    def test_from_type_index_custom_object(self) -> None:
+        """from_type_index resolves a custom object type and validates."""
+        obj = TestIntPair(1, 2)
+        tindex = tvm_ffi.core._object_type_key_to_index("testing.TestIntPair")
+        assert tindex is not None
+        schema = TypeSchema.from_type_index(tindex)
+        assert schema.origin == "testing.TestIntPair"
+        schema.check_value(obj)
+
+    def test_from_type_index_rejects_wrong_object(self) -> None:
+        """from_type_index schema rejects wrong object type."""
+        tindex = tvm_ffi.core._object_type_key_to_index("testing.TestIntPair")
+        assert tindex is not None
+        schema = TypeSchema.from_type_index(tindex)
+        with pytest.raises(TypeError):
+            schema.check_value(_TestCxxClassBase(v_i64=1, v_i32=2))
+
+    def test_from_type_index_hierarchy(self) -> None:
+        """from_type_index for base type accepts derived objects."""
+        tindex = tvm_ffi.core._object_type_key_to_index("testing.TestObjectBase")
+        assert tindex is not None
+        schema = TypeSchema.from_type_index(tindex)
+        derived = TestObjectDerived(v_map={"a": 1}, v_array=[1], v_i64=0, v_f64=0.0, v_str="")
+        schema.check_value(derived)
+
+
+# ---------------------------------------------------------------------------
+# Category 36: Custom objects in nested containers
+# ---------------------------------------------------------------------------
+class TestCustomObjectNestedContainers:
+    @requires_py39
+    def test_array_of_optional_custom_object(self) -> None:
+        """Array[Optional[testing.TestIntPair]] with mix of objects and None."""
+        data = [TestIntPair(1, 2), None, TestIntPair(3, 4)]
+        A(tuple[Optional[TestIntPair], ...]).check_value(data)
+
+    @requires_py39
+    def test_map_str_to_array_of_custom_objects(self) -> None:
+        """Map[str, Array[testing.TestIntPair]] with nested objects."""
+        data = {
+            "group1": [TestIntPair(1, 2), TestIntPair(3, 4)],
+            "group2": [TestIntPair(5, 6)],
+        }
+        A(tvm_ffi.Map[str, tuple[TestIntPair, ...]]).check_value(data)
+
+    @requires_py39
+    def test_array_of_union_custom_objects(self) -> None:
+        """Array[Union[testing.TestIntPair, testing.TestCxxClassBase]]."""
+        data = [TestIntPair(1, 2), _TestCxxClassBase(v_i64=1, v_i32=2), TestIntPair(5, 6)]
+        A(tuple[Union[TestIntPair, _TestCxxClassBase], ...]).check_value(data)
+
+    @requires_py39
+    def test_optional_array_of_custom_objects(self) -> None:
+        """Optional[Array[testing.TestIntPair]] with array."""
+        data = [TestIntPair(1, 2)]
+        A(Optional[tuple[TestIntPair, ...]]).check_value(data)
+
+    @requires_py39
+    def test_optional_array_of_custom_objects_none(self) -> None:
+        """Optional[Array[testing.TestIntPair]] with None."""
+        A(Optional[tuple[TestIntPair, ...]]).check_value(None)
+
+    @requires_py39
+    def test_nested_error_with_custom_object(self) -> None:
+        """Array[testing.TestIntPair] error message includes type keys."""
+        data = [TestIntPair(1, 2), _TestCxxClassBase(v_i64=1, v_i32=2)]
+        with pytest.raises(
+            TypeError, match=r"element \[1\].*testing.TestIntPair.*testing.TestCxxClassBase"
+        ):
+            A(tuple[TestIntPair, ...]).check_value(data)
+
+    @requires_py39
+    def test_map_nested_error_with_custom_object(self) -> None:
+        """Map value error for custom object includes key and type info."""
+        data = {"ok": TestIntPair(1, 2), "bad": 42}
+        with pytest.raises(
+            TypeError, match=r"value for key 'bad'.*expected testing\.TestIntPair.*got int"
+        ):
+            A(tvm_ffi.Map[str, TestIntPair]).check_value(data)
+
+    @requires_py39
+    def test_deep_nested_custom_objects(self) -> None:
+        """Map[str, Array[Optional[testing.TestIntPair]]] deep nesting."""
+        data = {
+            "a": [TestIntPair(1, 2), None],
+            "b": [None, TestIntPair(3, 4), TestIntPair(5, 6)],
+        }
+        A(tvm_ffi.Map[str, tuple[Optional[TestIntPair], ...]]).check_value(data)
+
+    @requires_py39
+    def test_deep_nested_custom_objects_error(self) -> None:
+        """Map[str, Array[testing.TestIntPair]] error at 3 levels."""
+        data = {"k": [TestIntPair(1, 2), "bad"]}
+        with pytest.raises(TypeError, match=r"value for key 'k'.*element .1."):
+            A(tvm_ffi.Map[str, tuple[TestIntPair, ...]]).check_value(data)
+
+    @requires_py39
+    def test_tuple_with_custom_object(self) -> None:
+        """tuple[testing.TestIntPair, int, str] with custom object."""
+        data = (TestIntPair(1, 2), 42, "hello")
+        A(tuple[TestIntPair, int, str]).check_value(data)
+
+    @requires_py39
+    def test_tuple_with_custom_object_wrong(self) -> None:
+        """tuple[testing.TestIntPair, int] with wrong object in first position."""
+        data = (_TestCxxClassBase(v_i64=1, v_i32=2), 42)
+        with pytest.raises(TypeError, match=r"element \[0\]"):
+            A(tuple[TestIntPair, int]).check_value(data)

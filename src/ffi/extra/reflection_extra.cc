@@ -49,8 +49,8 @@ void MakeObjectFromPackedArgs(ffi::PackedArgs args, Any* ret) {
   }
   TVMFFIObjectHandle handle;
   TVM_FFI_CHECK_SAFE_CALL(type_info->metadata->creator(&handle));
-  ObjectPtr<Object> ptr =
-      details::ObjectUnsafe::ObjectPtrFromOwned<Object>(static_cast<TVMFFIObject*>(handle));
+  ObjectPtr<Object> ptr = ::tvm::ffi::details::ObjectUnsafe::ObjectPtrFromOwned<Object>(
+      static_cast<TVMFFIObject*>(handle));
 
   std::vector<String> keys;
   std::vector<bool> keys_found;
