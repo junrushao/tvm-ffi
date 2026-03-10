@@ -782,3 +782,425 @@ class TestDunderPreservation:
                 return False
 
         assert not (UserEq(x=1) == UserEq(x=1))
+
+
+# ###########################################################################
+# 16. field() API
+# ###########################################################################
+class TestFieldAPI:
+    """field() function returns a Field."""
+
+    def test_field_returns_field(self) -> None:
+        f = field(default=42)
+        assert isinstance(f, Field)
+        assert f.default == 42
+
+    def test_field_defaults(self) -> None:
+        f = field()
+        assert f.init is True
+        assert f.repr is True
+        assert f.hash is None  # None = follow compare
+        assert f.compare is True
+
+    def test_field_kw_only_missing_by_default(self) -> None:
+        f = field()
+        assert f.kw_only is None
+
+    def test_field_repr_false(self) -> None:
+        @py_class(_unique_key("FldRepr"))
+        class FldRepr(Object):
+            x: int
+            y: int = field(default=0, repr=False)
+
+        obj = FldRepr(x=1)
+        r = repr(obj)
+        assert "1" in r
+        # y with repr=False should not appear in repr
+        # (depends on C++ ReprPrint implementation respecting the flag)
+
+
+# ###########################################################################
+# 17. Edge cases
+# ###########################################################################
+class TestEdgeCases:
+    """Edge cases and error conditions."""
+
+    def test_no_ffi_parent_raises(self) -> None:
+        with pytest.raises(TypeError, match="must inherit from"):
+
+            @py_class(_unique_key("NoPar"))
+            class NoPar:  # no Object parent!
+                x: int
+
+    def test_only_classvar(self) -> None:
+        @py_class(_unique_key("OnlyCV"))
+        class OnlyCV(Object):
+            count: ClassVar[int] = 0
+
+        obj = OnlyCV()
+        assert obj is not None
+
+    def test_mutation_after_creation(self) -> None:
+        @py_class(_unique_key("Mut"))
+        class Mut(Object):
+            x: int
+
+        obj = Mut(x=1)
+        obj.x = 42
+        assert obj.x == 42
+
+
+# ###########################################################################
+# 18. hash=None tri-state
+# ###########################################################################
+class TestHashTriState:
+    """field(hash=None) means 'follow compare' (native dataclass semantics)."""
+
+    def test_hash_none_follows_compare_true(self) -> None:
+        """hash=None + compare=True → field participates in hash."""
+
+        @py_class(_unique_key("HNT"), eq=True, unsafe_hash=True)
+        class HNT(Object):
+            x: int  # default: compare=True, hash=None → hash=True
+
+        a = HNT(x=1)
+        b = HNT(x=1)
+        assert hash(a) == hash(b)
+
+    def test_hash_none_follows_compare_false(self) -> None:
+        """hash=None + compare=False → field excluded from hash."""
+
+        @py_class(_unique_key("HNF"), eq=True, unsafe_hash=True)
+        class HNF(Object):
+            x: int
+            y: int = field(compare=False)  # hash=None → follows compare=False
+
+        # y doesn't participate in hash, so different y values → same hash
+        a = HNF(x=1, y=10)
+        b = HNF(x=1, y=20)
+        assert hash(a) == hash(b)
+
+    def test_hash_explicit_true_with_compare_true(self) -> None:
+        """hash=True + compare=True → field participates in hash."""
+
+        @py_class(_unique_key("HET"), eq=True, unsafe_hash=True)
+        class HET(Object):
+            x: int = field(hash=True)  # compare=True (default)
+
+        a = HET(x=1)
+        b = HET(x=2)
+        assert hash(a) != hash(b)
+
+    def test_hash_explicit_false(self) -> None:
+        """hash=False excludes field from hashing even with compare=True."""
+
+        @py_class(_unique_key("HEF"), eq=True, unsafe_hash=True)
+        class HEF(Object):
+            x: int
+            y: int = field(hash=False)  # compare=True but hash=False
+
+        a = HEF(x=1, y=10)
+        b = HEF(x=1, y=20)
+        assert hash(a) == hash(b)
+
+
+# ###########################################################################
+# 19. Deferred resolution + user __init__ / init=False
+# ###########################################################################
+class TestDeferredInitPreservation:
+    """Deferred resolution preserves user-defined __init__ and init=False."""
+
+    @_needs_310
+    def test_deferred_with_user_init(self) -> None:
+        """User-defined __init__ is preserved after deferred resolution."""
+
+        @py_class(_unique_key("DefUI"))
+        class DefUI(Object):
+            value: int
+            ref: DefUILate | None
+
+            def __init__(self, value: int) -> None:
+                self.__ffi_init__(value, None)
+
+        @py_class(_unique_key("DefUILate"))
+        class DefUILate(Object):
+            x: int
+
+        # DefUI should use the user-defined __init__ (one positional arg)
+        obj = DefUI(42)
+        assert obj.value == 42
+        assert obj.ref is None
+
+    @_needs_310
+    def test_deferred_with_init_false(self) -> None:
+        """init=False is respected after deferred resolution."""
+
+        @py_class(_unique_key("DefNoInit"), init=False)
+        class DefNoInit(Object):
+            value: int
+            ref: DefNoInitLate | None
+
+            def __init__(self, v: int) -> None:
+                self.__ffi_init__(v, None)
+
+        @py_class(_unique_key("DefNoInitLate"))
+        class DefNoInitLate(Object):
+            x: int
+
+        obj = DefNoInit(10)
+        assert obj.value == 10
+
+
+# ###########################################################################
+# 21. order=True requires eq=True
+# ###########################################################################
+class TestOrderEqValidation:
+    """order=True without eq=True is rejected."""
+
+    def test_order_without_eq_raises(self) -> None:
+        with pytest.raises(ValueError, match="order=True requires eq=True"):
+
+            @py_class(_unique_key("OrdNoEq"), order=True)
+            class OrdNoEq(Object):
+                x: int
+
+
+# ###########################################################################
+# 23. Registration rollback on failure
+# ###########################################################################
+class TestRegistrationRollback:
+    """Failed decorations don't permanently poison the type registry."""
+
+    def test_failed_decoration_allows_retry(self) -> None:
+        key = _unique_key("Rollback")
+
+        with pytest.raises(Exception):
+
+            @py_class(key)
+            class Bad(Object):
+                x: object  # unsupported annotation type
+
+        # The type key should be available for reuse
+        @py_class(key)
+        class Good(Object):
+            x: int
+            y: int = 0
+
+        assert Good(x=1).y == 0
+
+
+# ###########################################################################
+# 24. User-defined __replace__ preserved
+# ###########################################################################
+class TestUserReplace:
+    """User-defined __replace__ is not overwritten by py_class."""
+
+    def test_user_replace_preserved(self) -> None:
+        @py_class(_unique_key("UserRepl"))
+        class UserRepl(Object):
+            x: int
+
+            def __replace__(self, **changes: object) -> str:
+                return "custom"
+
+        obj = UserRepl(x=1)
+        assert obj.__replace__(x=2) == "custom"
+
+
+# ###########################################################################
+# 25. default_factory=None raises
+# ###########################################################################
+class TestDefaultFactoryNone:
+    """Explicit default_factory=None matches stdlib semantics (raises)."""
+
+    def test_explicit_none_raises(self) -> None:
+        with pytest.raises(TypeError, match="default_factory must be a callable"):
+            field(default_factory=None)
+
+
+# ###########################################################################
+# 26. Adversarial edge cases for init reordering
+# ###########################################################################
+class TestInitReorderingAdversarial:
+    """Tricky scenarios that catch bugs in naive init-signature generation."""
+
+    def test_positional_call_maps_to_required_not_declared_order(self) -> None:
+        """Positional arg 1 maps to the first *required* field, not the first declared."""
+
+        @py_class(_unique_key("PosMap"))
+        class PosMap(Object):
+            x: int = 0  # optional, declared first
+            y: int  # ty: ignore[dataclass-field-order]  # required, declared second
+
+        # Positional call: first arg is y (required), not x (optional)
+        obj = PosMap(42)  # ty: ignore[missing-argument]
+        assert obj.y == 42
+        assert obj.x == 0
+
+    def test_relative_order_preserved_within_groups(self) -> None:
+        """Within required and optional groups, declaration order is preserved."""
+
+        @py_class(_unique_key("RelOrder"))
+        class RelOrder(Object):
+            a: int = 0
+            b: int  # ty: ignore[dataclass-field-order]
+            c: int = 1
+            d: int  # ty: ignore[dataclass-field-order]
+
+        sig = inspect.signature(RelOrder.__init__)
+        param_names = [n for n in sig.parameters if n != "self"]
+        # required: b, d (declaration order); optional: a, c (declaration order)
+        assert param_names == ["b", "d", "a", "c"]
+
+        obj = RelOrder(10, 20)  # ty: ignore[missing-argument]
+        assert obj.b == 10
+        assert obj.d == 20
+        assert obj.a == 0
+        assert obj.c == 1
+
+    def test_default_factory_counts_as_optional(self) -> None:
+        """default_factory makes a field optional for reordering purposes."""
+
+        @py_class(_unique_key("DFReorder"))
+        class DFReorder(Object):
+            items: str = field(default_factory=lambda: "hello")
+            count: int  # ty: ignore[dataclass-field-order]
+
+        sig = inspect.signature(DFReorder.__init__)
+        param_names = [n for n in sig.parameters if n != "self"]
+        assert param_names[0] == "count"  # required first
+        assert param_names[1] == "items"  # optional (factory) second
+
+        obj = DFReorder(count=5)
+        assert obj.count == 5
+        assert obj.items == "hello"
+
+    def test_three_level_hierarchy_reorder(self) -> None:
+        """Required fields from all levels come before optional fields from all levels."""
+
+        @py_class(_unique_key("G1"))
+        class G1(Object):
+            a: int  # required
+
+        @py_class(_unique_key("P1"))
+        class P1(G1):
+            b: int = 0  # optional
+
+        @py_class(_unique_key("C1"))
+        class C1(P1):
+            c: int  # required
+
+        sig = inspect.signature(C1.__init__)
+        param_names = [n for n in sig.parameters if n != "self"]
+        # required (a, c) before optional (b)
+        assert param_names == ["a", "c", "b"]
+
+        obj = C1(a=1, c=3)
+        assert obj.a == 1
+        assert obj.b == 0
+        assert obj.c == 3
+
+    def test_kw_only_false_overrides_sentinel(self) -> None:
+        """kw_only=False on a field after KW_ONLY sentinel makes it positional."""
+
+        @py_class(_unique_key("KwOverride"))
+        class KwOverride(Object):
+            _: KW_ONLY
+            a: int  # kw_only (inherits sentinel)
+            b: int = field(kw_only=False)  # positional (explicit override)
+
+        sig = inspect.signature(KwOverride.__init__)
+        assert sig.parameters["a"].kind == inspect.Parameter.KEYWORD_ONLY
+        assert sig.parameters["b"].kind == inspect.Parameter.POSITIONAL_OR_KEYWORD
+
+        obj = KwOverride(42, a=1)  # ty: ignore[missing-argument,invalid-argument-type]
+        assert obj.b == 42
+        assert obj.a == 1
+
+    def test_init_false_field_gets_default(self) -> None:
+        """init=False field with default is set to default, not left uninitialized."""
+
+        @py_class(_unique_key("InitFalseDef"))
+        class InitFalseDef(Object):
+            visible: int
+            hidden: str = field(default="secret", init=False)
+
+        obj = InitFalseDef(visible=1)
+        assert obj.hidden == "secret"
+
+    def test_post_init_sees_reordered_fields(self) -> None:
+        """__post_init__ sees correct values even when __init__ reorders fields."""
+        seen: dict[str, int] = {}
+
+        @py_class(_unique_key("PostReorder"))
+        class PostReorder(Object):
+            x: int = 0
+            y: int  # ty: ignore[dataclass-field-order]
+
+            def __post_init__(self) -> None:
+                seen["x"] = self.x
+                seen["y"] = self.y
+
+        PostReorder(y=10, x=20)
+        assert seen == {"x": 20, "y": 10}
+
+    @_needs_310
+    def test_deferred_forward_ref_with_reordering(self) -> None:
+        """Deferred forward-reference resolution still produces correct reordering."""
+
+        @py_class(_unique_key("DeferReorder"))
+        class DeferReorder(Object):
+            opt: DeferLate | None = None
+            req: int  # ty: ignore[dataclass-field-order]
+
+        @py_class(_unique_key("DeferLate"))
+        class DeferLate(Object):
+            x: int
+
+        sig = inspect.signature(DeferReorder.__init__)
+        param_names = [n for n in sig.parameters if n != "self"]
+        assert param_names[0] == "req"
+        assert param_names[1] == "opt"
+
+        obj = DeferReorder(req=1)
+        assert obj.req == 1
+        assert obj.opt is None
+
+    def test_all_optional_preserves_declaration_order(self) -> None:
+        """When all fields are optional, declaration order is preserved."""
+
+        @py_class(_unique_key("AllOpt"))
+        class AllOpt(Object):
+            c: int = 3
+            a: int = 1
+            b: int = 2
+
+        sig = inspect.signature(AllOpt.__init__)
+        param_names = [n for n in sig.parameters if n != "self"]
+        assert param_names == ["c", "a", "b"]
+
+        obj = AllOpt()
+        assert obj.c == 3
+        assert obj.a == 1
+        assert obj.b == 2
+
+    def test_all_required_preserves_declaration_order(self) -> None:
+        """When all fields are required, declaration order is preserved."""
+
+        @py_class(_unique_key("AllReq"))
+        class AllReq(Object):
+            c: int
+            a: int
+            b: int
+
+        sig = inspect.signature(AllReq.__init__)
+        param_names = [n for n in sig.parameters if n != "self"]
+        assert param_names == ["c", "a", "b"]
+
+        obj = AllReq(10, 20, 30)
+        assert obj.c == 10
+        assert obj.a == 20
+        assert obj.b == 30
+
+
+# ###########################################################################
