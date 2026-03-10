@@ -723,9 +723,78 @@ def _build_converter(schema):
 # ---------------------------------------------------------------------------
 
 
+cdef void _tc_raise_eager_value_protocol_error(_TypeConverter conv, object value) except *:
+    if conv.dispatch == _tc_convert_optional:
+        _tc_raise_eager_value_protocol_error(<_TypeConverter>(conv.subs[0]), value)
+    if conv.err_hint == "Any":
+        raise _ConvertError(f"failed to convert Any from {_tc_describe_value_type(value)}")
+    raise _ConvertError(f"expected {conv.err_hint}, got {_tc_describe_value_type(value)}")
+
+
+cdef object _tc_eager_protocol_step(object value, bint* stalled_value_protocol) except *:
+    cdef object vtype
+    cdef object inner
+    if isinstance(value, (Tensor, CObject, ObjectRValueRef, PyNativeObject)):
+        return value
+    vtype = type(value)
+    if hasattr(vtype, "__tvm_ffi_object__"):
+        try:
+            return value.__tvm_ffi_object__()
+        except Exception:
+            raise _ConvertError(
+                f"__tvm_ffi_object__() failed for {_tc_describe_value_type(value)}"
+            ) from None
+    if hasattr(vtype, "__tvm_ffi_value__"):
+        try:
+            inner = value.__tvm_ffi_value__()
+        except Exception:
+            # Report the schema mismatch instead of leaking the raw
+            # __tvm_ffi_value__ implementation error.
+            stalled_value_protocol[0] = True
+            return value
+        if inner is value:
+            stalled_value_protocol[0] = True
+        return inner
+    if isinstance(value, ObjectConvertible):
+        # Normalize ObjectConvertible eagerly so nested Union/container dispatch
+        # sees the inner FFI object instead of the Python wrapper.
+        try:
+            inner = value.asobject()
+        except Exception:
+            raise _ConvertError(f"asobject() failed for {_tc_describe_value_type(value)}") from None
+        if not isinstance(inner, CObject):
+            raise _ConvertError(
+                f"asobject() returned {_tc_describe_value_type(inner)} "
+                f"for {_tc_describe_value_type(value)}"
+            )
+        return inner
+    return value
+
+
 cdef CAny _type_convert_dispatch_with_fallback(_TypeConverter conv, object value, bint* changed) except *:
+    """Dispatch after eager protocol normalization with cycle protection."""
+    cdef int depth = 0
+    cdef object inner
+    cdef bint stalled_value_protocol
+    cdef bint used_value_protocol = False
+    cdef CAny result
+    while True:
+        stalled_value_protocol = False
+        inner = _tc_eager_protocol_step(value, &stalled_value_protocol)
+        if stalled_value_protocol:
+            _tc_raise_eager_value_protocol_error(conv, value)
+        if inner is value:
+            break
+        depth += 1
+        if depth > _VALUE_PROTOCOL_MAX_DEPTH:
+            raise _ConvertError("infinite __tvm_ffi_value__ cycle detected") from None
+        used_value_protocol = True
+        value = inner
     changed[0] = False
-    return conv.dispatch(conv, value, changed)
+    result = conv.dispatch(conv, value, changed)
+    if used_value_protocol:
+        changed[0] = True
+    return result
 
 
 # ---------------------------------------------------------------------------
