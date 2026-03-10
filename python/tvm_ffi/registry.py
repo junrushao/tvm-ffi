@@ -680,7 +680,15 @@ def _install_dataclass_dunders(
         dunders["__gt__"] = __gt__
         dunders["__ge__"] = __ge__
 
+    _eq_family = {"__eq__", "__ne__"}
+    _order_family = {"__lt__", "__le__", "__gt__", "__ge__"}
+    skip_eq = bool(_eq_family & set(cls.__dict__))
+    skip_order = bool(_order_family & set(cls.__dict__))
     for name, impl in dunders.items():
+        if name in _eq_family and skip_eq:
+            continue
+        if name in _order_family and skip_order:
+            continue
         if name not in cls.__dict__:
             setattr(cls, name, impl)
 

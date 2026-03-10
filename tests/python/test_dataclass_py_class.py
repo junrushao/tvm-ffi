@@ -16,9 +16,10 @@
 # under the License.
 """Tests for Python-defined TVM-FFI types: ``@py_class`` decorator and low-level Field API."""
 
-# ruff: noqa: D102
+# ruff: noqa: D102, PLR0124, PLW1641
 from __future__ import annotations
 
+import copy
 import inspect
 import itertools
 import sys
@@ -516,3 +517,268 @@ class TestPostInit:
                 assert self.y == 10
 
         PostInitVal(x=5)
+
+
+# ###########################################################################
+#  8. Repr
+# ###########################################################################
+class TestRepr:
+    """__repr__ generation."""
+
+    def test_repr_generated(self) -> None:
+        @py_class(_unique_key("Repr"))
+        class Repr(Object):
+            x: int
+            y: str
+
+        obj = Repr(x=1, y="hello")
+        r = repr(obj)
+        assert "1" in r
+        assert "hello" in r
+
+    def test_repr_disabled(self) -> None:
+        @py_class(_unique_key("NoRepr"), repr=False)
+        class NoRepr(Object):
+            x: int
+
+        obj = NoRepr(x=1)
+        # Should use default object repr
+        r = repr(obj)
+        assert "NoRepr" in r or "object at" in r
+
+
+# ###########################################################################
+#  9. Equality
+# ###########################################################################
+class TestEquality:
+    """__eq__ and __ne__ generation."""
+
+    def test_eq_enabled(self) -> None:
+        @py_class(_unique_key("Eq"), eq=True)
+        class Eq(Object):
+            x: int
+            y: str
+
+        assert Eq(x=1, y="a") == Eq(x=1, y="a")
+        assert Eq(x=1, y="a") != Eq(x=2, y="a")
+
+    def test_eq_disabled_by_default(self) -> None:
+        @py_class(_unique_key("NoEq"))
+        class NoEq(Object):
+            x: int
+
+        a = NoEq(x=1)
+        b = NoEq(x=1)
+        # Without eq, identity comparison
+        assert a != b
+        assert a == a
+
+
+# ###########################################################################
+# 10. Order
+# ###########################################################################
+class TestOrder:
+    """Comparison methods."""
+
+    def test_order_enabled(self) -> None:
+        @py_class(_unique_key("Ord"), eq=True, order=True)
+        class Ord(Object):
+            x: int
+
+        assert Ord(x=1) < Ord(x=2)
+        assert Ord(x=2) > Ord(x=1)
+        assert Ord(x=1) <= Ord(x=1)
+        assert Ord(x=1) >= Ord(x=1)
+
+
+# ###########################################################################
+# 11. Hash
+# ###########################################################################
+class TestHash:
+    """__hash__ generation."""
+
+    def test_unsafe_hash(self) -> None:
+        @py_class(_unique_key("Hash"), eq=True, unsafe_hash=True)
+        class Hash(Object):
+            x: int
+
+        a = Hash(x=1)
+        b = Hash(x=1)
+        assert hash(a) == hash(b)
+        # Can be used in sets
+        s = {a, b}
+        assert len(s) == 1
+
+
+# ###########################################################################
+# 12. Copy
+# ###########################################################################
+class TestCopy:
+    """__copy__, __deepcopy__, __replace__."""
+
+    def test_shallow_copy(self) -> None:
+        @py_class(_unique_key("SCopy"))
+        class SCopy(Object):
+            x: int
+
+        obj = SCopy(x=42)
+        obj2 = copy.copy(obj)
+        assert obj2.x == 42
+
+    def test_deep_copy(self) -> None:
+        @py_class(_unique_key("DCopy"))
+        class DCopy(Object):
+            x: int
+
+        obj = DCopy(x=42)
+        obj2 = copy.deepcopy(obj)
+        assert obj2.x == 42
+
+    def test_replace(self) -> None:
+        @py_class(_unique_key("Repl"))
+        class Repl(Object):
+            x: int
+            y: str
+
+        obj = Repl(x=1, y="a")
+        obj2 = obj.__replace__(x=2)  # ty: ignore[unresolved-attribute]
+        assert obj2.x == 2
+        assert obj2.y == "a"
+
+
+# ###########################################################################
+# 13. Inheritance
+# ###########################################################################
+class TestInheritance:
+    """Inheritance between py_class types."""
+
+    def test_child_adds_fields(self) -> None:
+        @py_class(_unique_key("Parent"))
+        class Parent(Object):
+            x: int
+
+        @py_class(_unique_key("Child"))
+        class Child(Parent):
+            y: str
+
+        obj = Child(x=1, y="hello")
+        assert obj.x == 1
+        assert obj.y == "hello"
+
+    def test_child_isinstance(self) -> None:
+        @py_class(_unique_key("P2"))
+        class P2(Object):
+            x: int
+
+        @py_class(_unique_key("C2"))
+        class C2(P2):
+            y: str
+
+        obj = C2(x=1, y="hello")
+        assert isinstance(obj, C2)
+        assert isinstance(obj, P2)
+        assert isinstance(obj, Object)
+
+    def test_three_level_inheritance(self) -> None:
+        @py_class(_unique_key("L1"))
+        class L1(Object):
+            a: int
+
+        @py_class(_unique_key("L2"))
+        class L2(L1):
+            b: int
+
+        @py_class(_unique_key("L3"))
+        class L3(L2):
+            c: int
+
+        obj = L3(a=1, b=2, c=3)
+        assert obj.a == 1
+        assert obj.b == 2
+        assert obj.c == 3
+
+
+# ###########################################################################
+# 14. Forward references / deferred resolution
+# ###########################################################################
+class TestForwardReferences:
+    """Deferred annotation resolution for mutual and self-references."""
+
+    @_needs_310
+    def test_self_reference(self) -> None:
+        @py_class(_unique_key("SelfRef"))
+        class SelfRef(Object):
+            value: int
+            next_node: SelfRef | None
+
+        leaf = SelfRef(value=2, next_node=None)
+        head = SelfRef(value=1, next_node=leaf)
+        assert head.next_node is not None
+        assert head.next_node.value == 2
+
+    @_needs_310
+    def test_mutual_reference(self) -> None:
+        """Two classes that reference each other."""
+
+        @py_class(_unique_key("Foo"))
+        class Foo(Object):
+            value: int
+            bar: Bar | None
+
+        @py_class(_unique_key("Bar"))
+        class Bar(Object):
+            value: int
+            foo: Foo | None
+
+        bar = Bar(value=2, foo=None)
+        foo = Foo(value=1, bar=bar)
+        assert foo.bar is not None
+        assert foo.bar.value == 2
+
+    @_needs_310
+    def test_deferred_resolution_on_instantiation(self) -> None:
+        """Forward ref resolved on first instantiation."""
+
+        @py_class(_unique_key("Early"))
+        class Early(Object):
+            value: int
+            ref: Late | None
+
+        # At this point, Early's fields are deferred because Late doesn't exist
+
+        @py_class(_unique_key("Late"))
+        class Late(Object):
+            value: int
+
+        # Now Early should resolve (either via flush or on instantiation)
+        obj = Early(value=1, ref=Late(value=2))
+        assert obj.ref is not None
+        assert obj.ref.value == 2
+
+
+# ###########################################################################
+# 15. User-defined dunder preservation
+# ###########################################################################
+class TestDunderPreservation:
+    """User-defined dunders are not overwritten."""
+
+    def test_user_repr_preserved(self) -> None:
+        @py_class(_unique_key("UserRepr"))
+        class UserRepr(Object):
+            x: int
+
+            def __repr__(self) -> str:
+                return f"Custom({self.x})"
+
+        obj = UserRepr(x=42)
+        assert repr(obj) == "Custom(42)"
+
+    def test_user_eq_preserved(self) -> None:
+        @py_class(_unique_key("UserEq"), eq=True)
+        class UserEq(Object):
+            x: int
+
+            def __eq__(self, other: object) -> bool:
+                return False
+
+        assert not (UserEq(x=1) == UserEq(x=1))
