@@ -359,3 +359,57 @@ class TestValidation:
         """Invalid field-level structure= value raises ValueError."""
         with pytest.raises(ValueError, match="structure"):
             field(structure="bad_value")
+
+
+# ---------------------------------------------------------------------------
+# Custom __s_equal__ / __s_hash__ hooks via @py_class
+# ---------------------------------------------------------------------------
+import itertools as _itertools_sc
+from typing import Any as _Any_sc
+from typing import Callable as _Callable_sc
+
+_counter_sc = _itertools_sc.count()
+
+
+def _unique_key_sc(base: str) -> str:
+    return f"testing.sc_pc.{base}_{next(_counter_sc)}"
+
+
+@py_class(_unique_key_sc("SCustom"), structure="tree")
+class _SCustom(tvm_ffi.Object):
+    """Type with custom __s_equal__/__s_hash__ that compare only ``key``."""
+
+    key: int
+    label: str
+
+    def __s_equal__(self, other: _SCustom, cmp: _Callable_sc[..., _Any_sc]) -> bool:
+        return cmp(self.key, other.key, False, "key")
+
+    def __s_hash__(self, init_hash: int, hash_fn: _Callable_sc[..., _Any_sc]) -> int:
+        return hash_fn(self.key, init_hash, False)
+
+
+class TestCustomStructuralHooks:
+    """Tests for __s_equal__ / __s_hash__ type attribute dispatch via @py_class."""
+
+    def test_equal_ignores_label(self) -> None:
+        """Custom __s_equal__ compares only key, ignoring label."""
+        assert structural_equal(_SCustom(42, "alpha"), _SCustom(42, "beta"))
+
+    def test_not_equal_different_key(self) -> None:
+        """Different keys are not structurally equal."""
+        assert not structural_equal(_SCustom(1, "same"), _SCustom(2, "same"))
+
+    def test_hash_ignores_label(self) -> None:
+        """Custom __s_hash__ hashes only key, ignoring label."""
+        assert structural_hash(_SCustom(42, "alpha")) == structural_hash(_SCustom(42, "beta"))
+
+    def test_hash_different_key(self) -> None:
+        """Different keys produce different structural hashes."""
+        assert structural_hash(_SCustom(1, "same")) != structural_hash(_SCustom(2, "same"))
+
+    def test_hash_consistent_with_equal(self) -> None:
+        """StructuralEqual(a, b) => StructuralHash(a) == StructuralHash(b)."""
+        a, b = _SCustom(42, "alpha"), _SCustom(42, "beta")
+        assert structural_equal(a, b)
+        assert structural_hash(a) == structural_hash(b)
