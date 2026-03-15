@@ -1,0 +1,5 @@
+# 2025-08-20 — 023ea448be6e86e09f4ebaba5a235ee53f3cdeef (shape: rename)
+- **Procedure friction**: The rename shape shortcut says "Skip per-file narration" which worked well, but Step 3.2 (Producers) is awkward for a pure-reorganization commit -- the commit does not truly "produce" new design elements, it reshuffles existing ones. The procedure lacks a "reorganization" shape that captures boundary/layout changes without forcing them into producer/consumer language.
+- **Template gap**: None.
+- **Wasted effort**: Step 4.7 Usage Examples adds little for a rename/reorg commit. The rename mapping table in TL;DR already captures the migration pattern. The template's insistence on a separate Usage Examples section led to a thin section.
+- **Suggested skill change**: Add a "reorg" shape (or fold it into "rename") for commits that primarily relocate code between files/directories and rename symbols for organizational clarity. The detection signal would be: >60% of diff is code movement between files, commit message contains "cleanup"/"reorganize"/"move".
