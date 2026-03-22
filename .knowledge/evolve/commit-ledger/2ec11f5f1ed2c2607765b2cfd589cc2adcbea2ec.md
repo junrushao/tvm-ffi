@@ -1,0 +1,5 @@
+# Skill /commit-ledger - Self-Evolution
+- **Procedure friction**: Step 3.3 (breaking changes) asks to check for "enum value renumbering or constant changes" but gives no guidance on additive enum extensions that shift consumer code (exhaustive switch). The guidance conflates ABI-breaking renumbering with additive additions that are technically safe at runtime but break `switch` completeness — worth distinguishing.
+- **Template gap**: None. The template handled this commit's feature + minor bugfix combination cleanly via `secondary_commit_type`.
+- **Wasted effort**: Step 3.4 cross-layer consistency check was minimal effort here since this commit is C++-only. The single-layer fast-skip instruction worked well.
+- **Suggested skill change**: In Step 3.3, add a sub-bullet: "Additive enum extensions: note if the enum is used in exhaustive `switch` statements in existing code — consumers may need a new `case` even if ABI is not broken." This would make the breaking-changes section more actionable for enum-extending commits.

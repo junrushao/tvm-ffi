@@ -1,0 +1,5 @@
+# Skill /commit-ledger - Self-Evolution
+- **Procedure friction**: The skill instructions assume one subagent per commit with `isolation: "worktree"`, but the caller spawned a single agent for all 27. The worktree check (Step 0.2) would abort if run literally. The batch mode worked correctly by reading all diffs upfront and writing all outputs directly — the procedure's sequential per-commit framing is fine for individual runs but adds overhead for batch calls.
+- **Template gap**: None — template covered all shapes encountered well.
+- **Wasted effort**: Step 0.3 (git checkout per commit) is not needed when reading diffs via `git show` directly on the main repo. The checkout step is only needed if you need to read files at that commit's snapshot.
+- **Suggested skill change**: Add a note to the procedure that when running as a batch (multiple commits per agent), `git show --format="" $SHA` can be used directly on `$REPO_MAIN` without checking out the commit in the worktree, avoiding the checkout overhead. The worktree isolation is still required for isolation from concurrent agents modifying the working tree.

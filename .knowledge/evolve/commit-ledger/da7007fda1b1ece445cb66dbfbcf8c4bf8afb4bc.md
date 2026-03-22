@@ -1,0 +1,5 @@
+# Skill /commit-ledger - Self-Evolution
+- **Procedure friction**: Step 2.2 shape classification — the `ci-infra` shape definition says "Only CI/CD files changed (Dockerfiles, .yml/.yaml workflows, Makefiles, scripts/)" but this commit changes CMakeLists, cmake/ utilities, AND Python/Rust source files. The boundary between `ci-infra` and `standard` for build-system commits is ambiguous. Would benefit from an explicit note covering CMake + Python build-glue commits.
+- **Template gap**: None — the template accommodated the build/multi-layer nature of this commit well.
+- **Wasted effort**: Step 3.6 usage examples for CMake targets don't fit naturally into Python pseudocode; had to write C++ extern and Rust snippets alongside Python. The template's Python-centric pseudocode guidance doesn't address CMake/Rust build system changes.
+- **Suggested skill change**: In Step 2.2 `ci-infra` shape detection, explicitly note that commits touching CMakeLists.txt *and* source/Python/Rust files should be classified as `standard`, not `ci-infra`. Reserve `ci-infra` for changes that touch only workflow YAML, Dockerfiles, or pure script files.
