@@ -609,6 +609,8 @@ _FFI_TYPE_ATTR_NAMES: frozenset[str] = frozenset(
         "__s_hash__",
         "__data_to_json__",
         "__data_from_json__",
+        # IR printing (text printer dispatch)
+        "__ffi_text_print__",
     }
 )
 
