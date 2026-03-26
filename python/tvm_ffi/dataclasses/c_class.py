@@ -146,16 +146,25 @@ def c_class(
     """
     from .._dunder import _install_dataclass_dunders  # noqa: PLC0415
     from ..registry import (  # noqa: PLC0415
+        _add_type_attr_class_attrs,
         _warn_missing_field_annotations,
         register_object,
     )
+    from .py_class import _FFI_TYPE_ATTR_NAMES  # noqa: PLC0415
 
     def decorator(cls: _T) -> _T:
+        for name, value in list(cls.__dict__.items()):
+            if isinstance(value, Field):
+                try:
+                    delattr(cls, name)
+                except AttributeError:
+                    pass
         cls = register_object(type_key, init=False)(cls)
         type_info = getattr(cls, "__tvm_ffi_type_info__", None)
         assert type_info is not None
         _warn_missing_field_annotations(cls, type_info, stacklevel=2)
         _attach_field_objects(cls, type_info)
+        _add_type_attr_class_attrs(cls, type_info, _FFI_TYPE_ATTR_NAMES)
         _install_dataclass_dunders(
             cls,
             init=init,
