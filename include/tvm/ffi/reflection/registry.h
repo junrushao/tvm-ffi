@@ -123,7 +123,7 @@ class Metadata : public InfoTrait {
       } else if (std::optional<bool> v = value.as<bool>()) {
         os << (*v ? "true" : "false");
       } else if (std::optional<String> v = value.as<String>()) {
-        String escaped = EscapeString(*v);
+        String escaped = EscapeStringJSON(*v);
         os << escaped.c_str();
       } else {
         TVM_FFI_LOG_AND_THROW(TypeError) << "Metadata can be only int, bool or string, but on key `"
@@ -796,6 +796,24 @@ class ObjectDef : public ReflectionDefBase {
   template <typename Func, typename... Extra>
   TVM_FFI_INLINE ObjectDef& def(const char* name, Func&& func, Extra&&... extra) {
     RegisterMethod(name, false, std::forward<Func>(func), std::forward<Extra>(extra)...);
+    return *this;
+  }
+
+  /*!
+   * \brief Register an IR semantic trait (__ffi_ir_traits__) for this type.
+   * \tparam TraitType The trait object type (e.g. ir::traits::BinOpObj).
+   * \tparam Args Constructor argument types.
+   * \param args Arguments forwarded to make_object<TraitType>(...).
+   * \return Reference to this ObjectDef for chaining.
+   */
+  template <typename TraitType, typename... Args>
+  ObjectDef& def_ir_traits(Args&&... args) {
+    static const char kName[] = "__ffi_ir_traits__";
+    TVMFFIByteArray name_arr = {kName, sizeof(kName) - 1};
+    ObjectRef trait(make_object<TraitType>(std::forward<Args>(args)...));
+    Any val(std::move(trait));
+    TVMFFIAny* raw = reinterpret_cast<TVMFFIAny*>(&val);
+    TVM_FFI_CHECK_SAFE_CALL(TVMFFITypeRegisterAttr(type_index_, &name_arr, raw));
     return *this;
   }
 
