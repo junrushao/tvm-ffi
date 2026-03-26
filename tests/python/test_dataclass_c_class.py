@@ -23,6 +23,7 @@ import warnings
 
 import pytest
 from tvm_ffi.core import TypeInfo
+from tvm_ffi.ir_traits import IRTraits
 from tvm_ffi.registry import _warn_missing_field_annotations
 from tvm_ffi.testing import (
     _TestCxxClassBase,
@@ -372,6 +373,18 @@ def test_c_class_warns_only_for_missing_annotations() -> None:
     # The unannotated fields should appear
     for name in field_names[1:]:
         assert name in msg
+
+
+def test_c_class_no_warning_for_empty_fields() -> None:
+    """No warning when the C++ type has no reflected fields."""
+    type_info: TypeInfo = getattr(IRTraits, "__tvm_ffi_type_info__")
+    assert len(type_info.fields) == 0  # sanity: no fields
+
+    DummyCls = type("DummyCls", (), {})
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        _warn_missing_field_annotations(DummyCls, type_info, stacklevel=2)
+    assert len(w) == 0
 
 
 def test_c_class_warns_only_own_fields_not_inherited() -> None:

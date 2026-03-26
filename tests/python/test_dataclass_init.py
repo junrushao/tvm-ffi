@@ -31,7 +31,6 @@ from __future__ import annotations
 
 import copy
 import inspect
-import sys
 from typing import Any
 
 import pytest
@@ -50,6 +49,7 @@ from tvm_ffi.testing import (
     _TestCxxClassDerivedDerived,
     _TestCxxNoAutoInit,
 )
+from tvm_ffi.testing.testing import requires_py313
 
 
 def _ffi_init(obj: Any, *args: Any) -> None:
@@ -671,7 +671,7 @@ class TestAutoInitCopyBehavior:
         assert obj_copy.y == 20
         assert not obj.same_as(obj_copy)
 
-    @pytest.mark.skipif(sys.version_info < (3, 13), reason="copy.replace requires Python 3.13+")
+    @requires_py313
     def test_replace(self) -> None:
         obj = _TestCxxAutoInit(1, c=3)
         replaced = copy.replace(obj, a=100, c=300)  # type: ignore[attr-defined]
@@ -707,7 +707,7 @@ class TestAutoInitCopyBehavior:
         assert obj_copy.z == 333
         assert not obj.same_as(obj_copy)
 
-    @pytest.mark.skipif(sys.version_info < (3, 13), reason="copy.replace requires Python 3.13+")
+    @requires_py313
     def test_replace_kw_only_defaults(self) -> None:
         obj = _TestCxxAutoInitKwOnlyDefaults(1, k_required=2)
         replaced = copy.replace(obj, k_required=99, p_default=88)  # type: ignore[attr-defined]
