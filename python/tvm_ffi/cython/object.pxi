@@ -741,6 +741,24 @@ def _lookup_type_attr(type_index: int32_t, attr_key: str) -> Any:
     return make_ret(data)
 
 
+def _lookup_type_attrs(type_index: int32_t, attr_keys) -> dict[str, Any]:
+    """Return registered TypeAttrColumn values for *type_index*.
+
+    ``TVMFFIGetTypeAttrColumn`` exposes one column at a time.  This helper
+    keeps the Python-side registration code from repeatedly spelling out the
+    sparse-column lookup loop when it needs to install a known set of type
+    attributes onto a class.
+    """
+    cdef dict result = {}
+    cdef object attr_key
+    cdef object value
+    for attr_key in attr_keys:
+        value = _lookup_type_attr(type_index, attr_key)
+        if value is not None:
+            result[attr_key] = value
+    return result
+
+
 def _register_type_attr(type_index: int32_t, attr_key: str, value: object) -> None:
     """Register a value for the ``(type_index, attr_key)`` slot.
 
