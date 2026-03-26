@@ -16,7 +16,7 @@
 # under the License.
 """Tests for Python-defined TVM-FFI types: ``@py_class`` decorator and low-level Field API."""
 
-# ruff: noqa: D102, PLR0124, PLW1641, UP006, UP045
+# ruff: noqa: PLR0124, PLW1641, UP006, UP045
 from __future__ import annotations
 
 import copy
@@ -24,7 +24,7 @@ import gc
 import inspect
 import itertools
 import math
-from typing import Any, ClassVar, Dict, List, Optional
+from typing import Any, ClassVar, Dict, List, Optional, Tuple
 
 import pytest
 import tvm_ffi
@@ -32,7 +32,16 @@ from tvm_ffi import core
 from tvm_ffi._dunder import _install_dataclass_dunders
 from tvm_ffi._ffi_api import DeepCopy, RecursiveEq, RecursiveHash, ReprPrint
 from tvm_ffi.core import MISSING, Object, TypeInfo, TypeSchema, _to_py_class_value
-from tvm_ffi.dataclasses import KW_ONLY, Field, IntEnum, StrEnum, entry, field, fields, py_class
+from tvm_ffi.dataclasses import (
+    KW_ONLY,
+    Field,
+    IntEnum,
+    StrEnum,
+    entry,
+    field,
+    fields,
+    py_class,
+)
 from tvm_ffi.registry import _add_class_attrs
 from tvm_ffi.testing import TestObjectBase as _TestObjectBase
 from tvm_ffi.testing.testing import requires_py310
@@ -383,6 +392,69 @@ class TestClassVar:
             tag: ClassVar[str] = "hello"
 
         assert CVPres.tag == "hello"
+
+    def test_ffi_dialect_mnemonic_classvar_registered_as_type_attr(self) -> None:
+        @py_class(_unique_key("CVDialectMnemonic"))
+        class CVDialectMnemonic(Object):
+            __ffi_dialect_mnemonic__: ClassVar[Tuple[str, str]] = (
+                "test",
+                "CVDialectMnemonic",
+            )
+            x: int
+
+        info = _get_type_info(CVDialectMnemonic)
+        field_names = [f.name for f in info.fields]
+
+        assert CVDialectMnemonic.__ffi_dialect_mnemonic__ == ("test", "CVDialectMnemonic")
+        assert "__ffi_dialect_mnemonic__" not in field_names
+        assert tuple(core._lookup_type_attr(info.type_index, "__ffi_dialect_mnemonic__")) == (
+            "test",
+            "CVDialectMnemonic",
+        )
+
+    def test_ffi_dialect_mnemonic_is_not_registered_as_type_method(self) -> None:
+        @py_class(_unique_key("CVDialectMnemonicNoMethod"))
+        class CVDialectMnemonicNoMethod(Object):
+            __ffi_dialect_mnemonic__: ClassVar[Tuple[str, str, str]] = (
+                "test",
+                "CVDialectMnemonicNoMethod",
+                "__demo__",
+            )
+            x: int
+
+        info = _get_type_info(CVDialectMnemonicNoMethod)
+
+        assert "__ffi_dialect_mnemonic__" not in [method.name for method in info.methods]
+        assert tuple(core._lookup_type_attr(info.type_index, "__ffi_dialect_mnemonic__")) == (
+            "test",
+            "CVDialectMnemonicNoMethod",
+            "__demo__",
+        )
+
+    def test_ffi_dialect_mnemonic_rejects_non_tuple_value(self) -> None:
+        with pytest.raises(TypeError, match="'__ffi_dialect_mnemonic__' must be"):
+
+            @py_class(_unique_key("CVDialectMnemonicBadInt"))
+            class _CVDialectMnemonicBadInt(Object):
+                __ffi_dialect_mnemonic__: ClassVar[int] = 1
+                x: int
+
+    def test_ffi_dialect_mnemonic_rejects_bad_tuple_value(self) -> None:
+        with pytest.raises(TypeError, match="'__ffi_dialect_mnemonic__' must be"):
+
+            @py_class(_unique_key("CVDialectMnemonicBadTuple"))
+            class _CVDialectMnemonicBadTuple(Object):
+                x: int
+                __ffi_dialect_mnemonic__: ClassVar[Tuple[str, int]] = ("test", 1)
+
+    def test_ffi_dialect_mnemonic_rejects_staticmethod_value(self) -> None:
+        with pytest.raises(TypeError, match="'__ffi_dialect_mnemonic__' must be"):
+
+            @py_class(_unique_key("CVDialectMnemonicBadStatic"))
+            class _CVDialectMnemonicBadStatic(Object):
+                x: int
+                __ffi_dialect_mnemonic__ = staticmethod(lambda: ("test", "Bad"))
+                x: int
 
 
 # ###########################################################################
@@ -758,6 +830,96 @@ class TestInheritance:
         assert obj.rhs == 2
         assert [f.name for f in fields(Add)] == ["x", "lhs", "rhs"]
         assert [f.name for f in _get_type_info(Add).fields] == ["lhs", "rhs"]
+
+    def test_collects_fields_from_non_py_class_parent_with_c_class_ancestor(self) -> None:
+        class BaseBinOp(_TestObjectBase):
+            lhs: int
+            rhs: int
+
+        class AnnotatedBinOp(BaseBinOp):
+            op_name: str
+
+        @py_class(_unique_key("NPCCxxAdd"))
+        class Add(AnnotatedBinOp):
+            scale: int
+
+        obj = Add(
+            v_i64=1,
+            v_f64=2.0,
+            v_str="base",
+            lhs=3,  # ty: ignore[unknown-argument]
+            rhs=4,  # ty: ignore[unknown-argument]
+            op_name="add",  # ty: ignore[unknown-argument]
+            scale=5,
+        )
+        assert obj.v_i64 == 1
+        assert obj.v_f64 == 2.0
+        assert obj.v_str == "base"
+        assert obj.lhs == 3
+        assert obj.rhs == 4
+        assert obj.op_name == "add"
+        assert obj.scale == 5
+        assert _get_type_info(Add).parent_type_info is _get_type_info(_TestObjectBase)
+        assert [f.name for f in fields(Add)] == [
+            "v_i64",
+            "v_f64",
+            "v_str",
+            "lhs",
+            "rhs",
+            "op_name",
+            "scale",
+        ]
+        assert [f.name for f in _get_type_info(Add).fields] == [
+            "lhs",
+            "rhs",
+            "op_name",
+            "scale",
+        ]
+
+    def test_c_class_ancestor_wins_over_inherited_object_metadata(self) -> None:
+        class ObjectMixin(Object):
+            mixin: int
+
+        class BaseBinOp(_TestObjectBase):
+            lhs: int
+            rhs: int
+
+        @py_class(_unique_key("NPCCxxMROAdd"))
+        class Add(ObjectMixin, BaseBinOp):
+            scale: int
+
+        obj = Add(
+            v_i64=1,
+            v_f64=2.0,
+            v_str="base",
+            lhs=3,  # ty: ignore[unknown-argument]
+            rhs=4,  # ty: ignore[unknown-argument]
+            mixin=5,  # ty: ignore[unknown-argument]
+            scale=6,
+        )
+        assert obj.v_i64 == 1
+        assert obj.v_f64 == 2.0
+        assert obj.v_str == "base"
+        assert obj.lhs == 3
+        assert obj.rhs == 4
+        assert obj.mixin == 5
+        assert obj.scale == 6
+        assert _get_type_info(Add).parent_type_info is _get_type_info(_TestObjectBase)
+        assert [f.name for f in fields(Add)] == [
+            "v_i64",
+            "v_f64",
+            "v_str",
+            "lhs",
+            "rhs",
+            "mixin",
+            "scale",
+        ]
+        assert [f.name for f in _get_type_info(Add).fields] == [
+            "lhs",
+            "rhs",
+            "mixin",
+            "scale",
+        ]
 
     def test_collects_non_py_class_parent_field_options(self) -> None:
         @py_class(_unique_key("NPCOptNode"))
@@ -3931,6 +4093,33 @@ class TestContainerFieldAnnotations:
         assert obj.matrix[0][0] == 1
         assert obj.matrix[1][2] == 6
 
+    def test_list_field_error_includes_field_path(self) -> None:
+        @py_class(_unique_key("ListErr"))
+        class ListErr(Object):
+            items: List[int]
+
+        with pytest.raises(TypeError) as exc_info:
+            ListErr(items=[1, None])  # ty: ignore[invalid-argument-type]
+
+        message = str(exc_info.value)
+        assert ".__ffi_init__() field 'items':\n" in message
+        assert "  element [1]: expected int, got None" in message
+
+    def test_field_error_indents_multiline_ffi_convert_error(self) -> None:
+        cls = _make_type(
+            "ShapeErr",
+            [Field(name="shape", _ty_schema=TypeSchema("ffi.Shape"), default=MISSING)],
+        )
+
+        with pytest.raises(TypeError) as exc_info:
+            cls(shape=[1, "x"])
+
+        message = str(exc_info.value)
+        assert ".__ffi_init__() field 'shape':\n" in message
+        assert "  expected ffi.Shape, got ffi.Array\n" in message
+        assert "    __ffi_convert__ failed:\n" in message
+        assert "      Cannot cast from `ffi.Array` to `ffi.Shape`" in message
+
     def test_dict_str_list_int_field(self) -> None:
         @py_class(_unique_key("DictStrListInt"))
         class DictStrListInt(Object):
@@ -5215,6 +5404,15 @@ class TestDtypeDeviceFields:
         assert obj.dt == "float32"
         assert isinstance(obj.dt, tvm_ffi.dtype)
 
+    def test_dtype_field_from_str(self) -> None:
+        @py_class(_unique_key("DtypeFieldFromStr"))
+        class DtypeHolder(Object):
+            dt: tvm_ffi.dtype
+
+        obj = DtypeHolder(dt="float32")  # ty: ignore[invalid-argument-type]
+        assert obj.dt == "float32"
+        assert isinstance(obj.dt, tvm_ffi.dtype)
+
     def test_dtype_field_setter(self) -> None:
         @py_class(_unique_key("DtypeFieldSet"))
         class DtypeHolder2(Object):
@@ -5232,6 +5430,14 @@ class TestDtypeDeviceFields:
         dev = tvm_ffi.device("cpu", 0)
         obj = DeviceHolder(dev=dev)
         assert obj.dev == dev
+
+    def test_device_field_from_str(self) -> None:
+        @py_class(_unique_key("DeviceFieldFromStr"))
+        class DeviceHolder(Object):
+            dev: tvm_ffi.Device
+
+        obj = DeviceHolder(dev="cpu")  # ty: ignore[invalid-argument-type]
+        assert obj.dev == tvm_ffi.device("cpu", 0)
 
     def test_dtype_device_together(self) -> None:
         @py_class(_unique_key("DtypeDeviceTogether"))
