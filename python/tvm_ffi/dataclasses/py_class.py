@@ -396,6 +396,8 @@ _FFI_RECOGNIZED_METHODS: frozenset[str] = frozenset(
         # Serialization (ToJSONGraph, FromJSONGraph)
         "__data_to_json__",
         "__data_from_json__",
+        # IR printing (text printer dispatch)
+        "__ir_print__",
     }
 )
 
