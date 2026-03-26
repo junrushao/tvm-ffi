@@ -1,0 +1,160 @@
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+
+"""Atomic, system-volatile, and multimem operation nodes."""
+
+from __future__ import annotations
+
+from typing import Any, ClassVar
+
+from tvm_ffi import dataclasses as dc
+from tvm_ffi import std
+
+from .._utils import Op, normalize_dtype
+
+ATOMIC_OPS = ("add", "max", "min")
+MEM_SPACES = ("gmem", "smem")
+MULTIMEM_LOAD_PAYLOADS = ("f32x4", "f16x8", "bf16x8", "e4m3x16", "e5m2x16")
+MULTIMEM_STORE_PAYLOADS = ("f32x4",)
+MULTIMEM_SEMS = ("relaxed", "release")
+MULTIMEM_SCOPES = ("gpu", "sys")
+
+
+@dc.py_class("weave.AtomicOp", structural_eq="tree")
+class AtomicOp(Op, mnemonic="weave.AtomicOp"):
+    op: str = dc.field(lang_kind="arg")
+    src: std.Expr = dc.field(lang_kind="arg")
+    dst: std.Expr = dc.field(lang_kind="arg")
+    space: str = dc.field(lang_kind="attr")
+    index: std.Expr | None = dc.field(default=None, lang_kind="attr")
+    dtype: Any = dc.field(default=None, lang_kind="attr")
+
+    EXPR_FIELDS: ClassVar[frozenset[str]] = frozenset(("src", "dst", "index"))
+    VALID_DOMAINS: ClassVar[dict[str, tuple[str, ...]]] = {"op": ATOMIC_OPS, "space": MEM_SPACES}
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        object.__setattr__(self, "dtype", normalize_dtype(self.dtype, field_name="dtype"))
+
+
+@dc.py_class("weave.AtomicFetchAdd", structural_eq="tree")
+class AtomicFetchAdd(Op, mnemonic="weave.AtomicFetchAdd"):
+    dst: std.Expr = dc.field(lang_kind="arg")
+    addr: std.Expr = dc.field(lang_kind="arg")
+    val: std.Expr = dc.field(lang_kind="arg")
+    index: std.Expr | None = dc.field(default=None, lang_kind="attr")
+    dtype: Any = dc.field(default=None, lang_kind="attr")
+
+    EXPR_FIELDS: ClassVar[frozenset[str]] = frozenset(("dst", "addr", "val", "index"))
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        object.__setattr__(self, "dtype", normalize_dtype(self.dtype, field_name="dtype"))
+
+
+@dc.py_class("weave.RelaxedFmax", structural_eq="tree")
+class RelaxedFmax(Op, mnemonic="weave.RelaxedFmax"):
+    addr: std.Expr = dc.field(lang_kind="arg")
+    val: std.Expr = dc.field(lang_kind="arg")
+    space: str = dc.field(default="gmem", lang_kind="attr")
+
+    EXPR_FIELDS: ClassVar[frozenset[str]] = frozenset(("addr", "val"))
+    VALID_DOMAINS: ClassVar[dict[str, tuple[str, ...]]] = {"space": MEM_SPACES}
+
+
+@dc.py_class("weave.AtomicMaxF32Positive", structural_eq="tree")
+class AtomicMaxF32Positive(Op, mnemonic="weave.AtomicMaxF32Positive"):
+    addr: std.Expr = dc.field(lang_kind="arg")
+    val: std.Expr = dc.field(lang_kind="arg")
+    index: std.Expr | None = dc.field(default=None, lang_kind="attr")
+    dst: std.Expr | None = dc.field(default=None, lang_kind="attr")
+
+    EXPR_FIELDS: ClassVar[frozenset[str]] = frozenset(("addr", "val", "index", "dst"))
+
+
+@dc.py_class("weave.SysVolatileLoad128", structural_eq="tree")
+class SysVolatileLoad128(Op, mnemonic="weave.SysVolatileLoad128"):
+    addr: std.Expr = dc.field(lang_kind="arg")
+    dst: std.Expr = dc.field(lang_kind="arg")
+
+    EXPR_FIELDS: ClassVar[frozenset[str]] = frozenset(("addr", "dst"))
+
+
+@dc.py_class("weave.SysVolatileStore128", structural_eq="tree")
+class SysVolatileStore128(Op, mnemonic="weave.SysVolatileStore128"):
+    addr: std.Expr = dc.field(lang_kind="arg")
+    src: std.Expr = dc.field(lang_kind="arg")
+
+    EXPR_FIELDS: ClassVar[frozenset[str]] = frozenset(("addr", "src"))
+
+
+@dc.py_class("weave.MultimemLdReduce", structural_eq="tree")
+class MultimemLdReduce(Op, mnemonic="weave.MultimemLdReduce"):
+    addr: std.Expr = dc.field(lang_kind="arg")
+    dst: std.Expr = dc.field(lang_kind="arg")
+    payload: str = dc.field(default="f32x4", lang_kind="attr")
+
+    EXPR_FIELDS: ClassVar[frozenset[str]] = frozenset(("addr", "dst"))
+    VALID_DOMAINS: ClassVar[dict[str, tuple[str, ...]]] = {"payload": MULTIMEM_LOAD_PAYLOADS}
+
+
+@dc.py_class("weave.MultimemStore", structural_eq="tree")
+class MultimemStore(Op, mnemonic="weave.MultimemStore"):
+    addr: std.Expr = dc.field(lang_kind="arg")
+    src: std.Expr = dc.field(lang_kind="arg")
+    payload: str = dc.field(default="f32x4", lang_kind="attr")
+
+    EXPR_FIELDS: ClassVar[frozenset[str]] = frozenset(("addr", "src"))
+    VALID_DOMAINS: ClassVar[dict[str, tuple[str, ...]]] = {"payload": MULTIMEM_STORE_PAYLOADS}
+
+
+@dc.py_class("weave.MultimemRedAddI32", structural_eq="tree")
+class MultimemRedAddI32(Op, mnemonic="weave.MultimemRedAddI32"):
+    addr: std.Expr = dc.field(lang_kind="arg")
+    value: std.Expr = dc.field(lang_kind="arg")
+    sem: str = dc.field(default="release", lang_kind="attr")
+    scope: str = dc.field(default="sys", lang_kind="attr")
+
+    EXPR_FIELDS: ClassVar[frozenset[str]] = frozenset(("addr", "value"))
+    VALID_DOMAINS: ClassVar[dict[str, tuple[str, ...]]] = {
+        "sem": MULTIMEM_SEMS,
+        "scope": MULTIMEM_SCOPES,
+    }
+
+
+@dc.py_class("weave.AtomicMaxFloatEncode", structural_eq="tree")
+class AtomicMaxFloatEncode(Op, mnemonic="weave.AtomicMaxFloatEncode"):
+    dst: std.Expr = dc.field(lang_kind="arg")
+    src: std.Expr = dc.field(lang_kind="arg")
+
+    EXPR_FIELDS: ClassVar[frozenset[str]] = frozenset(("dst", "src"))
+
+
+@dc.py_class("weave.AtomicMaxFloatDecode", structural_eq="tree")
+class AtomicMaxFloatDecode(Op, mnemonic="weave.AtomicMaxFloatDecode"):
+    dst: std.Expr = dc.field(lang_kind="arg")
+    src: std.Expr = dc.field(lang_kind="arg")
+
+    EXPR_FIELDS: ClassVar[frozenset[str]] = frozenset(("dst", "src"))
+
+
+__all__ = [  # noqa: RUF022
+    "AtomicOp",
+    "AtomicFetchAdd",
+    "RelaxedFmax",
+    "AtomicMaxF32Positive",
+    "SysVolatileLoad128",
+    "SysVolatileStore128",
+    "MultimemLdReduce",
+    "MultimemStore",
+    "MultimemRedAddI32",
+    "AtomicMaxFloatEncode",
+    "AtomicMaxFloatDecode",
+]

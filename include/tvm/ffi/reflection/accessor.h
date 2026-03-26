@@ -343,11 +343,11 @@ inline constexpr const char* kInit = "__ffi_init__";
 /*!
  * \brief Convert ``AnyView`` to a specific reflected ``TSelf`` type.
  *
- * Registered via ``TypeAttrDef<T>.def(kConvert, &FFIConvertFromAnyViewToObjectRef<T>)``
- * for every type that calls ``.ref<T>()``.  Used by the Python type converter
+ * Registered via ``TypeAttrDef<TObj>().def_convert<TSelf>()`` or
+ * ``ObjectDef<TObj>().def_convert<TSelf>()``. Used by the Python type converter
  * to marshal values into the correct ``TSelf`` subclass.
  *
- * Signature: ``(AnyView src) -> TSelf``, where ``TSelf`` is a subclass of ObjectRef.
+ * Signature: ``(AnyView src) -> TSelf``, where ``TSelf`` has a registered TypeTraits converter.
  */
 inline constexpr const char* kConvert = "__ffi_convert__";
 /*!
@@ -371,6 +371,48 @@ inline constexpr const char* kShallowCopy = "__ffi_shallow_copy__";
  * ObjectRef, and ``FnRepr: (AnyView value) -> String`` formats a nested value.
  */
 inline constexpr const char* kRepr = "__ffi_repr__";
+/*!
+ * \brief Custom Python-style text-print hook.
+ *
+ * If registered, ``pyast::IRPrinter`` calls this instead of default field-by-field
+ * printing.  The hook receives the active printer and access path, and returns a
+ * ``pyast::NodeAST`` that is later rendered to text.
+ *
+ * Signature: ``(TSelf self, pyast::IRPrinter printer, AccessPath path) -> pyast::NodeAST``,
+ * where ``TSelf`` is a subclass of ObjectRef.
+ */
+inline constexpr const char* kTextPrint = "__ffi_text_print__";
+/*!
+ * \brief Dialect and mnemonic metadata for an IR node type.
+ *
+ * The C++ value is an ``Array<String>`` with exactly two elements
+ * ``{dialect, mnemonic}``, such as ``{"std", "Call"}``. Python class
+ * declarations expose the same contract as ``tuple[str, str]``. It is metadata
+ * for IR printers, parsers, and dialect-aware tooling, and is not a reflected
+ * field.
+ */
+inline constexpr const char* kDialectMnemonic = "__ffi_dialect_mnemonic__";
+/*!
+ * \brief Dialect field role metadata for auto-generated field collectors.
+ *
+ * The C++ value is a ``Map<String, Array<int64_t>>``. Keys are ``"arg"``,
+ * ``"attr"``, ``"var_def"``, or ``"body"``. Each integer is an index into
+ * the reflected fields of the corresponding type in parent-first order.
+ */
+inline constexpr const char* kDialectLangKind = "__ffi_dialect_lang_kind__";
+/*!
+ * \brief Dialect field collector hook for std-derived dialect nodes.
+ *
+ * The default ``ffi.std.Node`` hook consumes ``kDialectLangKind`` metadata.
+ * Custom hooks can override that behavior by returning a
+ * ``std_::FieldCollectionResult`` in C++, or
+ * ``tvm_ffi.std.FieldCollectionResult`` in Python, containing positional
+ * arguments, keyword attributes, variables defined by the node, body nodes,
+ * and optional ``ty=`` print metadata.
+ *
+ * Signature: ``(TSelf self) -> ffi.std.FieldCollectionResult``.
+ */
+inline constexpr const char* kDialectFieldCollector = "__ffi_dialect_field_collector__";
 /*!
  * \brief Custom recursive hash hook.
  *

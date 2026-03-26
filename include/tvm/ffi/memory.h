@@ -169,7 +169,12 @@ class SimpleObjAllocator : public ObjAllocatorBase<SimpleObjAllocator> {
       // We are fine here as we captured the right deleter during construction.
       // This is also the right way to get storage type for an object pool.
       void* data = AlignedAlloc<alignof(T)>(sizeof(T));
-      new (data) T(std::forward<Args>(args)...);
+      try {
+        new (data) T(std::forward<Args>(args)...);
+      } catch (...) {
+        AlignedFree(data);
+        throw;
+      }
       return reinterpret_cast<T*>(data);
     }
 
@@ -221,7 +226,12 @@ class SimpleObjAllocator : public ObjAllocatorBase<SimpleObjAllocator> {
       // C++ standard always guarantees that alignof operator returns a power of 2
       size_t aligned_size = (size + (align - 1)) & ~(align - 1);
       void* data = AlignedAlloc<align>(aligned_size);
-      new (data) ArrayType(std::forward<Args>(args)...);
+      try {
+        new (data) ArrayType(std::forward<Args>(args)...);
+      } catch (...) {
+        AlignedFree(data);
+        throw;
+      }
       return reinterpret_cast<ArrayType*>(data);
     }
 

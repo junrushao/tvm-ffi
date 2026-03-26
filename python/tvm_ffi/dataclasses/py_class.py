@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import sys
 import typing
-from collections.abc import Callable
+from collections.abc import Callable, Mapping, Sequence
 from copy import copy
 from dataclasses import dataclass
 from typing import Any, ClassVar, TypeVar
@@ -86,20 +86,27 @@ _PENDING_CLASSES: list[_PendingClass] = []
 #: variable by Python.
 _PY_CLASS_BY_MODULE: dict[str, dict[str, type]] = {}
 
+_VALID_DIALECT_LANG_KINDS = frozenset({"arg", "attr", "var_def", "body"})
+
 # ---------------------------------------------------------------------------
 # Phase 1: type registration
 # ---------------------------------------------------------------------------
 
 
+def _registered_type_info(cls: type) -> core.TypeInfo | None:
+    """Return the TypeInfo registered directly for *cls*, not inherited metadata."""
+    info = core._type_cls_to_type_info(cls)
+    if info is not None:
+        return info
+    return cls.__dict__.get("__tvm_ffi_type_info__", None)
+
+
 def _register_type_without_fields(cls: type, type_key: str | None) -> Any:
     """Phase 1: allocate type index and register the type (always succeeds)."""
-    parent_info: core.TypeInfo | None = None
-    for base in cls.__bases__:
-        parent_info = core._type_cls_to_type_info(base)
-        if parent_info is None:
-            parent_info = getattr(base, "__tvm_ffi_type_info__", None)
-        if parent_info is not None:
-            break
+    parent_info = next(
+        (info for base in cls.__mro__[1:] if (info := _registered_type_info(base)) is not None),
+        None,
+    )
     if parent_info is None:
         raise TypeError(
             f"{cls.__name__} must inherit from a registered FFI Object type (e.g. tvm_ffi.Object)"
@@ -152,7 +159,7 @@ def _own_annotations(cls: type) -> dict[str, Any]:
 def _field_owner_classes(cls: type) -> list[type]:
     """Classes whose annotations become this type's own fields."""
     registered_parent = next(
-        (b for b in cls.__mro__[1:] if "__tvm_ffi_type_info__" in b.__dict__), object
+        (b for b in cls.__mro__[1:] if _registered_type_info(b) is not None), object
     )
     represented = set(registered_parent.__mro__)
     return [
@@ -328,6 +335,56 @@ def _validate_method_name(cls: type, name: str) -> None:
         )
 
 
+def _validate_type_attr_value(cls: type, name: str, value: Any) -> None:
+    """Reject malformed non-callable TypeAttrColumn values."""
+    if name == "__ffi_dialect_mnemonic__":
+        if (
+            not isinstance(value, tuple)
+            or len(value) != 2
+            or not all(isinstance(item, str) for item in value)
+        ):
+            raise TypeError(
+                f"@py_class({cls.__name__!r}): {name!r} must be "
+                "tuple[str, str], "
+                f"got {type(value).__name__}.",
+            )
+    elif name == "__ffi_dialect_lang_kind__":
+        if not isinstance(value, Mapping):
+            raise TypeError(
+                f"@py_class({cls.__name__!r}): {name!r} must be "
+                "Mapping[str, Sequence[int]], "
+                f"got {type(value).__name__}."
+            )
+        for kind, indices in value.items():
+            if kind not in _VALID_DIALECT_LANG_KINDS:
+                raise ValueError(
+                    f"@py_class({cls.__name__!r}): {name!r} key must be one of "
+                    f"{sorted(_VALID_DIALECT_LANG_KINDS)}, got {kind!r}."
+                )
+            if not isinstance(indices, Sequence) or isinstance(indices, (str, bytes)):
+                raise TypeError(
+                    f"@py_class({cls.__name__!r}): {name!r}[{kind!r}] must be "
+                    f"Sequence[int], got {type(indices).__name__}."
+                )
+            for index in indices:
+                if not isinstance(index, int) or isinstance(index, bool):
+                    raise TypeError(
+                        f"@py_class({cls.__name__!r}): {name!r}[{kind!r}] must contain "
+                        f"int indices, got {type(index).__name__}."
+                    )
+                if index < 0:
+                    raise ValueError(
+                        f"@py_class({cls.__name__!r}): {name!r}[{kind!r}] must contain "
+                        f"non-negative indices, got {index}."
+                    )
+    elif name == "__ffi_dialect_field_collector__":
+        if not callable(value):
+            raise TypeError(
+                f"@py_class({cls.__name__!r}): {name!r} must be callable, "
+                f"got {type(value).__name__}."
+            )
+
+
 def _collect_py_methods(cls: type) -> list[tuple[str, Any, bool]] | None:
     """Extract FFI-registered entries from a ``@py_class`` body.
 
@@ -374,8 +431,40 @@ def _collect_py_methods(cls: type) -> list[tuple[str, Any, bool]] | None:
             )
         is_static = isinstance(value, staticmethod)
         func = value.__func__ if is_static else value
+        if name in _FFI_TYPE_ATTR_NAMES:
+            _validate_type_attr_value(cls, name, func)
         methods.append((name, func, is_static))
     return methods if methods else None
+
+
+def _collect_lang_kind_type_attr(type_info: Any) -> dict[str, list[int]]:
+    """Collect ``field(lang_kind=...)`` annotations into reflected field indices."""
+    type_chain: list[Any] = []
+    cursor = type_info
+    while cursor is not None:
+        type_chain.append(cursor)
+        cursor = cursor.parent_type_info
+
+    lang_kind_map: dict[str, list[int]] = {}
+    field_index = 0
+    for info in reversed(type_chain):
+        for type_field in info.fields or ():
+            dataclass_field = type_field.dataclass_field
+            lang_kind = None if dataclass_field is None else dataclass_field.lang_kind
+            if lang_kind is not None:
+                lang_kind_map.setdefault(lang_kind, []).append(field_index)
+            field_index += 1
+    return lang_kind_map
+
+
+def _register_lang_kind_type_attr(type_info: Any) -> None:
+    """Register the compact dialect field-role map for this Python-defined type."""
+    lang_kind_map = _collect_lang_kind_type_attr(type_info)
+    if not lang_kind_map:
+        return
+    if core._lookup_type_attr(type_info.type_index, "__ffi_dialect_lang_kind__") is not None:
+        return
+    core._register_type_attr(type_info.type_index, "__ffi_dialect_lang_kind__", lang_kind_map)
 
 
 def _build_localns(cls: type, *, cross_module: bool = False) -> dict[str, Any]:
@@ -404,6 +493,34 @@ def _build_localns(cls: type, *, cross_module: bool = False) -> dict[str, Any]:
     return localns
 
 
+def _resolve_own_type_hints(
+    owner: type,
+    globalns: dict[str, Any],
+    localns: dict[str, Any],
+) -> dict[str, Any]:
+    """Resolve only annotations declared directly on ``owner``.
+
+    ``typing.get_type_hints(cls)`` merges annotations across the full MRO.
+    That is wrong for py_class phase 2 because inherited C++/c_class fields
+    are already registered by the parent type.  Resolving only the owner
+    annotations also avoids evaluating parent annotations in the child
+    module's namespace, e.g. ``std.Expr.ty: Ty`` while registering a ``tirx``
+    subclass.
+    """
+    annotations = _own_annotations(owner)
+    if not annotations:
+        return {}
+    shim = type(
+        f"_{owner.__name__}OwnAnnotations",
+        (),
+        {"__annotations__": annotations, "__module__": owner.__module__},
+    )
+    kwargs: dict[str, Any] = {"globalns": globalns, "localns": localns}
+    if sys.version_info >= (3, 11):
+        kwargs["include_extras"] = True
+    return typing.get_type_hints(shim, **kwargs)
+
+
 def _register_fields_into_type(
     cls: type,
     type_info: Any,
@@ -421,25 +538,40 @@ def _register_fields_into_type(
     # from every registered module — this handles circular imports where the
     # target of a forward reference is imported only under TYPE_CHECKING and
     # therefore never enters the declaring module's globals.
-    kwargs: dict[str, Any] = {"globalns": globalns, "localns": _build_localns(cls)}
-    if sys.version_info >= (3, 11):
-        kwargs["include_extras"] = True
+    owners = _field_owner_classes(cls)
+    localns = _build_localns(cls)
+    localns.update({owner.__name__: owner for owner in owners})
     try:
-        hints = typing.get_type_hints(cls, **kwargs)
+        hints_by_owner = {
+            owner: _resolve_own_type_hints(
+                owner,
+                getattr(sys.modules.get(owner.__module__, None), "__dict__", globalns),
+                localns,
+            )
+            for owner in owners
+        }
     except (NameError, AttributeError):
-        kwargs["localns"] = _build_localns(cls, cross_module=True)
+        localns = _build_localns(cls, cross_module=True)
+        localns.update({owner.__name__: owner for owner in owners})
         try:
-            hints = typing.get_type_hints(cls, **kwargs)
+            hints_by_owner = {
+                owner: _resolve_own_type_hints(
+                    owner,
+                    getattr(sys.modules.get(owner.__module__, None), "__dict__", globalns),
+                    localns,
+                )
+                for owner in owners
+            }
         except (NameError, AttributeError):
             return False
 
     fields_map: dict[str, Field] = {}
     kw_only_active = params["kw_only"]
-    for owner in _field_owner_classes(cls):
+    for owner in owners:
         owner_fields, kw_only_active = _collect_own_fields(
             cls,
             owner,
-            hints,
+            hints_by_owner[owner],
             kw_only_active,
             params["frozen"],
         )
@@ -462,7 +594,8 @@ def _register_fields_into_type(
     # Non-callable entries whose names are in _FFI_TYPE_ATTR_NAMES are routed
     # to TVMFFITypeRegisterAttr by the Cython layer.
     type_info._register_py_methods(py_methods, type_attr_names=_FFI_TYPE_ATTR_NAMES)
-    _add_class_attrs(cls, type_info)
+    _register_lang_kind_type_attr(type_info)
+    _add_class_attrs(cls, type_info, type_attr_names=_FFI_TYPE_ATTR_NAMES)
 
     # Remove deferred __init__ and restore user-defined __init__ if saved
     if "_py_class_deferred_init" in cls.__dict__:
@@ -522,8 +655,8 @@ def _raise_unresolved_forward_reference(cls: type, globalns: dict[str, Any]) -> 
             if isinstance(ann_str, str):
                 try:
                     eval(ann_str, globalns, localns)
-                except NameError:
-                    unresolved.append(f"{name}: {ann_str}")
+                except (NameError, AttributeError) as err:
+                    unresolved.append(f"{name}: {ann_str} ({err})")
     raise TypeError(
         f"Cannot instantiate {cls.__name__}: unresolved forward references: {unresolved}"
     )
@@ -609,6 +742,12 @@ _FFI_TYPE_ATTR_NAMES: frozenset[str] = frozenset(
         "__s_hash__",
         "__data_to_json__",
         "__data_from_json__",
+        # IR printing (text printer dispatch)
+        "__ffi_text_print__",
+        # IR dialect metadata
+        "__ffi_dialect_mnemonic__",
+        "__ffi_dialect_lang_kind__",
+        "__ffi_dialect_field_collector__",
     }
 )
 
