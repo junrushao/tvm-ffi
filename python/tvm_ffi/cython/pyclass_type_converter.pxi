@@ -82,6 +82,11 @@ class _ConvertError(Exception):
         return self.args[0]
 
 
+cdef str _tc_indent_message(object message, str prefix):
+    cdef str text = str(message)
+    return prefix + text.replace("\n", "\n" + prefix)
+
+
 # ---------------------------------------------------------------------------
 # Converters (1/N): Simple value converters
 # ---------------------------------------------------------------------------
@@ -104,6 +109,7 @@ cdef CAny _tc_convert_any(_TypeConverter _conv, object value, bint* changed) exc
             Bytes,
             Tensor,
             DataType,
+            Device,
             CObject,
             _CLASS_DEVICE,
             _CLASS_DTYPE,
@@ -212,8 +218,17 @@ cdef CAny _tc_convert_device(_TypeConverter _conv, object value, bint* changed) 
     """Device accepts: Device and __dlpack_device__ without __dlpack__."""
     cdef object vtype = type(value)
     assert _CLASS_DEVICE is not None
+    if isinstance(value, Device):
+        return CAny(value)
     if isinstance(value, _CLASS_DEVICE):
         return CAny(value)
+    if isinstance(value, str):
+        try:
+            device_value = _CLASS_DEVICE(value)
+        except Exception:
+            raise _ConvertError(f"expected Device, got invalid device string {value!r}") from None
+        changed[0] = True
+        return CAny(device_value)
     if hasattr(vtype, "__dlpack_device__") and not hasattr(vtype, "__dlpack__"):
         changed[0] = True
         return CAnyChecked(value, "Device", value)
@@ -597,7 +612,13 @@ cdef CAny _tc_convert_object_marshaled(_TypeConverter conv, object value) except
         if actual_type_index >= kTVMFFIStaticObjectBegin:
             if _tc_type_index_is_instance(actual_type_index, conv.type_index):
                 return converted
-    raise _ConvertError(f"expected {conv.err_hint}, got {_tc_describe_value_type(value)}") from err
+    if err is not None:
+        raise _ConvertError(
+            f"expected {conv.err_hint}, got {_tc_describe_value_type(value)}\n"
+            f"  __ffi_convert__ failed:\n"
+            f"{_tc_indent_message(err, '    ')}"
+        ) from None
+    raise _ConvertError(f"expected {conv.err_hint}, got {_tc_describe_value_type(value)}")
 
 
 cdef CAny _tc_convert_object(_TypeConverter conv, object value, bint* changed) except *:

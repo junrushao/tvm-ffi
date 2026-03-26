@@ -30,6 +30,7 @@
 
 #include <limits>
 #include <string>
+#include <string_view>
 #include <type_traits>
 #include <utility>
 
@@ -463,6 +464,88 @@ struct TypeTraits<void*> : public TypeTraitsBase {
   }
 };
 
+namespace details {
+
+TVM_FFI_INLINE static std::optional<std::string_view> TryGetStringViewFromAny(
+    const TVMFFIAny* src) {
+  if (src->type_index == TypeIndex::kTVMFFIRawStr) {
+    return std::string_view(src->v_c_str);
+  }
+  if (src->type_index == TypeIndex::kTVMFFISmallStr) {
+    TVMFFIByteArray bytes = TVMFFISmallBytesGetContentByteArray(src);
+    return std::string_view(bytes.data, bytes.size);
+  }
+  if (src->type_index == TypeIndex::kTVMFFIStr) {
+    TVMFFIByteArray* bytes = TVMFFIBytesGetByteArrayPtr(src->v_obj);
+    return std::string_view(bytes->data, bytes->size);
+  }
+  return std::nullopt;
+}
+
+TVM_FFI_INLINE static std::optional<DLDeviceType> TryParseDLDeviceType(std::string_view name) {
+  if (name == "llvm" || name == "cpu" || name == "c" || name == "test") return kDLCPU;
+  if (name == "cuda" || name == "nvptx") return kDLCUDA;
+  if (name == "cl" || name == "opencl") return kDLOpenCL;
+  if (name == "vulkan") return kDLVulkan;
+  if (name == "metal") return kDLMetal;
+  if (name == "vpi") return kDLVPI;
+  if (name == "rocm") return kDLROCM;
+  if (name == "ext_dev") return kDLExtDev;
+  if (name == "hexagon") return kDLHexagon;
+  if (name == "webgpu") return kDLWebGPU;
+  if (name == "maia") return kDLMAIA;
+  if (name == "trn") return kDLTrn;
+  return std::nullopt;
+}
+
+TVM_FFI_INLINE static int32_t ParseDLDeviceIndex(std::string_view index) {
+  TVM_FFI_CHECK(!index.empty(), ValueError) << "Invalid device index: ";
+  int64_t sign = 1;
+  size_t pos = 0;
+  if (index[0] == '-') {
+    sign = -1;
+    pos = 1;
+  }
+  TVM_FFI_CHECK(pos < index.size(), ValueError) << "Invalid device index: " << index;
+  int64_t value = 0;
+  for (; pos < index.size(); ++pos) {
+    char ch = index[pos];
+    TVM_FFI_CHECK(ch >= '0' && ch <= '9', ValueError) << "Invalid device index: " << index;
+    value = value * 10 + (ch - '0');
+    TVM_FFI_CHECK(value <= std::numeric_limits<int32_t>::max(), ValueError)
+        << "Device index out of int32 range: " << index;
+  }
+  value *= sign;
+  TVM_FFI_CHECK(
+      value >= std::numeric_limits<int32_t>::min() && value <= std::numeric_limits<int32_t>::max(),
+      ValueError)
+      << "Device index out of int32 range: " << index;
+  return static_cast<int32_t>(value);
+}
+
+TVM_FFI_INLINE static DLDevice StringViewToDLDevice(std::string_view str) {
+  size_t space_pos = str.find(' ');
+  if (space_pos != std::string_view::npos) {
+    str = str.substr(0, space_pos);
+  }
+  size_t colon_pos = str.find(':');
+  std::string_view name = colon_pos == std::string_view::npos ? str : str.substr(0, colon_pos);
+  TVM_FFI_CHECK(!name.empty(), ValueError) << "Invalid device: " << str;
+  TVM_FFI_CHECK(str.find(':', colon_pos == std::string_view::npos ? str.size() : colon_pos + 1) ==
+                    std::string_view::npos,
+                ValueError)
+      << "Invalid device: " << str;
+  std::optional<DLDeviceType> device_type = TryParseDLDeviceType(name);
+  TVM_FFI_CHECK(device_type.has_value(), ValueError) << "Unknown device: " << name;
+  int32_t device_id = 0;
+  if (colon_pos != std::string_view::npos) {
+    device_id = ParseDLDeviceIndex(str.substr(colon_pos + 1));
+  }
+  return DLDevice{device_type.value(), device_id};
+}
+
+}  // namespace details
+
 // Device
 template <>
 struct TypeTraits<DLDevice> : public TypeTraitsBase {
@@ -496,6 +579,9 @@ struct TypeTraits<DLDevice> : public TypeTraitsBase {
   TVM_FFI_INLINE static std::optional<DLDevice> TryCastFromAnyView(const TVMFFIAny* src) {
     if (src->type_index == TypeIndex::kTVMFFIDevice) {
       return src->v_device;
+    }
+    if (auto str = details::TryGetStringViewFromAny(src)) {
+      return details::StringViewToDLDevice(str.value());
     }
     return std::nullopt;
   }
