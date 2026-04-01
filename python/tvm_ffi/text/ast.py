@@ -189,6 +189,10 @@ class Node(Object):
     # tvm-ffi-stubgen(begin): object/ffi.text.ast.Node
     # fmt: off
     source_paths: MutableSequence[AccessPath]
+    lineno: int
+    col_offset: int
+    end_lineno: int
+    end_col_offset: int
     if TYPE_CHECKING:
         def __ffi_shallow_copy__(self, /) -> Object: ...
         def to_python(self, _1: PrinterConfig, /) -> str: ...
@@ -880,11 +884,13 @@ class OperationKind:
 
     """
 
+    Undefined = -1
     _UnaryStart = 0
     USub = 1
     Invert = 2
     Not = 3
-    _UnaryEnd = 4
+    UAdd = 4
+    _UnaryEnd = 5
     _BinaryStart = 5
     Add = 6
     Sub = 7
@@ -906,10 +912,17 @@ class OperationKind:
     GtE = 23
     And = 24
     Or = 25
-    _BinaryEnd = 26
-    _SpecialStart = 27
-    IfThenElse = 28
-    SpecialEnd = 29
+    MatMult = 26
+    Is = 27
+    IsNot = 28
+    In = 29
+    NotIn = 30
+    _BinaryEnd = 31
+    _SpecialStart = 32
+    IfThenElse = 33
+    ChainedCompare = 34
+    Parens = 35
+    SpecialEnd = 36
 
 
 @c_class("ffi.text.ast.Operation")
@@ -977,13 +990,13 @@ class Lambda(Expr):
 
     # tvm-ffi-stubgen(begin): object/ffi.text.ast.Lambda
     # fmt: off
-    args: MutableSequence[Id]
+    args: MutableSequence[Expr]
     body: Expr
     if TYPE_CHECKING:
-        def __init__(self, _0: MutableSequence[Id], _1: Expr, /) -> None: ...
+        def __init__(self, _0: MutableSequence[Expr], _1: Expr, /) -> None: ...
         def __ffi_shallow_copy__(self, /) -> Object: ...
         @staticmethod
-        def __c_ffi_init__(_0: MutableSequence[Id], _1: Expr, /) -> Object: ...
+        def __c_ffi_init__(_0: MutableSequence[Expr], _1: Expr, /) -> Object: ...
     # fmt: on
     # tvm-ffi-stubgen(end)
 
@@ -1179,11 +1192,12 @@ class Assign(Stmt):
     lhs: Expr
     rhs: Expr | None
     annotation: Expr | None
+    aug_op: int
     if TYPE_CHECKING:
-        def __init__(self, _0: Expr, _1: Expr | None, _2: Expr | None, /) -> None: ...
+        def __init__(self, _0: Expr, _1: Expr | None, _2: Expr | None, _3: int, /) -> None: ...
         def __ffi_shallow_copy__(self, /) -> Object: ...
         @staticmethod
-        def __c_ffi_init__(_0: Expr, _1: Expr | None, _2: Expr | None, /) -> Object: ...
+        def __c_ffi_init__(_0: Expr, _1: Expr | None, _2: Expr | None, _3: int, /) -> Object: ...
     # fmt: on
     # tvm-ffi-stubgen(end)
 
@@ -1192,6 +1206,7 @@ class Assign(Stmt):
         lhs: Expr,
         rhs: Expr | None = None,
         annotation: Expr | None = None,
+        aug_op: int = -1,
     ) -> None:
         """Initialize an Assign statement.
 
@@ -1204,9 +1219,12 @@ class Assign(Stmt):
             Default ``None``.
         annotation
             An optional type annotation expression. Default ``None``.
+        aug_op
+            Augmented-assignment operator kind (``OperationKind`` value),
+            or -1 for plain assignment. Default -1.
 
         """
-        self.__ffi_init__(lhs, rhs, annotation)
+        self.__ffi_init__(lhs, rhs, annotation, aug_op)
 
 
 @c_class("ffi.text.ast.If")
@@ -1255,7 +1273,7 @@ class If(Stmt):
     # tvm-ffi-stubgen(end)
 
 
-@c_class("ffi.text.ast.While")
+@c_class("ffi.text.ast.While", init=False)
 class While(Stmt):
     """A ``while`` loop statement.
 
@@ -1285,16 +1303,27 @@ class While(Stmt):
     # fmt: off
     cond: Expr
     body: MutableSequence[Stmt]
+    orelse: MutableSequence[Stmt]
     if TYPE_CHECKING:
-        def __init__(self, _0: Expr, _1: MutableSequence[Stmt], /) -> None: ...
+        def __init__(self, _0: Expr, _1: MutableSequence[Stmt], _2: MutableSequence[Stmt], /) -> None: ...
         def __ffi_shallow_copy__(self, /) -> Object: ...
         @staticmethod
-        def __c_ffi_init__(_0: Expr, _1: MutableSequence[Stmt], /) -> Object: ...
+        def __c_ffi_init__(_0: Expr, _1: MutableSequence[Stmt], _2: MutableSequence[Stmt], /) -> Object: ...
     # fmt: on
     # tvm-ffi-stubgen(end)
 
+    def __init__(
+        self,
+        cond: Expr,
+        body: MutableSequence[Stmt],
+        orelse: MutableSequence[Stmt] | None = None,
+    ) -> None:
+        if orelse is None:
+            orelse = []
+        self.__ffi_init__(cond, body, orelse)
 
-@c_class("ffi.text.ast.For")
+
+@c_class("ffi.text.ast.For", init=False)
 class For(Stmt):
     """A ``for`` loop statement (``for lhs in rhs: body``).
 
@@ -1328,16 +1357,30 @@ class For(Stmt):
     lhs: Expr
     rhs: Expr
     body: MutableSequence[Stmt]
+    is_async: bool
+    orelse: MutableSequence[Stmt]
     if TYPE_CHECKING:
-        def __init__(self, _0: Expr, _1: Expr, _2: MutableSequence[Stmt], /) -> None: ...
+        def __init__(self, _0: Expr, _1: Expr, _2: MutableSequence[Stmt], _3: bool, _4: MutableSequence[Stmt], /) -> None: ...
         def __ffi_shallow_copy__(self, /) -> Object: ...
         @staticmethod
-        def __c_ffi_init__(_0: Expr, _1: Expr, _2: MutableSequence[Stmt], /) -> Object: ...
+        def __c_ffi_init__(_0: Expr, _1: Expr, _2: MutableSequence[Stmt], _3: bool, _4: MutableSequence[Stmt], /) -> Object: ...
     # fmt: on
     # tvm-ffi-stubgen(end)
 
+    def __init__(
+        self,
+        lhs: Expr,
+        rhs: Expr,
+        body: MutableSequence[Stmt],
+        is_async: bool = False,
+        orelse: MutableSequence[Stmt] | None = None,
+    ) -> None:
+        if orelse is None:
+            orelse = []
+        self.__ffi_init__(lhs, rhs, body, is_async, orelse)
 
-@c_class("ffi.text.ast.With")
+
+@c_class("ffi.text.ast.With", init=False)
 class With(Stmt):
     """A ``with`` context-manager statement (``with rhs as lhs: body``).
 
@@ -1373,13 +1416,23 @@ class With(Stmt):
     lhs: Expr | None
     rhs: Expr
     body: MutableSequence[Stmt]
+    is_async: bool
     if TYPE_CHECKING:
-        def __init__(self, _0: Expr | None, _1: Expr, _2: MutableSequence[Stmt], /) -> None: ...
+        def __init__(self, _0: Expr | None, _1: Expr, _2: MutableSequence[Stmt], _3: bool, /) -> None: ...
         def __ffi_shallow_copy__(self, /) -> Object: ...
         @staticmethod
-        def __c_ffi_init__(_0: Expr | None, _1: Expr, _2: MutableSequence[Stmt], /) -> Object: ...
+        def __c_ffi_init__(_0: Expr | None, _1: Expr, _2: MutableSequence[Stmt], _3: bool, /) -> Object: ...
     # fmt: on
     # tvm-ffi-stubgen(end)
+
+    def __init__(
+        self,
+        lhs: Expr | None,
+        rhs: Expr,
+        body: MutableSequence[Stmt],
+        is_async: bool = False,
+    ) -> None:
+        self.__ffi_init__(lhs, rhs, body, is_async)
 
 
 @c_class("ffi.text.ast.ExprStmt")
@@ -1500,7 +1553,7 @@ class Return(Stmt):
     # tvm-ffi-stubgen(end)
 
 
-@c_class("ffi.text.ast.Function")
+@c_class("ffi.text.ast.Function", init=False)
 class Function(Stmt):
     """A ``def`` function definition statement.
 
@@ -1547,16 +1600,28 @@ class Function(Stmt):
     decorators: MutableSequence[Expr]
     return_type: Expr | None
     body: MutableSequence[Stmt]
+    is_async: bool
     if TYPE_CHECKING:
-        def __init__(self, _0: Id, _1: MutableSequence[Assign], _2: MutableSequence[Expr], _3: Expr | None, _4: MutableSequence[Stmt], /) -> None: ...
+        def __init__(self, _0: Id, _1: MutableSequence[Assign], _2: MutableSequence[Expr], _3: Expr | None, _4: MutableSequence[Stmt], _5: bool, /) -> None: ...
         def __ffi_shallow_copy__(self, /) -> Object: ...
         @staticmethod
-        def __c_ffi_init__(_0: Id, _1: MutableSequence[Assign], _2: MutableSequence[Expr], _3: Expr | None, _4: MutableSequence[Stmt], /) -> Object: ...
+        def __c_ffi_init__(_0: Id, _1: MutableSequence[Assign], _2: MutableSequence[Expr], _3: Expr | None, _4: MutableSequence[Stmt], _5: bool, /) -> Object: ...
     # fmt: on
     # tvm-ffi-stubgen(end)
 
+    def __init__(
+        self,
+        name: Id,
+        args: MutableSequence[Assign],
+        decorators: MutableSequence[Expr],
+        return_type: Expr | None,
+        body: MutableSequence[Stmt],
+        is_async: bool = False,
+    ) -> None:
+        self.__ffi_init__(name, args, decorators, return_type, body, is_async)
 
-@c_class("ffi.text.ast.Class")
+
+@c_class("ffi.text.ast.Class", init=False)
 class Class(Stmt):
     """A ``class`` definition statement.
 
@@ -1588,15 +1653,39 @@ class Class(Stmt):
     # tvm-ffi-stubgen(begin): object/ffi.text.ast.Class
     # fmt: off
     name: Id
+    bases: MutableSequence[Expr]
     decorators: MutableSequence[Expr]
     body: MutableSequence[Stmt]
+    kwargs_keys: MutableSequence[str]
+    kwargs_values: MutableSequence[Expr]
     if TYPE_CHECKING:
-        def __init__(self, _0: Id, _1: MutableSequence[Expr], _2: MutableSequence[Stmt], /) -> None: ...
+        def __init__(self, _0: Id, _1: MutableSequence[Expr], _2: MutableSequence[Expr], _3: MutableSequence[Stmt], _4: MutableSequence[str], _5: MutableSequence[Expr], /) -> None: ...
         def __ffi_shallow_copy__(self, /) -> Object: ...
         @staticmethod
-        def __c_ffi_init__(_0: Id, _1: MutableSequence[Expr], _2: MutableSequence[Stmt], /) -> Object: ...
+        def __c_ffi_init__(_0: Id, _1: MutableSequence[Expr], _2: MutableSequence[Expr], _3: MutableSequence[Stmt], _4: MutableSequence[str], _5: MutableSequence[Expr], /) -> Object: ...
     # fmt: on
     # tvm-ffi-stubgen(end)
+
+    def __init__(
+        self,
+        name: Id,
+        bases: MutableSequence[Expr] | None = None,
+        decorators: MutableSequence[Expr] | None = None,
+        body: MutableSequence[Stmt] | None = None,
+        kwargs_keys: MutableSequence[str] | None = None,
+        kwargs_values: MutableSequence[Expr] | None = None,
+    ) -> None:
+        if bases is None:
+            bases = []
+        if decorators is None:
+            decorators = []
+        if body is None:
+            body = []
+        if kwargs_keys is None:
+            kwargs_keys = []
+        if kwargs_values is None:
+            kwargs_values = []
+        self.__ffi_init__(name, bases, decorators, body, kwargs_keys, kwargs_values)
 
 
 @c_class("ffi.text.ast.Comment", init=False)
@@ -1675,3 +1764,321 @@ class DocString(Stmt):
 
         """
         self.__ffi_init__(comment)
+
+
+@c_class("ffi.text.ast.Set")
+class Set(Expr):
+    """A set expression (``{a, b, c}``).
+
+    Attributes
+    ----------
+    values
+        The element expressions.
+
+    """
+
+    # tvm-ffi-stubgen(begin): object/ffi.text.ast.Set
+    # fmt: off
+    values: MutableSequence[Expr]
+    if TYPE_CHECKING:
+        def __init__(self, _0: MutableSequence[Expr], /) -> None: ...
+        def __ffi_shallow_copy__(self, /) -> Object: ...
+        @staticmethod
+        def __c_ffi_init__(_0: MutableSequence[Expr], /) -> Object: ...
+    # fmt: on
+    # tvm-ffi-stubgen(end)
+
+
+@c_class("ffi.text.ast.ComprehensionIter")
+class ComprehensionIter(Node):
+    """One ``for target in iter [if cond]...`` clause in a comprehension.
+
+    Attributes
+    ----------
+    target
+        The loop variable expression.
+    iter
+        The iterable expression.
+    ifs
+        Zero or more filter-condition expressions.
+
+    """
+
+    # tvm-ffi-stubgen(begin): object/ffi.text.ast.ComprehensionIter
+    # fmt: off
+    target: Expr
+    iter: Expr
+    ifs: MutableSequence[Expr]
+    if TYPE_CHECKING:
+        def __init__(self, _0: Expr, _1: Expr, _2: MutableSequence[Expr], /) -> None: ...
+        def __ffi_shallow_copy__(self, /) -> Object: ...
+        @staticmethod
+        def __c_ffi_init__(_0: Expr, _1: Expr, _2: MutableSequence[Expr], /) -> Object: ...
+    # fmt: on
+    # tvm-ffi-stubgen(end)
+
+
+class ComprehensionKind:
+    """Enum-like class for comprehension kinds."""
+
+    List = 0
+    Set = 1
+    Dict = 2
+    Generator = 3
+
+
+@c_class("ffi.text.ast.Comprehension")
+class Comprehension(Expr):
+    """A comprehension expression.
+
+    Covers list comprehensions (``[elt for ...]``), set comprehensions
+    (``{elt for ...}``), dict comprehensions (``{key: value for ...}``),
+    and generator expressions (``(elt for ...)``).
+
+    Attributes
+    ----------
+    kind
+        The comprehension kind (a ``ComprehensionKind`` constant).
+    elt
+        The element expression (or key for dict comprehensions).
+    value
+        The value expression (only for dict comprehensions; ``None`` otherwise).
+    iters
+        The list of ``ComprehensionIter`` clauses.
+
+    """
+
+    # tvm-ffi-stubgen(begin): object/ffi.text.ast.Comprehension
+    # fmt: off
+    kind: int
+    elt: Expr
+    value: Expr | None
+    iters: MutableSequence[ComprehensionIter]
+    if TYPE_CHECKING:
+        def __init__(self, _0: int, _1: Expr, _2: Expr | None, _3: MutableSequence[ComprehensionIter], /) -> None: ...
+        def __ffi_shallow_copy__(self, /) -> Object: ...
+        @staticmethod
+        def __c_ffi_init__(_0: int, _1: Expr, _2: Expr | None, _3: MutableSequence[ComprehensionIter], /) -> Object: ...
+    # fmt: on
+    # tvm-ffi-stubgen(end)
+
+
+@c_class("ffi.text.ast.Yield", init=False)
+class Yield(Expr):
+    """A yield expression (``yield value``).
+
+    Attributes
+    ----------
+    value
+        The yielded value, or ``None`` for bare ``yield``.
+
+    """
+
+    # tvm-ffi-stubgen(begin): object/ffi.text.ast.Yield
+    # fmt: off
+    value: Expr | None
+    if TYPE_CHECKING:
+        def __init__(self, _0: Expr | None, /) -> None: ...
+        def __ffi_shallow_copy__(self, /) -> Object: ...
+        @staticmethod
+        def __c_ffi_init__(_0: Expr | None, /) -> Object: ...
+    # fmt: on
+    # tvm-ffi-stubgen(end)
+
+    def __init__(self, value: Expr | None = None) -> None:
+        """Initialize a Yield expression."""
+        self.__ffi_init__(value)
+
+
+@c_class("ffi.text.ast.YieldFrom")
+class YieldFrom(Expr):
+    """A yield-from expression (``yield from iterable``).
+
+    Attributes
+    ----------
+    value
+        The iterable to yield from.
+
+    """
+
+    # tvm-ffi-stubgen(begin): object/ffi.text.ast.YieldFrom
+    # fmt: off
+    value: Expr
+    if TYPE_CHECKING:
+        def __init__(self, _0: Expr, /) -> None: ...
+        def __ffi_shallow_copy__(self, /) -> Object: ...
+        @staticmethod
+        def __c_ffi_init__(_0: Expr, /) -> Object: ...
+    # fmt: on
+    # tvm-ffi-stubgen(end)
+
+
+@c_class("ffi.text.ast.StarredExpr")
+class StarredExpr(Expr):
+    """A starred expression (``*value``)."""
+
+    # tvm-ffi-stubgen(begin): object/ffi.text.ast.StarredExpr
+    # fmt: off
+    value: Expr
+    if TYPE_CHECKING:
+        def __init__(self, _0: Expr, /) -> None: ...
+        def __ffi_shallow_copy__(self, /) -> Object: ...
+        @staticmethod
+        def __c_ffi_init__(_0: Expr, /) -> Object: ...
+    # fmt: on
+    # tvm-ffi-stubgen(end)
+
+
+@c_class("ffi.text.ast.Await")
+class AwaitExpr(Expr):
+    """An await expression (``await value``)."""
+
+    # tvm-ffi-stubgen(begin): object/ffi.text.ast.Await
+    # fmt: off
+    value: Expr
+    if TYPE_CHECKING:
+        def __init__(self, _0: Expr, /) -> None: ...
+        def __ffi_shallow_copy__(self, /) -> Object: ...
+        @staticmethod
+        def __c_ffi_init__(_0: Expr, /) -> Object: ...
+    # fmt: on
+    # tvm-ffi-stubgen(end)
+
+
+@c_class("ffi.text.ast.WalrusExpr")
+class WalrusExpr(Expr):
+    """A walrus / named expression (``target := value``)."""
+
+    # tvm-ffi-stubgen(begin): object/ffi.text.ast.WalrusExpr
+    # fmt: off
+    target: Expr
+    value: Expr
+    if TYPE_CHECKING:
+        def __init__(self, _0: Expr, _1: Expr, /) -> None: ...
+        def __ffi_shallow_copy__(self, /) -> Object: ...
+        @staticmethod
+        def __c_ffi_init__(_0: Expr, _1: Expr, /) -> Object: ...
+    # fmt: on
+    # tvm-ffi-stubgen(end)
+
+
+@c_class("ffi.text.ast.FStr")
+class FStr(Expr):
+    """An f-string expression (``f"...{x}..."``).
+
+    ``values`` is a list of ``Literal(str)`` for text parts and
+    ``FStrValue`` for interpolated expressions.
+    """
+
+    # tvm-ffi-stubgen(begin): object/ffi.text.ast.FStr
+    # fmt: off
+    values: MutableSequence[Expr]
+    if TYPE_CHECKING:
+        def __init__(self, _0: MutableSequence[Expr], /) -> None: ...
+        def __ffi_shallow_copy__(self, /) -> Object: ...
+        @staticmethod
+        def __c_ffi_init__(_0: MutableSequence[Expr], /) -> Object: ...
+    # fmt: on
+    # tvm-ffi-stubgen(end)
+
+
+@c_class("ffi.text.ast.FStrValue", init=False)
+class FStrValue(Expr):
+    """A formatted value inside an f-string (``{value!r:.2f}``)."""
+
+    # tvm-ffi-stubgen(begin): object/ffi.text.ast.FStrValue
+    # fmt: off
+    value: Expr
+    conversion: int
+    format_spec: Expr | None
+    if TYPE_CHECKING:
+        def __init__(self, _0: Expr, _1: int, _2: Expr | None, /) -> None: ...
+        def __ffi_shallow_copy__(self, /) -> Object: ...
+        @staticmethod
+        def __c_ffi_init__(_0: Expr, _1: int, _2: Expr | None, /) -> Object: ...
+    # fmt: on
+    # tvm-ffi-stubgen(end)
+
+    def __init__(
+        self,
+        value: Expr,
+        conversion: int = -1,
+        format_spec: Expr | None = None,
+    ) -> None:
+        self.__ffi_init__(value, conversion, format_spec)
+
+
+@c_class("ffi.text.ast.ExceptHandler")
+class ExceptHandler(Node):
+    """One ``except [Type [as name]]:`` clause in a try statement."""
+
+    # tvm-ffi-stubgen(begin): object/ffi.text.ast.ExceptHandler
+    # fmt: off
+    type: Expr | None
+    name: str | None
+    body: MutableSequence[Stmt]
+    if TYPE_CHECKING:
+        def __init__(self, _0: Expr | None, _1: str | None, _2: MutableSequence[Stmt], /) -> None: ...
+        def __ffi_shallow_copy__(self, /) -> Object: ...
+        @staticmethod
+        def __c_ffi_init__(_0: Expr | None, _1: str | None, _2: MutableSequence[Stmt], /) -> Object: ...
+    # fmt: on
+    # tvm-ffi-stubgen(end)
+
+
+@c_class("ffi.text.ast.Try", init=False)
+class Try(Stmt):
+    """A ``try / except / else / finally`` statement."""
+
+    body: MutableSequence[Stmt]
+    handlers: MutableSequence[ExceptHandler]
+    orelse: MutableSequence[Stmt]
+    finalbody: MutableSequence[Stmt]
+
+    def __init__(
+        self,
+        body: MutableSequence[Stmt],
+        handlers: MutableSequence[ExceptHandler],
+        orelse: MutableSequence[Stmt] | None = None,
+        finalbody: MutableSequence[Stmt] | None = None,
+    ) -> None:
+        if orelse is None:
+            orelse = []
+        if finalbody is None:
+            finalbody = []
+        self.__ffi_init__(body, handlers, orelse, finalbody)
+
+
+@c_class("ffi.text.ast.MatchCase")
+class MatchCase(Node):
+    """One ``case pattern [if guard]:`` clause in a match statement."""
+
+    # tvm-ffi-stubgen(begin): object/ffi.text.ast.MatchCase
+    # fmt: off
+    pattern: Expr
+    guard: Expr | None
+    body: MutableSequence[Stmt]
+    if TYPE_CHECKING:
+        def __init__(self, _0: Expr, _1: Expr | None, _2: MutableSequence[Stmt], /) -> None: ...
+        def __ffi_shallow_copy__(self, /) -> Object: ...
+        @staticmethod
+        def __c_ffi_init__(_0: Expr, _1: Expr | None, _2: MutableSequence[Stmt], /) -> Object: ...
+    # fmt: on
+    # tvm-ffi-stubgen(end)
+
+
+@c_class("ffi.text.ast.Match")
+class Match(Stmt):
+    """A ``match / case`` statement."""
+
+    # tvm-ffi-stubgen(begin): object/ffi.text.ast.Match
+    # fmt: off
+    subject: Expr
+    cases: MutableSequence[MatchCase]
+    if TYPE_CHECKING:
+        def __init__(self, _0: Expr, _1: MutableSequence[MatchCase], /) -> None: ...
+        def __ffi_shallow_copy__(self, /) -> Object: ...
+        @staticmethod
+        def __c_ffi_init__(_0: Expr, _1: MutableSequence[MatchCase], /) -> Object: ...
+    # fmt: on
+    # tvm-ffi-stubgen(end)

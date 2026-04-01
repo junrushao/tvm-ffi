@@ -925,9 +925,16 @@ inline void PrintEscapeString(std::ostream& oss, const String& value) {
       default:
         break;
     }
-    // Handle UTF-8 sequences
+    // Handle ASCII
     if ((c & 0x80) == 0) {
-      oss << static_cast<char>(c);
+      if (c < 0x20 || c == 0x7f) {
+        // Escape control characters as \xNN
+        char buf[5];
+        snprintf(buf, sizeof(buf), "\\x%02x", static_cast<unsigned>(c));
+        oss << buf;
+      } else {
+        oss << static_cast<char>(c);
+      }
       ++i;
       continue;
     }
@@ -940,6 +947,12 @@ inline void PrintEscapeString(std::ostream& oss, const String& value) {
       int32_t codepoint = ((c & 0x0F) << 12) | ((d & 0x3F) << 6) | (e & 0x3F);
       oss << "\\u" << std::hex << std::setw(4) << std::setfill('0') << codepoint;
       i += 3;
+    } else if ((c & 0xF8) == 0xF0 && i + 3 < length) {
+      unsigned char e = static_cast<unsigned char>(data[i + 2]);
+      unsigned char f = static_cast<unsigned char>(data[i + 3]);
+      int32_t codepoint = ((c & 0x07) << 18) | ((d & 0x3F) << 12) | ((e & 0x3F) << 6) | (f & 0x3F);
+      oss << "\\U" << std::hex << std::setw(8) << std::setfill('0') << codepoint;
+      i += 4;
     } else {
       oss << "\\x" << std::hex << std::setw(2) << std::setfill('0') << static_cast<int>(c);
       ++i;

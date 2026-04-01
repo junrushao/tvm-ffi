@@ -49,6 +49,7 @@ from __future__ import annotations
 
 from . import ast
 from .ast import PrinterConfig
+from .ast_translate import ast_translate
 from .ir_printer import (
     Bool,
     DefaultFrame,

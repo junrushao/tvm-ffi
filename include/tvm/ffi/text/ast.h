@@ -65,6 +65,9 @@ struct PrinterConfig;
  * \sa NodeAST, ExprASTObj, StmtASTObj
  */
 struct NodeASTObj : public Object {
+  /// \cond Doxygen_Suppress
+  static constexpr bool _type_mutable = true;
+  /// \endcond
   /*!
    * \brief Access paths tracing this node back to the original IR structure.
    *
@@ -73,6 +76,14 @@ struct NodeASTObj : public Object {
    * regions to underline when path_to_underline is set in PrinterConfig.
    */
   List<AccessPath> source_paths;
+  /*! \brief Source line number (1-based), or -1 if unavailable. */
+  int64_t lineno{-1};
+  /*! \brief Source column offset (0-based), or -1 if unavailable. */
+  int64_t col_offset{-1};
+  /*! \brief Source end line number (1-based), or -1 if unavailable. */
+  int64_t end_lineno{-1};
+  /*! \brief Source end column offset (0-based), or -1 if unavailable. */
+  int64_t end_col_offset{-1};
   /// \cond Doxygen_Suppress
   explicit NodeASTObj(List<AccessPath> source_paths) : source_paths(std::move(source_paths)) {}
   /// \endcond
@@ -714,36 +725,45 @@ struct OperationASTObj : public ExprASTObj {
    *   Takes 3 operands: [true_value, condition, false_value].
    */
   enum Kind : int64_t {
-    kUnaryStart = 0,    /*!< \brief Sentinel: start of unary operators. */
-    kUSub = 1,          /*!< \brief Unary minus: `-x`. */
-    kInvert = 2,        /*!< \brief Bitwise invert: `~x`. */
-    kNot = 3,           /*!< \brief Logical not: `not x`. */
-    kUnaryEnd = 4,      /*!< \brief Sentinel: end of unary operators. */
-    kBinaryStart = 5,   /*!< \brief Sentinel: start of binary operators. */
-    kAdd = 6,           /*!< \brief Addition: `x + y`. */
-    kSub = 7,           /*!< \brief Subtraction: `x - y`. */
-    kMult = 8,          /*!< \brief Multiplication: `x * y`. */
-    kDiv = 9,           /*!< \brief True division: `x / y`. */
-    kFloorDiv = 10,     /*!< \brief Floor division: `x // y`. */
-    kMod = 11,          /*!< \brief Modulo: `x % y`. */
-    kPow = 12,          /*!< \brief Exponentiation: `x ** y`. */
-    kLShift = 13,       /*!< \brief Left shift: `x << y`. */
-    kRShift = 14,       /*!< \brief Right shift: `x >> y`. */
-    kBitAnd = 15,       /*!< \brief Bitwise AND: `x & y`. */
-    kBitOr = 16,        /*!< \brief Bitwise OR: `x | y`. */
-    kBitXor = 17,       /*!< \brief Bitwise XOR: `x ^ y`. */
-    kLt = 18,           /*!< \brief Less than: `x < y`. */
-    kLtE = 19,          /*!< \brief Less than or equal: `x <= y`. */
-    kEq = 20,           /*!< \brief Equal: `x == y`. */
-    kNotEq = 21,        /*!< \brief Not equal: `x != y`. */
-    kGt = 22,           /*!< \brief Greater than: `x > y`. */
-    kGtE = 23,          /*!< \brief Greater than or equal: `x >= y`. */
-    kAnd = 24,          /*!< \brief Logical AND: `x and y`. */
-    kOr = 25,           /*!< \brief Logical OR: `x or y`. */
-    kBinaryEnd = 26,    /*!< \brief Sentinel: end of binary operators. */
-    kSpecialStart = 27, /*!< \brief Sentinel: start of special operators. */
-    kIfThenElse = 28,   /*!< \brief Ternary: `a if cond else b`. */
-    kSpecialEnd = 29,   /*!< \brief Sentinel: end of special operators. */
+    kUndefined = -1,      /*!< \brief Undefined / not applicable. */
+    kUnaryStart = 0,      /*!< \brief Sentinel: start of unary operators. */
+    kUSub = 1,            /*!< \brief Unary minus: `-x`. */
+    kInvert = 2,          /*!< \brief Bitwise invert: `~x`. */
+    kNot = 3,             /*!< \brief Logical not: `not x`. */
+    kUAdd = 4,            /*!< \brief Unary plus: `+x`. */
+    kUnaryEnd = 5,        /*!< \brief Sentinel: end of unary operators. */
+    kBinaryStart = 5,     /*!< \brief Sentinel: start of binary operators. */
+    kAdd = 6,             /*!< \brief Addition: `x + y`. */
+    kSub = 7,             /*!< \brief Subtraction: `x - y`. */
+    kMult = 8,            /*!< \brief Multiplication: `x * y`. */
+    kDiv = 9,             /*!< \brief True division: `x / y`. */
+    kFloorDiv = 10,       /*!< \brief Floor division: `x // y`. */
+    kMod = 11,            /*!< \brief Modulo: `x % y`. */
+    kPow = 12,            /*!< \brief Exponentiation: `x ** y`. */
+    kLShift = 13,         /*!< \brief Left shift: `x << y`. */
+    kRShift = 14,         /*!< \brief Right shift: `x >> y`. */
+    kBitAnd = 15,         /*!< \brief Bitwise AND: `x & y`. */
+    kBitOr = 16,          /*!< \brief Bitwise OR: `x | y`. */
+    kBitXor = 17,         /*!< \brief Bitwise XOR: `x ^ y`. */
+    kLt = 18,             /*!< \brief Less than: `x < y`. */
+    kLtE = 19,            /*!< \brief Less than or equal: `x <= y`. */
+    kEq = 20,             /*!< \brief Equal: `x == y`. */
+    kNotEq = 21,          /*!< \brief Not equal: `x != y`. */
+    kGt = 22,             /*!< \brief Greater than: `x > y`. */
+    kGtE = 23,            /*!< \brief Greater than or equal: `x >= y`. */
+    kAnd = 24,            /*!< \brief Logical AND: `x and y`. */
+    kOr = 25,             /*!< \brief Logical OR: `x or y`. */
+    kMatMult = 26,        /*!< \brief Matrix multiply: `x @ y`. */
+    kIs = 27,             /*!< \brief Identity test: `x is y`. */
+    kIsNot = 28,          /*!< \brief Negated identity test: `x is not y`. */
+    kIn = 29,             /*!< \brief Containment test: `x in y`. */
+    kNotIn = 30,          /*!< \brief Negated containment test: `x not in y`. */
+    kBinaryEnd = 31,      /*!< \brief Sentinel: end of binary operators. */
+    kSpecialStart = 32,   /*!< \brief Sentinel: start of special operators. */
+    kIfThenElse = 33,     /*!< \brief Ternary: `a if cond else b`. */
+    kChainedCompare = 34, /*!< \brief Chained comparison: `a < b < c`. */
+    kParens = 35,         /*!< \brief Explicit parenthesization: `(expr)`. */
+    kSpecialEnd = 36,     /*!< \brief Sentinel: end of special operators. */
   };
 
   /*!
@@ -812,14 +832,14 @@ struct OperationAST : public ExprAST {
  * \sa LambdaAST
  */
 struct LambdaASTObj : public ExprASTObj {
-  /*! \brief The argument list. */
-  List<IdAST> args;
+  /*! \brief The argument list (IdAST or StarredExpr for varargs). */
+  List<ExprAST> args;
   /*! \brief The lambda body expression. */
   ExprAST body;
   /// \cond Doxygen_Suppress
-  explicit LambdaASTObj(List<IdAST> args, ExprAST body)
+  explicit LambdaASTObj(List<ExprAST> args, ExprAST body)
       : LambdaASTObj(List<AccessPath>{}, std::move(args), std::move(body)) {}
-  explicit LambdaASTObj(List<AccessPath> source_paths, List<IdAST> args, ExprAST body)
+  explicit LambdaASTObj(List<AccessPath> source_paths, List<ExprAST> args, ExprAST body)
       : ExprASTObj(std::move(source_paths)), args(std::move(args)), body(std::move(body)) {}
   /// \endcond
   /// \cond Doxygen_Suppress
@@ -830,9 +850,9 @@ struct LambdaASTObj : public ExprASTObj {
 /*! \brief Reference wrapper for a lambda expression. */
 struct LambdaAST : public ExprAST {
   /// \cond Doxygen_Suppress
-  explicit LambdaAST(List<IdAST> args, ExprAST body)
+  explicit LambdaAST(List<ExprAST> args, ExprAST body)
       : LambdaAST(List<AccessPath>{}, std::move(args), std::move(body)) {}
-  explicit LambdaAST(List<AccessPath> source_paths, List<IdAST> args, ExprAST body)
+  explicit LambdaAST(List<AccessPath> source_paths, List<ExprAST> args, ExprAST body)
       : LambdaAST(
             make_object<LambdaASTObj>(std::move(source_paths), std::move(args), std::move(body))) {}
   /// \endcond
@@ -980,6 +1000,214 @@ struct DictAST : public ExprAST {
   /// \endcond
 };
 
+/************** SetAST **************/
+
+/*! \brief Data object for a set expression (e.g. `{a, b, c}`). */
+struct SetASTObj : public ExprASTObj {
+  /*! \brief The contained values. */
+  List<ExprAST> values;
+  /// \cond Doxygen_Suppress
+  explicit SetASTObj(List<ExprAST> values) : SetASTObj(List<AccessPath>{}, std::move(values)) {}
+  explicit SetASTObj(List<AccessPath> source_paths, List<ExprAST> values)
+      : ExprASTObj(std::move(source_paths)), values(std::move(values)) {}
+  /// \endcond
+  /// \cond Doxygen_Suppress
+  TVM_FFI_DECLARE_OBJECT_INFO_FINAL("ffi.text.ast.Set", SetASTObj, ExprASTObj);
+  /// \endcond
+};
+
+/*! \brief Reference wrapper for a set expression. */
+struct SetAST : public ExprAST {
+  /// \cond Doxygen_Suppress
+  explicit SetAST(List<ExprAST> values) : SetAST(List<AccessPath>{}, std::move(values)) {}
+  explicit SetAST(List<AccessPath> source_paths, List<ExprAST> values)
+      : SetAST(make_object<SetASTObj>(std::move(source_paths), std::move(values))) {}
+  /// \endcond
+  /// \cond Doxygen_Suppress
+  TVM_FFI_DEFINE_OBJECT_REF_METHODS_NOTNULLABLE(SetAST, ExprAST, SetASTObj);
+  /// \endcond
+  /// \cond Doxygen_Suppress
+  explicit SetAST(ObjectPtr<SetASTObj> ptr) : ExprAST(ObjectPtr<ExprASTObj>(std::move(ptr))) {}
+  /// \endcond
+};
+
+/************** ComprehensionIterAST **************/
+
+/*! \brief Data object for one `for target in iter [if cond]...` clause in a comprehension. */
+struct ComprehensionIterASTObj : public NodeASTObj {
+  /*! \brief The loop variable (e.g. `x` in `for x in items`). */
+  ExprAST target;
+  /*! \brief The iterable expression (e.g. `items` in `for x in items`). */
+  ExprAST iter;
+  /*! \brief Zero or more filter conditions. */
+  List<ExprAST> ifs;
+  /// \cond Doxygen_Suppress
+  explicit ComprehensionIterASTObj(ExprAST target, ExprAST iter, List<ExprAST> ifs)
+      : ComprehensionIterASTObj(List<AccessPath>{}, std::move(target), std::move(iter),
+                                std::move(ifs)) {}
+  explicit ComprehensionIterASTObj(List<AccessPath> source_paths, ExprAST target, ExprAST iter,
+                                   List<ExprAST> ifs)
+      : NodeASTObj(std::move(source_paths)),
+        target(std::move(target)),
+        iter(std::move(iter)),
+        ifs(std::move(ifs)) {}
+  /// \endcond
+  /// \cond Doxygen_Suppress
+  TVM_FFI_DECLARE_OBJECT_INFO_FINAL("ffi.text.ast.ComprehensionIter", ComprehensionIterASTObj,
+                                    NodeASTObj);
+  /// \endcond
+};
+
+/*! \brief Reference wrapper for a comprehension iterator clause. */
+struct ComprehensionIterAST : public NodeAST {
+  /// \cond Doxygen_Suppress
+  explicit ComprehensionIterAST(ExprAST target, ExprAST iter, List<ExprAST> ifs)
+      : ComprehensionIterAST(List<AccessPath>{}, std::move(target), std::move(iter),
+                             std::move(ifs)) {}
+  explicit ComprehensionIterAST(List<AccessPath> source_paths, ExprAST target, ExprAST iter,
+                                List<ExprAST> ifs)
+      : ComprehensionIterAST(make_object<ComprehensionIterASTObj>(
+            std::move(source_paths), std::move(target), std::move(iter), std::move(ifs))) {}
+  /// \endcond
+  /// \cond Doxygen_Suppress
+  TVM_FFI_DEFINE_OBJECT_REF_METHODS_NOTNULLABLE(ComprehensionIterAST, NodeAST,
+                                                ComprehensionIterASTObj);
+  /// \endcond
+  /// \cond Doxygen_Suppress
+  explicit ComprehensionIterAST(ObjectPtr<ComprehensionIterASTObj> ptr)
+      : NodeAST(ObjectPtr<NodeASTObj>(std::move(ptr))) {}
+  /// \endcond
+};
+
+/************** ComprehensionAST **************/
+
+/*!
+ * \brief Data object for a comprehension expression.
+ *
+ * Covers list comprehensions (`[elt for ...]`), set comprehensions
+ * (`{elt for ...}`), dict comprehensions (`{key: value for ...}`),
+ * and generator expressions (`(elt for ...)`).
+ */
+struct ComprehensionASTObj : public ExprASTObj {
+  /*! \brief Kind of comprehension. */
+  enum Kind : int64_t {
+    kList = 0,      /*!< \brief List comprehension: `[elt for ...]`. */
+    kSet = 1,       /*!< \brief Set comprehension: `{elt for ...}`. */
+    kDict = 2,      /*!< \brief Dict comprehension: `{key: value for ...}`. */
+    kGenerator = 3, /*!< \brief Generator expression: `(elt for ...)`. */
+  };
+  /*! \brief The comprehension kind. */
+  int64_t kind;
+  /*! \brief The element expression (or key for dict comprehensions). */
+  ExprAST elt;
+  /*! \brief The value expression (only for dict comprehensions; null otherwise). */
+  Optional<ExprAST> value;
+  /*! \brief The list of `for ... in ... [if ...]` clauses. */
+  List<ComprehensionIterAST> iters;
+  /// \cond Doxygen_Suppress
+  explicit ComprehensionASTObj(int64_t kind, ExprAST elt, Optional<ExprAST> value,
+                               List<ComprehensionIterAST> iters)
+      : ComprehensionASTObj(List<AccessPath>{}, kind, std::move(elt), std::move(value),
+                            std::move(iters)) {}
+  explicit ComprehensionASTObj(List<AccessPath> source_paths, int64_t kind, ExprAST elt,
+                               Optional<ExprAST> value, List<ComprehensionIterAST> iters)
+      : ExprASTObj(std::move(source_paths)),
+        kind(kind),
+        elt(std::move(elt)),
+        value(std::move(value)),
+        iters(std::move(iters)) {}
+  /// \endcond
+  /// \cond Doxygen_Suppress
+  TVM_FFI_DECLARE_OBJECT_INFO_FINAL("ffi.text.ast.Comprehension", ComprehensionASTObj, ExprASTObj);
+  /// \endcond
+};
+
+/*! \brief Reference wrapper for a comprehension expression. */
+struct ComprehensionAST : public ExprAST {
+  /// \cond Doxygen_Suppress
+  explicit ComprehensionAST(int64_t kind, ExprAST elt, Optional<ExprAST> value,
+                            List<ComprehensionIterAST> iters)
+      : ComprehensionAST(List<AccessPath>{}, kind, std::move(elt), std::move(value),
+                         std::move(iters)) {}
+  explicit ComprehensionAST(List<AccessPath> source_paths, int64_t kind, ExprAST elt,
+                            Optional<ExprAST> value, List<ComprehensionIterAST> iters)
+      : ComprehensionAST(make_object<ComprehensionASTObj>(
+            std::move(source_paths), kind, std::move(elt), std::move(value), std::move(iters))) {}
+  /// \endcond
+  /// \cond Doxygen_Suppress
+  TVM_FFI_DEFINE_OBJECT_REF_METHODS_NOTNULLABLE(ComprehensionAST, ExprAST, ComprehensionASTObj);
+  /// \endcond
+  /// \cond Doxygen_Suppress
+  explicit ComprehensionAST(ObjectPtr<ComprehensionASTObj> ptr)
+      : ExprAST(ObjectPtr<ExprASTObj>(std::move(ptr))) {}
+  /// \endcond
+};
+
+/************** YieldAST **************/
+
+/*! \brief Data object for a yield expression (e.g. `yield value`). */
+struct YieldASTObj : public ExprASTObj {
+  /*! \brief The yielded value, or null for bare `yield`. */
+  Optional<ExprAST> value;
+  /// \cond Doxygen_Suppress
+  explicit YieldASTObj(Optional<ExprAST> value = {})
+      : YieldASTObj(List<AccessPath>{}, std::move(value)) {}
+  explicit YieldASTObj(List<AccessPath> source_paths, Optional<ExprAST> value)
+      : ExprASTObj(std::move(source_paths)), value(std::move(value)) {}
+  /// \endcond
+  /// \cond Doxygen_Suppress
+  TVM_FFI_DECLARE_OBJECT_INFO_FINAL("ffi.text.ast.Yield", YieldASTObj, ExprASTObj);
+  /// \endcond
+};
+
+/*! \brief Reference wrapper for a yield expression. */
+struct YieldAST : public ExprAST {
+  /// \cond Doxygen_Suppress
+  explicit YieldAST(Optional<ExprAST> value = {})
+      : YieldAST(List<AccessPath>{}, std::move(value)) {}
+  explicit YieldAST(List<AccessPath> source_paths, Optional<ExprAST> value)
+      : YieldAST(make_object<YieldASTObj>(std::move(source_paths), std::move(value))) {}
+  /// \endcond
+  /// \cond Doxygen_Suppress
+  TVM_FFI_DEFINE_OBJECT_REF_METHODS_NOTNULLABLE(YieldAST, ExprAST, YieldASTObj);
+  /// \endcond
+  /// \cond Doxygen_Suppress
+  explicit YieldAST(ObjectPtr<YieldASTObj> ptr) : ExprAST(ObjectPtr<ExprASTObj>(std::move(ptr))) {}
+  /// \endcond
+};
+
+/************** YieldFromAST **************/
+
+/*! \brief Data object for a yield-from expression (e.g. `yield from iterable`). */
+struct YieldFromASTObj : public ExprASTObj {
+  /*! \brief The iterable to yield from. */
+  ExprAST value;
+  /// \cond Doxygen_Suppress
+  explicit YieldFromASTObj(ExprAST value) : YieldFromASTObj(List<AccessPath>{}, std::move(value)) {}
+  explicit YieldFromASTObj(List<AccessPath> source_paths, ExprAST value)
+      : ExprASTObj(std::move(source_paths)), value(std::move(value)) {}
+  /// \endcond
+  /// \cond Doxygen_Suppress
+  TVM_FFI_DECLARE_OBJECT_INFO_FINAL("ffi.text.ast.YieldFrom", YieldFromASTObj, ExprASTObj);
+  /// \endcond
+};
+
+/*! \brief Reference wrapper for a yield-from expression. */
+struct YieldFromAST : public ExprAST {
+  /// \cond Doxygen_Suppress
+  explicit YieldFromAST(ExprAST value) : YieldFromAST(List<AccessPath>{}, std::move(value)) {}
+  explicit YieldFromAST(List<AccessPath> source_paths, ExprAST value)
+      : YieldFromAST(make_object<YieldFromASTObj>(std::move(source_paths), std::move(value))) {}
+  /// \endcond
+  /// \cond Doxygen_Suppress
+  TVM_FFI_DEFINE_OBJECT_REF_METHODS_NOTNULLABLE(YieldFromAST, ExprAST, YieldFromASTObj);
+  /// \endcond
+  /// \cond Doxygen_Suppress
+  explicit YieldFromAST(ObjectPtr<YieldFromASTObj> ptr)
+      : ExprAST(ObjectPtr<ExprASTObj>(std::move(ptr))) {}
+  /// \endcond
+};
+
 /************** SliceAST **************/
 
 /*!
@@ -1066,16 +1294,26 @@ struct AssignASTObj : public StmtASTObj {
   Optional<ExprAST> rhs;
   /*! \brief Optional type annotation (e.g. `int` in `x: int = 42`). */
   Optional<ExprAST> annotation;
+  /*!
+   * \brief Augmented-assignment operator kind, or kUndefined for plain assignment.
+   *
+   * When not kUndefined, this holds an OperationASTObj::Kind value (e.g. kAdd
+   * for `+=`) and the printer renders `lhs op= rhs` instead of `lhs = rhs`.
+   */
+  OperationASTObj::Kind aug_op{OperationASTObj::kUndefined};
   /// \cond Doxygen_Suppress
-  explicit AssignASTObj(ExprAST lhs, Optional<ExprAST> rhs = {}, Optional<ExprAST> annotation = {})
+  explicit AssignASTObj(ExprAST lhs, Optional<ExprAST> rhs = {}, Optional<ExprAST> annotation = {},
+                        int64_t aug_op = OperationASTObj::kUndefined)
       : AssignASTObj(List<AccessPath>{}, Optional<String>{}, std::move(lhs), std::move(rhs),
-                     std::move(annotation)) {}
+                     std::move(annotation), static_cast<OperationASTObj::Kind>(aug_op)) {}
   explicit AssignASTObj(List<AccessPath> source_paths, Optional<String> comment, ExprAST lhs,
-                        Optional<ExprAST> rhs, Optional<ExprAST> annotation)
+                        Optional<ExprAST> rhs, Optional<ExprAST> annotation,
+                        OperationASTObj::Kind aug_op = OperationASTObj::kUndefined)
       : StmtASTObj(std::move(source_paths), std::move(comment)),
         lhs(std::move(lhs)),
         rhs(std::move(rhs)),
-        annotation(std::move(annotation)) {}
+        annotation(std::move(annotation)),
+        aug_op(aug_op) {}
   /// \endcond
   /// \cond Doxygen_Suppress
   TVM_FFI_DECLARE_OBJECT_INFO_FINAL("ffi.text.ast.Assign", AssignASTObj, StmtASTObj);
@@ -1094,14 +1332,16 @@ struct AssignASTObj : public StmtASTObj {
  */
 struct AssignAST : public StmtAST {
   /// \cond Doxygen_Suppress
-  explicit AssignAST(ExprAST lhs, Optional<ExprAST> rhs = {}, Optional<ExprAST> annotation = {})
+  explicit AssignAST(ExprAST lhs, Optional<ExprAST> rhs = {}, Optional<ExprAST> annotation = {},
+                     int64_t aug_op = OperationASTObj::kUndefined)
       : AssignAST(List<AccessPath>{}, Optional<String>{}, std::move(lhs), std::move(rhs),
-                  std::move(annotation)) {}
+                  std::move(annotation), static_cast<OperationASTObj::Kind>(aug_op)) {}
   explicit AssignAST(List<AccessPath> source_paths, Optional<String> comment, ExprAST lhs,
-                     Optional<ExprAST> rhs, Optional<ExprAST> annotation)
+                     Optional<ExprAST> rhs, Optional<ExprAST> annotation,
+                     OperationASTObj::Kind aug_op = OperationASTObj::kUndefined)
       : AssignAST(make_object<AssignASTObj>(std::move(source_paths), std::move(comment),
-                                            std::move(lhs), std::move(rhs),
-                                            std::move(annotation))) {}
+                                            std::move(lhs), std::move(rhs), std::move(annotation),
+                                            aug_op)) {}
   /// \endcond
   /// \cond Doxygen_Suppress
   TVM_FFI_DEFINE_OBJECT_REF_METHODS_NOTNULLABLE(AssignAST, StmtAST, AssignASTObj);
@@ -1211,38 +1451,34 @@ struct WhileASTObj : public StmtASTObj {
   ExprAST cond;
   /*! \brief The loop body statements. */
   List<StmtAST> body;
+  /*! \brief The else-branch statements (executed when loop finishes normally). */
+  List<StmtAST> orelse;
   /// \cond Doxygen_Suppress
-  explicit WhileASTObj(ExprAST cond, List<StmtAST> body)
-      : WhileASTObj(List<AccessPath>{}, Optional<String>{}, std::move(cond), std::move(body)) {}
+  explicit WhileASTObj(ExprAST cond, List<StmtAST> body, List<StmtAST> orelse = {})
+      : WhileASTObj(List<AccessPath>{}, Optional<String>{}, std::move(cond), std::move(body),
+                    std::move(orelse)) {}
   explicit WhileASTObj(List<AccessPath> source_paths, Optional<String> comment, ExprAST cond,
-                       List<StmtAST> body)
+                       List<StmtAST> body, List<StmtAST> orelse)
       : StmtASTObj(std::move(source_paths), std::move(comment)),
         cond(std::move(cond)),
-        body(std::move(body)) {}
+        body(std::move(body)),
+        orelse(std::move(orelse)) {}
   /// \endcond
   /// \cond Doxygen_Suppress
   TVM_FFI_DECLARE_OBJECT_INFO_FINAL("ffi.text.ast.While", WhileASTObj, StmtASTObj);
   /// \endcond
 };
 
-/*!
- * \brief Reference wrapper for a while-loop statement.
- *
- * \code{.cpp}
- * WhileAST loop(LiteralAST::Bool(true), {ExprStmtAST(IdAST("pass"))});
- * // Renders as: while True:\n    pass
- * \endcode
- *
- * \sa WhileASTObj
- */
+/*! \brief Reference wrapper for a while-loop statement. */
 struct WhileAST : public StmtAST {
   /// \cond Doxygen_Suppress
-  explicit WhileAST(ExprAST cond, List<StmtAST> body)
-      : WhileAST(List<AccessPath>{}, Optional<String>{}, std::move(cond), std::move(body)) {}
+  explicit WhileAST(ExprAST cond, List<StmtAST> body, List<StmtAST> orelse = {})
+      : WhileAST(List<AccessPath>{}, Optional<String>{}, std::move(cond), std::move(body),
+                 std::move(orelse)) {}
   explicit WhileAST(List<AccessPath> source_paths, Optional<String> comment, ExprAST cond,
-                    List<StmtAST> body)
+                    List<StmtAST> body, List<StmtAST> orelse)
       : WhileAST(make_object<WhileASTObj>(std::move(source_paths), std::move(comment),
-                                          std::move(cond), std::move(body))) {}
+                                          std::move(cond), std::move(body), std::move(orelse))) {}
   /// \endcond
   /// \cond Doxygen_Suppress
   TVM_FFI_DEFINE_OBJECT_REF_METHODS_NOTNULLABLE(WhileAST, StmtAST, WhileASTObj);
@@ -1279,16 +1515,23 @@ struct ForASTObj : public StmtASTObj {
   ExprAST rhs;
   /*! \brief The loop body statements. */
   List<StmtAST> body;
+  /*! \brief Whether this is an `async for` loop. */
+  bool is_async;
+  /*! \brief The else-branch statements (executed when loop finishes normally). */
+  List<StmtAST> orelse;
   /// \cond Doxygen_Suppress
-  explicit ForASTObj(ExprAST lhs, ExprAST rhs, List<StmtAST> body)
+  explicit ForASTObj(ExprAST lhs, ExprAST rhs, List<StmtAST> body, bool is_async = false,
+                     List<StmtAST> orelse = {})
       : ForASTObj(List<AccessPath>{}, Optional<String>{}, std::move(lhs), std::move(rhs),
-                  std::move(body)) {}
+                  std::move(body), is_async, std::move(orelse)) {}
   explicit ForASTObj(List<AccessPath> source_paths, Optional<String> comment, ExprAST lhs,
-                     ExprAST rhs, List<StmtAST> body)
+                     ExprAST rhs, List<StmtAST> body, bool is_async, List<StmtAST> orelse)
       : StmtASTObj(std::move(source_paths), std::move(comment)),
         lhs(std::move(lhs)),
         rhs(std::move(rhs)),
-        body(std::move(body)) {}
+        body(std::move(body)),
+        is_async(is_async),
+        orelse(std::move(orelse)) {}
   /// \endcond
   /// \cond Doxygen_Suppress
   TVM_FFI_DECLARE_OBJECT_INFO_FINAL("ffi.text.ast.For", ForASTObj, StmtASTObj);
@@ -1307,13 +1550,15 @@ struct ForASTObj : public StmtASTObj {
  */
 struct ForAST : public StmtAST {
   /// \cond Doxygen_Suppress
-  explicit ForAST(ExprAST lhs, ExprAST rhs, List<StmtAST> body)
+  explicit ForAST(ExprAST lhs, ExprAST rhs, List<StmtAST> body, bool is_async = false,
+                  List<StmtAST> orelse = {})
       : ForAST(List<AccessPath>{}, Optional<String>{}, std::move(lhs), std::move(rhs),
-               std::move(body)) {}
+               std::move(body), is_async, std::move(orelse)) {}
   explicit ForAST(List<AccessPath> source_paths, Optional<String> comment, ExprAST lhs, ExprAST rhs,
-                  List<StmtAST> body)
+                  List<StmtAST> body, bool is_async, List<StmtAST> orelse)
       : ForAST(make_object<ForASTObj>(std::move(source_paths), std::move(comment), std::move(lhs),
-                                      std::move(rhs), std::move(body))) {}
+                                      std::move(rhs), std::move(body), is_async,
+                                      std::move(orelse))) {}
   /// \endcond
   /// \cond Doxygen_Suppress
   TVM_FFI_DEFINE_OBJECT_REF_METHODS_NOTNULLABLE(ForAST, StmtAST, ForASTObj);
@@ -1357,16 +1602,19 @@ struct WithASTObj : public StmtASTObj {
   ExprAST rhs;
   /*! \brief The with-block body statements. */
   List<StmtAST> body;
+  /*! \brief Whether this is an `async with` statement. */
+  bool is_async;
   /// \cond Doxygen_Suppress
-  explicit WithASTObj(Optional<ExprAST> lhs, ExprAST rhs, List<StmtAST> body)
+  explicit WithASTObj(Optional<ExprAST> lhs, ExprAST rhs, List<StmtAST> body, bool is_async = false)
       : WithASTObj(List<AccessPath>{}, Optional<String>{}, std::move(lhs), std::move(rhs),
-                   std::move(body)) {}
+                   std::move(body), is_async) {}
   explicit WithASTObj(List<AccessPath> source_paths, Optional<String> comment,
-                      Optional<ExprAST> lhs, ExprAST rhs, List<StmtAST> body)
+                      Optional<ExprAST> lhs, ExprAST rhs, List<StmtAST> body, bool is_async)
       : StmtASTObj(std::move(source_paths), std::move(comment)),
         lhs(std::move(lhs)),
         rhs(std::move(rhs)),
-        body(std::move(body)) {}
+        body(std::move(body)),
+        is_async(is_async) {}
   /// \endcond
   /// \cond Doxygen_Suppress
   TVM_FFI_DECLARE_OBJECT_INFO_FINAL("ffi.text.ast.With", WithASTObj, StmtASTObj);
@@ -1385,13 +1633,13 @@ struct WithASTObj : public StmtASTObj {
  */
 struct WithAST : public StmtAST {
   /// \cond Doxygen_Suppress
-  explicit WithAST(Optional<ExprAST> lhs, ExprAST rhs, List<StmtAST> body)
+  explicit WithAST(Optional<ExprAST> lhs, ExprAST rhs, List<StmtAST> body, bool is_async = false)
       : WithAST(List<AccessPath>{}, Optional<String>{}, std::move(lhs), std::move(rhs),
-                std::move(body)) {}
+                std::move(body), is_async) {}
   explicit WithAST(List<AccessPath> source_paths, Optional<String> comment, Optional<ExprAST> lhs,
-                   ExprAST rhs, List<StmtAST> body)
+                   ExprAST rhs, List<StmtAST> body, bool is_async)
       : WithAST(make_object<WithASTObj>(std::move(source_paths), std::move(comment), std::move(lhs),
-                                        std::move(rhs), std::move(body))) {}
+                                        std::move(rhs), std::move(body), is_async)) {}
   /// \endcond
   /// \cond Doxygen_Suppress
   TVM_FFI_DEFINE_OBJECT_REF_METHODS_NOTNULLABLE(WithAST, StmtAST, WithASTObj);
@@ -1593,20 +1841,23 @@ struct FunctionASTObj : public StmtASTObj {
   Optional<ExprAST> return_type;
   /*! \brief The function body statements. */
   List<StmtAST> body;
+  /*! \brief Whether this is an `async def`. */
+  bool is_async;
   /// \cond Doxygen_Suppress
   explicit FunctionASTObj(IdAST name, List<AssignAST> args, List<ExprAST> decorators,
-                          Optional<ExprAST> return_type, List<StmtAST> body)
+                          Optional<ExprAST> return_type, List<StmtAST> body, bool is_async = false)
       : FunctionASTObj(List<AccessPath>{}, Optional<String>{}, std::move(name), std::move(args),
-                       std::move(decorators), std::move(return_type), std::move(body)) {}
+                       std::move(decorators), std::move(return_type), std::move(body), is_async) {}
   explicit FunctionASTObj(List<AccessPath> source_paths, Optional<String> comment, IdAST name,
                           List<AssignAST> args, List<ExprAST> decorators,
-                          Optional<ExprAST> return_type, List<StmtAST> body)
+                          Optional<ExprAST> return_type, List<StmtAST> body, bool is_async)
       : StmtASTObj(std::move(source_paths), std::move(comment)),
         name(std::move(name)),
         args(std::move(args)),
         decorators(std::move(decorators)),
         return_type(std::move(return_type)),
-        body(std::move(body)) {
+        body(std::move(body)),
+        is_async(is_async) {
     for (const AssignAST& arg_doc : this->args) {
       if (arg_doc->comment.has_value()) {
         TVM_FFI_THROW(ValueError) << "Function arg cannot have comment attached to them";
@@ -1635,15 +1886,15 @@ struct FunctionASTObj : public StmtASTObj {
 struct FunctionAST : public StmtAST {
   /// \cond Doxygen_Suppress
   explicit FunctionAST(IdAST name, List<AssignAST> args, List<ExprAST> decorators,
-                       Optional<ExprAST> return_type, List<StmtAST> body)
+                       Optional<ExprAST> return_type, List<StmtAST> body, bool is_async = false)
       : FunctionAST(List<AccessPath>{}, Optional<String>{}, std::move(name), std::move(args),
-                    std::move(decorators), std::move(return_type), std::move(body)) {}
+                    std::move(decorators), std::move(return_type), std::move(body), is_async) {}
   explicit FunctionAST(List<AccessPath> source_paths, Optional<String> comment, IdAST name,
                        List<AssignAST> args, List<ExprAST> decorators,
-                       Optional<ExprAST> return_type, List<StmtAST> body)
+                       Optional<ExprAST> return_type, List<StmtAST> body, bool is_async)
       : FunctionAST(make_object<FunctionASTObj>(
             std::move(source_paths), std::move(comment), std::move(name), std::move(args),
-            std::move(decorators), std::move(return_type), std::move(body))) {}
+            std::move(decorators), std::move(return_type), std::move(body), is_async)) {}
   /// \endcond
   /// \cond Doxygen_Suppress
   TVM_FFI_DEFINE_OBJECT_REF_METHODS_NOTNULLABLE(FunctionAST, StmtAST, FunctionASTObj);
@@ -1681,20 +1932,33 @@ struct FunctionAST : public StmtAST {
 struct ClassASTObj : public StmtASTObj {
   /*! \brief The class name (e.g. `Point`). */
   IdAST name;
+  /*! \brief Base class expressions (e.g. `{IdAST("Base")}`). */
+  List<ExprAST> bases;
   /*! \brief Decorator expressions (e.g. `{IdAST("dataclass")}`). */
   List<ExprAST> decorators;
   /*! \brief The class body statements. */
   List<StmtAST> body;
+  /*! \brief Keyword argument names (e.g. `"metaclass"`). */
+  List<String> kwargs_keys;
+  /*! \brief Keyword argument values (e.g. `IdAST("ABCMeta")`). */
+  List<ExprAST> kwargs_values;
   /// \cond Doxygen_Suppress
-  explicit ClassASTObj(IdAST name, List<ExprAST> decorators, List<StmtAST> body)
-      : ClassASTObj(List<AccessPath>{}, Optional<String>{}, std::move(name), std::move(decorators),
-                    std::move(body)) {}
+  explicit ClassASTObj(IdAST name, List<ExprAST> bases, List<ExprAST> decorators,
+                       List<StmtAST> body, List<String> kwargs_keys = {},
+                       List<ExprAST> kwargs_values = {})
+      : ClassASTObj(List<AccessPath>{}, Optional<String>{}, std::move(name), std::move(bases),
+                    std::move(decorators), std::move(body), std::move(kwargs_keys),
+                    std::move(kwargs_values)) {}
   explicit ClassASTObj(List<AccessPath> source_paths, Optional<String> comment, IdAST name,
-                       List<ExprAST> decorators, List<StmtAST> body)
+                       List<ExprAST> bases, List<ExprAST> decorators, List<StmtAST> body,
+                       List<String> kwargs_keys, List<ExprAST> kwargs_values)
       : StmtASTObj(std::move(source_paths), std::move(comment)),
         name(std::move(name)),
+        bases(std::move(bases)),
         decorators(std::move(decorators)),
-        body(std::move(body)) {}
+        body(std::move(body)),
+        kwargs_keys(std::move(kwargs_keys)),
+        kwargs_values(std::move(kwargs_values)) {}
   /// \endcond
   /// \cond Doxygen_Suppress
   TVM_FFI_DECLARE_OBJECT_INFO_FINAL("ffi.text.ast.Class", ClassASTObj, StmtASTObj);
@@ -1713,14 +1977,18 @@ struct ClassASTObj : public StmtASTObj {
  */
 struct ClassAST : public StmtAST {
   /// \cond Doxygen_Suppress
-  explicit ClassAST(IdAST name, List<ExprAST> decorators, List<StmtAST> body)
-      : ClassAST(List<AccessPath>{}, Optional<String>{}, std::move(name), std::move(decorators),
-                 std::move(body)) {}
+  explicit ClassAST(IdAST name, List<ExprAST> bases, List<ExprAST> decorators, List<StmtAST> body,
+                    List<String> kwargs_keys = {}, List<ExprAST> kwargs_values = {})
+      : ClassAST(List<AccessPath>{}, Optional<String>{}, std::move(name), std::move(bases),
+                 std::move(decorators), std::move(body), std::move(kwargs_keys),
+                 std::move(kwargs_values)) {}
   explicit ClassAST(List<AccessPath> source_paths, Optional<String> comment, IdAST name,
-                    List<ExprAST> decorators, List<StmtAST> body)
+                    List<ExprAST> bases, List<ExprAST> decorators, List<StmtAST> body,
+                    List<String> kwargs_keys, List<ExprAST> kwargs_values)
       : ClassAST(make_object<ClassASTObj>(std::move(source_paths), std::move(comment),
-                                          std::move(name), std::move(decorators),
-                                          std::move(body))) {}
+                                          std::move(name), std::move(bases), std::move(decorators),
+                                          std::move(body), std::move(kwargs_keys),
+                                          std::move(kwargs_values))) {}
   /// \endcond
   /// \cond Doxygen_Suppress
   TVM_FFI_DEFINE_OBJECT_REF_METHODS_NOTNULLABLE(ClassAST, StmtAST, ClassASTObj);
@@ -1816,6 +2084,365 @@ struct DocStringAST : public StmtAST {
   /// \cond Doxygen_Suppress
   explicit DocStringAST(ObjectPtr<DocStringASTObj> ptr)
       : StmtAST(ObjectPtr<StmtASTObj>(std::move(ptr))) {}
+  /// \endcond
+};
+
+/************** StarredExprAST **************/
+
+/*! \brief Data object for a starred expression (e.g. `*args`). */
+struct StarredExprASTObj : public ExprASTObj {
+  /*! \brief The expression being starred. */
+  ExprAST value;
+  /// \cond Doxygen_Suppress
+  explicit StarredExprASTObj(ExprAST value)
+      : StarredExprASTObj(List<AccessPath>{}, std::move(value)) {}
+  explicit StarredExprASTObj(List<AccessPath> source_paths, ExprAST value)
+      : ExprASTObj(std::move(source_paths)), value(std::move(value)) {}
+  /// \endcond
+  /// \cond Doxygen_Suppress
+  TVM_FFI_DECLARE_OBJECT_INFO_FINAL("ffi.text.ast.StarredExpr", StarredExprASTObj, ExprASTObj);
+  /// \endcond
+};
+
+/*! \brief Reference wrapper for a starred expression. */
+struct StarredExprAST : public ExprAST {
+  /// \cond Doxygen_Suppress
+  explicit StarredExprAST(ExprAST value) : StarredExprAST(List<AccessPath>{}, std::move(value)) {}
+  explicit StarredExprAST(List<AccessPath> source_paths, ExprAST value)
+      : StarredExprAST(make_object<StarredExprASTObj>(std::move(source_paths), std::move(value))) {}
+  /// \endcond
+  /// \cond Doxygen_Suppress
+  TVM_FFI_DEFINE_OBJECT_REF_METHODS_NOTNULLABLE(StarredExprAST, ExprAST, StarredExprASTObj);
+  /// \endcond
+  /// \cond Doxygen_Suppress
+  explicit StarredExprAST(ObjectPtr<StarredExprASTObj> ptr)
+      : ExprAST(ObjectPtr<ExprASTObj>(std::move(ptr))) {}
+  /// \endcond
+};
+
+/************** AwaitExprAST **************/
+
+/*! \brief Data object for an await expression (e.g. `await coro()`). */
+struct AwaitExprASTObj : public ExprASTObj {
+  /*! \brief The awaited expression. */
+  ExprAST value;
+  /// \cond Doxygen_Suppress
+  explicit AwaitExprASTObj(ExprAST value) : AwaitExprASTObj(List<AccessPath>{}, std::move(value)) {}
+  explicit AwaitExprASTObj(List<AccessPath> source_paths, ExprAST value)
+      : ExprASTObj(std::move(source_paths)), value(std::move(value)) {}
+  /// \endcond
+  /// \cond Doxygen_Suppress
+  TVM_FFI_DECLARE_OBJECT_INFO_FINAL("ffi.text.ast.Await", AwaitExprASTObj, ExprASTObj);
+  /// \endcond
+};
+
+/*! \brief Reference wrapper for an await expression. */
+struct AwaitExprAST : public ExprAST {
+  /// \cond Doxygen_Suppress
+  explicit AwaitExprAST(ExprAST value) : AwaitExprAST(List<AccessPath>{}, std::move(value)) {}
+  explicit AwaitExprAST(List<AccessPath> source_paths, ExprAST value)
+      : AwaitExprAST(make_object<AwaitExprASTObj>(std::move(source_paths), std::move(value))) {}
+  /// \endcond
+  /// \cond Doxygen_Suppress
+  TVM_FFI_DEFINE_OBJECT_REF_METHODS_NOTNULLABLE(AwaitExprAST, ExprAST, AwaitExprASTObj);
+  /// \endcond
+  /// \cond Doxygen_Suppress
+  explicit AwaitExprAST(ObjectPtr<AwaitExprASTObj> ptr)
+      : ExprAST(ObjectPtr<ExprASTObj>(std::move(ptr))) {}
+  /// \endcond
+};
+
+/************** WalrusExprAST **************/
+
+/*! \brief Data object for a walrus/named expression (e.g. `x := value`). */
+struct WalrusExprASTObj : public ExprASTObj {
+  /*! \brief The assignment target. */
+  ExprAST target;
+  /*! \brief The assigned value. */
+  ExprAST value;
+  /// \cond Doxygen_Suppress
+  explicit WalrusExprASTObj(ExprAST target, ExprAST value)
+      : WalrusExprASTObj(List<AccessPath>{}, std::move(target), std::move(value)) {}
+  explicit WalrusExprASTObj(List<AccessPath> source_paths, ExprAST target, ExprAST value)
+      : ExprASTObj(std::move(source_paths)), target(std::move(target)), value(std::move(value)) {}
+  /// \endcond
+  /// \cond Doxygen_Suppress
+  TVM_FFI_DECLARE_OBJECT_INFO_FINAL("ffi.text.ast.WalrusExpr", WalrusExprASTObj, ExprASTObj);
+  /// \endcond
+};
+
+/*! \brief Reference wrapper for a walrus/named expression. */
+struct WalrusExprAST : public ExprAST {
+  /// \cond Doxygen_Suppress
+  explicit WalrusExprAST(ExprAST target, ExprAST value)
+      : WalrusExprAST(List<AccessPath>{}, std::move(target), std::move(value)) {}
+  explicit WalrusExprAST(List<AccessPath> source_paths, ExprAST target, ExprAST value)
+      : WalrusExprAST(make_object<WalrusExprASTObj>(std::move(source_paths), std::move(target),
+                                                    std::move(value))) {}
+  /// \endcond
+  /// \cond Doxygen_Suppress
+  TVM_FFI_DEFINE_OBJECT_REF_METHODS_NOTNULLABLE(WalrusExprAST, ExprAST, WalrusExprASTObj);
+  /// \endcond
+  /// \cond Doxygen_Suppress
+  explicit WalrusExprAST(ObjectPtr<WalrusExprASTObj> ptr)
+      : ExprAST(ObjectPtr<ExprASTObj>(std::move(ptr))) {}
+  /// \endcond
+};
+
+/************** FStrAST **************/
+
+/*! \brief Data object for an f-string expression (e.g. `f"hello {x}"`). */
+struct FStrASTObj : public ExprASTObj {
+  /*! \brief Parts: LiteralAST(str) for text, FStrValueAST for interpolations. */
+  List<ExprAST> values;
+  /// \cond Doxygen_Suppress
+  explicit FStrASTObj(List<ExprAST> values) : FStrASTObj(List<AccessPath>{}, std::move(values)) {}
+  explicit FStrASTObj(List<AccessPath> source_paths, List<ExprAST> values)
+      : ExprASTObj(std::move(source_paths)), values(std::move(values)) {}
+  /// \endcond
+  /// \cond Doxygen_Suppress
+  TVM_FFI_DECLARE_OBJECT_INFO_FINAL("ffi.text.ast.FStr", FStrASTObj, ExprASTObj);
+  /// \endcond
+};
+
+/*! \brief Reference wrapper for an f-string expression. */
+struct FStrAST : public ExprAST {
+  /// \cond Doxygen_Suppress
+  explicit FStrAST(List<ExprAST> values) : FStrAST(List<AccessPath>{}, std::move(values)) {}
+  explicit FStrAST(List<AccessPath> source_paths, List<ExprAST> values)
+      : FStrAST(make_object<FStrASTObj>(std::move(source_paths), std::move(values))) {}
+  /// \endcond
+  /// \cond Doxygen_Suppress
+  TVM_FFI_DEFINE_OBJECT_REF_METHODS_NOTNULLABLE(FStrAST, ExprAST, FStrASTObj);
+  /// \endcond
+  /// \cond Doxygen_Suppress
+  explicit FStrAST(ObjectPtr<FStrASTObj> ptr) : ExprAST(ObjectPtr<ExprASTObj>(std::move(ptr))) {}
+  /// \endcond
+};
+
+/************** FStrValueAST **************/
+
+/*! \brief Data object for a formatted value inside an f-string (e.g. `{x!r:.2f}`). */
+struct FStrValueASTObj : public ExprASTObj {
+  /*! \brief The expression being formatted. */
+  ExprAST value;
+  /*! \brief Conversion flag: -1=none, 115='s', 114='r', 97='a'. */
+  int64_t conversion;
+  /*! \brief Optional format spec (itself an FStrAST or LiteralAST). */
+  Optional<ExprAST> format_spec;
+  /// \cond Doxygen_Suppress
+  explicit FStrValueASTObj(ExprAST value, int64_t conversion = -1,
+                           Optional<ExprAST> format_spec = {})
+      : FStrValueASTObj(List<AccessPath>{}, std::move(value), conversion, std::move(format_spec)) {}
+  explicit FStrValueASTObj(List<AccessPath> source_paths, ExprAST value, int64_t conversion,
+                           Optional<ExprAST> format_spec)
+      : ExprASTObj(std::move(source_paths)),
+        value(std::move(value)),
+        conversion(conversion),
+        format_spec(std::move(format_spec)) {}
+  /// \endcond
+  /// \cond Doxygen_Suppress
+  TVM_FFI_DECLARE_OBJECT_INFO_FINAL("ffi.text.ast.FStrValue", FStrValueASTObj, ExprASTObj);
+  /// \endcond
+};
+
+/*! \brief Reference wrapper for a formatted value inside an f-string. */
+struct FStrValueAST : public ExprAST {
+  /// \cond Doxygen_Suppress
+  explicit FStrValueAST(ExprAST value, int64_t conversion = -1, Optional<ExprAST> format_spec = {})
+      : FStrValueAST(List<AccessPath>{}, std::move(value), conversion, std::move(format_spec)) {}
+  explicit FStrValueAST(List<AccessPath> source_paths, ExprAST value, int64_t conversion,
+                        Optional<ExprAST> format_spec)
+      : FStrValueAST(make_object<FStrValueASTObj>(std::move(source_paths), std::move(value),
+                                                  conversion, std::move(format_spec))) {}
+  /// \endcond
+  /// \cond Doxygen_Suppress
+  TVM_FFI_DEFINE_OBJECT_REF_METHODS_NOTNULLABLE(FStrValueAST, ExprAST, FStrValueASTObj);
+  /// \endcond
+  /// \cond Doxygen_Suppress
+  explicit FStrValueAST(ObjectPtr<FStrValueASTObj> ptr)
+      : ExprAST(ObjectPtr<ExprASTObj>(std::move(ptr))) {}
+  /// \endcond
+};
+
+/************** ExceptHandlerAST **************/
+
+/*! \brief Data object for one except clause in a try statement. */
+struct ExceptHandlerASTObj : public NodeASTObj {
+  /*! \brief The exception type expression, or null for bare `except:`. */
+  Optional<ExprAST> type;
+  /*! \brief The `as` name, or null. */
+  Optional<String> name;
+  /*! \brief The handler body statements. */
+  List<StmtAST> body;
+  /// \cond Doxygen_Suppress
+  explicit ExceptHandlerASTObj(Optional<ExprAST> type, Optional<String> name, List<StmtAST> body)
+      : ExceptHandlerASTObj(List<AccessPath>{}, std::move(type), std::move(name), std::move(body)) {
+  }
+  explicit ExceptHandlerASTObj(List<AccessPath> source_paths, Optional<ExprAST> type,
+                               Optional<String> name, List<StmtAST> body)
+      : NodeASTObj(std::move(source_paths)),
+        type(std::move(type)),
+        name(std::move(name)),
+        body(std::move(body)) {}
+  /// \endcond
+  /// \cond Doxygen_Suppress
+  TVM_FFI_DECLARE_OBJECT_INFO_FINAL("ffi.text.ast.ExceptHandler", ExceptHandlerASTObj, NodeASTObj);
+  /// \endcond
+};
+
+/*! \brief Reference wrapper for an except handler clause. */
+struct ExceptHandlerAST : public NodeAST {
+  /// \cond Doxygen_Suppress
+  explicit ExceptHandlerAST(Optional<ExprAST> type, Optional<String> name, List<StmtAST> body)
+      : ExceptHandlerAST(List<AccessPath>{}, std::move(type), std::move(name), std::move(body)) {}
+  explicit ExceptHandlerAST(List<AccessPath> source_paths, Optional<ExprAST> type,
+                            Optional<String> name, List<StmtAST> body)
+      : ExceptHandlerAST(make_object<ExceptHandlerASTObj>(std::move(source_paths), std::move(type),
+                                                          std::move(name), std::move(body))) {}
+  /// \endcond
+  /// \cond Doxygen_Suppress
+  TVM_FFI_DEFINE_OBJECT_REF_METHODS_NOTNULLABLE(ExceptHandlerAST, NodeAST, ExceptHandlerASTObj);
+  /// \endcond
+  /// \cond Doxygen_Suppress
+  explicit ExceptHandlerAST(ObjectPtr<ExceptHandlerASTObj> ptr)
+      : NodeAST(ObjectPtr<NodeASTObj>(std::move(ptr))) {}
+  /// \endcond
+};
+
+/************** TryAST **************/
+
+/*! \brief Data object for a try/except/else/finally statement. */
+struct TryASTObj : public StmtASTObj {
+  /*! \brief The try body statements. */
+  List<StmtAST> body;
+  /*! \brief The except handler clauses. */
+  List<ExceptHandlerAST> handlers;
+  /*! \brief The else-branch statements. */
+  List<StmtAST> orelse;
+  /*! \brief The finally-branch statements. */
+  List<StmtAST> finalbody;
+  /// \cond Doxygen_Suppress
+  explicit TryASTObj(List<StmtAST> body, List<ExceptHandlerAST> handlers, List<StmtAST> orelse = {},
+                     List<StmtAST> finalbody = {})
+      : TryASTObj(List<AccessPath>{}, Optional<String>{}, std::move(body), std::move(handlers),
+                  std::move(orelse), std::move(finalbody)) {}
+  explicit TryASTObj(List<AccessPath> source_paths, Optional<String> comment, List<StmtAST> body,
+                     List<ExceptHandlerAST> handlers, List<StmtAST> orelse, List<StmtAST> finalbody)
+      : StmtASTObj(std::move(source_paths), std::move(comment)),
+        body(std::move(body)),
+        handlers(std::move(handlers)),
+        orelse(std::move(orelse)),
+        finalbody(std::move(finalbody)) {}
+  /// \endcond
+  /// \cond Doxygen_Suppress
+  TVM_FFI_DECLARE_OBJECT_INFO_FINAL("ffi.text.ast.Try", TryASTObj, StmtASTObj);
+  /// \endcond
+};
+
+/*! \brief Reference wrapper for a try/except/else/finally statement. */
+struct TryAST : public StmtAST {
+  /// \cond Doxygen_Suppress
+  explicit TryAST(List<StmtAST> body, List<ExceptHandlerAST> handlers, List<StmtAST> orelse = {},
+                  List<StmtAST> finalbody = {})
+      : TryAST(List<AccessPath>{}, Optional<String>{}, std::move(body), std::move(handlers),
+               std::move(orelse), std::move(finalbody)) {}
+  explicit TryAST(List<AccessPath> source_paths, Optional<String> comment, List<StmtAST> body,
+                  List<ExceptHandlerAST> handlers, List<StmtAST> orelse, List<StmtAST> finalbody)
+      : TryAST(make_object<TryASTObj>(std::move(source_paths), std::move(comment), std::move(body),
+                                      std::move(handlers), std::move(orelse),
+                                      std::move(finalbody))) {}
+  /// \endcond
+  /// \cond Doxygen_Suppress
+  TVM_FFI_DEFINE_OBJECT_REF_METHODS_NOTNULLABLE(TryAST, StmtAST, TryASTObj);
+  /// \endcond
+  /// \cond Doxygen_Suppress
+  explicit TryAST(ObjectPtr<TryASTObj> ptr) : StmtAST(ObjectPtr<StmtASTObj>(std::move(ptr))) {}
+  /// \endcond
+};
+
+/************** MatchCaseAST **************/
+
+/*! \brief Data object for one case clause in a match statement. */
+struct MatchCaseASTObj : public NodeASTObj {
+  /*! \brief The match pattern expression. */
+  ExprAST pattern;
+  /*! \brief Optional guard expression. */
+  Optional<ExprAST> guard;
+  /*! \brief The case body statements. */
+  List<StmtAST> body;
+  /// \cond Doxygen_Suppress
+  explicit MatchCaseASTObj(ExprAST pattern, Optional<ExprAST> guard, List<StmtAST> body)
+      : MatchCaseASTObj(List<AccessPath>{}, std::move(pattern), std::move(guard), std::move(body)) {
+  }
+  explicit MatchCaseASTObj(List<AccessPath> source_paths, ExprAST pattern, Optional<ExprAST> guard,
+                           List<StmtAST> body)
+      : NodeASTObj(std::move(source_paths)),
+        pattern(std::move(pattern)),
+        guard(std::move(guard)),
+        body(std::move(body)) {}
+  /// \endcond
+  /// \cond Doxygen_Suppress
+  TVM_FFI_DECLARE_OBJECT_INFO_FINAL("ffi.text.ast.MatchCase", MatchCaseASTObj, NodeASTObj);
+  /// \endcond
+};
+
+/*! \brief Reference wrapper for a match case clause. */
+struct MatchCaseAST : public NodeAST {
+  /// \cond Doxygen_Suppress
+  explicit MatchCaseAST(ExprAST pattern, Optional<ExprAST> guard, List<StmtAST> body)
+      : MatchCaseAST(List<AccessPath>{}, std::move(pattern), std::move(guard), std::move(body)) {}
+  explicit MatchCaseAST(List<AccessPath> source_paths, ExprAST pattern, Optional<ExprAST> guard,
+                        List<StmtAST> body)
+      : MatchCaseAST(make_object<MatchCaseASTObj>(std::move(source_paths), std::move(pattern),
+                                                  std::move(guard), std::move(body))) {}
+  /// \endcond
+  /// \cond Doxygen_Suppress
+  TVM_FFI_DEFINE_OBJECT_REF_METHODS_NOTNULLABLE(MatchCaseAST, NodeAST, MatchCaseASTObj);
+  /// \endcond
+  /// \cond Doxygen_Suppress
+  explicit MatchCaseAST(ObjectPtr<MatchCaseASTObj> ptr)
+      : NodeAST(ObjectPtr<NodeASTObj>(std::move(ptr))) {}
+  /// \endcond
+};
+
+/************** MatchAST **************/
+
+/*! \brief Data object for a match/case statement. */
+struct MatchASTObj : public StmtASTObj {
+  /*! \brief The subject expression being matched. */
+  ExprAST subject;
+  /*! \brief The list of case clauses. */
+  List<MatchCaseAST> cases;
+  /// \cond Doxygen_Suppress
+  explicit MatchASTObj(ExprAST subject, List<MatchCaseAST> cases)
+      : MatchASTObj(List<AccessPath>{}, Optional<String>{}, std::move(subject), std::move(cases)) {}
+  explicit MatchASTObj(List<AccessPath> source_paths, Optional<String> comment, ExprAST subject,
+                       List<MatchCaseAST> cases)
+      : StmtASTObj(std::move(source_paths), std::move(comment)),
+        subject(std::move(subject)),
+        cases(std::move(cases)) {}
+  /// \endcond
+  /// \cond Doxygen_Suppress
+  TVM_FFI_DECLARE_OBJECT_INFO_FINAL("ffi.text.ast.Match", MatchASTObj, StmtASTObj);
+  /// \endcond
+};
+
+/*! \brief Reference wrapper for a match/case statement. */
+struct MatchAST : public StmtAST {
+  /// \cond Doxygen_Suppress
+  explicit MatchAST(ExprAST subject, List<MatchCaseAST> cases)
+      : MatchAST(List<AccessPath>{}, Optional<String>{}, std::move(subject), std::move(cases)) {}
+  explicit MatchAST(List<AccessPath> source_paths, Optional<String> comment, ExprAST subject,
+                    List<MatchCaseAST> cases)
+      : MatchAST(make_object<MatchASTObj>(std::move(source_paths), std::move(comment),
+                                          std::move(subject), std::move(cases))) {}
+  /// \endcond
+  /// \cond Doxygen_Suppress
+  TVM_FFI_DEFINE_OBJECT_REF_METHODS_NOTNULLABLE(MatchAST, StmtAST, MatchASTObj);
+  /// \endcond
+  /// \cond Doxygen_Suppress
+  explicit MatchAST(ObjectPtr<MatchASTObj> ptr) : StmtAST(ObjectPtr<StmtASTObj>(std::move(ptr))) {}
   /// \endcond
 };
 
