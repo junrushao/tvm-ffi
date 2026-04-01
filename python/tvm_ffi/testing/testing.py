@@ -30,17 +30,41 @@ if TYPE_CHECKING:
 # fmt: on
 # tvm-ffi-stubgen(end)
 
-from typing import ClassVar
+import sys
+from typing import Any, ClassVar, List
+
+import pytest
+
+from tvm_ffi import Object, get_global_func, text
+from tvm_ffi.access_path import AccessPath
+from tvm_ffi.dataclasses import c_class, py_class
+from tvm_ffi.dataclasses import field as dc_field
 
 from .. import _ffi_api
-from ..core import Object
-from ..dataclasses import c_class
-from ..registry import get_global_func
+
+requires_py39 = pytest.mark.skipif(
+    sys.version_info < (3, 9),
+    reason="requires Python 3.9+",
+)
+requires_py310 = pytest.mark.skipif(
+    sys.version_info < (3, 10),
+    reason="requires Python 3.10+",
+)
+requires_py312 = pytest.mark.skipif(
+    sys.version_info < (3, 12),
+    reason="requires Python 3.12+",
+)
+requires_py313 = pytest.mark.skipif(
+    sys.version_info < (3, 13),
+    reason="requires Python 3.13+",
+)
 
 
 @c_class("testing.TestObjectBase")
 class TestObjectBase(Object):
     """Test object base class."""
+
+    __test__: ClassVar[bool] = False
 
     # tvm-ffi-stubgen(begin): object/testing.TestObjectBase
     # fmt: off
@@ -61,7 +85,7 @@ class TestObjectBase(Object):
 class TestIntPair(Object):
     """Test Int Pair."""
 
-    __test__ = False
+    __test__: ClassVar[bool] = False
 
     # tvm-ffi-stubgen(begin): object/testing.TestIntPair
     # fmt: off
@@ -81,6 +105,8 @@ class TestIntPair(Object):
 class TestObjectDerived(TestObjectBase):
     """Test object derived class."""
 
+    __test__: ClassVar[bool] = False
+
     # tvm-ffi-stubgen(begin): object/testing.TestObjectDerived
     # fmt: off
     v_map: Mapping[Any, Any]
@@ -97,6 +123,8 @@ class TestObjectDerived(TestObjectBase):
 @c_class("testing.TestNonCopyable")
 class TestNonCopyable(Object):
     """Test object with deleted copy constructor."""
+
+    __test__: ClassVar[bool] = False
 
     # tvm-ffi-stubgen(begin): object/testing.TestNonCopyable
     # fmt: off
@@ -511,14 +539,6 @@ class _TestCxxAutoInitChild(_TestCxxAutoInitParent):
 # Toy IR types for text printer tests
 # ============================================================================
 
-from typing import Any, List
-
-from ..access_path import AccessPath
-from ..dataclasses import field as dc_field
-from ..dataclasses import py_class
-from ..text import DefaultFrame, IRPrinter
-from ..text import ast as text_ast
-
 
 @py_class("testing.text.toy_ir.Node")
 class ToyNode(Object):
@@ -544,7 +564,7 @@ class ToyVar(ToyExpr):
     def __add__(self, other: ToyVar) -> ToyAdd:
         return ToyAdd(lhs=self, rhs=other)
 
-    def __ir_print__(self, printer: IRPrinter, path: AccessPath) -> Any:
+    def __ir_print__(self, printer: text.IRPrinter, path: AccessPath) -> Any:
         if not printer.var_is_defined(self):
             printer.var_def(self.name, self, None)
         ret = printer.var_get(self)
@@ -559,7 +579,7 @@ class ToyAdd(ToyExpr):
     lhs: ToyExpr
     rhs: ToyExpr
 
-    def __ir_print__(self, printer: IRPrinter, path: AccessPath) -> Any:
+    def __ir_print__(self, printer: text.IRPrinter, path: AccessPath) -> Any:
         lhs = printer(self.lhs, path=path.attr("lhs"))
         rhs = printer(self.rhs, path=path.attr("rhs"))
         return lhs + rhs
@@ -572,11 +592,11 @@ class ToyAssign(ToyStmt):
     rhs: ToyExpr
     lhs: ToyVar = dc_field(structural_eq="def")
 
-    def __ir_print__(self, printer: IRPrinter, path: AccessPath) -> Any:
+    def __ir_print__(self, printer: text.IRPrinter, path: AccessPath) -> Any:
         rhs = printer(self.rhs, path=path.attr("rhs"))
         printer.var_def(self.lhs.name, self.lhs, None)
         lhs = printer(self.lhs, path=path.attr("lhs"))
-        return text_ast.Assign(lhs, rhs)
+        return text.ast.Assign(lhs, rhs)
 
 
 @py_class("testing.text.toy_ir.Func", structural_eq="tree")
@@ -588,8 +608,8 @@ class ToyFunc(ToyNode):
     stmts: List[ToyStmt]  # noqa: UP006
     ret: ToyVar
 
-    def __ir_print__(self, printer: IRPrinter, path: AccessPath) -> Any:
-        with printer.with_frame(DefaultFrame()):
+    def __ir_print__(self, printer: text.IRPrinter, path: AccessPath) -> Any:
+        with printer.with_frame(text.DefaultFrame()):
             for arg in self.args:
                 printer.var_def(arg.name, arg, None)
             args = [
@@ -600,10 +620,10 @@ class ToyFunc(ToyNode):
                 printer(stmt, path=path.attr("stmts").array_item(i))
                 for i, stmt in enumerate(self.stmts)
             ]
-            ret_stmt = text_ast.Return(printer(self.ret, path=path.attr("ret")))
-            return text_ast.Function(
-                text_ast.Id(self.name),
-                [text_ast.Assign(arg, None) for arg in args],
+            ret_stmt = text.ast.Return(printer(self.ret, path=path.attr("ret")))
+            return text.ast.Function(
+                text.ast.Id(self.name),
+                [text.ast.Assign(arg, None) for arg in args],
                 [],
                 None,
                 [*stmts, ret_stmt],
@@ -628,7 +648,5 @@ def ast_roundtrip(node: Any) -> str:
         The rendered Python source code.
 
     """
-    from tvm_ffi import text  # noqa: PLC0415
-
     tvm_node = text.ast_translate(node)
     return tvm_node.to_python()

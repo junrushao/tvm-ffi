@@ -38,13 +38,15 @@ from __future__ import annotations
 
 import ast
 import itertools
-import sys
 import textwrap
 import warnings
 
 import pytest
 import tvm_ffi.text as tvmt
+from tvm_ffi.testing.testing import requires_py39, requires_py310, requires_py312
 from tvm_ffi.text.ast_translate import ast_translate
+
+pytestmark = requires_py39  # ast_translate requires Python 3.9+ (ast.Index removed)
 
 
 def _roundtrip(source: str, *, indent: int = 4) -> str:
@@ -915,7 +917,7 @@ class TestMultiItemWith:
         assert len(b.body[0].items) == 2  # ty: ignore[unresolved-attribute]
 
 
-@pytest.mark.skipif(sys.version_info < (3, 12), reason="type params require 3.12+")
+@requires_py312
 class TestTypeParams:
     r"""Bug: ``class Foo[T]:`` became ``class Foo:``.
 
@@ -1056,7 +1058,7 @@ def test_bare_star_separator() -> None:
     assert len(b.body[0].args.kwonlyargs) == 1  # ty: ignore[unresolved-attribute]
 
 
-@pytest.mark.skipif(sys.version_info < (3, 10), reason="match requires 3.10+")
+@requires_py310
 def test_match_statement() -> None:
     rendered = _roundtrip_src("match x:\n    case 1:\n        a = 1\n    case _:\n        b = 2")
     assert "match x:" in rendered
