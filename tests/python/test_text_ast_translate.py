@@ -14,13 +14,33 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-"""Tests for Python ast -> TVM-FFI AST converter."""
+"""Tests for Python ast -> TVM-FFI AST converter.
+
+Roundtrip fidelity tests
+========================
+
+Tests in the second half (class-based) verify full roundtrip fidelity:
+Python source -> TVM-FFI AST -> Python source -> re-parse, checking
+the re-parsed AST matches the original. Derived from failures against
+TVM (1400 files), GraphIR (153), DKG (2688), tvm-ffi (45).
+
+Bug categories:
+
+1. **Printer bugs** — C++ printer output that Python couldn't re-parse.
+2. **Converter losing info** — structure dropped during conversion.
+3. **Missing parenthesization** — parens removed, changing semantics.
+4. **Literal edge cases** — special values needing special rendering.
+"""
+
+# ruff: noqa: D102
 
 from __future__ import annotations
 
 import ast
 import itertools
+import sys
 import textwrap
+import warnings
 
 import pytest
 import tvm_ffi.text as tvmt
@@ -32,6 +52,22 @@ def _roundtrip(source: str, *, indent: int = 4) -> str:
     node = ast_translate(textwrap.dedent(source))
     cfg = tvmt.PrinterConfig(indent_spaces=indent)
     return node.to_python(cfg)
+
+
+def _roundtrip_ast(source: str) -> ast.Module:
+    """Parse, roundtrip through TVM-FFI AST, re-parse, return the new AST."""
+    source = textwrap.dedent(source)
+    rendered = ast_translate(ast.parse(source)).to_python()
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", SyntaxWarning)
+        result = ast.parse(rendered)
+    assert isinstance(result, ast.Module)
+    return result
+
+
+def _roundtrip_src(source: str) -> str:
+    """Parse, roundtrip through TVM-FFI AST, return the rendered source."""
+    return ast_translate(textwrap.dedent(source)).to_python()
 
 
 # ---------------------------------------------------------------------------
@@ -671,3 +707,356 @@ def test_complex_function() -> None:
     assert "if x > 0:" in result
     assert "return x + y" in result
     assert "return y" in result
+
+
+# ===================================================================
+# Roundtrip fidelity tests — AST-level structural verification
+#
+# Each test class documents a specific bug found during roundtrip
+# validation against real-world codebases.
+# ===================================================================
+
+# --- 1. Printer bugs ---
+
+
+class TestDocstringBackslash:
+    r"""Bug: ``\\frac`` in docstring became form-feed (0x0C).
+
+    Fix: escape ``\\`` to ``\\\\`` in DocStringAST content.
+    """
+
+    def test_backslash_frac(self) -> None:
+        src = 'def f():\n    """Has \\\\frac{1}{2}."""\n    pass'
+        original_doc = ast.parse(src).body[0].body[0].value.value  # ty: ignore[unresolved-attribute]
+        b = _roundtrip_ast(src)
+        assert b.body[0].body[0].value.value == original_doc  # ty: ignore[unresolved-attribute]
+
+
+class TestDocstringTripleQuote:
+    r"""Bug: ``\\\"\\\"\\\"`` inside docstring broke triple-quoting.
+
+    Fix: escape the third consecutive ``"`` as ``\\"`` to break the sequence.
+    """
+
+    def test_embedded_triple_quote(self) -> None:
+        src = 'def f():\n    """example: x=\\"\\"\\"hello\\"\\"\\"."""\n    pass'
+        original_doc = ast.parse(src).body[0].body[0].value.value  # ty: ignore[unresolved-attribute]
+        b = _roundtrip_ast(src)
+        assert b.body[0].body[0].value.value == original_doc  # ty: ignore[unresolved-attribute]
+
+
+class TestEmptyDocstring:
+    r"""Bug: empty docstring ``\"\"\"\"\"\"`` was silently dropped.
+
+    Fix: emit ``\"\"\"\"\"\"`` even for empty content.
+    """
+
+    def test_empty_docstring_preserved(self) -> None:
+        b = _roundtrip_ast('def f():\n    """"""\n    pass')
+        assert len(b.body[0].body) == 2  # ty: ignore[unresolved-attribute]
+
+
+class TestFStringEscaping:
+    r"""Bug: ``{``, ``}``, ``\\r``, ``\\t``, ``\\x00`` in f-string text not escaped.
+
+    Fix: escape braces to ``{{``/``}}``, control chars to ``\\xNN``.
+    """
+
+    def test_literal_braces(self) -> None:
+        ast.parse(_roundtrip_src('x = f"a{{b}}c"'))
+
+    def test_carriage_return(self) -> None:
+        ast.parse(_roundtrip_src('x = f"\\ra"'))
+
+    def test_tab(self) -> None:
+        ast.parse(_roundtrip_src('x = f"\\ta"'))
+
+    def test_null_byte(self) -> None:
+        ast.parse(_roundtrip_src('x = f"\\x00"'))
+
+
+class TestStringNullByte:
+    r"""Bug: ``PrintEscapeString`` emitted raw null bytes.
+
+    Fix: escape control chars (< 0x20) as ``\\xNN``.
+    """
+
+    def test_null_in_literal(self) -> None:
+        ast.parse(_roundtrip_src('x = "\\x00"'))
+
+
+class TestStringEmoji:
+    r"""Bug: 4-byte UTF-8 (emoji) escaped byte-by-byte as ``\\xNN``.
+
+    Fix: added 4-byte UTF-8 handler emitting ``\\UNNNNNNNN``.
+    """
+
+    def test_emoji_roundtrip(self) -> None:
+        b = _roundtrip_ast('x = "\\U0001f7e5"')
+        assert b.body[0].value.value == "\U0001f7e5"  # ty: ignore[unresolved-attribute]
+
+
+# --- 2. Converter bugs ---
+
+
+class TestAugAssignRoundtrip:
+    """Bug: ``x += 1`` became ``x = x + 1``.
+
+    Fix: added ``aug_op`` field to ``AssignAST``.
+    """
+
+    @pytest.mark.parametrize(
+        "op",
+        ["+=", "-=", "*=", "/=", "//=", "%=", "**=", "<<=", ">>=", "&=", "|=", "^=", "@="],
+    )
+    def test_all_ops(self, op: str) -> None:
+        b = _roundtrip_ast(f"x {op} y")
+        assert isinstance(b.body[0], ast.AugAssign)
+
+
+class TestUAdd:
+    """Bug: ``+x`` stripped to ``x``.
+
+    Fix: added ``kUAdd`` to ``OperationASTObj::Kind``.
+    """
+
+    def test_preserved(self) -> None:
+        b = _roundtrip_ast("x = +y")
+        assert isinstance(b.body[0].value, ast.UnaryOp)  # ty: ignore[unresolved-attribute]
+
+
+class TestMultiTargetAssignRoundtrip:
+    """Bug: ``a = b = 1`` split into two statements.
+
+    Fix: encode as ``Assign(lhs=Parens(Tuple([a, b])), rhs=c)``.
+    """
+
+    def test_ast_structure(self) -> None:
+        b = _roundtrip_ast("a = b = 1")
+        assert len(b.body) == 1
+        assert len(b.body[0].targets) == 2  # ty: ignore[unresolved-attribute]
+
+
+class TestListUnpackTarget:
+    """Bug: ``[y] = expr`` became ``y = expr``.
+
+    Fix: ``_convert_target`` preserves ``ast.List`` vs ``ast.Tuple``.
+    """
+
+    def test_list_target_preserved(self) -> None:
+        b = _roundtrip_ast("[y] = items")
+        assert isinstance(b.body[0].targets[0], ast.List)  # ty: ignore[unresolved-attribute]
+
+
+class TestSingleElementTupleUnpack:
+    """Bug: ``a, = expr`` became ``a = expr``.
+
+    Fix: add trailing comma for 1-element Tuple LHS.
+    """
+
+    def test_trailing_comma(self) -> None:
+        b = _roundtrip_ast("a, = expr")
+        assert isinstance(b.body[0].targets[0], ast.Tuple)  # ty: ignore[unresolved-attribute]
+
+
+class TestPositionalOnlyArgs:
+    r"""Bug: ``def f(a, b, /):`` became ``def f(a, b):``.
+
+    Fix: insert ``Assign(lhs=Id(\"/\"))`` separator.
+    """
+
+    def test_posonly_separator(self) -> None:
+        b = _roundtrip_ast("def f(a, b, /):\n    pass")
+        assert len(b.body[0].args.posonlyargs) == 2  # ty: ignore[unresolved-attribute]
+        assert len(b.body[0].args.args) == 0  # ty: ignore[unresolved-attribute]
+
+
+class TestLambdaVarargsRoundtrip:
+    """Bug: ``lambda *x: x`` became ``lambda: x``.
+
+    Fix: widened ``LambdaAST`` args to ``List<ExprAST>``.
+    """
+
+    def test_varargs(self) -> None:
+        b = _roundtrip_ast("f(lambda *x: x)")
+        assert b.body[0].value.args[0].args.vararg is not None  # ty: ignore[unresolved-attribute]
+
+
+class TestLambdaDefaults:
+    r"""Bug: ``lambda x=1: x`` became ``lambda x: x``.
+
+    Fix: render args with defaults as ``Id(\"x=1\")``.
+    """
+
+    def test_default_preserved(self) -> None:
+        b = _roundtrip_ast("f(lambda x=1: x)")
+        assert len(b.body[0].value.args[0].args.defaults) == 1  # ty: ignore[unresolved-attribute]
+
+
+class TestClassKeywords:
+    """Bug: ``class Foo(metaclass=X):`` became ``class Foo:``.
+
+    Fix: added ``kwargs_keys``/``kwargs_values`` to ``ClassAST``.
+    """
+
+    def test_metaclass(self) -> None:
+        b = _roundtrip_ast("class Foo(metaclass=Bar):\n    pass")
+        assert len(b.body[0].keywords) == 1  # ty: ignore[unresolved-attribute]
+
+
+class TestMultiItemWith:
+    """Bug: ``with a(), b():`` became nested ``with a(): with b():``.
+
+    Fix: encode multiple items as Tuple in a single With node.
+    """
+
+    def test_multi_item(self) -> None:
+        b = _roundtrip_ast("with a() as x, b() as y:\n    pass")
+        assert len(b.body[0].items) == 2  # ty: ignore[unresolved-attribute]
+
+
+@pytest.mark.skipif(sys.version_info < (3, 12), reason="type params require 3.12+")
+class TestTypeParams:
+    r"""Bug: ``class Foo[T]:`` became ``class Foo:``.
+
+    Fix: encode type params in the name: ``Id(\"Foo[T]\")``.
+    """
+
+    def test_class_type_param(self) -> None:
+        b = _roundtrip_ast("class Foo[T]:\n    pass")
+        assert len(b.body[0].type_params) == 1  # ty: ignore[unresolved-attribute]
+
+    def test_type_alias(self) -> None:
+        b = _roundtrip_ast("type X = int")
+        assert isinstance(b.body[0], ast.TypeAlias)  # ty: ignore[unresolved-attribute]
+
+
+class TestSingleElementTupleSubscript:
+    """Bug: ``x[1,]`` became ``x[1]``.
+
+    Fix: keep single-element tuple slices as ``Index(obj, [Tuple([elem])])``.
+    """
+
+    def test_tuple_subscript(self) -> None:
+        b = _roundtrip_ast("x[1,]")
+        assert isinstance(b.body[0].value.slice, ast.Tuple)  # ty: ignore[unresolved-attribute]
+
+
+# --- 3. Parenthesization bugs ---
+
+
+class TestNestedTernary:
+    """Bug: ``(B if A else C) if X else Z`` lost parens.
+
+    Fix: converter wraps ternary body in ``Parens`` when itself a ternary.
+    """
+
+    def test_body_ternary(self) -> None:
+        b = _roundtrip_ast("x = (4 if n > 4096 else 2) if isinstance(n, int) else 1")
+        assert isinstance(b.body[0].value.body, ast.IfExp)  # ty: ignore[unresolved-attribute]
+
+
+class TestNestedBoolOp:
+    """Bug: ``(a and b) and c`` became flat ``a and b and c``.
+
+    Fix: converter wraps nested same-op BoolOps in ``Parens``.
+    """
+
+    def test_nested_and(self) -> None:
+        b = _roundtrip_ast("x = (a and b) and c")
+        assert len(b.body[0].value.values) == 2  # ty: ignore[unresolved-attribute]
+
+
+class TestNestedCompare:
+    """Bug: ``(a == b) == c`` became chained ``a == b == c``.
+
+    Fix: converter wraps Compare left in ``Parens`` when it's a Compare.
+    """
+
+    def test_nested_eq(self) -> None:
+        b = _roundtrip_ast("x = (a == b) == c")
+        assert len(b.body[0].value.comparators) == 1  # ty: ignore[unresolved-attribute]
+
+
+class TestComprehensionTernaryIter:
+    """Bug: ``[x for x in (L if c else R)]`` lost iter parens.
+
+    Fix: converter wraps ternary iters in ``Parens``.
+    """
+
+    def test_ternary_iter(self) -> None:
+        ast.parse(_roundtrip_src("y = [x for x in ([4, 8] if c else [4])]"))
+
+
+class TestStarredTernary:
+    """Bug: ``*([x] if c else [])`` lost parens.
+
+    Fix: converter wraps ternary value of Starred in ``Parens``.
+    """
+
+    def test_starred_ternary(self) -> None:
+        ast.parse(_roundtrip_src("y = [*([x] if c else [])]"))
+
+
+# --- 4. Literal edge cases ---
+
+
+class TestEllipsis:
+    r"""Bug: ``Constant(Ellipsis)`` rendered as ``Name('Ellipsis')``.
+
+    Fix: render as ``Id(\"...\")`` which parses as ``Constant(Ellipsis)``.
+    """
+
+    def test_ellipsis(self) -> None:
+        b = _roundtrip_ast("x: tuple[int, ...]")
+        slc = b.body[0].annotation.slice  # ty: ignore[unresolved-attribute]
+        assert isinstance(slc.elts[1], ast.Constant)  # ty: ignore[unresolved-attribute]
+
+
+class TestLargeInt:
+    """Bug: integers > 2^63 caused OverflowError.
+
+    Fix: fall back to ``Id(repr(value))`` for out-of-range ints.
+    """
+
+    def test_uint64_max(self) -> None:
+        b = _roundtrip_ast("x = 18446744073709551615")
+        assert b.body[0].value.value == 18446744073709551615  # ty: ignore[unresolved-attribute]
+
+
+class TestFloatInf:
+    """Bug: ``float('inf')`` rendered as ``inf`` (a Name).
+
+    Fix: render as ``1e999``.
+    """
+
+    def test_inf(self) -> None:
+        b = _roundtrip_ast("x = 1e999")
+        assert b.body[0].value.value == float("inf")  # ty: ignore[unresolved-attribute]
+
+
+# --- Miscellaneous roundtrip tests ---
+
+
+def test_dict_unpacking_roundtrip() -> None:
+    rendered = _roundtrip_src("z = {**d}")
+    assert "**d:" not in rendered
+    ast.parse(rendered)
+
+
+def test_tuple_default_in_function_args() -> None:
+    rendered = _roundtrip_src("def f(x=(0, 0)):\n    pass")
+    ast.parse(rendered)
+    assert "(0, 0)" in rendered
+
+
+def test_bare_star_separator() -> None:
+    b = _roundtrip_ast("def f(a, *, key=1):\n    pass")
+    assert b.body[0].args.vararg is None  # ty: ignore[unresolved-attribute]
+    assert len(b.body[0].args.kwonlyargs) == 1  # ty: ignore[unresolved-attribute]
+
+
+@pytest.mark.skipif(sys.version_info < (3, 10), reason="match requires 3.10+")
+def test_match_statement() -> None:
+    rendered = _roundtrip_src("match x:\n    case 1:\n        a = 1\n    case _:\n        b = 2")
+    assert "match x:" in rendered
