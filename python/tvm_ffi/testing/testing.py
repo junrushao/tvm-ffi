@@ -628,7 +628,7 @@ def ast_roundtrip(node: Any) -> str:
         The rendered Python source code.
 
     """
-    import tvm_ffi.text as text
+    from tvm_ffi import text  # noqa: PLC0415
 
     tvm_node = text.ast_translate(node)
     return tvm_node.to_python()

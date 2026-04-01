@@ -116,18 +116,30 @@ class DocPrinter {
         } }
     // clang-format on
     static PrinterVTable vtable{
-        TVM_FFI_PRINTER_VTABLE_ENTRY_(LiteralAST),   TVM_FFI_PRINTER_VTABLE_ENTRY_(IdAST),
-        TVM_FFI_PRINTER_VTABLE_ENTRY_(AttrAST),      TVM_FFI_PRINTER_VTABLE_ENTRY_(IndexAST),
-        TVM_FFI_PRINTER_VTABLE_ENTRY_(OperationAST), TVM_FFI_PRINTER_VTABLE_ENTRY_(CallAST),
-        TVM_FFI_PRINTER_VTABLE_ENTRY_(LambdaAST),    TVM_FFI_PRINTER_VTABLE_ENTRY_(ListAST),
-        TVM_FFI_PRINTER_VTABLE_ENTRY_(TupleAST),     TVM_FFI_PRINTER_VTABLE_ENTRY_(DictAST),
-        TVM_FFI_PRINTER_VTABLE_ENTRY_(SliceAST),     TVM_FFI_PRINTER_VTABLE_ENTRY_(StmtBlockAST),
-        TVM_FFI_PRINTER_VTABLE_ENTRY_(AssignAST),    TVM_FFI_PRINTER_VTABLE_ENTRY_(IfAST),
-        TVM_FFI_PRINTER_VTABLE_ENTRY_(WhileAST),     TVM_FFI_PRINTER_VTABLE_ENTRY_(ForAST),
-        TVM_FFI_PRINTER_VTABLE_ENTRY_(WithAST),      TVM_FFI_PRINTER_VTABLE_ENTRY_(ExprStmtAST),
-        TVM_FFI_PRINTER_VTABLE_ENTRY_(AssertAST),    TVM_FFI_PRINTER_VTABLE_ENTRY_(ReturnAST),
-        TVM_FFI_PRINTER_VTABLE_ENTRY_(FunctionAST),  TVM_FFI_PRINTER_VTABLE_ENTRY_(ClassAST),
-        TVM_FFI_PRINTER_VTABLE_ENTRY_(CommentAST),   TVM_FFI_PRINTER_VTABLE_ENTRY_(DocStringAST),
+        TVM_FFI_PRINTER_VTABLE_ENTRY_(LiteralAST),
+        TVM_FFI_PRINTER_VTABLE_ENTRY_(IdAST),
+        TVM_FFI_PRINTER_VTABLE_ENTRY_(AttrAST),
+        TVM_FFI_PRINTER_VTABLE_ENTRY_(IndexAST),
+        TVM_FFI_PRINTER_VTABLE_ENTRY_(OperationAST),
+        TVM_FFI_PRINTER_VTABLE_ENTRY_(CallAST),
+        TVM_FFI_PRINTER_VTABLE_ENTRY_(LambdaAST),
+        TVM_FFI_PRINTER_VTABLE_ENTRY_(ListAST),
+        TVM_FFI_PRINTER_VTABLE_ENTRY_(TupleAST),
+        TVM_FFI_PRINTER_VTABLE_ENTRY_(DictAST),
+        TVM_FFI_PRINTER_VTABLE_ENTRY_(SliceAST),
+        TVM_FFI_PRINTER_VTABLE_ENTRY_(StmtBlockAST),
+        TVM_FFI_PRINTER_VTABLE_ENTRY_(AssignAST),
+        TVM_FFI_PRINTER_VTABLE_ENTRY_(IfAST),
+        TVM_FFI_PRINTER_VTABLE_ENTRY_(WhileAST),
+        TVM_FFI_PRINTER_VTABLE_ENTRY_(ForAST),
+        TVM_FFI_PRINTER_VTABLE_ENTRY_(WithAST),
+        TVM_FFI_PRINTER_VTABLE_ENTRY_(ExprStmtAST),
+        TVM_FFI_PRINTER_VTABLE_ENTRY_(AssertAST),
+        TVM_FFI_PRINTER_VTABLE_ENTRY_(ReturnAST),
+        TVM_FFI_PRINTER_VTABLE_ENTRY_(FunctionAST),
+        TVM_FFI_PRINTER_VTABLE_ENTRY_(ClassAST),
+        TVM_FFI_PRINTER_VTABLE_ENTRY_(CommentAST),
+        TVM_FFI_PRINTER_VTABLE_ENTRY_(DocStringAST),
         TVM_FFI_PRINTER_VTABLE_ENTRY_(SetAST),
         TVM_FFI_PRINTER_VTABLE_ENTRY_(ComprehensionIterAST),
         TVM_FFI_PRINTER_VTABLE_ENTRY_(ComprehensionAST),
@@ -1201,7 +1213,7 @@ inline void PythonDocPrinter::PrintTypedDoc(const FStrValueAST& doc) {
                                    ? static_cast<const LiteralASTObj*>(fpart.get())
                                    : nullptr) {
           if (lit2->value.type_index() == TypeIndex::kTVMFFIStr ||
-                lit2->value.type_index() == TypeIndex::kTVMFFISmallStr) {
+              lit2->value.type_index() == TypeIndex::kTVMFFISmallStr) {
             output_ << lit2->value.cast<String>();
             continue;
           }
@@ -1251,8 +1263,8 @@ inline void PythonDocPrinter::PrintTypedDoc(const AssignAST& doc) {
                                         ? static_cast<const OperationASTObj*>(doc->lhs.get())
                                         : nullptr;
              paren_op && paren_op->op == OperationASTObj::kParens &&
-                 paren_op->operands.size() == 1 &&
-                 paren_op->operands[0].get()->IsInstance<TupleASTObj>()) {
+             paren_op->operands.size() == 1 &&
+             paren_op->operands[0].get()->IsInstance<TupleASTObj>()) {
     // Multi-target assign: Parens(Tuple([a, b])) renders as a = b
     const auto* targets = static_cast<const TupleASTObj*>(paren_op->operands[0].get());
     PrintJoinedDocs(targets->values, " = ");
@@ -1334,8 +1346,8 @@ inline void PythonDocPrinter::PrintTypedDoc(const WithAST& doc) {
   output_ << (doc->is_async ? "async with " : "with ");
   // Multi-item with: rhs is Tuple of context exprs, lhs is Tuple of targets
   if (const auto* rhs_tuple = doc->rhs.get()->IsInstance<TupleASTObj>()
-                                   ? static_cast<const TupleASTObj*>(doc->rhs.get())
-                                   : nullptr) {
+                                  ? static_cast<const TupleASTObj*>(doc->rhs.get())
+                                  : nullptr) {
     const TupleASTObj* lhs_tuple = nullptr;
     if (doc->lhs.has_value()) {
       lhs_tuple = doc->lhs.value().get()->IsInstance<TupleASTObj>()
@@ -1843,9 +1855,8 @@ TVM_FFI_STATIC_INIT_BLOCK() {
       .def_ro("body", &text::ClassASTObj::body)
       .def_ro("kwargs_keys", &text::ClassASTObj::kwargs_keys)
       .def_ro("kwargs_values", &text::ClassASTObj::kwargs_values)
-      .def(refl::init<text::IdAST, ::tvm::ffi::List<text::ExprAST>,
-                      ::tvm::ffi::List<text::ExprAST>, ::tvm::ffi::List<text::StmtAST>,
-                      ::tvm::ffi::List<::tvm::ffi::String>,
+      .def(refl::init<text::IdAST, ::tvm::ffi::List<text::ExprAST>, ::tvm::ffi::List<text::ExprAST>,
+                      ::tvm::ffi::List<text::StmtAST>, ::tvm::ffi::List<::tvm::ffi::String>,
                       ::tvm::ffi::List<text::ExprAST>>());
   // CommentText
   refl::ObjectDef<text::CommentASTObj>().def(

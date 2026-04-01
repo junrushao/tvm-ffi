@@ -153,7 +153,7 @@ class _Converter:
         if hasattr(ast, "Match"):
             self._stmt_dispatch[ast.Match] = self._convert_match
         if hasattr(ast, "TypeAlias"):
-            self._stmt_dispatch[ast.TypeAlias] = self._convert_typealias  # ty: ignore[possibly-unbound]
+            self._stmt_dispatch[ast.TypeAlias] = self._convert_typealias  # ty: ignore[unresolved-attribute]
 
     # -- span helper --------------------------------------------------------
 
@@ -202,12 +202,12 @@ class _Converter:
 
     # -- expression handlers ------------------------------------------------
 
-    def _convert_constant(self, node: ast.Constant) -> tast.Expr:
+    def _convert_constant(self, node: ast.Constant) -> tast.Expr:  # noqa: PLR0911
         value = node.value
         if isinstance(value, float) and math.isinf(value):
             return tast.Id("-1e999" if value < 0 else "1e999")
         if isinstance(value, float) and math.isnan(value):
-            return tast.Id("float(\"nan\")")
+            return tast.Id('float("nan")')
         if value is None or isinstance(value, (bool, float, str)):
             return tast.Literal(value)
         if isinstance(value, int):
@@ -297,9 +297,7 @@ class _Converter:
         for op, comparator in zip(node.ops, node.comparators):
             kind = _CMPOP.get(type(op))
             if kind is None:
-                raise NotImplementedError(
-                    f"Unsupported comparison operator: {type(op).__name__}"
-                )
+                raise NotImplementedError(f"Unsupported comparison operator: {type(op).__name__}")
             operands.append(tast.Literal(kind))
             operands.append(self.convert_expr(comparator))
         return tast.Operation(tast.OperationKind.ChainedCompare, operands)
@@ -543,29 +541,27 @@ class _Converter:
         return tast.With(tast.Tuple(lhs_elts), tast.Tuple(rhs_elts), body_stmts, is_async)
 
     @staticmethod
-    def _make_name_with_type_params(name: str, type_params: list) -> tast.Id:  # type: ignore[type-arg]
+    def _make_name_with_type_params(name: str, type_params: list) -> tast.Id:
         """Build an Id with type params appended, e.g. 'Foo[T, U: int]'."""
         if not type_params:
             return tast.Id(name)
         parts: list[str] = []
         for tp in type_params:
-            if isinstance(tp, ast.TypeVar):
+            if isinstance(tp, ast.TypeVar):  # ty: ignore[unresolved-attribute]
                 s = tp.name
                 if tp.bound:
                     s += ": " + ast.unparse(tp.bound)
                 parts.append(s)
-            elif isinstance(tp, ast.TypeVarTuple):  # ty: ignore[possibly-unbound]
+            elif isinstance(tp, ast.TypeVarTuple):  # ty: ignore[unresolved-attribute]
                 parts.append("*" + tp.name)
-            elif isinstance(tp, ast.ParamSpec):  # ty: ignore[possibly-unbound]
+            elif isinstance(tp, ast.ParamSpec):  # ty: ignore[unresolved-attribute]
                 parts.append("**" + tp.name)
             else:
                 parts.append(str(tp.name))  # pragma: no cover
         return tast.Id(name + "[" + ", ".join(parts) + "]")
 
     def _convert_functiondef(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> tast.Stmt:
-        name = self._make_name_with_type_params(
-            node.name, getattr(node, "type_params", [])
-        )
+        name = self._make_name_with_type_params(node.name, getattr(node, "type_params", []))
         args = self._convert_arguments(node.args)
         decorators = [self.convert_expr(d) for d in node.decorator_list]
         return_type = self.convert_expr(node.returns) if node.returns else None
@@ -614,16 +610,12 @@ class _Converter:
         return result
 
     def _convert_classdef(self, node: ast.ClassDef) -> tast.Stmt:
-        name = self._make_name_with_type_params(
-            node.name, getattr(node, "type_params", [])
-        )
+        name = self._make_name_with_type_params(node.name, getattr(node, "type_params", []))
         bases = [self.convert_expr(b) for b in node.bases]
         decorators = [self.convert_expr(d) for d in node.decorator_list]
         body = self._convert_body(node.body, detect_docstring=True)
         kwargs_keys = [kw.arg for kw in node.keywords if kw.arg is not None]
-        kwargs_values = [
-            self.convert_expr(kw.value) for kw in node.keywords if kw.arg is not None
-        ]
+        kwargs_values = [self.convert_expr(kw.value) for kw in node.keywords if kw.arg is not None]
         return tast.Class(name, bases, decorators, body, kwargs_keys, kwargs_values)
 
     def _convert_return(self, node: ast.Return) -> tast.Stmt:
@@ -712,7 +704,7 @@ class _Converter:
     def _convert_typealias(self, node: ast.TypeAlias) -> tast.Stmt:  # ty: ignore[unresolved-attribute]
         """Convert ``type X = ...`` (PEP 695) to an Assign with ``type`` prefix."""
         type_params = getattr(node, "type_params", [])
-        name_str = node.name.id  # ty: ignore[union-attr]
+        name_str = node.name.id  # ty: ignore[unresolved-attribute]
         if type_params:
             name_id = self._make_name_with_type_params(name_str, type_params)
         else:

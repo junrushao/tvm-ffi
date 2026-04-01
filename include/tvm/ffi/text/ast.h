@@ -86,7 +86,10 @@ struct NodeASTObj : public Object {
   int64_t end_col_offset;
   /// \cond Doxygen_Suppress
   explicit NodeASTObj(List<AccessPath> source_paths)
-      : source_paths(std::move(source_paths)), lineno(-1), col_offset(-1), end_lineno(-1),
+      : source_paths(std::move(source_paths)),
+        lineno(-1),
+        col_offset(-1),
+        end_lineno(-1),
         end_col_offset(-1) {}
   /// \endcond
   /*!
@@ -727,45 +730,45 @@ struct OperationASTObj : public ExprASTObj {
    *   Takes 3 operands: [true_value, condition, false_value].
    */
   enum Kind : int64_t {
-    kUndefined = -1,    /*!< \brief Undefined / not applicable. */
-    kUnaryStart = 0,    /*!< \brief Sentinel: start of unary operators. */
-    kUSub = 1,          /*!< \brief Unary minus: `-x`. */
-    kInvert = 2,        /*!< \brief Bitwise invert: `~x`. */
-    kNot = 3,           /*!< \brief Logical not: `not x`. */
-    kUAdd = 4,          /*!< \brief Unary plus: `+x`. */
-    kUnaryEnd = 5,      /*!< \brief Sentinel: end of unary operators. */
-    kBinaryStart = 5,   /*!< \brief Sentinel: start of binary operators. */
-    kAdd = 6,           /*!< \brief Addition: `x + y`. */
-    kSub = 7,           /*!< \brief Subtraction: `x - y`. */
-    kMult = 8,          /*!< \brief Multiplication: `x * y`. */
-    kDiv = 9,           /*!< \brief True division: `x / y`. */
-    kFloorDiv = 10,     /*!< \brief Floor division: `x // y`. */
-    kMod = 11,          /*!< \brief Modulo: `x % y`. */
-    kPow = 12,          /*!< \brief Exponentiation: `x ** y`. */
-    kLShift = 13,       /*!< \brief Left shift: `x << y`. */
-    kRShift = 14,       /*!< \brief Right shift: `x >> y`. */
-    kBitAnd = 15,       /*!< \brief Bitwise AND: `x & y`. */
-    kBitOr = 16,        /*!< \brief Bitwise OR: `x | y`. */
-    kBitXor = 17,       /*!< \brief Bitwise XOR: `x ^ y`. */
-    kLt = 18,           /*!< \brief Less than: `x < y`. */
-    kLtE = 19,          /*!< \brief Less than or equal: `x <= y`. */
-    kEq = 20,           /*!< \brief Equal: `x == y`. */
-    kNotEq = 21,        /*!< \brief Not equal: `x != y`. */
-    kGt = 22,           /*!< \brief Greater than: `x > y`. */
-    kGtE = 23,          /*!< \brief Greater than or equal: `x >= y`. */
-    kAnd = 24,          /*!< \brief Logical AND: `x and y`. */
-    kOr = 25,           /*!< \brief Logical OR: `x or y`. */
-    kMatMult = 26,      /*!< \brief Matrix multiply: `x @ y`. */
-    kIs = 27,           /*!< \brief Identity test: `x is y`. */
-    kIsNot = 28,        /*!< \brief Negated identity test: `x is not y`. */
-    kIn = 29,           /*!< \brief Containment test: `x in y`. */
-    kNotIn = 30,        /*!< \brief Negated containment test: `x not in y`. */
-    kBinaryEnd = 31,    /*!< \brief Sentinel: end of binary operators. */
-    kSpecialStart = 32, /*!< \brief Sentinel: start of special operators. */
-    kIfThenElse = 33,       /*!< \brief Ternary: `a if cond else b`. */
-    kChainedCompare = 34,   /*!< \brief Chained comparison: `a < b < c`. */
-    kParens = 35,           /*!< \brief Explicit parenthesization: `(expr)`. */
-    kSpecialEnd = 36,       /*!< \brief Sentinel: end of special operators. */
+    kUndefined = -1,      /*!< \brief Undefined / not applicable. */
+    kUnaryStart = 0,      /*!< \brief Sentinel: start of unary operators. */
+    kUSub = 1,            /*!< \brief Unary minus: `-x`. */
+    kInvert = 2,          /*!< \brief Bitwise invert: `~x`. */
+    kNot = 3,             /*!< \brief Logical not: `not x`. */
+    kUAdd = 4,            /*!< \brief Unary plus: `+x`. */
+    kUnaryEnd = 5,        /*!< \brief Sentinel: end of unary operators. */
+    kBinaryStart = 5,     /*!< \brief Sentinel: start of binary operators. */
+    kAdd = 6,             /*!< \brief Addition: `x + y`. */
+    kSub = 7,             /*!< \brief Subtraction: `x - y`. */
+    kMult = 8,            /*!< \brief Multiplication: `x * y`. */
+    kDiv = 9,             /*!< \brief True division: `x / y`. */
+    kFloorDiv = 10,       /*!< \brief Floor division: `x // y`. */
+    kMod = 11,            /*!< \brief Modulo: `x % y`. */
+    kPow = 12,            /*!< \brief Exponentiation: `x ** y`. */
+    kLShift = 13,         /*!< \brief Left shift: `x << y`. */
+    kRShift = 14,         /*!< \brief Right shift: `x >> y`. */
+    kBitAnd = 15,         /*!< \brief Bitwise AND: `x & y`. */
+    kBitOr = 16,          /*!< \brief Bitwise OR: `x | y`. */
+    kBitXor = 17,         /*!< \brief Bitwise XOR: `x ^ y`. */
+    kLt = 18,             /*!< \brief Less than: `x < y`. */
+    kLtE = 19,            /*!< \brief Less than or equal: `x <= y`. */
+    kEq = 20,             /*!< \brief Equal: `x == y`. */
+    kNotEq = 21,          /*!< \brief Not equal: `x != y`. */
+    kGt = 22,             /*!< \brief Greater than: `x > y`. */
+    kGtE = 23,            /*!< \brief Greater than or equal: `x >= y`. */
+    kAnd = 24,            /*!< \brief Logical AND: `x and y`. */
+    kOr = 25,             /*!< \brief Logical OR: `x or y`. */
+    kMatMult = 26,        /*!< \brief Matrix multiply: `x @ y`. */
+    kIs = 27,             /*!< \brief Identity test: `x is y`. */
+    kIsNot = 28,          /*!< \brief Negated identity test: `x is not y`. */
+    kIn = 29,             /*!< \brief Containment test: `x in y`. */
+    kNotIn = 30,          /*!< \brief Negated containment test: `x not in y`. */
+    kBinaryEnd = 31,      /*!< \brief Sentinel: end of binary operators. */
+    kSpecialStart = 32,   /*!< \brief Sentinel: start of special operators. */
+    kIfThenElse = 33,     /*!< \brief Ternary: `a if cond else b`. */
+    kChainedCompare = 34, /*!< \brief Chained comparison: `a < b < c`. */
+    kParens = 35,         /*!< \brief Explicit parenthesization: `(expr)`. */
+    kSpecialEnd = 36,     /*!< \brief Sentinel: end of special operators. */
   };
 
   /*!
@@ -1133,9 +1136,8 @@ struct ComprehensionAST : public ExprAST {
                          std::move(iters)) {}
   explicit ComprehensionAST(List<AccessPath> source_paths, int64_t kind, ExprAST elt,
                             Optional<ExprAST> value, List<ComprehensionIterAST> iters)
-      : ComprehensionAST(make_object<ComprehensionASTObj>(std::move(source_paths), kind,
-                                                          std::move(elt), std::move(value),
-                                                          std::move(iters))) {}
+      : ComprehensionAST(make_object<ComprehensionASTObj>(
+            std::move(source_paths), kind, std::move(elt), std::move(value), std::move(iters))) {}
   /// \endcond
   /// \cond Doxygen_Suppress
   TVM_FFI_DEFINE_OBJECT_REF_METHODS_NOTNULLABLE(ComprehensionAST, ExprAST, ComprehensionASTObj);
@@ -1198,8 +1200,7 @@ struct YieldFromASTObj : public ExprASTObj {
 /*! \brief Reference wrapper for a yield-from expression. */
 struct YieldFromAST : public ExprAST {
   /// \cond Doxygen_Suppress
-  explicit YieldFromAST(ExprAST value)
-      : YieldFromAST(List<AccessPath>{}, std::move(value)) {}
+  explicit YieldFromAST(ExprAST value) : YieldFromAST(List<AccessPath>{}, std::move(value)) {}
   explicit YieldFromAST(List<AccessPath> source_paths, ExprAST value)
       : YieldFromAST(make_object<YieldFromASTObj>(std::move(source_paths), std::move(value))) {}
   /// \endcond
@@ -1306,8 +1307,7 @@ struct AssignASTObj : public StmtASTObj {
    */
   OperationASTObj::Kind aug_op{OperationASTObj::kUndefined};
   /// \cond Doxygen_Suppress
-  explicit AssignASTObj(ExprAST lhs, Optional<ExprAST> rhs = {},
-                        Optional<ExprAST> annotation = {},
+  explicit AssignASTObj(ExprAST lhs, Optional<ExprAST> rhs = {}, Optional<ExprAST> annotation = {},
                         int64_t aug_op = OperationASTObj::kUndefined)
       : AssignASTObj(List<AccessPath>{}, Optional<String>{}, std::move(lhs), std::move(rhs),
                      std::move(annotation), static_cast<OperationASTObj::Kind>(aug_op)) {}
@@ -1345,8 +1345,8 @@ struct AssignAST : public StmtAST {
                      Optional<ExprAST> rhs, Optional<ExprAST> annotation,
                      OperationASTObj::Kind aug_op = OperationASTObj::kUndefined)
       : AssignAST(make_object<AssignASTObj>(std::move(source_paths), std::move(comment),
-                                            std::move(lhs), std::move(rhs),
-                                            std::move(annotation), aug_op)) {}
+                                            std::move(lhs), std::move(rhs), std::move(annotation),
+                                            aug_op)) {}
   /// \endcond
   /// \cond Doxygen_Suppress
   TVM_FFI_DEFINE_OBJECT_REF_METHODS_NOTNULLABLE(AssignAST, StmtAST, AssignASTObj);
@@ -1483,8 +1483,7 @@ struct WhileAST : public StmtAST {
   explicit WhileAST(List<AccessPath> source_paths, Optional<String> comment, ExprAST cond,
                     List<StmtAST> body, List<StmtAST> orelse)
       : WhileAST(make_object<WhileASTObj>(std::move(source_paths), std::move(comment),
-                                          std::move(cond), std::move(body),
-                                          std::move(orelse))) {}
+                                          std::move(cond), std::move(body), std::move(orelse))) {}
   /// \endcond
   /// \cond Doxygen_Suppress
   TVM_FFI_DEFINE_OBJECT_REF_METHODS_NOTNULLABLE(WhileAST, StmtAST, WhileASTObj);
@@ -1611,8 +1610,7 @@ struct WithASTObj : public StmtASTObj {
   /*! \brief Whether this is an `async with` statement. */
   bool is_async;
   /// \cond Doxygen_Suppress
-  explicit WithASTObj(Optional<ExprAST> lhs, ExprAST rhs, List<StmtAST> body,
-                      bool is_async = 0)
+  explicit WithASTObj(Optional<ExprAST> lhs, ExprAST rhs, List<StmtAST> body, bool is_async = 0)
       : WithASTObj(List<AccessPath>{}, Optional<String>{}, std::move(lhs), std::move(rhs),
                    std::move(body), is_async) {}
   explicit WithASTObj(List<AccessPath> source_paths, Optional<String> comment,
@@ -1640,8 +1638,7 @@ struct WithASTObj : public StmtASTObj {
  */
 struct WithAST : public StmtAST {
   /// \cond Doxygen_Suppress
-  explicit WithAST(Optional<ExprAST> lhs, ExprAST rhs, List<StmtAST> body,
-                   bool is_async = 0)
+  explicit WithAST(Optional<ExprAST> lhs, ExprAST rhs, List<StmtAST> body, bool is_async = 0)
       : WithAST(List<AccessPath>{}, Optional<String>{}, std::move(lhs), std::move(rhs),
                 std::move(body), is_async) {}
   explicit WithAST(List<AccessPath> source_paths, Optional<String> comment, Optional<ExprAST> lhs,
@@ -1853,11 +1850,9 @@ struct FunctionASTObj : public StmtASTObj {
   bool is_async;
   /// \cond Doxygen_Suppress
   explicit FunctionASTObj(IdAST name, List<AssignAST> args, List<ExprAST> decorators,
-                          Optional<ExprAST> return_type, List<StmtAST> body,
-                          bool is_async = 0)
+                          Optional<ExprAST> return_type, List<StmtAST> body, bool is_async = 0)
       : FunctionASTObj(List<AccessPath>{}, Optional<String>{}, std::move(name), std::move(args),
-                       std::move(decorators), std::move(return_type), std::move(body),
-                       is_async) {}
+                       std::move(decorators), std::move(return_type), std::move(body), is_async) {}
   explicit FunctionASTObj(List<AccessPath> source_paths, Optional<String> comment, IdAST name,
                           List<AssignAST> args, List<ExprAST> decorators,
                           Optional<ExprAST> return_type, List<StmtAST> body, bool is_async)
@@ -1896,8 +1891,7 @@ struct FunctionASTObj : public StmtASTObj {
 struct FunctionAST : public StmtAST {
   /// \cond Doxygen_Suppress
   explicit FunctionAST(IdAST name, List<AssignAST> args, List<ExprAST> decorators,
-                       Optional<ExprAST> return_type, List<StmtAST> body,
-                       bool is_async = 0)
+                       Optional<ExprAST> return_type, List<StmtAST> body, bool is_async = 0)
       : FunctionAST(List<AccessPath>{}, Optional<String>{}, std::move(name), std::move(args),
                     std::move(decorators), std::move(return_type), std::move(body), is_async) {}
   explicit FunctionAST(List<AccessPath> source_paths, Optional<String> comment, IdAST name,
@@ -1954,8 +1948,9 @@ struct ClassASTObj : public StmtASTObj {
   /*! \brief Keyword argument values (e.g. `IdAST("ABCMeta")`). */
   List<ExprAST> kwargs_values;
   /// \cond Doxygen_Suppress
-  explicit ClassASTObj(IdAST name, List<ExprAST> bases, List<ExprAST> decorators, List<StmtAST> body,
-                       List<String> kwargs_keys = {}, List<ExprAST> kwargs_values = {})
+  explicit ClassASTObj(IdAST name, List<ExprAST> bases, List<ExprAST> decorators,
+                       List<StmtAST> body, List<String> kwargs_keys = {},
+                       List<ExprAST> kwargs_values = {})
       : ClassASTObj(List<AccessPath>{}, Optional<String>{}, std::move(name), std::move(bases),
                     std::move(decorators), std::move(body), std::move(kwargs_keys),
                     std::move(kwargs_values)) {}
@@ -1996,9 +1991,9 @@ struct ClassAST : public StmtAST {
                     List<ExprAST> bases, List<ExprAST> decorators, List<StmtAST> body,
                     List<String> kwargs_keys, List<ExprAST> kwargs_values)
       : ClassAST(make_object<ClassASTObj>(std::move(source_paths), std::move(comment),
-                                          std::move(name), std::move(bases),
-                                          std::move(decorators), std::move(body),
-                                          std::move(kwargs_keys), std::move(kwargs_values))) {}
+                                          std::move(name), std::move(bases), std::move(decorators),
+                                          std::move(body), std::move(kwargs_keys),
+                                          std::move(kwargs_values))) {}
   /// \endcond
   /// \cond Doxygen_Suppress
   TVM_FFI_DEFINE_OBJECT_REF_METHODS_NOTNULLABLE(ClassAST, StmtAST, ClassASTObj);
@@ -2117,11 +2112,9 @@ struct StarredExprASTObj : public ExprASTObj {
 /*! \brief Reference wrapper for a starred expression. */
 struct StarredExprAST : public ExprAST {
   /// \cond Doxygen_Suppress
-  explicit StarredExprAST(ExprAST value)
-      : StarredExprAST(List<AccessPath>{}, std::move(value)) {}
+  explicit StarredExprAST(ExprAST value) : StarredExprAST(List<AccessPath>{}, std::move(value)) {}
   explicit StarredExprAST(List<AccessPath> source_paths, ExprAST value)
-      : StarredExprAST(
-            make_object<StarredExprASTObj>(std::move(source_paths), std::move(value))) {}
+      : StarredExprAST(make_object<StarredExprASTObj>(std::move(source_paths), std::move(value))) {}
   /// \endcond
   /// \cond Doxygen_Suppress
   TVM_FFI_DEFINE_OBJECT_REF_METHODS_NOTNULLABLE(StarredExprAST, ExprAST, StarredExprASTObj);
@@ -2139,8 +2132,7 @@ struct AwaitExprASTObj : public ExprASTObj {
   /*! \brief The awaited expression. */
   ExprAST value;
   /// \cond Doxygen_Suppress
-  explicit AwaitExprASTObj(ExprAST value)
-      : AwaitExprASTObj(List<AccessPath>{}, std::move(value)) {}
+  explicit AwaitExprASTObj(ExprAST value) : AwaitExprASTObj(List<AccessPath>{}, std::move(value)) {}
   explicit AwaitExprASTObj(List<AccessPath> source_paths, ExprAST value)
       : ExprASTObj(std::move(source_paths)), value(std::move(value)) {}
   /// \endcond
@@ -2152,8 +2144,7 @@ struct AwaitExprASTObj : public ExprASTObj {
 /*! \brief Reference wrapper for an await expression. */
 struct AwaitExprAST : public ExprAST {
   /// \cond Doxygen_Suppress
-  explicit AwaitExprAST(ExprAST value)
-      : AwaitExprAST(List<AccessPath>{}, std::move(value)) {}
+  explicit AwaitExprAST(ExprAST value) : AwaitExprAST(List<AccessPath>{}, std::move(value)) {}
   explicit AwaitExprAST(List<AccessPath> source_paths, ExprAST value)
       : AwaitExprAST(make_object<AwaitExprASTObj>(std::move(source_paths), std::move(value))) {}
   /// \endcond
@@ -2178,9 +2169,7 @@ struct WalrusExprASTObj : public ExprASTObj {
   explicit WalrusExprASTObj(ExprAST target, ExprAST value)
       : WalrusExprASTObj(List<AccessPath>{}, std::move(target), std::move(value)) {}
   explicit WalrusExprASTObj(List<AccessPath> source_paths, ExprAST target, ExprAST value)
-      : ExprASTObj(std::move(source_paths)),
-        target(std::move(target)),
-        value(std::move(value)) {}
+      : ExprASTObj(std::move(source_paths)), target(std::move(target)), value(std::move(value)) {}
   /// \endcond
   /// \cond Doxygen_Suppress
   TVM_FFI_DECLARE_OBJECT_INFO_FINAL("ffi.text.ast.WalrusExpr", WalrusExprASTObj, ExprASTObj);
@@ -2249,8 +2238,7 @@ struct FStrValueASTObj : public ExprASTObj {
   /// \cond Doxygen_Suppress
   explicit FStrValueASTObj(ExprAST value, int64_t conversion = -1,
                            Optional<ExprAST> format_spec = {})
-      : FStrValueASTObj(List<AccessPath>{}, std::move(value), conversion,
-                        std::move(format_spec)) {}
+      : FStrValueASTObj(List<AccessPath>{}, std::move(value), conversion, std::move(format_spec)) {}
   explicit FStrValueASTObj(List<AccessPath> source_paths, ExprAST value, int64_t conversion,
                            Optional<ExprAST> format_spec)
       : ExprASTObj(std::move(source_paths)),
@@ -2266,10 +2254,8 @@ struct FStrValueASTObj : public ExprASTObj {
 /*! \brief Reference wrapper for a formatted value inside an f-string. */
 struct FStrValueAST : public ExprAST {
   /// \cond Doxygen_Suppress
-  explicit FStrValueAST(ExprAST value, int64_t conversion = -1,
-                        Optional<ExprAST> format_spec = {})
-      : FStrValueAST(List<AccessPath>{}, std::move(value), conversion,
-                     std::move(format_spec)) {}
+  explicit FStrValueAST(ExprAST value, int64_t conversion = -1, Optional<ExprAST> format_spec = {})
+      : FStrValueAST(List<AccessPath>{}, std::move(value), conversion, std::move(format_spec)) {}
   explicit FStrValueAST(List<AccessPath> source_paths, ExprAST value, int64_t conversion,
                         Optional<ExprAST> format_spec)
       : FStrValueAST(make_object<FStrValueASTObj>(std::move(source_paths), std::move(value),
@@ -2296,8 +2282,8 @@ struct ExceptHandlerASTObj : public NodeASTObj {
   List<StmtAST> body;
   /// \cond Doxygen_Suppress
   explicit ExceptHandlerASTObj(Optional<ExprAST> type, Optional<String> name, List<StmtAST> body)
-      : ExceptHandlerASTObj(List<AccessPath>{}, std::move(type), std::move(name),
-                            std::move(body)) {}
+      : ExceptHandlerASTObj(List<AccessPath>{}, std::move(type), std::move(name), std::move(body)) {
+  }
   explicit ExceptHandlerASTObj(List<AccessPath> source_paths, Optional<ExprAST> type,
                                Optional<String> name, List<StmtAST> body)
       : NodeASTObj(std::move(source_paths)),
@@ -2342,13 +2328,12 @@ struct TryASTObj : public StmtASTObj {
   /*! \brief The finally-branch statements. */
   List<StmtAST> finalbody;
   /// \cond Doxygen_Suppress
-  explicit TryASTObj(List<StmtAST> body, List<ExceptHandlerAST> handlers,
-                     List<StmtAST> orelse = {}, List<StmtAST> finalbody = {})
+  explicit TryASTObj(List<StmtAST> body, List<ExceptHandlerAST> handlers, List<StmtAST> orelse = {},
+                     List<StmtAST> finalbody = {})
       : TryASTObj(List<AccessPath>{}, Optional<String>{}, std::move(body), std::move(handlers),
                   std::move(orelse), std::move(finalbody)) {}
   explicit TryASTObj(List<AccessPath> source_paths, Optional<String> comment, List<StmtAST> body,
-                     List<ExceptHandlerAST> handlers, List<StmtAST> orelse,
-                     List<StmtAST> finalbody)
+                     List<ExceptHandlerAST> handlers, List<StmtAST> orelse, List<StmtAST> finalbody)
       : StmtASTObj(std::move(source_paths), std::move(comment)),
         body(std::move(body)),
         handlers(std::move(handlers)),
@@ -2393,10 +2378,10 @@ struct MatchCaseASTObj : public NodeASTObj {
   List<StmtAST> body;
   /// \cond Doxygen_Suppress
   explicit MatchCaseASTObj(ExprAST pattern, Optional<ExprAST> guard, List<StmtAST> body)
-      : MatchCaseASTObj(List<AccessPath>{}, std::move(pattern), std::move(guard),
-                        std::move(body)) {}
-  explicit MatchCaseASTObj(List<AccessPath> source_paths, ExprAST pattern,
-                           Optional<ExprAST> guard, List<StmtAST> body)
+      : MatchCaseASTObj(List<AccessPath>{}, std::move(pattern), std::move(guard), std::move(body)) {
+  }
+  explicit MatchCaseASTObj(List<AccessPath> source_paths, ExprAST pattern, Optional<ExprAST> guard,
+                           List<StmtAST> body)
       : NodeASTObj(std::move(source_paths)),
         pattern(std::move(pattern)),
         guard(std::move(guard)),
@@ -2436,8 +2421,7 @@ struct MatchASTObj : public StmtASTObj {
   List<MatchCaseAST> cases;
   /// \cond Doxygen_Suppress
   explicit MatchASTObj(ExprAST subject, List<MatchCaseAST> cases)
-      : MatchASTObj(List<AccessPath>{}, Optional<String>{}, std::move(subject),
-                    std::move(cases)) {}
+      : MatchASTObj(List<AccessPath>{}, Optional<String>{}, std::move(subject), std::move(cases)) {}
   explicit MatchASTObj(List<AccessPath> source_paths, Optional<String> comment, ExprAST subject,
                        List<MatchCaseAST> cases)
       : StmtASTObj(std::move(source_paths), std::move(comment)),

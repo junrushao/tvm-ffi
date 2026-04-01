@@ -42,6 +42,8 @@ Bug categories and their root causes
    4-byte UTF-8, null bytes).
 """
 
+# ruff: noqa: D102
+
 from __future__ import annotations
 
 import ast
@@ -53,14 +55,16 @@ import pytest
 from tvm_ffi.text.ast_translate import ast_translate
 
 
-def _roundtrip_ast(source: str) -> ast.AST:
+def _roundtrip_ast(source: str) -> ast.Module:
     """Parse *source*, roundtrip through TVM-FFI AST, re-parse, return the new AST."""
     source = textwrap.dedent(source)
     original = ast.parse(source)
     rendered = ast_translate(original).to_python()
     with warnings.catch_warnings():
         warnings.simplefilter("error", SyntaxWarning)
-        return ast.parse(rendered)
+        result = ast.parse(rendered)
+    assert isinstance(result, ast.Module)
+    return result
 
 
 def _roundtrip_src(source: str) -> str:
@@ -75,7 +79,7 @@ def _roundtrip_src(source: str) -> str:
 
 
 class TestDocstringFormatting:
-    """Bug: PrintDocString added \\n + indentation around content.
+    r"""Bug: PrintDocString added \\n + indentation around content.
 
     ``\"\"\"hello\"\"\"`` became ``\"\"\"\\nhello\\n\"\"\"`` which re-parsed
     as ``'\\nhello\\n'`` instead of ``'hello'``.
@@ -83,19 +87,19 @@ class TestDocstringFormatting:
     Fix: DocStringAST printer emits content verbatim between triple quotes.
     """
 
-    def test_single_line_module(self):
+    def test_single_line_module(self) -> None:
         b = _roundtrip_ast('"""Module doc."""\nx = 1')
         assert b.body[0].value.value == "Module doc."
 
-    def test_single_line_class(self):
+    def test_single_line_class(self) -> None:
         b = _roundtrip_ast('class C:\n    """Class doc."""\n    pass')
         assert b.body[0].body[0].value.value == "Class doc."
 
-    def test_single_line_function(self):
+    def test_single_line_function(self) -> None:
         b = _roundtrip_ast('def f():\n    """Func doc."""\n    pass')
         assert b.body[0].body[0].value.value == "Func doc."
 
-    def test_multiline_preserved(self):
+    def test_multiline_preserved(self) -> None:
         src = textwrap.dedent("""\
             def f():
                 \"\"\"Line one.
@@ -119,7 +123,7 @@ class TestDocstringBackslash:
     Fix: escape ``\\`` to ``\\\\`` in DocStringAST content.
     """
 
-    def test_backslash_frac(self):
+    def test_backslash_frac(self) -> None:
         src = 'def f():\n    """Has \\\\frac{1}{2}."""\n    pass'
         original_doc = ast.parse(src).body[0].body[0].value.value
         b = _roundtrip_ast(src)
@@ -127,7 +131,7 @@ class TestDocstringBackslash:
 
 
 class TestDocstringTripleQuote:
-    """Bug: docstring containing ``\\\"\\\"\\\"`` broke triple-quoting.
+    r"""Bug: docstring containing ``\\\"\\\"\\\"`` broke triple-quoting.
 
     A docstring with an embedded code example like ``asm=\\\"\\\"\\\"``
     caused premature termination of the enclosing triple-quoted string.
@@ -136,15 +140,15 @@ class TestDocstringTripleQuote:
     the triple-quote sequence.
     """
 
-    def test_embedded_triple_quote(self):
-        src = 'def f():\n    """example: x=\\\"\\\"\\\"hello\\\"\\\"\\\"."""\n    pass'
+    def test_embedded_triple_quote(self) -> None:
+        src = 'def f():\n    """example: x=\\"\\"\\"hello\\"\\"\\"."""\n    pass'
         original_doc = ast.parse(src).body[0].body[0].value.value
         b = _roundtrip_ast(src)
         assert b.body[0].body[0].value.value == original_doc
 
 
 class TestEmptyDocstring:
-    """Bug: empty docstring ``\\\"\\\"\\\"\\\"\\\"\\\"`` was silently dropped.
+    r"""Bug: empty docstring ``\\\"\\\"\\\"\\\"\\\"\\\"`` was silently dropped.
 
     The printer skipped empty strings, changing the body length
     (e.g. dropping a docstring before a ``match`` statement).
@@ -152,14 +156,14 @@ class TestEmptyDocstring:
     Fix: emit ``\\\"\\\"\\\"\\\"\\\"\\\"`` even for empty content.
     """
 
-    def test_empty_docstring_preserved(self):
+    def test_empty_docstring_preserved(self) -> None:
         src = 'def f():\n    """"""\n    pass'
         b = _roundtrip_ast(src)
         assert len(b.body[0].body) == 2  # docstring + pass
 
 
 class TestFStringEscaping:
-    """Bug: literal ``{``, ``}``, ``\\r``, ``\\t``, ``\\x00`` in f-string
+    r"""Bug: literal ``{``, ``}``, ``\\r``, ``\\t``, ``\\x00`` in f-string
     text parts were not escaped.
 
     - ``{`` became an expression delimiter instead of literal text.
@@ -170,30 +174,30 @@ class TestFStringEscaping:
     ``\\xNN`` in the FStr printer.
     """
 
-    def test_literal_braces(self):
+    def test_literal_braces(self) -> None:
         rendered = _roundtrip_src('x = f"a{{b}}c"')
         ast.parse(rendered)
 
-    def test_carriage_return(self):
+    def test_carriage_return(self) -> None:
         # \r in f-string text must not produce a raw CR in the output
         src = 'x = f"\\ra"'
         rendered = _roundtrip_src(src)
         ast.parse(rendered)
 
-    def test_tab(self):
+    def test_tab(self) -> None:
         # \t in f-string text must be escaped
         src = 'x = f"\\ta"'
         rendered = _roundtrip_src(src)
         ast.parse(rendered)
 
-    def test_null_byte(self):
+    def test_null_byte(self) -> None:
         src = 'x = f"\\x00"'
         rendered = _roundtrip_src(src)
         ast.parse(rendered)
 
 
 class TestStringNullByte:
-    """Bug: ``PrintEscapeString`` emitted raw null bytes for ``\\x00``.
+    r"""Bug: ``PrintEscapeString`` emitted raw null bytes for ``\\x00``.
 
     ASCII control characters (< 0x20) fell through to the plain ``char``
     output branch, producing unparseable output.
@@ -201,13 +205,13 @@ class TestStringNullByte:
     Fix: escape control chars as ``\\xNN`` in ``PrintEscapeString``.
     """
 
-    def test_null_in_literal(self):
+    def test_null_in_literal(self) -> None:
         rendered = _roundtrip_src('x = "\\x00"')
         ast.parse(rendered)
 
 
 class TestStringEmoji:
-    """Bug: 4-byte UTF-8 characters (emoji) were escaped byte-by-byte.
+    r"""Bug: 4-byte UTF-8 characters (emoji) were escaped byte-by-byte.
 
     ``PrintEscapeString`` only handled 1/2/3-byte UTF-8 sequences.
     4-byte emoji like U+1F7E5 fell through to ``\\xNN`` per-byte escapes,
@@ -216,7 +220,7 @@ class TestStringEmoji:
     Fix: added 4-byte UTF-8 handler emitting ``\\UNNNNNNNN``.
     """
 
-    def test_emoji_roundtrip(self):
+    def test_emoji_roundtrip(self) -> None:
         b = _roundtrip_ast('x = "\\U0001f7e5"')
         assert b.body[0].value.value == "\U0001f7e5"
 
@@ -235,7 +239,7 @@ class TestAugAssign:
     Fix: added ``aug_op`` field to ``AssignAST`` (``OperationASTObj::Kind``).
     """
 
-    def test_roundtrip(self):
+    def test_roundtrip(self) -> None:
         b = _roundtrip_ast("x += 1")
         assert isinstance(b.body[0], ast.AugAssign)
 
@@ -243,7 +247,7 @@ class TestAugAssign:
         "op",
         ["+=", "-=", "*=", "/=", "//=", "%=", "**=", "<<=", ">>=", "&=", "|=", "^=", "@="],
     )
-    def test_all_ops(self, op):
+    def test_all_ops(self, op: str) -> None:
         b = _roundtrip_ast(f"x {op} y")
         assert isinstance(b.body[0], ast.AugAssign)
 
@@ -258,15 +262,15 @@ class TestChainedComparison:
     and op-kind literals: ``[a, Literal(Lt), b, Literal(Lt), c]``.
     """
 
-    def test_preserves_type(self):
+    def test_preserves_type(self) -> None:
         b = _roundtrip_ast("x = a < b < c")
         assert isinstance(b.body[0].value, ast.Compare)
 
-    def test_triple(self):
+    def test_triple(self) -> None:
         b = _roundtrip_ast("x = a < b <= c < d")
         assert len(b.body[0].value.ops) == 3
 
-    def test_rendered(self):
+    def test_rendered(self) -> None:
         assert "a < b < c" in _roundtrip_src("x = a < b < c")
 
 
@@ -279,7 +283,7 @@ class TestUAdd:
     Fix: added ``kUAdd`` to the ``OperationASTObj::Kind`` enum.
     """
 
-    def test_preserved(self):
+    def test_preserved(self) -> None:
         b = _roundtrip_ast("x = +y")
         assert isinstance(b.body[0].value, ast.UnaryOp)
 
@@ -294,10 +298,10 @@ class TestMultiTargetAssign:
     The printer detects this pattern and joins targets with `` = ``.
     """
 
-    def test_rendered(self):
+    def test_rendered(self) -> None:
         assert "a = b = 1" in _roundtrip_src("a = b = 1")
 
-    def test_ast_structure(self):
+    def test_ast_structure(self) -> None:
         b = _roundtrip_ast("a = b = 1")
         assert len(b.body) == 1
         assert len(b.body[0].targets) == 2
@@ -313,7 +317,7 @@ class TestListUnpackTarget:
     to preserve ``ast.List`` vs ``ast.Tuple`` distinction.
     """
 
-    def test_list_target_preserved(self):
+    def test_list_target_preserved(self) -> None:
         b = _roundtrip_ast("[y] = items")
         assert isinstance(b.body[0].targets[0], ast.List)
 
@@ -327,14 +331,14 @@ class TestSingleElementTupleUnpack:
     Fix: add trailing comma when Tuple LHS has exactly 1 element.
     """
 
-    def test_trailing_comma(self):
+    def test_trailing_comma(self) -> None:
         b = _roundtrip_ast("a, = expr")
         assert isinstance(b.body[0].targets[0], ast.Tuple)
         assert len(b.body[0].targets[0].elts) == 1
 
 
 class TestPositionalOnlyArgs:
-    """Bug: ``def f(a, b, /):`` became ``def f(a, b):`` (``/`` lost).
+    r"""Bug: ``def f(a, b, /):`` became ``def f(a, b):`` (``/`` lost).
 
     The converter merged ``posonlyargs`` into ``args`` without inserting
     the ``/`` separator.
@@ -342,7 +346,7 @@ class TestPositionalOnlyArgs:
     Fix: insert ``Assign(lhs=Id(\"/\"))`` after the last positional-only arg.
     """
 
-    def test_posonly_separator(self):
+    def test_posonly_separator(self) -> None:
         b = _roundtrip_ast("def f(a, b, /):\n    pass")
         assert len(b.body[0].args.posonlyargs) == 2
         assert len(b.body[0].args.args) == 0
@@ -358,17 +362,17 @@ class TestLambdaVarargs:
     ``List<ExprAST>`` and used ``_convert_arguments`` for lambdas.
     """
 
-    def test_varargs(self):
+    def test_varargs(self) -> None:
         b = _roundtrip_ast("f(lambda *x: x)")
         assert b.body[0].value.args[0].args.vararg is not None
 
-    def test_kwargs(self):
+    def test_kwargs(self) -> None:
         b = _roundtrip_ast("f(lambda **kw: kw)")
         assert b.body[0].value.args[0].args.kwarg is not None
 
 
 class TestLambdaDefaults:
-    """Bug: ``lambda x=1: x`` became ``lambda x: x`` (default lost).
+    r"""Bug: ``lambda x=1: x`` became ``lambda x: x`` (default lost).
 
     The lambda converter only used ``a.lhs`` from ``_convert_arguments``,
     discarding ``a.rhs`` (the default value).
@@ -377,7 +381,7 @@ class TestLambdaDefaults:
     ``LambdaAST`` args are ``List<ExprAST>`` (can't hold ``Assign`` stmts).
     """
 
-    def test_default_preserved(self):
+    def test_default_preserved(self) -> None:
         b = _roundtrip_ast("f(lambda x=1: x)")
         assert len(b.body[0].value.args[0].args.defaults) == 1
 
@@ -391,7 +395,7 @@ class TestClassKeywords:
     Fix: added ``kwargs_keys``/``kwargs_values`` fields to ``ClassAST``.
     """
 
-    def test_metaclass(self):
+    def test_metaclass(self) -> None:
         b = _roundtrip_ast("class Foo(metaclass=Bar):\n    pass")
         assert len(b.body[0].keywords) == 1
         assert b.body[0].keywords[0].arg == "metaclass"
@@ -407,25 +411,25 @@ class TestMultiItemWith:
     in a single ``With`` node.
     """
 
-    def test_multi_item(self):
+    def test_multi_item(self) -> None:
         b = _roundtrip_ast("with a() as x, b() as y:\n    pass")
         assert len(b.body[0].items) == 2
 
 
 @pytest.mark.skipif(sys.version_info < (3, 12), reason="type params require 3.12+")
 class TestTypeParams:
-    """Bug: ``class Foo[T]:`` became ``class Foo:`` (type params lost).
+    r"""Bug: ``class Foo[T]:`` became ``class Foo:`` (type params lost).
 
     The converter didn't handle PEP 695 ``type_params`` on classes/functions.
 
     Fix: encode type params in the name string: ``Id(\"Foo[T]\")``.
     """
 
-    def test_class_type_param(self):
+    def test_class_type_param(self) -> None:
         b = _roundtrip_ast("class Foo[T]:\n    pass")
         assert len(b.body[0].type_params) == 1
 
-    def test_type_alias(self):
+    def test_type_alias(self) -> None:
         b = _roundtrip_ast("type X = int")
         assert isinstance(b.body[0], ast.TypeAlias)
 
@@ -440,7 +444,7 @@ class TestSingleElementTupleSubscript:
     as ``Index(obj, [Tuple([elem])])``.
     """
 
-    def test_tuple_subscript(self):
+    def test_tuple_subscript(self) -> None:
         b = _roundtrip_ast("x[1,]")
         assert isinstance(b.body[0].value.slice, ast.Tuple)
 
@@ -460,7 +464,7 @@ class TestNestedTernary:
     a ternary. The printer's behavior for direct API is unchanged.
     """
 
-    def test_body_ternary(self):
+    def test_body_ternary(self) -> None:
         b = _roundtrip_ast("x = (4 if n > 4096 else 2) if isinstance(n, int) else 1")
         val = b.body[0].value
         assert isinstance(val.body, ast.IfExp)  # inner ternary is the body
@@ -475,7 +479,7 @@ class TestNestedBoolOp:
     Fix: converter wraps nested same-operator BoolOps in ``Parens``.
     """
 
-    def test_nested_and(self):
+    def test_nested_and(self) -> None:
         b = _roundtrip_ast("x = (a and b) and c")
         val = b.body[0].value
         assert len(val.values) == 2  # not flattened to 3
@@ -490,7 +494,7 @@ class TestNestedCompare:
     Fix: converter wraps Compare left in ``Parens`` when it's a Compare.
     """
 
-    def test_nested_eq(self):
+    def test_nested_eq(self) -> None:
         b = _roundtrip_ast("x = (a == b) == c")
         val = b.body[0].value
         assert len(val.comparators) == 1  # not chained to 2
@@ -505,7 +509,7 @@ class TestComprehensionTernaryIter:
     Fix: converter wraps ternary iters in ``Parens``.
     """
 
-    def test_ternary_iter(self):
+    def test_ternary_iter(self) -> None:
         rendered = _roundtrip_src("y = [x for x in ([4, 8] if c else [4])]")
         ast.parse(rendered)  # must not raise SyntaxError
 
@@ -518,7 +522,7 @@ class TestStarredTernary:
     Fix: converter wraps ternary value of ``Starred`` in ``Parens``.
     """
 
-    def test_starred_ternary(self):
+    def test_starred_ternary(self) -> None:
         rendered = _roundtrip_src("y = [*([x] if c else [])]")
         ast.parse(rendered)
 
@@ -529,7 +533,7 @@ class TestStarredTernary:
 
 
 class TestEllipsis:
-    """Bug: ``Constant(Ellipsis)`` rendered as ``Ellipsis`` (a Name).
+    r"""Bug: ``Constant(Ellipsis)`` rendered as ``Ellipsis`` (a Name).
 
     ``repr(Ellipsis)`` is ``'Ellipsis'``, which re-parses as
     ``Name('Ellipsis')`` instead of ``Constant(Ellipsis)``.
@@ -537,7 +541,7 @@ class TestEllipsis:
     Fix: render as ``Id(\"...\")`` which parses as ``Constant(Ellipsis)``.
     """
 
-    def test_ellipsis(self):
+    def test_ellipsis(self) -> None:
         b = _roundtrip_ast("x: tuple[int, ...]")
         slc = b.body[0].annotation.slice
         assert isinstance(slc.elts[1], ast.Constant)
@@ -553,7 +557,7 @@ class TestLargeInt:
     Fix: fall back to ``Id(repr(value))`` for out-of-range integers.
     """
 
-    def test_uint64_max(self):
+    def test_uint64_max(self) -> None:
         b = _roundtrip_ast("x = 18446744073709551615")
         assert b.body[0].value.value == 18446744073709551615
 
@@ -564,11 +568,11 @@ class TestFloatInf:
     Fix: render as ``1e999`` which Python parses as ``Constant(value=inf)``.
     """
 
-    def test_inf(self):
+    def test_inf(self) -> None:
         b = _roundtrip_ast("x = 1e999")
         assert b.body[0].value.value == float("inf")
 
-    def test_neg_inf(self):
+    def test_neg_inf(self) -> None:
         b = _roundtrip_ast("x = -1e999")
         val = b.body[0].value
         assert isinstance(val, ast.UnaryOp)
@@ -579,50 +583,50 @@ class TestFloatInf:
 # ===================================================================
 
 
-def test_dict_unpacking():
+def test_dict_unpacking() -> None:
     rendered = _roundtrip_src("z = {**d}")
     assert "**d:" not in rendered
     ast.parse(rendered)
 
 
-def test_bare_star_separator():
+def test_bare_star_separator() -> None:
     b = _roundtrip_ast("def f(a, *, key=1):\n    pass")
     assert b.body[0].args.vararg is None
     assert len(b.body[0].args.kwonlyargs) == 1
 
 
-def test_tuple_default_in_args():
+def test_tuple_default_in_args() -> None:
     rendered = _roundtrip_src("def f(x=(0, 0)):\n    pass")
     ast.parse(rendered)
     assert "(0, 0)" in rendered
 
 
-def test_async_def():
+def test_async_def() -> None:
     b = _roundtrip_ast("async def f():\n    pass")
     assert isinstance(b.body[0], ast.AsyncFunctionDef)
 
 
-def test_class_bases():
+def test_class_bases() -> None:
     b = _roundtrip_ast("class C(A, B):\n    pass")
     assert [base.id for base in b.body[0].bases] == ["A", "B"]
 
 
-def test_while_else():
+def test_while_else() -> None:
     b = _roundtrip_ast("while c:\n    a = 1\nelse:\n    b = 2")
     assert len(b.body[0].orelse) > 0
 
 
-def test_for_else():
+def test_for_else() -> None:
     b = _roundtrip_ast("for x in items:\n    a = 1\nelse:\n    b = 2")
     assert len(b.body[0].orelse) > 0
 
 
-def test_try_except():
+def test_try_except() -> None:
     b = _roundtrip_ast("try:\n    a = 1\nexcept ValueError:\n    b = 2")
     assert isinstance(b.body[0], ast.Try)
 
 
 @pytest.mark.skipif(sys.version_info < (3, 10), reason="match requires 3.10+")
-def test_match():
+def test_match() -> None:
     rendered = _roundtrip_src("match x:\n    case 1:\n        a = 1\n    case _:\n        b = 2")
     assert "match x:" in rendered

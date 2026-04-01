@@ -950,8 +950,7 @@ inline void PrintEscapeString(std::ostream& oss, const String& value) {
     } else if ((c & 0xF8) == 0xF0 && i + 3 < length) {
       unsigned char e = static_cast<unsigned char>(data[i + 2]);
       unsigned char f = static_cast<unsigned char>(data[i + 3]);
-      int32_t codepoint =
-          ((c & 0x07) << 18) | ((d & 0x3F) << 12) | ((e & 0x3F) << 6) | (f & 0x3F);
+      int32_t codepoint = ((c & 0x07) << 18) | ((d & 0x3F) << 12) | ((e & 0x3F) << 6) | (f & 0x3F);
       oss << "\\U" << std::hex << std::setw(8) << std::setfill('0') << codepoint;
       i += 4;
     } else {
