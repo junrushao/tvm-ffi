@@ -83,10 +83,18 @@ def compare(
         yield (path or "<root>", f"{a!r} != {b!r}")
 
 
-def main() -> int:
+def _collect_warnings(source: str, filename: str = "<unknown>") -> set[str]:
+    """Parse *source* and return the set of SyntaxWarning messages produced."""
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always", SyntaxWarning)
+        ast.parse(source, filename=filename)
+    return {str(w.message) for w in caught}
+
+
+def main() -> int:  # noqa: PLR0915
     """CLI entry point."""
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("directory", type=Path, help="directory to walk for .py files")
+    ap.add_argument("path", type=Path, help="file or directory to check")
     ap.add_argument(
         "method",
         help="dotted callable: ast.AST -> str (e.g. tvm_ffi.text._roundtrip)",
@@ -98,16 +106,20 @@ def main() -> int:
     )
     args = ap.parse_args()
 
-    if not args.directory.is_dir():
-        print(f"error: {args.directory} is not a directory", file=sys.stderr)
+    target: Path = args.path
+    if target.is_file():
+        files = [target]
+    elif target.is_dir():
+        files = sorted(target.rglob("*.py"))
+    else:
+        print(f"error: {target} is not a file or directory", file=sys.stderr)
         return 1
 
     fn = import_callable(args.method)
     skip = frozenset() if args.include_positions else _POSITION_FIELDS
 
-    files = sorted(args.directory.rglob("*.py"))
     if not files:
-        print(f"no .py files found under {args.directory}")
+        print(f"no .py files found under {target}")
         return 0
 
     n_ok = n_err = n_mismatch = n_skip = 0
@@ -124,14 +136,20 @@ def main() -> int:
             print(f"SKIP {path}: {exc}")
             continue
 
+        # Collect warnings the *source* itself produces (e.g. Python 3.14's
+        # "return in finally" warning).  These are not roundtrip bugs.
+        source_warnings = _collect_warnings(source, str(path))
+
         # Step 2: roundtrip through the transform and re-parse
         try:
             b_str: str = fn(a)
             with warnings.catch_warnings(record=True) as caught:
                 warnings.simplefilter("always", SyntaxWarning)
                 b_prime = ast.parse(b_str)
-            if caught:
-                msgs = "; ".join(str(w.message) for w in caught)
+            # Only flag NEW warnings not already present in the source
+            new_warnings = {str(w.message) for w in caught} - source_warnings
+            if new_warnings:
+                msgs = "; ".join(sorted(new_warnings))
                 raise SyntaxWarning(msgs)
         except Exception as exc:
             n_err += 1

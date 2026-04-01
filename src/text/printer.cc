@@ -1144,21 +1144,23 @@ inline void PythonDocPrinter::PrintTypedDoc(const WalrusExprAST& doc) {
 }
 
 inline void PythonDocPrinter::PrintTypedDoc(const FStrAST& doc) {
-  output_ << "f\"";
+  // Use single-quote delimiter so inner double-quoted strings work on Python 3.9–3.11
+  // (PEP 701 nested quotes only available in 3.12+).
+  output_ << "f'";
   for (const ExprAST& part : doc->values) {
     if (const auto* lit = part.get()->IsInstance<LiteralASTObj>()
                               ? static_cast<const LiteralASTObj*>(part.get())
                               : nullptr) {
       if (lit->value.type_index() == TypeIndex::kTVMFFIStr ||
           lit->value.type_index() == TypeIndex::kTVMFFISmallStr) {
-        // Escape backslashes and double quotes inside f-string text
+        // Escape backslashes and single quotes inside f-string text
         String s = lit->value.cast<String>();
         for (size_t i = 0; i < s.size(); ++i) {
           char c = s.data()[i];
           if (c == '\\') {
             output_ << "\\\\";
-          } else if (c == '"') {
-            output_ << "\\\"";
+          } else if (c == '\'') {
+            output_ << "\\'";
           } else if (c == '\n') {
             output_ << "\\n";
           } else if (c == '\r') {
@@ -1189,7 +1191,7 @@ inline void PythonDocPrinter::PrintTypedDoc(const FStrAST& doc) {
       PrintDoc(part);
     }
   }
-  output_ << "\"";
+  output_ << "'";
 }
 
 inline void PythonDocPrinter::PrintTypedDoc(const FStrValueAST& doc) {
