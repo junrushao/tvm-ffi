@@ -891,6 +891,7 @@ def test_print_class_doc(
 ) -> None:
     doc = tvmt.ast.Class(
         tvmt.ast.Id("TestClass"),
+        [],  # bases
         decorators,  # ty: ignore[invalid-argument-type]
         body,  # ty: ignore[invalid-argument-type]
     )
@@ -922,24 +923,15 @@ def test_print_comment_doc(comment: str, expected: str) -> None:
     [
         (
             "",
-            "",
+            '""""""',
         ),
         (
             "test comment 1",
-            '''
-"""
-test comment 1
-"""
-            ''',
+            '"""test comment 1"""',
         ),
         (
             "test comment 1\ntest comment 2",
-            '''
-"""
-test comment 1
-test comment 2
-"""
-            ''',
+            '"""test comment 1\ntest comment 2"""',
         ),
     ],
     ids=itertools.count(),
@@ -1072,7 +1064,7 @@ def f(x: int, y: int = 1) -> None:
 ''',
         ),
         (
-            tvmt.ast.Class(tvmt.ast.Id("TestClass"), [tvmt.ast.Id("wrap")], []),
+            tvmt.ast.Class(tvmt.ast.Id("TestClass"), [], [tvmt.ast.Id("wrap")], []),
             "comment",
             '''
 @wrap
@@ -1084,7 +1076,7 @@ class TestClass:
 ''',
         ),
         (
-            tvmt.ast.Class(tvmt.ast.Id("TestClass"), [tvmt.ast.Id("wrap")], []),
+            tvmt.ast.Class(tvmt.ast.Id("TestClass"), [], [tvmt.ast.Id("wrap")], []),
             "comment line 1\n\ncomment line 3",
             '''
 @wrap

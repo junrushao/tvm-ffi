@@ -608,3 +608,27 @@ class ToyFunc(ToyNode):
                 None,
                 [*stmts, ret_stmt],
             )
+
+
+def ast_roundtrip(node: Any) -> str:
+    """Convert a Python AST to TVM-FFI AST and render back to source.
+
+    This function is used by the ``ast-testsuite`` roundtrip checker to
+    validate that ``ast_translate`` + ``to_python()`` produce
+    Python source whose AST matches the original.
+
+    Parameters
+    ----------
+    node
+        A Python ``ast.AST`` node (typically an ``ast.Module``).
+
+    Returns
+    -------
+    source
+        The rendered Python source code.
+
+    """
+    import tvm_ffi.text as text
+
+    tvm_node = text.ast_translate(node)
+    return tvm_node.to_python()
