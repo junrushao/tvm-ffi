@@ -230,11 +230,16 @@ class _Converter:
     def _convert_subscript(self, node: ast.Subscript) -> tast.Expr:
         obj = self.convert_expr(node.value)
         slc = node.slice
-        if isinstance(slc, ast.Tuple) and len(slc.elts) != 1:
-            # Multi-element tuple: x[a, b] → Index(obj, [a, b])
+        has_starred = isinstance(slc, ast.Tuple) and any(
+            isinstance(e, ast.Starred) for e in slc.elts
+        )
+        if isinstance(slc, ast.Tuple) and len(slc.elts) != 1 and not has_starred:
+            # Multi-element tuple without Starred: x[a, b] → Index(obj, [a, b])
             indices = [self.convert_expr(e) for e in slc.elts]
         else:
-            # Single value or single-element tuple: keep as one index.
+            # Single value, single-element tuple, or tuple with Starred: keep as one index.
+            # For Starred in subscript, preserving the Tuple wrapper renders as
+            # x[(*a, b)] which is valid on Python 3.9+, unlike x[*a, b] (3.11+).
             # For x[1,] (single-element tuple), this becomes Index(obj, [Tuple([1])])
             # which renders as x[(1,)] — semantically equivalent, roundtrips correctly.
             indices = [self.convert_expr(slc)]

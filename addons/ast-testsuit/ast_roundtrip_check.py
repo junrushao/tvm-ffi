@@ -20,6 +20,9 @@
 # requires-python = ">=3.9"
 # dependencies = ["apache-tvm-ffi"]
 #
+# [tool.uv]
+# reinstall-package = ["apache-tvm-ffi"]
+#
 # [tool.uv.sources]
 # apache-tvm-ffi = { path = "../../" }
 # ///
