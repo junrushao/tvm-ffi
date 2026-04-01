@@ -201,7 +201,6 @@ inline const char* OpKindToString(OperationASTObj::Kind kind) {
     case OperationASTObj::Kind::kNot:
       return "not ";
     case OperationASTObj::Kind::kUAdd:
-      return "+";
     case OperationASTObj::Kind::kAdd:
       return "+";
     case OperationASTObj::Kind::kSub:

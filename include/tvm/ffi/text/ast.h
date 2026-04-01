@@ -77,20 +77,15 @@ struct NodeASTObj : public Object {
    */
   List<AccessPath> source_paths;
   /*! \brief Source line number (1-based), or -1 if unavailable. */
-  int64_t lineno;
+  int64_t lineno{-1};
   /*! \brief Source column offset (0-based), or -1 if unavailable. */
-  int64_t col_offset;
+  int64_t col_offset{-1};
   /*! \brief Source end line number (1-based), or -1 if unavailable. */
-  int64_t end_lineno;
+  int64_t end_lineno{-1};
   /*! \brief Source end column offset (0-based), or -1 if unavailable. */
-  int64_t end_col_offset;
+  int64_t end_col_offset{-1};
   /// \cond Doxygen_Suppress
-  explicit NodeASTObj(List<AccessPath> source_paths)
-      : source_paths(std::move(source_paths)),
-        lineno(-1),
-        col_offset(-1),
-        end_lineno(-1),
-        end_col_offset(-1) {}
+  explicit NodeASTObj(List<AccessPath> source_paths) : source_paths(std::move(source_paths)) {}
   /// \endcond
   /*!
    * \brief Render this AST node to Python-style source code.
@@ -837,7 +832,7 @@ struct OperationAST : public ExprAST {
  * \sa LambdaAST
  */
 struct LambdaASTObj : public ExprASTObj {
-  /*! \brief The argument list (IdAST or StarredExpr for *args/**kwargs). */
+  /*! \brief The argument list (IdAST or StarredExpr for varargs). */
   List<ExprAST> args;
   /*! \brief The lambda body expression. */
   ExprAST body;
@@ -1525,7 +1520,7 @@ struct ForASTObj : public StmtASTObj {
   /*! \brief The else-branch statements (executed when loop finishes normally). */
   List<StmtAST> orelse;
   /// \cond Doxygen_Suppress
-  explicit ForASTObj(ExprAST lhs, ExprAST rhs, List<StmtAST> body, bool is_async = 0,
+  explicit ForASTObj(ExprAST lhs, ExprAST rhs, List<StmtAST> body, bool is_async = false,
                      List<StmtAST> orelse = {})
       : ForASTObj(List<AccessPath>{}, Optional<String>{}, std::move(lhs), std::move(rhs),
                   std::move(body), is_async, std::move(orelse)) {}
@@ -1555,7 +1550,7 @@ struct ForASTObj : public StmtASTObj {
  */
 struct ForAST : public StmtAST {
   /// \cond Doxygen_Suppress
-  explicit ForAST(ExprAST lhs, ExprAST rhs, List<StmtAST> body, bool is_async = 0,
+  explicit ForAST(ExprAST lhs, ExprAST rhs, List<StmtAST> body, bool is_async = false,
                   List<StmtAST> orelse = {})
       : ForAST(List<AccessPath>{}, Optional<String>{}, std::move(lhs), std::move(rhs),
                std::move(body), is_async, std::move(orelse)) {}
@@ -1610,7 +1605,7 @@ struct WithASTObj : public StmtASTObj {
   /*! \brief Whether this is an `async with` statement. */
   bool is_async;
   /// \cond Doxygen_Suppress
-  explicit WithASTObj(Optional<ExprAST> lhs, ExprAST rhs, List<StmtAST> body, bool is_async = 0)
+  explicit WithASTObj(Optional<ExprAST> lhs, ExprAST rhs, List<StmtAST> body, bool is_async = false)
       : WithASTObj(List<AccessPath>{}, Optional<String>{}, std::move(lhs), std::move(rhs),
                    std::move(body), is_async) {}
   explicit WithASTObj(List<AccessPath> source_paths, Optional<String> comment,
@@ -1638,7 +1633,7 @@ struct WithASTObj : public StmtASTObj {
  */
 struct WithAST : public StmtAST {
   /// \cond Doxygen_Suppress
-  explicit WithAST(Optional<ExprAST> lhs, ExprAST rhs, List<StmtAST> body, bool is_async = 0)
+  explicit WithAST(Optional<ExprAST> lhs, ExprAST rhs, List<StmtAST> body, bool is_async = false)
       : WithAST(List<AccessPath>{}, Optional<String>{}, std::move(lhs), std::move(rhs),
                 std::move(body), is_async) {}
   explicit WithAST(List<AccessPath> source_paths, Optional<String> comment, Optional<ExprAST> lhs,
@@ -1850,7 +1845,7 @@ struct FunctionASTObj : public StmtASTObj {
   bool is_async;
   /// \cond Doxygen_Suppress
   explicit FunctionASTObj(IdAST name, List<AssignAST> args, List<ExprAST> decorators,
-                          Optional<ExprAST> return_type, List<StmtAST> body, bool is_async = 0)
+                          Optional<ExprAST> return_type, List<StmtAST> body, bool is_async = false)
       : FunctionASTObj(List<AccessPath>{}, Optional<String>{}, std::move(name), std::move(args),
                        std::move(decorators), std::move(return_type), std::move(body), is_async) {}
   explicit FunctionASTObj(List<AccessPath> source_paths, Optional<String> comment, IdAST name,
@@ -1891,7 +1886,7 @@ struct FunctionASTObj : public StmtASTObj {
 struct FunctionAST : public StmtAST {
   /// \cond Doxygen_Suppress
   explicit FunctionAST(IdAST name, List<AssignAST> args, List<ExprAST> decorators,
-                       Optional<ExprAST> return_type, List<StmtAST> body, bool is_async = 0)
+                       Optional<ExprAST> return_type, List<StmtAST> body, bool is_async = false)
       : FunctionAST(List<AccessPath>{}, Optional<String>{}, std::move(name), std::move(args),
                     std::move(decorators), std::move(return_type), std::move(body), is_async) {}
   explicit FunctionAST(List<AccessPath> source_paths, Optional<String> comment, IdAST name,
