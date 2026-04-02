@@ -17,18 +17,18 @@
  * under the License.
  */
 /*\!
- * \file tvm/ffi/text/printer.h
+ * \file tvm/ffi/ir/text/printer.h
  * \brief IRPrinter and rendering functions for text format AST.
  *
  * Provides the IRPrinter (which converts IR objects into text format AST
  * nodes) and the ToPython/DocToPythonScript functions that render AST to
  * Python-style source strings. For the AST node definitions themselves,
- * see tvm/ffi/text/ast.h.
+ * see tvm/ffi/ir/text/ast.h.
  */
-#ifndef TVM_FFI_TEXT_PRINTER_H_
-#define TVM_FFI_TEXT_PRINTER_H_
+#ifndef TVM_FFI_IR_TEXT_PRINTER_H_
+#define TVM_FFI_IR_TEXT_PRINTER_H_
 
-#include <tvm/ffi/text/ast.h>
+#include <tvm/ffi/ir/text/ast.h>
 
 #include <algorithm>
 #include <iomanip>
@@ -37,6 +37,7 @@
 
 namespace tvm {
 namespace ffi {
+namespace ir {
 namespace text {
 
 /************** PrinterConfig **************/
@@ -136,7 +137,7 @@ struct PrinterConfigObj : public Object {
         path_to_underline(std::move(path_to_underline)) {}
   /// \endcond
   /// \cond Doxygen_Suppress
-  TVM_FFI_DECLARE_OBJECT_INFO_FINAL("ffi.text.PrinterConfig", PrinterConfigObj, Object);
+  TVM_FFI_DECLARE_OBJECT_INFO_FINAL("ffi.ir.text.PrinterConfig", PrinterConfigObj, Object);
   /// \endcond
 };
 
@@ -217,7 +218,7 @@ struct DefaultFrameObj : public Object {
   explicit DefaultFrameObj(List<StmtAST> stmts) : stmts(std::move(stmts)) {}
   /// \endcond
   /// \cond Doxygen_Suppress
-  TVM_FFI_DECLARE_OBJECT_INFO_FINAL("ffi.text.DefaultFrame", DefaultFrameObj, Object);
+  TVM_FFI_DECLARE_OBJECT_INFO_FINAL("ffi.ir.text.DefaultFrame", DefaultFrameObj, Object);
   /// \endcond
 };
 
@@ -301,7 +302,7 @@ struct VarInfoObj : public Object {
       : name(std::move(name)), creator(std::move(creator)) {}
   /// \endcond
   /// \cond Doxygen_Suppress
-  TVM_FFI_DECLARE_OBJECT_INFO_FINAL("ffi.text.VarInfo", VarInfoObj, Object);
+  TVM_FFI_DECLARE_OBJECT_INFO_FINAL("ffi.ir.text.VarInfo", VarInfoObj, Object);
   /// \endcond
 };
 
@@ -337,7 +338,7 @@ struct VarInfo : public ObjectRef {
  * \brief Data object for the IR-to-document-AST printer.
  *
  * IRPrinterObj converts IR objects into the text format AST by dispatching
- * through __ir_print__ methods registered on each IR type. It maintains:
+ * through __ffi_text_print__ methods registered on each IR type. It maintains:
  * - A variable table (obj2info / defined_names) for name deduplication.
  * - A frame stack for scoped statement collection.
  *
@@ -493,11 +494,11 @@ struct IRPrinterObj : public Object {
   Optional<ExprAST> VarGet(const ObjectRef& obj);
   /*!
    * \brief Convert a source value to a text format AST node using registered
-   *        __ir_print__ dispatch.
+   *        __ffi_text_print__ dispatch.
    *
    * For primitive types (None, bool, int, float, string), returns the
    * corresponding LiteralAST directly. For Object types, dispatches to
-   * the __ir_print__ method registered for that type, which should return
+   * the __ffi_text_print__ method registered for that type, which should return
    * a NodeAST.
    *
    * \param source The IR value to print (may be a primitive or an Object).
@@ -508,7 +509,7 @@ struct IRPrinterObj : public Object {
    * IRPrinter printer(PrinterConfig());
    * DefaultFrame frame;
    * printer->FramePush(frame);
-   * // Print an IR object; dispatches to its __ir_print__ method
+   * // Print an IR object; dispatches to its __ffi_text_print__ method
    * Any doc = printer->operator()(Any(some_ir_obj), AccessPath::Root());
    * // Print a primitive value; returns a LiteralAST directly
    * Any lit = printer->operator()(Any(42), AccessPath::Root().Attr("value"));
@@ -594,7 +595,7 @@ struct IRPrinterObj : public Object {
   void FramePop();
 
   /// \cond Doxygen_Suppress
-  TVM_FFI_DECLARE_OBJECT_INFO_FINAL("ffi.text.IRPrinter", IRPrinterObj, Object);
+  TVM_FFI_DECLARE_OBJECT_INFO_FINAL("ffi.ir.text.IRPrinter", IRPrinterObj, Object);
   /// \endcond
 
  private:
@@ -632,16 +633,16 @@ struct IRPrinter : public ObjectRef {
 /************** Free functions **************/
 
 /*!
- * \brief Dispatch __ir_print__ for the given IR object.
+ * \brief Dispatch __ffi_text_print__ for the given IR object.
  *
- * Looks up the `__ir_print__` method registered for the type of \p obj
+ * Looks up the `__ffi_text_print__` method registered for the type of \p obj
  * and invokes it, passing the printer and access path. This is the
  * low-level dispatch mechanism used internally by IRPrinterObj::operator().
  *
  * \param obj The IR object to print (as an AnyView).
  * \param printer The IRPrinter performing the printing (as an AnyView).
  * \param path The access path for \p obj within the IR tree (as an AnyView).
- * \return A NodeAST produced by the object's __ir_print__ method.
+ * \return A NodeAST produced by the object's __ffi_text_print__ method.
  *
  * \code{.cpp}
  * IRPrinter printer(PrinterConfig());
@@ -824,7 +825,8 @@ inline void IRPrinterObj::FramePop() {
 }
 
 }  // namespace text
+}  // namespace ir
 }  // namespace ffi
 }  // namespace tvm
 
-#endif  // TVM_FFI_TEXT_PRINTER_H_
+#endif  // TVM_FFI_IR_TEXT_PRINTER_H_

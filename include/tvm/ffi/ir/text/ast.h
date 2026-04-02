@@ -17,14 +17,14 @@
  * under the License.
  */
 /*\!
- * \file tvm/ffi/text/ast.h
+ * \file tvm/ffi/ir/text/ast.h
  * \brief Text format AST node types for Python-style pretty-printing.
  *
  * Defines the expression and statement node hierarchy used by the text
  * printer. Nodes can be rendered to Python source via DocToPythonScript.
  */
-#ifndef TVM_FFI_TEXT_AST_H_
-#define TVM_FFI_TEXT_AST_H_
+#ifndef TVM_FFI_IR_TEXT_AST_H_
+#define TVM_FFI_IR_TEXT_AST_H_
 
 #include <tvm/ffi/any.h>
 #include <tvm/ffi/container/dict.h>
@@ -38,11 +38,12 @@
 
 namespace tvm {
 namespace ffi {
+namespace ir {
 namespace text {
 
 using AccessPath = ::tvm::ffi::reflection::AccessPath;
 
-// Forward declaration — full definition is in tvm/ffi/text/printer.h.
+// Forward declaration — full definition is in tvm/ffi/ir/text/printer.h.
 struct PrinterConfigObj;
 struct PrinterConfig;
 
@@ -105,7 +106,7 @@ struct NodeASTObj : public Object {
    */
   String ToPython(const PrinterConfig& cfg) const;
   /// \cond Doxygen_Suppress
-  TVM_FFI_DECLARE_OBJECT_INFO("ffi.text.ast.Node", NodeASTObj, Object);
+  TVM_FFI_DECLARE_OBJECT_INFO("ffi.ir.text.ast.Node", NodeASTObj, Object);
   /// \endcond
 };
 
@@ -159,7 +160,7 @@ struct ExprASTObj : public NodeASTObj {
   explicit ExprASTObj(List<AccessPath> source_paths) : NodeASTObj(std::move(source_paths)) {}
   /// \endcond
   /// \cond Doxygen_Suppress
-  TVM_FFI_DECLARE_OBJECT_INFO("ffi.text.ast.Expr", ExprASTObj, NodeASTObj);
+  TVM_FFI_DECLARE_OBJECT_INFO("ffi.ir.text.ast.Expr", ExprASTObj, NodeASTObj);
   /// \endcond
 };
 
@@ -237,7 +238,7 @@ struct StmtASTObj : public NodeASTObj {
       : NodeASTObj(std::move(source_paths)), comment(std::move(comment)) {}
   /// \endcond
   /// \cond Doxygen_Suppress
-  TVM_FFI_DECLARE_OBJECT_INFO("ffi.text.ast.Stmt", StmtASTObj, NodeASTObj);
+  TVM_FFI_DECLARE_OBJECT_INFO("ffi.ir.text.ast.Stmt", StmtASTObj, NodeASTObj);
   /// \endcond
 };
 
@@ -277,7 +278,7 @@ struct StmtBlockASTObj : public StmtASTObj {
       : StmtASTObj(std::move(source_paths), std::move(comment)), stmts(std::move(stmts)) {}
   /// \endcond
   /// \cond Doxygen_Suppress
-  TVM_FFI_DECLARE_OBJECT_INFO_FINAL("ffi.text.ast.StmtBlock", StmtBlockASTObj, StmtASTObj);
+  TVM_FFI_DECLARE_OBJECT_INFO_FINAL("ffi.ir.text.ast.StmtBlock", StmtBlockASTObj, StmtASTObj);
   /// \endcond
 };
 
@@ -325,7 +326,7 @@ struct LiteralASTObj : public ExprASTObj {
       : ExprASTObj(std::move(source_paths)), value(std::move(value)) {}
   /// \endcond
   /// \cond Doxygen_Suppress
-  TVM_FFI_DECLARE_OBJECT_INFO_FINAL("ffi.text.ast.Literal", LiteralASTObj, ExprASTObj);
+  TVM_FFI_DECLARE_OBJECT_INFO_FINAL("ffi.ir.text.ast.Literal", LiteralASTObj, ExprASTObj);
   /// \endcond
 };
 
@@ -454,7 +455,7 @@ struct IdASTObj : public ExprASTObj {
       : ExprASTObj(std::move(source_paths)), name(std::move(name)) {}
   /// \endcond
   /// \cond Doxygen_Suppress
-  TVM_FFI_DECLARE_OBJECT_INFO_FINAL("ffi.text.ast.Id", IdASTObj, ExprASTObj);
+  TVM_FFI_DECLARE_OBJECT_INFO_FINAL("ffi.ir.text.ast.Id", IdASTObj, ExprASTObj);
   /// \endcond
 };
 
@@ -513,7 +514,7 @@ struct AttrASTObj : public ExprASTObj {
       : ExprASTObj(std::move(source_paths)), obj(std::move(obj)), name(std::move(name)) {}
   /// \endcond
   /// \cond Doxygen_Suppress
-  TVM_FFI_DECLARE_OBJECT_INFO_FINAL("ffi.text.ast.Attr", AttrASTObj, ExprASTObj);
+  TVM_FFI_DECLARE_OBJECT_INFO_FINAL("ffi.ir.text.ast.Attr", AttrASTObj, ExprASTObj);
   /// \endcond
 };
 
@@ -572,7 +573,7 @@ struct IndexASTObj : public ExprASTObj {
       : ExprASTObj(std::move(source_paths)), obj(std::move(obj)), idx(std::move(idx)) {}
   /// \endcond
   /// \cond Doxygen_Suppress
-  TVM_FFI_DECLARE_OBJECT_INFO_FINAL("ffi.text.ast.Index", IndexASTObj, ExprASTObj);
+  TVM_FFI_DECLARE_OBJECT_INFO_FINAL("ffi.ir.text.ast.Index", IndexASTObj, ExprASTObj);
   /// \endcond
 };
 
@@ -646,7 +647,7 @@ struct CallASTObj : public ExprASTObj {
         kwargs_values(std::move(kwargs_values)) {}
   /// \endcond
   /// \cond Doxygen_Suppress
-  TVM_FFI_DECLARE_OBJECT_INFO_FINAL("ffi.text.ast.Call", CallASTObj, ExprASTObj);
+  TVM_FFI_DECLARE_OBJECT_INFO_FINAL("ffi.ir.text.ast.Call", CallASTObj, ExprASTObj);
   /// \endcond
 };
 
@@ -782,7 +783,7 @@ struct OperationASTObj : public ExprASTObj {
       : ExprASTObj(std::move(source_paths)), op(op), operands(std::move(operands)) {}
   /// \endcond
   /// \cond Doxygen_Suppress
-  TVM_FFI_DECLARE_OBJECT_INFO_FINAL("ffi.text.ast.Operation", OperationASTObj, ExprASTObj);
+  TVM_FFI_DECLARE_OBJECT_INFO_FINAL("ffi.ir.text.ast.Operation", OperationASTObj, ExprASTObj);
   /// \endcond
 };
 
@@ -843,7 +844,7 @@ struct LambdaASTObj : public ExprASTObj {
       : ExprASTObj(std::move(source_paths)), args(std::move(args)), body(std::move(body)) {}
   /// \endcond
   /// \cond Doxygen_Suppress
-  TVM_FFI_DECLARE_OBJECT_INFO_FINAL("ffi.text.ast.Lambda", LambdaASTObj, ExprASTObj);
+  TVM_FFI_DECLARE_OBJECT_INFO_FINAL("ffi.ir.text.ast.Lambda", LambdaASTObj, ExprASTObj);
   /// \endcond
 };
 
@@ -888,7 +889,7 @@ struct TupleASTObj : public ExprASTObj {
       : ExprASTObj(std::move(source_paths)), values(std::move(values)) {}
   /// \endcond
   /// \cond Doxygen_Suppress
-  TVM_FFI_DECLARE_OBJECT_INFO_FINAL("ffi.text.ast.Tuple", TupleASTObj, ExprASTObj);
+  TVM_FFI_DECLARE_OBJECT_INFO_FINAL("ffi.ir.text.ast.Tuple", TupleASTObj, ExprASTObj);
   /// \endcond
 };
 
@@ -930,7 +931,7 @@ struct ListASTObj : public ExprASTObj {
       : ExprASTObj(std::move(source_paths)), values(std::move(values)) {}
   /// \endcond
   /// \cond Doxygen_Suppress
-  TVM_FFI_DECLARE_OBJECT_INFO_FINAL("ffi.text.ast.List", ListASTObj, ExprASTObj);
+  TVM_FFI_DECLARE_OBJECT_INFO_FINAL("ffi.ir.text.ast.List", ListASTObj, ExprASTObj);
   /// \endcond
 };
 
@@ -979,7 +980,7 @@ struct DictASTObj : public ExprASTObj {
       : ExprASTObj(std::move(source_paths)), keys(std::move(keys)), values(std::move(values)) {}
   /// \endcond
   /// \cond Doxygen_Suppress
-  TVM_FFI_DECLARE_OBJECT_INFO_FINAL("ffi.text.ast.Dict", DictASTObj, ExprASTObj);
+  TVM_FFI_DECLARE_OBJECT_INFO_FINAL("ffi.ir.text.ast.Dict", DictASTObj, ExprASTObj);
   /// \endcond
 };
 
@@ -1012,7 +1013,7 @@ struct SetASTObj : public ExprASTObj {
       : ExprASTObj(std::move(source_paths)), values(std::move(values)) {}
   /// \endcond
   /// \cond Doxygen_Suppress
-  TVM_FFI_DECLARE_OBJECT_INFO_FINAL("ffi.text.ast.Set", SetASTObj, ExprASTObj);
+  TVM_FFI_DECLARE_OBJECT_INFO_FINAL("ffi.ir.text.ast.Set", SetASTObj, ExprASTObj);
   /// \endcond
 };
 
@@ -1053,7 +1054,7 @@ struct ComprehensionIterASTObj : public NodeASTObj {
         ifs(std::move(ifs)) {}
   /// \endcond
   /// \cond Doxygen_Suppress
-  TVM_FFI_DECLARE_OBJECT_INFO_FINAL("ffi.text.ast.ComprehensionIter", ComprehensionIterASTObj,
+  TVM_FFI_DECLARE_OBJECT_INFO_FINAL("ffi.ir.text.ast.ComprehensionIter", ComprehensionIterASTObj,
                                     NodeASTObj);
   /// \endcond
 };
@@ -1118,7 +1119,8 @@ struct ComprehensionASTObj : public ExprASTObj {
         iters(std::move(iters)) {}
   /// \endcond
   /// \cond Doxygen_Suppress
-  TVM_FFI_DECLARE_OBJECT_INFO_FINAL("ffi.text.ast.Comprehension", ComprehensionASTObj, ExprASTObj);
+  TVM_FFI_DECLARE_OBJECT_INFO_FINAL("ffi.ir.text.ast.Comprehension", ComprehensionASTObj,
+                                    ExprASTObj);
   /// \endcond
 };
 
@@ -1156,7 +1158,7 @@ struct YieldASTObj : public ExprASTObj {
       : ExprASTObj(std::move(source_paths)), value(std::move(value)) {}
   /// \endcond
   /// \cond Doxygen_Suppress
-  TVM_FFI_DECLARE_OBJECT_INFO_FINAL("ffi.text.ast.Yield", YieldASTObj, ExprASTObj);
+  TVM_FFI_DECLARE_OBJECT_INFO_FINAL("ffi.ir.text.ast.Yield", YieldASTObj, ExprASTObj);
   /// \endcond
 };
 
@@ -1188,7 +1190,7 @@ struct YieldFromASTObj : public ExprASTObj {
       : ExprASTObj(std::move(source_paths)), value(std::move(value)) {}
   /// \endcond
   /// \cond Doxygen_Suppress
-  TVM_FFI_DECLARE_OBJECT_INFO_FINAL("ffi.text.ast.YieldFrom", YieldFromASTObj, ExprASTObj);
+  TVM_FFI_DECLARE_OBJECT_INFO_FINAL("ffi.ir.text.ast.YieldFrom", YieldFromASTObj, ExprASTObj);
   /// \endcond
 };
 
@@ -1244,7 +1246,7 @@ struct SliceASTObj : public ExprASTObj {
         step(std::move(step)) {}
   /// \endcond
   /// \cond Doxygen_Suppress
-  TVM_FFI_DECLARE_OBJECT_INFO_FINAL("ffi.text.ast.Slice", SliceASTObj, ExprASTObj);
+  TVM_FFI_DECLARE_OBJECT_INFO_FINAL("ffi.ir.text.ast.Slice", SliceASTObj, ExprASTObj);
   /// \endcond
 };
 
@@ -1316,7 +1318,7 @@ struct AssignASTObj : public StmtASTObj {
         aug_op(aug_op) {}
   /// \endcond
   /// \cond Doxygen_Suppress
-  TVM_FFI_DECLARE_OBJECT_INFO_FINAL("ffi.text.ast.Assign", AssignASTObj, StmtASTObj);
+  TVM_FFI_DECLARE_OBJECT_INFO_FINAL("ffi.ir.text.ast.Assign", AssignASTObj, StmtASTObj);
   /// \endcond
 };
 
@@ -1394,7 +1396,7 @@ struct IfASTObj : public StmtASTObj {
         else_branch(std::move(else_branch)) {}
   /// \endcond
   /// \cond Doxygen_Suppress
-  TVM_FFI_DECLARE_OBJECT_INFO_FINAL("ffi.text.ast.If", IfASTObj, StmtASTObj);
+  TVM_FFI_DECLARE_OBJECT_INFO_FINAL("ffi.ir.text.ast.If", IfASTObj, StmtASTObj);
   /// \endcond
 };
 
@@ -1465,7 +1467,7 @@ struct WhileASTObj : public StmtASTObj {
         orelse(std::move(orelse)) {}
   /// \endcond
   /// \cond Doxygen_Suppress
-  TVM_FFI_DECLARE_OBJECT_INFO_FINAL("ffi.text.ast.While", WhileASTObj, StmtASTObj);
+  TVM_FFI_DECLARE_OBJECT_INFO_FINAL("ffi.ir.text.ast.While", WhileASTObj, StmtASTObj);
   /// \endcond
 };
 
@@ -1534,7 +1536,7 @@ struct ForASTObj : public StmtASTObj {
         orelse(std::move(orelse)) {}
   /// \endcond
   /// \cond Doxygen_Suppress
-  TVM_FFI_DECLARE_OBJECT_INFO_FINAL("ffi.text.ast.For", ForASTObj, StmtASTObj);
+  TVM_FFI_DECLARE_OBJECT_INFO_FINAL("ffi.ir.text.ast.For", ForASTObj, StmtASTObj);
   /// \endcond
 };
 
@@ -1617,7 +1619,7 @@ struct WithASTObj : public StmtASTObj {
         is_async(is_async) {}
   /// \endcond
   /// \cond Doxygen_Suppress
-  TVM_FFI_DECLARE_OBJECT_INFO_FINAL("ffi.text.ast.With", WithASTObj, StmtASTObj);
+  TVM_FFI_DECLARE_OBJECT_INFO_FINAL("ffi.ir.text.ast.With", WithASTObj, StmtASTObj);
   /// \endcond
 };
 
@@ -1674,7 +1676,7 @@ struct ExprStmtASTObj : public StmtASTObj {
       : StmtASTObj(std::move(source_paths), std::move(comment)), expr(std::move(expr)) {}
   /// \endcond
   /// \cond Doxygen_Suppress
-  TVM_FFI_DECLARE_OBJECT_INFO_FINAL("ffi.text.ast.ExprStmt", ExprStmtASTObj, StmtASTObj);
+  TVM_FFI_DECLARE_OBJECT_INFO_FINAL("ffi.ir.text.ast.ExprStmt", ExprStmtASTObj, StmtASTObj);
   /// \endcond
 };
 
@@ -1729,7 +1731,7 @@ struct AssertASTObj : public StmtASTObj {
         msg(std::move(msg)) {}
   /// \endcond
   /// \cond Doxygen_Suppress
-  TVM_FFI_DECLARE_OBJECT_INFO_FINAL("ffi.text.ast.Assert", AssertASTObj, StmtASTObj);
+  TVM_FFI_DECLARE_OBJECT_INFO_FINAL("ffi.ir.text.ast.Assert", AssertASTObj, StmtASTObj);
   /// \endcond
 };
 
@@ -1780,7 +1782,7 @@ struct ReturnASTObj : public StmtASTObj {
       : StmtASTObj(std::move(source_paths), std::move(comment)), value(std::move(value)) {}
   /// \endcond
   /// \cond Doxygen_Suppress
-  TVM_FFI_DECLARE_OBJECT_INFO_FINAL("ffi.text.ast.Return", ReturnASTObj, StmtASTObj);
+  TVM_FFI_DECLARE_OBJECT_INFO_FINAL("ffi.ir.text.ast.Return", ReturnASTObj, StmtASTObj);
   /// \endcond
 };
 
@@ -1866,7 +1868,7 @@ struct FunctionASTObj : public StmtASTObj {
   }
   /// \endcond
   /// \cond Doxygen_Suppress
-  TVM_FFI_DECLARE_OBJECT_INFO_FINAL("ffi.text.ast.Function", FunctionASTObj, StmtASTObj);
+  TVM_FFI_DECLARE_OBJECT_INFO_FINAL("ffi.ir.text.ast.Function", FunctionASTObj, StmtASTObj);
   /// \endcond
 };
 
@@ -1961,7 +1963,7 @@ struct ClassASTObj : public StmtASTObj {
         kwargs_values(std::move(kwargs_values)) {}
   /// \endcond
   /// \cond Doxygen_Suppress
-  TVM_FFI_DECLARE_OBJECT_INFO_FINAL("ffi.text.ast.Class", ClassASTObj, StmtASTObj);
+  TVM_FFI_DECLARE_OBJECT_INFO_FINAL("ffi.ir.text.ast.Class", ClassASTObj, StmtASTObj);
   /// \endcond
 };
 
@@ -2021,7 +2023,7 @@ struct CommentASTObj : public StmtASTObj {
       : StmtASTObj(std::move(source_paths), std::move(comment)) {}
   /// \endcond
   /// \cond Doxygen_Suppress
-  TVM_FFI_DECLARE_OBJECT_INFO_FINAL("ffi.text.ast.Comment", CommentASTObj, StmtASTObj);
+  TVM_FFI_DECLARE_OBJECT_INFO_FINAL("ffi.ir.text.ast.Comment", CommentASTObj, StmtASTObj);
   /// \endcond
 };
 
@@ -2066,7 +2068,7 @@ struct DocStringASTObj : public StmtASTObj {
       : StmtASTObj(std::move(source_paths), std::move(comment)) {}
   /// \endcond
   /// \cond Doxygen_Suppress
-  TVM_FFI_DECLARE_OBJECT_INFO_FINAL("ffi.text.ast.DocString", DocStringASTObj, StmtASTObj);
+  TVM_FFI_DECLARE_OBJECT_INFO_FINAL("ffi.ir.text.ast.DocString", DocStringASTObj, StmtASTObj);
   /// \endcond
 };
 
@@ -2100,7 +2102,7 @@ struct StarredExprASTObj : public ExprASTObj {
       : ExprASTObj(std::move(source_paths)), value(std::move(value)) {}
   /// \endcond
   /// \cond Doxygen_Suppress
-  TVM_FFI_DECLARE_OBJECT_INFO_FINAL("ffi.text.ast.StarredExpr", StarredExprASTObj, ExprASTObj);
+  TVM_FFI_DECLARE_OBJECT_INFO_FINAL("ffi.ir.text.ast.StarredExpr", StarredExprASTObj, ExprASTObj);
   /// \endcond
 };
 
@@ -2132,7 +2134,7 @@ struct AwaitExprASTObj : public ExprASTObj {
       : ExprASTObj(std::move(source_paths)), value(std::move(value)) {}
   /// \endcond
   /// \cond Doxygen_Suppress
-  TVM_FFI_DECLARE_OBJECT_INFO_FINAL("ffi.text.ast.Await", AwaitExprASTObj, ExprASTObj);
+  TVM_FFI_DECLARE_OBJECT_INFO_FINAL("ffi.ir.text.ast.Await", AwaitExprASTObj, ExprASTObj);
   /// \endcond
 };
 
@@ -2167,7 +2169,7 @@ struct WalrusExprASTObj : public ExprASTObj {
       : ExprASTObj(std::move(source_paths)), target(std::move(target)), value(std::move(value)) {}
   /// \endcond
   /// \cond Doxygen_Suppress
-  TVM_FFI_DECLARE_OBJECT_INFO_FINAL("ffi.text.ast.WalrusExpr", WalrusExprASTObj, ExprASTObj);
+  TVM_FFI_DECLARE_OBJECT_INFO_FINAL("ffi.ir.text.ast.WalrusExpr", WalrusExprASTObj, ExprASTObj);
   /// \endcond
 };
 
@@ -2201,7 +2203,7 @@ struct FStrASTObj : public ExprASTObj {
       : ExprASTObj(std::move(source_paths)), values(std::move(values)) {}
   /// \endcond
   /// \cond Doxygen_Suppress
-  TVM_FFI_DECLARE_OBJECT_INFO_FINAL("ffi.text.ast.FStr", FStrASTObj, ExprASTObj);
+  TVM_FFI_DECLARE_OBJECT_INFO_FINAL("ffi.ir.text.ast.FStr", FStrASTObj, ExprASTObj);
   /// \endcond
 };
 
@@ -2242,7 +2244,7 @@ struct FStrValueASTObj : public ExprASTObj {
         format_spec(std::move(format_spec)) {}
   /// \endcond
   /// \cond Doxygen_Suppress
-  TVM_FFI_DECLARE_OBJECT_INFO_FINAL("ffi.text.ast.FStrValue", FStrValueASTObj, ExprASTObj);
+  TVM_FFI_DECLARE_OBJECT_INFO_FINAL("ffi.ir.text.ast.FStrValue", FStrValueASTObj, ExprASTObj);
   /// \endcond
 };
 
@@ -2287,7 +2289,8 @@ struct ExceptHandlerASTObj : public NodeASTObj {
         body(std::move(body)) {}
   /// \endcond
   /// \cond Doxygen_Suppress
-  TVM_FFI_DECLARE_OBJECT_INFO_FINAL("ffi.text.ast.ExceptHandler", ExceptHandlerASTObj, NodeASTObj);
+  TVM_FFI_DECLARE_OBJECT_INFO_FINAL("ffi.ir.text.ast.ExceptHandler", ExceptHandlerASTObj,
+                                    NodeASTObj);
   /// \endcond
 };
 
@@ -2336,7 +2339,7 @@ struct TryASTObj : public StmtASTObj {
         finalbody(std::move(finalbody)) {}
   /// \endcond
   /// \cond Doxygen_Suppress
-  TVM_FFI_DECLARE_OBJECT_INFO_FINAL("ffi.text.ast.Try", TryASTObj, StmtASTObj);
+  TVM_FFI_DECLARE_OBJECT_INFO_FINAL("ffi.ir.text.ast.Try", TryASTObj, StmtASTObj);
   /// \endcond
 };
 
@@ -2383,7 +2386,7 @@ struct MatchCaseASTObj : public NodeASTObj {
         body(std::move(body)) {}
   /// \endcond
   /// \cond Doxygen_Suppress
-  TVM_FFI_DECLARE_OBJECT_INFO_FINAL("ffi.text.ast.MatchCase", MatchCaseASTObj, NodeASTObj);
+  TVM_FFI_DECLARE_OBJECT_INFO_FINAL("ffi.ir.text.ast.MatchCase", MatchCaseASTObj, NodeASTObj);
   /// \endcond
 };
 
@@ -2424,7 +2427,7 @@ struct MatchASTObj : public StmtASTObj {
         cases(std::move(cases)) {}
   /// \endcond
   /// \cond Doxygen_Suppress
-  TVM_FFI_DECLARE_OBJECT_INFO_FINAL("ffi.text.ast.Match", MatchASTObj, StmtASTObj);
+  TVM_FFI_DECLARE_OBJECT_INFO_FINAL("ffi.ir.text.ast.Match", MatchASTObj, StmtASTObj);
   /// \endcond
 };
 
@@ -2494,7 +2497,8 @@ inline ExprAST ExprCallKw(ExprAST obj, List<ExprAST> args, List<String> kwargs_k
 }
 
 }  // namespace text
+}  // namespace ir
 }  // namespace ffi
 }  // namespace tvm
 
-#endif  // TVM_FFI_TEXT_AST_H_
+#endif  // TVM_FFI_IR_TEXT_AST_H_

@@ -14,14 +14,14 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-"""Tests for IR printer, ported from mlc-python's test_printer_ir_printer.py."""
+"""Tests for tvm_ffi.ir.text.printer, ported from mlc-python's test_printer_ir_printer.py."""
 
 from __future__ import annotations
 
 import re
 
 import pytest
-import tvm_ffi.text as tvmt
+import tvm_ffi.ir.text as tt
 from tvm_ffi.access_path import AccessPath
 from tvm_ffi.testing.testing import ToyAdd as Add
 from tvm_ffi.testing.testing import ToyAssign as Assign
@@ -32,27 +32,27 @@ from tvm_ffi.testing.testing import ToyVar as Var
 
 def test_var_print() -> None:
     a = Var(name="a")
-    assert tvmt.to_python(a) == "a"
+    assert tt.to_python(a) == "a"
 
 
 def test_var_print_name_normalize() -> None:
     a = Var(name="a/0/b")
-    assert tvmt.to_python(a) == "a_0_b"
-    assert tvmt.to_python(a) == "a_0_b"
+    assert tt.to_python(a) == "a_0_b"
+    assert tt.to_python(a) == "a_0_b"
 
 
 def test_add_print() -> None:
     a = Var(name="a")
     b = Var(name="b")
     c = Add(lhs=a, rhs=b)
-    assert tvmt.to_python(c) == "a + b"
+    assert tt.to_python(c) == "a + b"
 
 
 def test_assign_print() -> None:
     a = Var(name="a")
     b = Var(name="b")
     c = Assign(lhs=a, rhs=b)
-    assert tvmt.to_python(c) == "a = b"
+    assert tt.to_python(c) == "a = b"
 
 
 def test_func_print() -> None:
@@ -67,7 +67,7 @@ def test_func_print() -> None:
     ]
     f = Func(name="f", args=[a, b, c], stmts=stmts, ret=e)
     assert (
-        tvmt.to_python(f)
+        tt.to_python(f)
         == """
 def f(a, b, c):
   d = a + b
@@ -78,28 +78,28 @@ def f(a, b, c):
 
 
 def test_print_none() -> None:
-    printer = tvmt.IRPrinter()
+    printer = tt.IRPrinter()
     path = AccessPath.root()
     node = printer(None, path)
     assert node.to_python() == "None"
 
 
 def test_print_int() -> None:
-    printer = tvmt.IRPrinter()
+    printer = tt.IRPrinter()
     path = AccessPath.root()
     node = printer(42, path)
     assert node.to_python() == "42"
 
 
 def test_print_str() -> None:
-    printer = tvmt.IRPrinter()
+    printer = tt.IRPrinter()
     path = AccessPath.root()
     node = printer("hey", path)
     assert node.to_python() == '"hey"'
 
 
 def test_print_bool() -> None:
-    printer = tvmt.IRPrinter()
+    printer = tt.IRPrinter()
     path = AccessPath.root()
     node = printer(True, path)
     assert node.to_python() == "True"
@@ -115,7 +115,7 @@ def test_duplicated_vars() -> None:
         ret=b,
     )
     assert (
-        tvmt.to_python(f)
+        tt.to_python(f)
         == """
 def f(a):
   a_1 = a + a
@@ -126,7 +126,7 @@ def f(a):
         r"^def f\(a\):\n"
         r"  a_0x[0-9A-Fa-f]+ = a \+ a\n"
         r"  return a_0x[0-9A-Fa-f]+$",
-        tvmt.to_python(f, tvmt.PrinterConfig(print_addr_on_dup_var=True)),
+        tt.to_python(f, tt.PrinterConfig(print_addr_on_dup_var=True)),
     )
 
 
@@ -228,8 +228,8 @@ def test_print_underscore(path: AccessPath, expected: str) -> None:
         ],
         ret=c,
     )
-    actual = tvmt.to_python(
+    actual = tt.to_python(
         f,
-        tvmt.PrinterConfig(path_to_underline=[path]),
+        tt.PrinterConfig(path_to_underline=[path]),
     )
     assert actual.strip() == expected.strip()

@@ -14,7 +14,7 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-"""Tests for Python ast -> TVM-FFI AST converter.
+"""Tests for tvm_ffi.ir.text.ast.tast.from_py (Python ast -> TVM-FFI AST converter).
 
 Roundtrip fidelity tests
 ========================
@@ -42,24 +42,24 @@ import textwrap
 import warnings
 
 import pytest
-import tvm_ffi.text as tvmt
+import tvm_ffi.ir.text as tt
+from tvm_ffi.ir.text import ast as tast
 from tvm_ffi.testing.testing import requires_py39, requires_py310, requires_py312
-from tvm_ffi.text.ast_translate import ast_translate
 
-pytestmark = requires_py39  # ast_translate requires Python 3.9+ (ast.Index removed)
+pytestmark = requires_py39  # tast.from_py requires Python 3.9+ (ast.Index removed)
 
 
 def _roundtrip(source: str, *, indent: int = 4) -> str:
     """Parse source, convert to TVM-FFI AST, render back to Python."""
-    node = ast_translate(textwrap.dedent(source))
-    cfg = tvmt.PrinterConfig(indent_spaces=indent)
+    node = tast.from_py(textwrap.dedent(source))
+    cfg = tt.PrinterConfig(indent_spaces=indent)
     return node.to_python(cfg)
 
 
 def _roundtrip_ast(source: str) -> ast.Module:
     """Parse, roundtrip through TVM-FFI AST, re-parse, return the new AST."""
     source = textwrap.dedent(source)
-    rendered = ast_translate(ast.parse(source)).to_python()
+    rendered = tast.from_py(ast.parse(source)).to_python()
     with warnings.catch_warnings():
         warnings.simplefilter("error", SyntaxWarning)
         result = ast.parse(rendered)
@@ -69,7 +69,7 @@ def _roundtrip_ast(source: str) -> ast.Module:
 
 def _roundtrip_src(source: str) -> str:
     """Parse, roundtrip through TVM-FFI AST, return the rendered source."""
-    return ast_translate(textwrap.dedent(source)).to_python()
+    return tast.from_py(textwrap.dedent(source)).to_python()
 
 
 # ---------------------------------------------------------------------------
@@ -146,7 +146,7 @@ EXPR_CASES = [
 @pytest.mark.parametrize("source,expected", EXPR_CASES, ids=itertools.count())
 def test_expr_roundtrip(source: str, expected: str) -> None:
     tree = ast.parse(source, mode="eval")
-    node = ast_translate(tree)
+    node = tast.from_py(tree)
     assert node.to_python() == expected
 
 
@@ -157,14 +157,14 @@ def test_expr_roundtrip(source: str, expected: str) -> None:
 
 def test_chained_comparison() -> None:
     tree = ast.parse("a < b < c", mode="eval")
-    node = ast_translate(tree)
+    node = tast.from_py(tree)
     result = node.to_python()
     assert result == "a < b < c"
 
 
 def test_triple_chained_comparison() -> None:
     tree = ast.parse("a < b <= c < d", mode="eval")
-    node = ast_translate(tree)
+    node = tast.from_py(tree)
     result = node.to_python()
     assert result == "a < b <= c < d"
 
@@ -443,14 +443,14 @@ def test_class_docstring() -> None:
 
 
 def test_from_source_string() -> None:
-    node = ast_translate("x = 1")
-    assert isinstance(node, tvmt.ast.StmtBlock)
+    node = tast.from_py("x = 1")
+    assert isinstance(node, tt.ast.StmtBlock)
 
 
 def test_from_ast_node() -> None:
     tree = ast.parse("x + 1", mode="eval")
-    node = ast_translate(tree)
-    assert isinstance(node, tvmt.ast.Expr)
+    node = tast.from_py(tree)
+    assert isinstance(node, tt.ast.Expr)
 
 
 # ---------------------------------------------------------------------------
@@ -474,50 +474,50 @@ def test_try_except_finally() -> None:
 
 def test_matmul() -> None:
     tree = ast.parse("a @ b", mode="eval")
-    node = ast_translate(tree)
+    node = tast.from_py(tree)
     assert node.to_python() == "a @ b"
 
 
 def test_is_operator() -> None:
     tree = ast.parse("x is None", mode="eval")
-    node = ast_translate(tree)
+    node = tast.from_py(tree)
     assert node.to_python() == "x is None"
 
 
 def test_is_not_operator() -> None:
     tree = ast.parse("x is not None", mode="eval")
-    node = ast_translate(tree)
+    node = tast.from_py(tree)
     assert node.to_python() == "x is not None"
 
 
 def test_in_operator() -> None:
     tree = ast.parse("x in y", mode="eval")
-    node = ast_translate(tree)
+    node = tast.from_py(tree)
     assert node.to_python() == "x in y"
 
 
 def test_not_in_operator() -> None:
     tree = ast.parse("x not in y", mode="eval")
-    node = ast_translate(tree)
+    node = tast.from_py(tree)
     assert node.to_python() == "x not in y"
 
 
 def test_starred_expr() -> None:
     node = ast.Expression(body=ast.Starred(value=ast.Name(id="x"), ctx=ast.Load()))
     ast.fix_missing_locations(node)
-    result = ast_translate(node)
+    result = tast.from_py(node)
     assert result.to_python() == "*x"
 
 
 def test_kwargs_splat() -> None:
     tree = ast.parse("f(**d)", mode="eval")
-    node = ast_translate(tree)
+    node = tast.from_py(tree)
     assert node.to_python() == "f(**d)"
 
 
 def test_fstring() -> None:
     tree = ast.parse('f"hello {x}"', mode="eval")
-    node = ast_translate(tree)
+    node = tast.from_py(tree)
     result = node.to_python()
     assert "hello" in result
     assert "{x}" in result
@@ -525,7 +525,7 @@ def test_fstring() -> None:
 
 def test_walrus_expr() -> None:
     tree = ast.parse("(x := 10)", mode="eval")
-    node = ast_translate(tree)
+    node = tast.from_py(tree)
     result = node.to_python()
     assert "x := 10" in result
 
@@ -583,25 +583,25 @@ def test_function_varargs() -> None:
 
 def test_set_literal() -> None:
     tree = ast.parse("{1, 2, 3}", mode="eval")
-    node = ast_translate(tree)
+    node = tast.from_py(tree)
     assert node.to_python() == "{1, 2, 3}"
 
 
 def test_list_comprehension() -> None:
     tree = ast.parse("[x for x in items]", mode="eval")
-    node = ast_translate(tree)
+    node = tast.from_py(tree)
     assert node.to_python() == "[x for x in items]"
 
 
 def test_set_comprehension() -> None:
     tree = ast.parse("{x for x in items}", mode="eval")
-    node = ast_translate(tree)
+    node = tast.from_py(tree)
     assert node.to_python() == "{x for x in items}"
 
 
 def test_dict_comprehension() -> None:
     tree = ast.parse("{k: v for k, v in items}", mode="eval")
-    node = ast_translate(tree)
+    node = tast.from_py(tree)
     result = node.to_python()
     assert "k: v" in result
     assert "for (k, v) in items" in result
@@ -609,19 +609,19 @@ def test_dict_comprehension() -> None:
 
 def test_generator_expression() -> None:
     tree = ast.parse("(x for x in items)", mode="eval")
-    node = ast_translate(tree)
+    node = tast.from_py(tree)
     assert node.to_python() == "(x for x in items)"
 
 
 def test_comprehension_with_filter() -> None:
     tree = ast.parse("[x for x in items if x > 0]", mode="eval")
-    node = ast_translate(tree)
+    node = tast.from_py(tree)
     assert node.to_python() == "[x for x in items if x > 0]"
 
 
 def test_comprehension_nested() -> None:
     tree = ast.parse("[x + y for x in xs for y in ys]", mode="eval")
-    node = ast_translate(tree)
+    node = tast.from_py(tree)
     result = node.to_python()
     assert "for x in xs" in result
     assert "for y in ys" in result
@@ -661,7 +661,7 @@ def test_yield_from() -> None:
 
 def test_span_info_expr() -> None:
     tree = ast.parse("x + 1", mode="eval")
-    node = ast_translate(tree)
+    node = tast.from_py(tree)
     # The top-level BinOp node should have span info
     assert node.lineno == 1
     assert node.col_offset == 0
@@ -670,9 +670,9 @@ def test_span_info_expr() -> None:
 
 
 def test_span_info_stmt() -> None:
-    node = ast_translate("x = 42")
+    node = tast.from_py("x = 42")
     # StmtBlock wrapping
-    assert isinstance(node, tvmt.ast.StmtBlock)
+    assert isinstance(node, tt.ast.StmtBlock)
     stmt = node.stmts[0]
     assert stmt.lineno == 1
     assert stmt.col_offset == 0
@@ -680,7 +680,7 @@ def test_span_info_stmt() -> None:
 
 def test_span_info_default() -> None:
     # Manually constructed nodes have -1 span
-    node = tvmt.ast.Id("x")
+    node = tt.ast.Id("x")
     assert node.lineno == -1
     assert node.col_offset == -1
     assert node.end_lineno == -1

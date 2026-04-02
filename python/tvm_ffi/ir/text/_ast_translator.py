@@ -14,17 +14,10 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-"""Convert Python standard-library ``ast`` nodes to TVM-FFI text AST nodes.
+"""Internal: convert Python standard-library ``ast`` nodes to TVM-FFI text AST nodes.
 
-Example:
--------
-.. code-block:: python
-
-    from tvm_ffi.text.ast_translate import ast_translate
-
-    node = ast_translate("x + 1")
-    node.print_python()  # x + 1
-
+This module is not part of the public API. Use :func:`tvm_ffi.ir.text.ast.from_py`
+as the public entry point.
 """
 
 from __future__ import annotations
@@ -751,18 +744,23 @@ def ast_translate(source: str | ast.AST) -> tast.Node:
     --------
     .. code-block:: python
 
-        from tvm_ffi.text.ast_translate import ast_translate
+        from tvm_ffi.ir.text.ast import from_py
 
         # From source string
-        node = ast_translate("x + 1")
+        node = from_py("x + 1")
         print(node.to_python())  # x + 1
 
         # From ast node
         import ast
 
         tree = ast.parse("y = 42")
-        node = ast_translate(tree)
+        node = from_py(tree)
         node.print_python()  # y = 42
+
+    Note
+    ----
+    This function is internal. The public entry point is
+    :func:`tvm_ffi.ir.text.ast.from_py`.
 
     """
     if isinstance(source, str):

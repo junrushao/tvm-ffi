@@ -27,7 +27,7 @@ Examples
 --------
 .. code-block:: python
 
-    from tvm_ffi.text.ir_printer import IRPrinter, to_python, Int
+    from tvm_ffi.ir.text.printer import IRPrinter, to_python, Int
 
     # One-shot rendering
     source = to_python(my_obj)
@@ -48,8 +48,8 @@ if TYPE_CHECKING:
     from collections.abc import MutableMapping, MutableSequence
     from tvm_ffi import Object
     from tvm_ffi.access_path import AccessPath
-    from tvm_ffi.text import PrinterConfig
-    from tvm_ffi.text.ast import Expr, Id, Stmt
+    from tvm_ffi.ir.text import PrinterConfig
+    from tvm_ffi.ir.text.ast import Expr, Id, Stmt
     from typing import Any, Callable
 # isort: on
 # fmt: on
@@ -57,13 +57,12 @@ if TYPE_CHECKING:
 
 import contextlib
 from collections.abc import Generator
-from typing import Any, TypeVar
+from typing import TypeVar
 
-import tvm_ffi
 from tvm_ffi import Object
-from tvm_ffi.access_path import AccessPath
+from tvm_ffi.dataclasses import c_class
 
-from ..dataclasses import c_class
+from . import _ffi_api
 from .ast import Expr, Literal, PrinterConfig, Stmt
 
 
@@ -177,7 +176,7 @@ def None_() -> Literal:
     return Literal(None)
 
 
-@c_class("ffi.text.VarInfo")
+@c_class("ffi.ir.text.VarInfo")
 class VarInfo(Object):
     """Metadata for a variable tracked by ``IRPrinter``.
 
@@ -192,7 +191,7 @@ class VarInfo(Object):
 
     """
 
-    # tvm-ffi-stubgen(begin): object/ffi.text.VarInfo
+    # tvm-ffi-stubgen(begin): object/ffi.ir.text.VarInfo
     # fmt: off
     name: str | None
     creator: Callable[..., Any]
@@ -208,7 +207,7 @@ class VarInfo(Object):
 FrameType = TypeVar("FrameType", bound=Object)
 
 
-@c_class("ffi.text.DefaultFrame", init=False)
+@c_class("ffi.ir.text.DefaultFrame", init=False)
 class DefaultFrame(Object):
     """The default scoping frame used by ``IRPrinter``.
 
@@ -233,7 +232,7 @@ class DefaultFrame(Object):
 
     """
 
-    # tvm-ffi-stubgen(begin): object/ffi.text.DefaultFrame
+    # tvm-ffi-stubgen(begin): object/ffi.ir.text.DefaultFrame
     # fmt: off
     stmts: MutableSequence[Stmt]
     if TYPE_CHECKING:
@@ -250,7 +249,7 @@ class DefaultFrame(Object):
         self.__ffi_init__(stmts)
 
 
-@c_class("ffi.text.IRPrinter", init=False)
+@c_class("ffi.ir.text.IRPrinter", init=False)
 class IRPrinter(Object):
     """Stateful printer that converts TVM FFI objects into text-printer AST nodes.
 
@@ -278,8 +277,8 @@ class IRPrinter(Object):
     --------
     .. code-block:: python
 
-        from tvm_ffi.text.ir_printer import IRPrinter
-        from tvm_ffi.text.ast import PrinterConfig
+        from tvm_ffi.ir.text.printer import IRPrinter
+        from tvm_ffi.ir.text.ast import PrinterConfig
         from tvm_ffi.access_path import AccessPath
 
         printer = IRPrinter(PrinterConfig(indent_spaces=4))
@@ -288,7 +287,7 @@ class IRPrinter(Object):
 
     """
 
-    # tvm-ffi-stubgen(begin): object/ffi.text.IRPrinter
+    # tvm-ffi-stubgen(begin): object/ffi.ir.text.IRPrinter
     # fmt: off
     cfg: PrinterConfig
     obj2info: MutableMapping[Any, VarInfo]
@@ -405,10 +404,9 @@ def to_python(obj: Any, cfg: PrinterConfig | None = None) -> str:
         print(source)
 
     """
-    _c_to_python = tvm_ffi.get_global_func("ffi.text.ToPython")
     if cfg is None:
         cfg = PrinterConfig()
-    return _c_to_python(obj, cfg)
+    return _ffi_api.ToPython(obj, cfg)
 
 
 def print_python(
