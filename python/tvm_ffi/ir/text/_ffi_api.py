@@ -14,26 +14,26 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-"""FFI API for namespace `ffi.text`."""
+"""FFI API for namespace ``ffi.ir.text``."""
 
 # tvm-ffi-stubgen(begin): import-section
 # fmt: off
 # isort: off
 from __future__ import annotations
-from ..registry import init_ffi_api as _FFI_INIT_FUNC
+from tvm_ffi import init_ffi_api as _FFI_INIT_FUNC
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from tvm_ffi import Object
-    from tvm_ffi.text import PrinterConfig
-    from tvm_ffi.text.ast import Node
+    from tvm_ffi.ir.text import PrinterConfig
+    from tvm_ffi.ir.text.ast import Node
     from typing import Any
 # isort: on
 # fmt: on
 # tvm-ffi-stubgen(end)
 
-# tvm-ffi-stubgen(begin): global/ffi.text@..registry
+# tvm-ffi-stubgen(begin): global/ffi.ir.text
 # fmt: off
-_FFI_INIT_FUNC("ffi.text", __name__)
+_FFI_INIT_FUNC("ffi.ir.text", __name__)
 if TYPE_CHECKING:
     def DocToPythonScript(_0: Node, _1: PrinterConfig, /) -> str: ...
     def IRPrintDispatch(_0: Any, _1: Any, _2: Any, /) -> Node: ...

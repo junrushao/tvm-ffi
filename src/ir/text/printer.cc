@@ -17,15 +17,15 @@
  * under the License.
  */
 /*!
- * \file src/text/printer.cc
+ * \file src/ir/text/printer.cc
  * \brief Python-style text printer: converts text format AST to Python source.
  */
 #include <tvm/ffi/base_details.h>
 #include <tvm/ffi/cast.h>
+#include <tvm/ffi/ir/text/printer.h>
 #include <tvm/ffi/reflection/accessor.h>
 #include <tvm/ffi/reflection/registry.h>
 #include <tvm/ffi/string.h>
-#include <tvm/ffi/text/printer.h>
 
 #include <algorithm>
 #include <cctype>
@@ -41,6 +41,7 @@
 
 namespace tvm {
 namespace ffi {
+namespace ir {
 namespace text {
 namespace {
 
@@ -1547,6 +1548,7 @@ inline void PythonDocPrinter::PrintTypedDoc(const MatchAST& doc) {
 
 }  // namespace
 }  // namespace text
+}  // namespace ir
 }  // namespace ffi
 }  // namespace tvm
 
@@ -1556,6 +1558,7 @@ inline void PythonDocPrinter::PrintTypedDoc(const MatchAST& doc) {
 
 namespace tvm {
 namespace ffi {
+namespace ir {
 namespace text {
 
 // ============================================================================
@@ -1587,15 +1590,15 @@ String NodeASTObj::ToPython(const PrinterConfig& cfg) const {
 }
 
 // ============================================================================
-// IRPrintDispatch — look up __ir_print__ type attribute and call it
+// IRPrintDispatch — look up __ffi_text_print__ type attribute and call it
 // ============================================================================
 
 NodeAST IRPrintDispatch(AnyView obj, AnyView printer, AnyView path) {
-  static reflection::TypeAttrColumn ir_print_column("__ir_print__");
+  static reflection::TypeAttrColumn ir_print_column("__ffi_text_print__");
   int32_t type_index = obj.type_index();
   AnyView func_view = ir_print_column[type_index];
   if (func_view.type_index() == TypeIndex::kTVMFFINone) {
-    TVM_FFI_THROW(ValueError) << "No __ir_print__ registered for type index " << type_index;
+    TVM_FFI_THROW(ValueError) << "No __ffi_text_print__ registered for type index " << type_index;
   }
   Function func = func_view.cast<Function>();
   Any ret;
@@ -1633,6 +1636,7 @@ String ToPython(ObjectRef obj, PrinterConfig cfg) {  // NOLINT(*-value-param)
 }
 
 }  // namespace text
+}  // namespace ir
 }  // namespace ffi
 }  // namespace tvm
 
@@ -1644,14 +1648,14 @@ namespace {
 
 TVM_FFI_STATIC_INIT_BLOCK() {
   namespace refl = ::tvm::ffi::reflection;
-  namespace text = ::tvm::ffi::text;
-  // Ensure __ir_print__ type attribute column exists
-  refl::EnsureTypeAttrColumn("__ir_print__");
+  namespace text = ::tvm::ffi::ir::text;
+  // Ensure __ffi_text_print__ type attribute column exists
+  refl::EnsureTypeAttrColumn("__ffi_text_print__");
   // Register global functions
   refl::GlobalDef()
-      .def("ffi.text.DocToPythonScript", text::DocToPythonScript)
-      .def("ffi.text.ToPython", text::ToPython)
-      .def("ffi.text.IRPrintDispatch", text::IRPrintDispatch);
+      .def("ffi.ir.text.DocToPythonScript", text::DocToPythonScript)
+      .def("ffi.ir.text.ToPython", text::ToPython)
+      .def("ffi.ir.text.IRPrintDispatch", text::IRPrintDispatch);
   // PrinterConfig
   refl::ObjectDef<text::PrinterConfigObj>()
       .def_rw("def_free_var", &text::PrinterConfigObj::def_free_var)

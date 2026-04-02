@@ -397,7 +397,7 @@ _FFI_RECOGNIZED_METHODS: frozenset[str] = frozenset(
         "__data_to_json__",
         "__data_from_json__",
         # IR printing (text printer dispatch)
-        "__ir_print__",
+        "__ffi_text_print__",
     }
 )
 

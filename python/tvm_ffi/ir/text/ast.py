@@ -14,7 +14,7 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-"""Text printer AST node definitions.
+"""IR text AST node definitions.
 
 This module defines the abstract syntax tree (AST) used by the text printer to
 represent Python-style source code. The hierarchy is:
@@ -53,12 +53,13 @@ if TYPE_CHECKING:
 from collections.abc import Sequence
 from typing import Any
 
-from ..core import Object
-from ..dataclasses import c_class
+from tvm_ffi import Object
+from tvm_ffi.dataclasses import c_class
+
 from . import _ffi_api
 
 
-@c_class("ffi.text.PrinterConfig", init=False)
+@c_class("ffi.ir.text.PrinterConfig", init=False)
 class PrinterConfig(Object):
     """Configuration for the Python-style text printer.
 
@@ -92,15 +93,15 @@ class PrinterConfig(Object):
     --------
     .. code-block:: python
 
-        from tvm_ffi.text.ast import PrinterConfig, Id
+        from tvm_ffi.ir.text import ast
 
-        cfg = PrinterConfig(indent_spaces=4, print_line_numbers=1)
-        node = Id(name="x")
+        cfg = ast.PrinterConfig(indent_spaces=4, print_line_numbers=1)
+        node = ast.Id(name="x")
         print(node.to_python(cfg))
 
     """
 
-    # tvm-ffi-stubgen(begin): object/ffi.text.PrinterConfig
+    # tvm-ffi-stubgen(begin): object/ffi.ir.text.PrinterConfig
     # fmt: off
     def_free_var: bool
     indent_spaces: int
@@ -159,7 +160,7 @@ class PrinterConfig(Object):
         )
 
 
-@c_class("ffi.text.ast.Node", init=False)
+@c_class("ffi.ir.text.ast.Node", init=False)
 class Node(Object):
     """Base class for all text-printer AST nodes.
 
@@ -178,15 +179,15 @@ class Node(Object):
     --------
     .. code-block:: python
 
-        from tvm_ffi.text.ast import Id
+        from tvm_ffi.ir.text import ast
 
-        node = Id(name="x")
+        node = ast.Id(name="x")
         source = node.to_python()  # "x"
         node.print_python()  # prints "x" to stdout
 
     """
 
-    # tvm-ffi-stubgen(begin): object/ffi.text.ast.Node
+    # tvm-ffi-stubgen(begin): object/ffi.ir.text.ast.Node
     # fmt: off
     source_paths: MutableSequence[AccessPath]
     lineno: int
@@ -216,9 +217,9 @@ class Node(Object):
         --------
         .. code-block:: python
 
-            from tvm_ffi.text.ast import Id
+            from tvm_ffi.ir.text import ast
 
-            node = Id(name="my_var")
+            node = ast.Id(name="my_var")
             node.to_python()  # "my_var"
 
         """
@@ -265,7 +266,7 @@ class Node(Object):
         return self
 
 
-@c_class("ffi.text.ast.Expr", init=False)
+@c_class("ffi.ir.text.ast.Expr", init=False)
 class Expr(Node):
     """Base class for expression AST nodes.
 
@@ -284,16 +285,16 @@ class Expr(Node):
     --------
     .. code-block:: python
 
-        from tvm_ffi.text.ast import Id, Literal
+        from tvm_ffi.ir.text import ast
 
-        x = Id(name="x")
-        y = Id(name="y")
-        expr = (x + y).attr("shape").call(Literal(0))
+        x = ast.Id(name="x")
+        y = ast.Id(name="y")
+        expr = (x + y).attr("shape").call(ast.Literal(0))
         expr.print_python()  # (x + y).shape(0)
 
     """
 
-    # tvm-ffi-stubgen(begin): object/ffi.text.ast.Expr
+    # tvm-ffi-stubgen(begin): object/ffi.ir.text.ast.Expr
     # fmt: off
     source_paths: MutableSequence[AccessPath]
     if TYPE_CHECKING:
@@ -412,10 +413,10 @@ class Expr(Node):
         --------
         .. code-block:: python
 
-            from tvm_ffi.text.ast import Id, Literal
+            from tvm_ffi.ir.text import ast
 
-            cond = Id(name="flag")
-            result = cond.if_then_else(Literal(1), Literal(0))
+            cond = ast.Id(name="flag")
+            result = cond.if_then_else(ast.Literal(1), ast.Literal(0))
             result.print_python()  # 1 if flag else 0
 
         """
@@ -476,9 +477,9 @@ class Expr(Node):
         --------
         .. code-block:: python
 
-            from tvm_ffi.text.ast import Id
+            from tvm_ffi.ir.text import ast
 
-            obj = Id(name="module")
+            obj = ast.Id(name="module")
             obj.attr("forward").print_python()  # module.forward
 
         """
@@ -501,10 +502,10 @@ class Expr(Node):
         --------
         .. code-block:: python
 
-            from tvm_ffi.text.ast import Id, Literal
+            from tvm_ffi.ir.text import ast
 
-            arr = Id(name="arr")
-            arr.index([Literal(0)]).print_python()  # arr[0]
+            arr = ast.Id(name="arr")
+            arr.index([ast.Literal(0)]).print_python()  # arr[0]
 
         """
         return Index(self, indices)
@@ -526,10 +527,10 @@ class Expr(Node):
         --------
         .. code-block:: python
 
-            from tvm_ffi.text.ast import Id
+            from tvm_ffi.ir.text import ast
 
-            fn = Id(name="relu")
-            fn.call(Id(name="x")).print_python()  # relu(x)
+            fn = ast.Id(name="relu")
+            fn.call(ast.Id(name="x")).print_python()  # relu(x)
 
         """
         return Call(
@@ -568,13 +569,13 @@ class Expr(Node):
         --------
         .. code-block:: python
 
-            from tvm_ffi.text.ast import Id, Literal
+            from tvm_ffi.ir.text import ast
 
-            fn = Id(name="conv2d")
+            fn = ast.Id(name="conv2d")
             fn.call_kw(
-                args=[Id(name="x")],
+                args=[ast.Id(name="x")],
                 kwargs_keys=["stride"],
-                kwargs_values=[Literal(2)],
+                kwargs_values=[ast.Literal(2)],
             ).print_python()  # conv2d(x, stride=2)
 
         """
@@ -613,7 +614,7 @@ class Expr(Node):
         return self.index([indices])
 
 
-@c_class("ffi.text.ast.Stmt", init=False)
+@c_class("ffi.ir.text.ast.Stmt", init=False)
 class Stmt(Node):
     """Base class for statement AST nodes.
 
@@ -628,7 +629,7 @@ class Stmt(Node):
 
     """
 
-    # tvm-ffi-stubgen(begin): object/ffi.text.ast.Stmt
+    # tvm-ffi-stubgen(begin): object/ffi.ir.text.ast.Stmt
     # fmt: off
     source_paths: MutableSequence[AccessPath]
     comment: str | None
@@ -638,7 +639,7 @@ class Stmt(Node):
     # tvm-ffi-stubgen(end)
 
 
-@c_class("ffi.text.ast.StmtBlock")
+@c_class("ffi.ir.text.ast.StmtBlock")
 class StmtBlock(Stmt):
     """A sequence of statements rendered as a block.
 
@@ -654,14 +655,14 @@ class StmtBlock(Stmt):
     --------
     .. code-block:: python
 
-        from tvm_ffi.text.ast import StmtBlock, ExprStmt, Id
+        from tvm_ffi.ir.text import ast
 
-        block = StmtBlock(stmts=[ExprStmt(expr=Id(name="x"))])
+        block = ast.StmtBlock(stmts=[ast.ExprStmt(expr=ast.Id(name="x"))])
         block.print_python()  # x
 
     """
 
-    # tvm-ffi-stubgen(begin): object/ffi.text.ast.StmtBlock
+    # tvm-ffi-stubgen(begin): object/ffi.ir.text.ast.StmtBlock
     # fmt: off
     stmts: MutableSequence[Stmt]
     if TYPE_CHECKING:
@@ -673,7 +674,7 @@ class StmtBlock(Stmt):
     # tvm-ffi-stubgen(end)
 
 
-@c_class("ffi.text.ast.Literal")
+@c_class("ffi.ir.text.ast.Literal")
 class Literal(Expr):
     """A literal value expression (``42``, ``3.14``, ``"hello"``, ``True``, ``None``).
 
@@ -688,14 +689,14 @@ class Literal(Expr):
     --------
     .. code-block:: python
 
-        from tvm_ffi.text.ast import Literal
+        from tvm_ffi.ir.text import ast
 
-        Literal(42).print_python()  # 42
-        Literal("hello").print_python()  # "hello"
+        ast.Literal(42).print_python()  # 42
+        ast.Literal("hello").print_python()  # "hello"
 
     """
 
-    # tvm-ffi-stubgen(begin): object/ffi.text.ast.Literal
+    # tvm-ffi-stubgen(begin): object/ffi.ir.text.ast.Literal
     # fmt: off
     value: Any
     if TYPE_CHECKING:
@@ -707,7 +708,7 @@ class Literal(Expr):
     # tvm-ffi-stubgen(end)
 
 
-@c_class("ffi.text.ast.Id")
+@c_class("ffi.ir.text.ast.Id")
 class Id(Expr):
     """An identifier / variable name expression.
 
@@ -722,13 +723,13 @@ class Id(Expr):
     --------
     .. code-block:: python
 
-        from tvm_ffi.text.ast import Id
+        from tvm_ffi.ir.text import ast
 
-        Id(name="x").print_python()  # x
+        ast.Id(name="x").print_python()  # x
 
     """
 
-    # tvm-ffi-stubgen(begin): object/ffi.text.ast.Id
+    # tvm-ffi-stubgen(begin): object/ffi.ir.text.ast.Id
     # fmt: off
     name: str
     if TYPE_CHECKING:
@@ -740,7 +741,7 @@ class Id(Expr):
     # tvm-ffi-stubgen(end)
 
 
-@c_class("ffi.text.ast.Attr")
+@c_class("ffi.ir.text.ast.Attr")
 class Attr(Expr):
     """An attribute access expression (``obj.name``).
 
@@ -755,13 +756,13 @@ class Attr(Expr):
     --------
     .. code-block:: python
 
-        from tvm_ffi.text.ast import Attr, Id
+        from tvm_ffi.ir.text import ast
 
-        Attr(obj=Id(name="self"), name="weight").print_python()  # self.weight
+        ast.Attr(obj=ast.Id(name="self"), name="weight").print_python()  # self.weight
 
     """
 
-    # tvm-ffi-stubgen(begin): object/ffi.text.ast.Attr
+    # tvm-ffi-stubgen(begin): object/ffi.ir.text.ast.Attr
     # fmt: off
     obj: Expr
     name: str
@@ -774,7 +775,7 @@ class Attr(Expr):
     # tvm-ffi-stubgen(end)
 
 
-@c_class("ffi.text.ast.Index")
+@c_class("ffi.ir.text.ast.Index")
 class Index(Expr):
     """A subscript / index expression (``obj[idx0, idx1, ...]``).
 
@@ -789,13 +790,13 @@ class Index(Expr):
     --------
     .. code-block:: python
 
-        from tvm_ffi.text.ast import Index, Id, Literal
+        from tvm_ffi.ir.text import ast
 
-        Index(obj=Id(name="x"), idx=[Literal(0)]).print_python()  # x[0]
+        ast.Index(obj=ast.Id(name="x"), idx=[ast.Literal(0)]).print_python()  # x[0]
 
     """
 
-    # tvm-ffi-stubgen(begin): object/ffi.text.ast.Index
+    # tvm-ffi-stubgen(begin): object/ffi.ir.text.ast.Index
     # fmt: off
     obj: Expr
     idx: MutableSequence[Expr]
@@ -808,7 +809,7 @@ class Index(Expr):
     # tvm-ffi-stubgen(end)
 
 
-@c_class("ffi.text.ast.Call")
+@c_class("ffi.ir.text.ast.Call")
 class Call(Expr):
     """A function call expression (``callee(args..., key=val, ...)``).
 
@@ -828,18 +829,18 @@ class Call(Expr):
     --------
     .. code-block:: python
 
-        from tvm_ffi.text.ast import Call, Id, Literal
+        from tvm_ffi.ir.text import ast
 
-        Call(
-            callee=Id(name="f"),
-            args=[Literal(1)],
+        ast.Call(
+            callee=ast.Id(name="f"),
+            args=[ast.Literal(1)],
             kwargs_keys=["dim"],
-            kwargs_values=[Literal(0)],
+            kwargs_values=[ast.Literal(0)],
         ).print_python()  # f(1, dim=0)
 
     """
 
-    # tvm-ffi-stubgen(begin): object/ffi.text.ast.Call
+    # tvm-ffi-stubgen(begin): object/ffi.ir.text.ast.Call
     # fmt: off
     callee: Expr
     args: MutableSequence[Expr]
@@ -875,11 +876,11 @@ class OperationKind:
     --------
     .. code-block:: python
 
-        from tvm_ffi.text.ast import OperationKind, Operation, Id
+        from tvm_ffi.ir.text import ast
 
-        x = Id(name="x")
-        y = Id(name="y")
-        add_op = Operation(OperationKind.Add, [x, y])
+        x = ast.Id(name="x")
+        y = ast.Id(name="y")
+        add_op = ast.Operation(ast.OperationKind.Add, [x, y])
         add_op.print_python()  # x + y
 
     """
@@ -925,7 +926,7 @@ class OperationKind:
     SpecialEnd = 36
 
 
-@c_class("ffi.text.ast.Operation")
+@c_class("ffi.ir.text.ast.Operation")
 class Operation(Expr):
     """A unary, binary, or special operation expression.
 
@@ -944,16 +945,16 @@ class Operation(Expr):
     --------
     .. code-block:: python
 
-        from tvm_ffi.text.ast import Id, Operation, OperationKind
+        from tvm_ffi.ir.text import ast
 
-        x = Id(name="x")
-        y = Id(name="y")
-        expr = Operation(OperationKind.Add, [x, y])
+        x = ast.Id(name="x")
+        y = ast.Id(name="y")
+        expr = ast.Operation(ast.OperationKind.Add, [x, y])
         expr.print_python()  # x + y
 
     """
 
-    # tvm-ffi-stubgen(begin): object/ffi.text.ast.Operation
+    # tvm-ffi-stubgen(begin): object/ffi.ir.text.ast.Operation
     # fmt: off
     op: int
     operands: MutableSequence[Expr]
@@ -966,7 +967,7 @@ class Operation(Expr):
     # tvm-ffi-stubgen(end)
 
 
-@c_class("ffi.text.ast.Lambda")
+@c_class("ffi.ir.text.ast.Lambda")
 class Lambda(Expr):
     """A lambda expression (``lambda args: body``).
 
@@ -981,14 +982,14 @@ class Lambda(Expr):
     --------
     .. code-block:: python
 
-        from tvm_ffi.text.ast import Lambda, Id
+        from tvm_ffi.ir.text import ast
 
-        Lambda(args=[Id(name="x")], body=Id(name="x")).print_python()
+        ast.Lambda(args=[ast.Id(name="x")], body=ast.Id(name="x")).print_python()
         # lambda x: x
 
     """
 
-    # tvm-ffi-stubgen(begin): object/ffi.text.ast.Lambda
+    # tvm-ffi-stubgen(begin): object/ffi.ir.text.ast.Lambda
     # fmt: off
     args: MutableSequence[Expr]
     body: Expr
@@ -1001,7 +1002,7 @@ class Lambda(Expr):
     # tvm-ffi-stubgen(end)
 
 
-@c_class("ffi.text.ast.Tuple")
+@c_class("ffi.ir.text.ast.Tuple")
 class Tuple(Expr):
     """A tuple expression (``(a, b, c)``).
 
@@ -1014,13 +1015,13 @@ class Tuple(Expr):
     --------
     .. code-block:: python
 
-        from tvm_ffi.text.ast import Tuple, Literal
+        from tvm_ffi.ir.text import ast
 
-        Tuple(values=[Literal(1), Literal(2)]).print_python()  # (1, 2)
+        ast.Tuple(values=[ast.Literal(1), ast.Literal(2)]).print_python()  # (1, 2)
 
     """
 
-    # tvm-ffi-stubgen(begin): object/ffi.text.ast.Tuple
+    # tvm-ffi-stubgen(begin): object/ffi.ir.text.ast.Tuple
     # fmt: off
     values: MutableSequence[Expr]
     if TYPE_CHECKING:
@@ -1032,7 +1033,7 @@ class Tuple(Expr):
     # tvm-ffi-stubgen(end)
 
 
-@c_class("ffi.text.ast.List")
+@c_class("ffi.ir.text.ast.List")
 class List(Expr):
     """A list expression (``[a, b, c]``).
 
@@ -1045,13 +1046,13 @@ class List(Expr):
     --------
     .. code-block:: python
 
-        from tvm_ffi.text.ast import List, Literal
+        from tvm_ffi.ir.text import ast
 
-        List(values=[Literal(1), Literal(2)]).print_python()  # [1, 2]
+        ast.List(values=[ast.Literal(1), ast.Literal(2)]).print_python()  # [1, 2]
 
     """
 
-    # tvm-ffi-stubgen(begin): object/ffi.text.ast.List
+    # tvm-ffi-stubgen(begin): object/ffi.ir.text.ast.List
     # fmt: off
     values: MutableSequence[Expr]
     if TYPE_CHECKING:
@@ -1063,7 +1064,7 @@ class List(Expr):
     # tvm-ffi-stubgen(end)
 
 
-@c_class("ffi.text.ast.Dict")
+@c_class("ffi.ir.text.ast.Dict")
 class Dict(Expr):
     """A dictionary expression (``{k0: v0, k1: v1, ...}``).
 
@@ -1078,16 +1079,16 @@ class Dict(Expr):
     --------
     .. code-block:: python
 
-        from tvm_ffi.text.ast import Dict, Literal
+        from tvm_ffi.ir.text import ast
 
-        Dict(
-            keys=[Literal("a")],
-            values=[Literal(1)],
+        ast.Dict(
+            keys=[ast.Literal("a")],
+            values=[ast.Literal(1)],
         ).print_python()  # {"a": 1}
 
     """
 
-    # tvm-ffi-stubgen(begin): object/ffi.text.ast.Dict
+    # tvm-ffi-stubgen(begin): object/ffi.ir.text.ast.Dict
     # fmt: off
     keys: MutableSequence[Expr]
     values: MutableSequence[Expr]
@@ -1100,7 +1101,7 @@ class Dict(Expr):
     # tvm-ffi-stubgen(end)
 
 
-@c_class("ffi.text.ast.Slice", init=False)
+@c_class("ffi.ir.text.ast.Slice", init=False)
 class Slice(Expr):
     """A slice expression (``start:stop:step``).
 
@@ -1120,13 +1121,13 @@ class Slice(Expr):
     --------
     .. code-block:: python
 
-        from tvm_ffi.text.ast import Slice, Literal
+        from tvm_ffi.ir.text import ast
 
-        Slice(start=Literal(0), stop=Literal(10)).print_python()  # 0:10
+        ast.Slice(start=ast.Literal(0), stop=ast.Literal(10)).print_python()  # 0:10
 
     """
 
-    # tvm-ffi-stubgen(begin): object/ffi.text.ast.Slice
+    # tvm-ffi-stubgen(begin): object/ffi.ir.text.ast.Slice
     # fmt: off
     start: Expr | None
     stop: Expr | None
@@ -1160,7 +1161,7 @@ class Slice(Expr):
         self.__ffi_init__(start, stop, step)
 
 
-@c_class("ffi.text.ast.Assign", init=False)
+@c_class("ffi.ir.text.ast.Assign", init=False)
 class Assign(Stmt):
     """An assignment statement (``lhs = rhs`` or ``lhs: annotation = rhs``).
 
@@ -1181,13 +1182,13 @@ class Assign(Stmt):
     --------
     .. code-block:: python
 
-        from tvm_ffi.text.ast import Assign, Id, Literal
+        from tvm_ffi.ir.text import ast
 
-        Assign(lhs=Id(name="x"), rhs=Literal(42)).print_python()  # x = 42
+        ast.Assign(lhs=ast.Id(name="x"), rhs=ast.Literal(42)).print_python()  # x = 42
 
     """
 
-    # tvm-ffi-stubgen(begin): object/ffi.text.ast.Assign
+    # tvm-ffi-stubgen(begin): object/ffi.ir.text.ast.Assign
     # fmt: off
     lhs: Expr
     rhs: Expr | None
@@ -1227,7 +1228,7 @@ class Assign(Stmt):
         self.__ffi_init__(lhs, rhs, annotation, aug_op)
 
 
-@c_class("ffi.text.ast.If")
+@c_class("ffi.ir.text.ast.If")
 class If(Stmt):
     """An ``if / elif / else`` conditional statement.
 
@@ -1245,12 +1246,12 @@ class If(Stmt):
     --------
     .. code-block:: python
 
-        from tvm_ffi.text.ast import If, ExprStmt, Id
+        from tvm_ffi.ir.text import ast
 
-        If(
-            cond=Id(name="flag"),
-            then_branch=[ExprStmt(expr=Id(name="a"))],
-            else_branch=[ExprStmt(expr=Id(name="b"))],
+        ast.If(
+            cond=ast.Id(name="flag"),
+            then_branch=[ast.ExprStmt(expr=ast.Id(name="a"))],
+            else_branch=[ast.ExprStmt(expr=ast.Id(name="b"))],
         ).print_python()
         # if flag:
         #   a
@@ -1259,7 +1260,7 @@ class If(Stmt):
 
     """
 
-    # tvm-ffi-stubgen(begin): object/ffi.text.ast.If
+    # tvm-ffi-stubgen(begin): object/ffi.ir.text.ast.If
     # fmt: off
     cond: Expr
     then_branch: MutableSequence[Stmt]
@@ -1273,7 +1274,7 @@ class If(Stmt):
     # tvm-ffi-stubgen(end)
 
 
-@c_class("ffi.text.ast.While", init=False)
+@c_class("ffi.ir.text.ast.While", init=False)
 class While(Stmt):
     """A ``while`` loop statement.
 
@@ -1288,18 +1289,18 @@ class While(Stmt):
     --------
     .. code-block:: python
 
-        from tvm_ffi.text.ast import While, ExprStmt, Id, Literal
+        from tvm_ffi.ir.text import ast
 
-        While(
-            cond=Id(name="running"),
-            body=[ExprStmt(expr=Id(name="step"))],
+        ast.While(
+            cond=ast.Id(name="running"),
+            body=[ast.ExprStmt(expr=ast.Id(name="step"))],
         ).print_python()
         # while running:
         #   step
 
     """
 
-    # tvm-ffi-stubgen(begin): object/ffi.text.ast.While
+    # tvm-ffi-stubgen(begin): object/ffi.ir.text.ast.While
     # fmt: off
     cond: Expr
     body: MutableSequence[Stmt]
@@ -1323,7 +1324,7 @@ class While(Stmt):
         self.__ffi_init__(cond, body, orelse)
 
 
-@c_class("ffi.text.ast.For", init=False)
+@c_class("ffi.ir.text.ast.For", init=False)
 class For(Stmt):
     """A ``for`` loop statement (``for lhs in rhs: body``).
 
@@ -1340,19 +1341,19 @@ class For(Stmt):
     --------
     .. code-block:: python
 
-        from tvm_ffi.text.ast import For, ExprStmt, Id
+        from tvm_ffi.ir.text import ast
 
-        For(
-            lhs=Id(name="i"),
-            rhs=Id(name="items"),
-            body=[ExprStmt(expr=Id(name="process"))],
+        ast.For(
+            lhs=ast.Id(name="i"),
+            rhs=ast.Id(name="items"),
+            body=[ast.ExprStmt(expr=ast.Id(name="process"))],
         ).print_python()
         # for i in items:
         #   process
 
     """
 
-    # tvm-ffi-stubgen(begin): object/ffi.text.ast.For
+    # tvm-ffi-stubgen(begin): object/ffi.ir.text.ast.For
     # fmt: off
     lhs: Expr
     rhs: Expr
@@ -1380,7 +1381,7 @@ class For(Stmt):
         self.__ffi_init__(lhs, rhs, body, is_async, orelse)
 
 
-@c_class("ffi.text.ast.With", init=False)
+@c_class("ffi.ir.text.ast.With", init=False)
 class With(Stmt):
     """A ``with`` context-manager statement (``with rhs as lhs: body``).
 
@@ -1399,19 +1400,19 @@ class With(Stmt):
     --------
     .. code-block:: python
 
-        from tvm_ffi.text.ast import With, ExprStmt, Id
+        from tvm_ffi.ir.text import ast
 
-        With(
-            lhs=Id(name="f"),
-            rhs=Id(name="open_file"),
-            body=[ExprStmt(expr=Id(name="read"))],
+        ast.With(
+            lhs=ast.Id(name="f"),
+            rhs=ast.Id(name="open_file"),
+            body=[ast.ExprStmt(expr=ast.Id(name="read"))],
         ).print_python()
         # with open_file as f:
         #   read
 
     """
 
-    # tvm-ffi-stubgen(begin): object/ffi.text.ast.With
+    # tvm-ffi-stubgen(begin): object/ffi.ir.text.ast.With
     # fmt: off
     lhs: Expr | None
     rhs: Expr
@@ -1435,7 +1436,7 @@ class With(Stmt):
         self.__ffi_init__(lhs, rhs, body, is_async)
 
 
-@c_class("ffi.text.ast.ExprStmt")
+@c_class("ffi.ir.text.ast.ExprStmt")
 class ExprStmt(Stmt):
     """An expression used as a statement (e.g. a bare function call).
 
@@ -1448,13 +1449,13 @@ class ExprStmt(Stmt):
     --------
     .. code-block:: python
 
-        from tvm_ffi.text.ast import ExprStmt, Id
+        from tvm_ffi.ir.text import ast
 
-        ExprStmt(expr=Id(name="do_something")).print_python()  # do_something
+        ast.ExprStmt(expr=ast.Id(name="do_something")).print_python()  # do_something
 
     """
 
-    # tvm-ffi-stubgen(begin): object/ffi.text.ast.ExprStmt
+    # tvm-ffi-stubgen(begin): object/ffi.ir.text.ast.ExprStmt
     # fmt: off
     expr: Expr
     if TYPE_CHECKING:
@@ -1466,7 +1467,7 @@ class ExprStmt(Stmt):
     # tvm-ffi-stubgen(end)
 
 
-@c_class("ffi.text.ast.Assert", init=False)
+@c_class("ffi.ir.text.ast.Assert", init=False)
 class Assert(Stmt):
     """An ``assert`` statement (``assert cond, msg``).
 
@@ -1483,14 +1484,16 @@ class Assert(Stmt):
     --------
     .. code-block:: python
 
-        from tvm_ffi.text.ast import Assert, Id, Literal
+        from tvm_ffi.ir.text import ast
 
-        Assert(cond=Id(name="x"), msg=Literal("x must be set")).print_python()
+        ast.Assert(
+            cond=ast.Id(name="x"), msg=ast.Literal("x must be set")
+        ).print_python()
         # assert x, "x must be set"
 
     """
 
-    # tvm-ffi-stubgen(begin): object/ffi.text.ast.Assert
+    # tvm-ffi-stubgen(begin): object/ffi.ir.text.ast.Assert
     # fmt: off
     cond: Expr
     msg: Expr | None
@@ -1520,7 +1523,7 @@ class Assert(Stmt):
         self.__ffi_init__(cond, msg)
 
 
-@c_class("ffi.text.ast.Return")
+@c_class("ffi.ir.text.ast.Return")
 class Return(Stmt):
     """A ``return`` statement.
 
@@ -1535,13 +1538,13 @@ class Return(Stmt):
     --------
     .. code-block:: python
 
-        from tvm_ffi.text.ast import Return, Literal
+        from tvm_ffi.ir.text import ast
 
-        Return(value=Literal(42)).print_python()  # return 42
+        ast.Return(value=ast.Literal(42)).print_python()  # return 42
 
     """
 
-    # tvm-ffi-stubgen(begin): object/ffi.text.ast.Return
+    # tvm-ffi-stubgen(begin): object/ffi.ir.text.ast.Return
     # fmt: off
     value: Expr | None
     if TYPE_CHECKING:
@@ -1553,7 +1556,7 @@ class Return(Stmt):
     # tvm-ffi-stubgen(end)
 
 
-@c_class("ffi.text.ast.Function", init=False)
+@c_class("ffi.ir.text.ast.Function", init=False)
 class Function(Stmt):
     """A ``def`` function definition statement.
 
@@ -1576,24 +1579,24 @@ class Function(Stmt):
     --------
     .. code-block:: python
 
-        from tvm_ffi.text.ast import Function, Assign, Id, Return
+        from tvm_ffi.ir.text import ast
 
-        Function(
-            name=Id(name="add"),
+        ast.Function(
+            name=ast.Id(name="add"),
             args=[
-                Assign(lhs=Id(name="a")),
-                Assign(lhs=Id(name="b")),
+                ast.Assign(lhs=ast.Id(name="a")),
+                ast.Assign(lhs=ast.Id(name="b")),
             ],
             decorators=[],
             return_type=None,
-            body=[Return(value=Id(name="a") + Id(name="b"))],
+            body=[ast.Return(value=ast.Id(name="a") + ast.Id(name="b"))],
         ).print_python()
         # def add(a, b):
         #   return a + b
 
     """
 
-    # tvm-ffi-stubgen(begin): object/ffi.text.ast.Function
+    # tvm-ffi-stubgen(begin): object/ffi.ir.text.ast.Function
     # fmt: off
     name: Id
     args: MutableSequence[Assign]
@@ -1621,7 +1624,7 @@ class Function(Stmt):
         self.__ffi_init__(name, args, decorators, return_type, body, is_async)
 
 
-@c_class("ffi.text.ast.Class", init=False)
+@c_class("ffi.ir.text.ast.Class", init=False)
 class Class(Stmt):
     """A ``class`` definition statement.
 
@@ -1638,19 +1641,19 @@ class Class(Stmt):
     --------
     .. code-block:: python
 
-        from tvm_ffi.text.ast import Class, Id, ExprStmt
+        from tvm_ffi.ir.text import ast
 
-        Class(
-            name=Id(name="MyClass"),
+        ast.Class(
+            name=ast.Id(name="MyClass"),
             decorators=[],
-            body=[ExprStmt(expr=Id(name="pass"))],
+            body=[ast.ExprStmt(expr=ast.Id(name="pass"))],
         ).print_python()
         # class MyClass:
         #   pass
 
     """
 
-    # tvm-ffi-stubgen(begin): object/ffi.text.ast.Class
+    # tvm-ffi-stubgen(begin): object/ffi.ir.text.ast.Class
     # fmt: off
     name: Id
     bases: MutableSequence[Expr]
@@ -1688,7 +1691,7 @@ class Class(Stmt):
         self.__ffi_init__(name, bases, decorators, body, kwargs_keys, kwargs_values)
 
 
-@c_class("ffi.text.ast.Comment", init=False)
+@c_class("ffi.ir.text.ast.Comment", init=False)
 class Comment(Stmt):
     """A standalone ``# comment`` line.
 
@@ -1699,13 +1702,13 @@ class Comment(Stmt):
     --------
     .. code-block:: python
 
-        from tvm_ffi.text.ast import Comment
+        from tvm_ffi.ir.text import ast
 
-        Comment("TODO: refactor this").print_python()  # # TODO: refactor this
+        ast.Comment("TODO: refactor this").print_python()  # # TODO: refactor this
 
     """
 
-    # tvm-ffi-stubgen(begin): object/ffi.text.ast.Comment
+    # tvm-ffi-stubgen(begin): object/ffi.ir.text.ast.Comment
     # fmt: off
     if TYPE_CHECKING:
         def __init__(self, _0: str | None, /) -> None: ...
@@ -1727,7 +1730,7 @@ class Comment(Stmt):
         self.__ffi_init__(comment)
 
 
-@c_class("ffi.text.ast.DocString", init=False)
+@c_class("ffi.ir.text.ast.DocString", init=False)
 class DocString(Stmt):
     r"""A triple-quoted docstring statement.
 
@@ -1738,13 +1741,13 @@ class DocString(Stmt):
     --------
     .. code-block:: python
 
-        from tvm_ffi.text.ast import DocString
+        from tvm_ffi.ir.text import ast
 
-        DocString("This is a docstring.").print_python()
+        ast.DocString("This is a docstring.").print_python()
 
     """
 
-    # tvm-ffi-stubgen(begin): object/ffi.text.ast.DocString
+    # tvm-ffi-stubgen(begin): object/ffi.ir.text.ast.DocString
     # fmt: off
     if TYPE_CHECKING:
         def __init__(self, _0: str | None, /) -> None: ...
@@ -1766,7 +1769,7 @@ class DocString(Stmt):
         self.__ffi_init__(comment)
 
 
-@c_class("ffi.text.ast.Set")
+@c_class("ffi.ir.text.ast.Set")
 class Set(Expr):
     """A set expression (``{a, b, c}``).
 
@@ -1777,7 +1780,7 @@ class Set(Expr):
 
     """
 
-    # tvm-ffi-stubgen(begin): object/ffi.text.ast.Set
+    # tvm-ffi-stubgen(begin): object/ffi.ir.text.ast.Set
     # fmt: off
     values: MutableSequence[Expr]
     if TYPE_CHECKING:
@@ -1789,7 +1792,7 @@ class Set(Expr):
     # tvm-ffi-stubgen(end)
 
 
-@c_class("ffi.text.ast.ComprehensionIter")
+@c_class("ffi.ir.text.ast.ComprehensionIter")
 class ComprehensionIter(Node):
     """One ``for target in iter [if cond]...`` clause in a comprehension.
 
@@ -1804,7 +1807,7 @@ class ComprehensionIter(Node):
 
     """
 
-    # tvm-ffi-stubgen(begin): object/ffi.text.ast.ComprehensionIter
+    # tvm-ffi-stubgen(begin): object/ffi.ir.text.ast.ComprehensionIter
     # fmt: off
     target: Expr
     iter: Expr
@@ -1827,7 +1830,7 @@ class ComprehensionKind:
     Generator = 3
 
 
-@c_class("ffi.text.ast.Comprehension")
+@c_class("ffi.ir.text.ast.Comprehension")
 class Comprehension(Expr):
     """A comprehension expression.
 
@@ -1848,7 +1851,7 @@ class Comprehension(Expr):
 
     """
 
-    # tvm-ffi-stubgen(begin): object/ffi.text.ast.Comprehension
+    # tvm-ffi-stubgen(begin): object/ffi.ir.text.ast.Comprehension
     # fmt: off
     kind: int
     elt: Expr
@@ -1863,7 +1866,7 @@ class Comprehension(Expr):
     # tvm-ffi-stubgen(end)
 
 
-@c_class("ffi.text.ast.Yield", init=False)
+@c_class("ffi.ir.text.ast.Yield", init=False)
 class Yield(Expr):
     """A yield expression (``yield value``).
 
@@ -1874,7 +1877,7 @@ class Yield(Expr):
 
     """
 
-    # tvm-ffi-stubgen(begin): object/ffi.text.ast.Yield
+    # tvm-ffi-stubgen(begin): object/ffi.ir.text.ast.Yield
     # fmt: off
     value: Expr | None
     if TYPE_CHECKING:
@@ -1890,7 +1893,7 @@ class Yield(Expr):
         self.__ffi_init__(value)
 
 
-@c_class("ffi.text.ast.YieldFrom")
+@c_class("ffi.ir.text.ast.YieldFrom")
 class YieldFrom(Expr):
     """A yield-from expression (``yield from iterable``).
 
@@ -1901,7 +1904,7 @@ class YieldFrom(Expr):
 
     """
 
-    # tvm-ffi-stubgen(begin): object/ffi.text.ast.YieldFrom
+    # tvm-ffi-stubgen(begin): object/ffi.ir.text.ast.YieldFrom
     # fmt: off
     value: Expr
     if TYPE_CHECKING:
@@ -1913,11 +1916,11 @@ class YieldFrom(Expr):
     # tvm-ffi-stubgen(end)
 
 
-@c_class("ffi.text.ast.StarredExpr")
+@c_class("ffi.ir.text.ast.StarredExpr")
 class StarredExpr(Expr):
     """A starred expression (``*value``)."""
 
-    # tvm-ffi-stubgen(begin): object/ffi.text.ast.StarredExpr
+    # tvm-ffi-stubgen(begin): object/ffi.ir.text.ast.StarredExpr
     # fmt: off
     value: Expr
     if TYPE_CHECKING:
@@ -1929,11 +1932,11 @@ class StarredExpr(Expr):
     # tvm-ffi-stubgen(end)
 
 
-@c_class("ffi.text.ast.Await")
+@c_class("ffi.ir.text.ast.Await")
 class AwaitExpr(Expr):
     """An await expression (``await value``)."""
 
-    # tvm-ffi-stubgen(begin): object/ffi.text.ast.Await
+    # tvm-ffi-stubgen(begin): object/ffi.ir.text.ast.Await
     # fmt: off
     value: Expr
     if TYPE_CHECKING:
@@ -1945,11 +1948,11 @@ class AwaitExpr(Expr):
     # tvm-ffi-stubgen(end)
 
 
-@c_class("ffi.text.ast.WalrusExpr")
+@c_class("ffi.ir.text.ast.WalrusExpr")
 class WalrusExpr(Expr):
     """A walrus / named expression (``target := value``)."""
 
-    # tvm-ffi-stubgen(begin): object/ffi.text.ast.WalrusExpr
+    # tvm-ffi-stubgen(begin): object/ffi.ir.text.ast.WalrusExpr
     # fmt: off
     target: Expr
     value: Expr
@@ -1962,7 +1965,7 @@ class WalrusExpr(Expr):
     # tvm-ffi-stubgen(end)
 
 
-@c_class("ffi.text.ast.FStr")
+@c_class("ffi.ir.text.ast.FStr")
 class FStr(Expr):
     """An f-string expression (``f"...{x}..."``).
 
@@ -1970,7 +1973,7 @@ class FStr(Expr):
     ``FStrValue`` for interpolated expressions.
     """
 
-    # tvm-ffi-stubgen(begin): object/ffi.text.ast.FStr
+    # tvm-ffi-stubgen(begin): object/ffi.ir.text.ast.FStr
     # fmt: off
     values: MutableSequence[Expr]
     if TYPE_CHECKING:
@@ -1982,11 +1985,11 @@ class FStr(Expr):
     # tvm-ffi-stubgen(end)
 
 
-@c_class("ffi.text.ast.FStrValue", init=False)
+@c_class("ffi.ir.text.ast.FStrValue", init=False)
 class FStrValue(Expr):
     """A formatted value inside an f-string (``{value!r:.2f}``)."""
 
-    # tvm-ffi-stubgen(begin): object/ffi.text.ast.FStrValue
+    # tvm-ffi-stubgen(begin): object/ffi.ir.text.ast.FStrValue
     # fmt: off
     value: Expr
     conversion: int
@@ -2008,11 +2011,11 @@ class FStrValue(Expr):
         self.__ffi_init__(value, conversion, format_spec)
 
 
-@c_class("ffi.text.ast.ExceptHandler")
+@c_class("ffi.ir.text.ast.ExceptHandler")
 class ExceptHandler(Node):
     """One ``except [Type [as name]]:`` clause in a try statement."""
 
-    # tvm-ffi-stubgen(begin): object/ffi.text.ast.ExceptHandler
+    # tvm-ffi-stubgen(begin): object/ffi.ir.text.ast.ExceptHandler
     # fmt: off
     type: Expr | None
     name: str | None
@@ -2026,7 +2029,7 @@ class ExceptHandler(Node):
     # tvm-ffi-stubgen(end)
 
 
-@c_class("ffi.text.ast.Try", init=False)
+@c_class("ffi.ir.text.ast.Try", init=False)
 class Try(Stmt):
     """A ``try / except / else / finally`` statement."""
 
@@ -2049,11 +2052,11 @@ class Try(Stmt):
         self.__ffi_init__(body, handlers, orelse, finalbody)
 
 
-@c_class("ffi.text.ast.MatchCase")
+@c_class("ffi.ir.text.ast.MatchCase")
 class MatchCase(Node):
     """One ``case pattern [if guard]:`` clause in a match statement."""
 
-    # tvm-ffi-stubgen(begin): object/ffi.text.ast.MatchCase
+    # tvm-ffi-stubgen(begin): object/ffi.ir.text.ast.MatchCase
     # fmt: off
     pattern: Expr
     guard: Expr | None
@@ -2067,11 +2070,11 @@ class MatchCase(Node):
     # tvm-ffi-stubgen(end)
 
 
-@c_class("ffi.text.ast.Match")
+@c_class("ffi.ir.text.ast.Match")
 class Match(Stmt):
     """A ``match / case`` statement."""
 
-    # tvm-ffi-stubgen(begin): object/ffi.text.ast.Match
+    # tvm-ffi-stubgen(begin): object/ffi.ir.text.ast.Match
     # fmt: off
     subject: Expr
     cases: MutableSequence[MatchCase]
@@ -2082,3 +2085,32 @@ class Match(Stmt):
         def __c_ffi_init__(_0: Expr, _1: MutableSequence[MatchCase], /) -> Object: ...
     # fmt: on
     # tvm-ffi-stubgen(end)
+
+
+def from_py(source: Any) -> Node:
+    """Convert a Python source string or ``ast.AST`` node to a TVM-FFI text AST node.
+
+    Parameters
+    ----------
+    source : str | ast.AST
+        Either a Python source string or a Python standard-library ``ast``
+        node to convert.
+
+    Returns
+    -------
+    Node
+        The corresponding TVM-FFI text AST node.
+
+    Examples
+    --------
+    .. code-block:: python
+
+        from tvm_ffi.ir.text import ast
+
+        node = ast.from_py("x + 1")
+        node.print_python()  # x + 1
+
+    """
+    from ._ast_translator import ast_translate  # noqa: PLC0415
+
+    return ast_translate(source)

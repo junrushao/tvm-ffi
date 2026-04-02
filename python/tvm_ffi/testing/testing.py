@@ -35,10 +35,11 @@ from typing import Any, ClassVar, List
 
 import pytest
 
-from tvm_ffi import Object, get_global_func, text
+from tvm_ffi import Object, get_global_func
 from tvm_ffi.access_path import AccessPath
 from tvm_ffi.dataclasses import c_class, py_class
 from tvm_ffi.dataclasses import field as dc_field
+from tvm_ffi.ir import text
 
 from .. import _ffi_api
 
@@ -564,7 +565,7 @@ class ToyVar(ToyExpr):
     def __add__(self, other: ToyVar) -> ToyAdd:
         return ToyAdd(lhs=self, rhs=other)
 
-    def __ir_print__(self, printer: text.IRPrinter, path: AccessPath) -> Any:
+    def __ffi_text_print__(self, printer: text.IRPrinter, path: AccessPath) -> Any:
         if not printer.var_is_defined(self):
             printer.var_def(self.name, self, None)
         ret = printer.var_get(self)
@@ -579,7 +580,7 @@ class ToyAdd(ToyExpr):
     lhs: ToyExpr
     rhs: ToyExpr
 
-    def __ir_print__(self, printer: text.IRPrinter, path: AccessPath) -> Any:
+    def __ffi_text_print__(self, printer: text.IRPrinter, path: AccessPath) -> Any:
         lhs = printer(self.lhs, path=path.attr("lhs"))
         rhs = printer(self.rhs, path=path.attr("rhs"))
         return lhs + rhs
@@ -592,7 +593,7 @@ class ToyAssign(ToyStmt):
     rhs: ToyExpr
     lhs: ToyVar = dc_field(structural_eq="def")
 
-    def __ir_print__(self, printer: text.IRPrinter, path: AccessPath) -> Any:
+    def __ffi_text_print__(self, printer: text.IRPrinter, path: AccessPath) -> Any:
         rhs = printer(self.rhs, path=path.attr("rhs"))
         printer.var_def(self.lhs.name, self.lhs, None)
         lhs = printer(self.lhs, path=path.attr("lhs"))
@@ -608,7 +609,7 @@ class ToyFunc(ToyNode):
     stmts: List[ToyStmt]  # noqa: UP006
     ret: ToyVar
 
-    def __ir_print__(self, printer: text.IRPrinter, path: AccessPath) -> Any:
+    def __ffi_text_print__(self, printer: text.IRPrinter, path: AccessPath) -> Any:
         with printer.with_frame(text.DefaultFrame()):
             for arg in self.args:
                 printer.var_def(arg.name, arg, None)
@@ -648,5 +649,5 @@ def ast_roundtrip(node: Any) -> str:
         The rendered Python source code.
 
     """
-    tvm_node = text.ast_translate(node)
+    tvm_node = text.ast.from_py(node)
     return tvm_node.to_python()
