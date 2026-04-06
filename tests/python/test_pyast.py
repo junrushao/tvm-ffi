@@ -22,8 +22,8 @@ import itertools
 from typing import TYPE_CHECKING
 
 import pytest
-import tvm_ffi.ir.text as tt
-from tvm_ffi.ir.text import ast
+import tvm_ffi.pyast as tt
+from tvm_ffi import pyast as ast
 
 if TYPE_CHECKING:
     from _pytest.mark import ParameterSet

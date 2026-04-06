@@ -16,7 +16,7 @@
 # under the License.
 """Internal: convert Python standard-library ``ast`` nodes to TVM-FFI text AST nodes.
 
-This module is not part of the public API. Use :func:`tvm_ffi.ir.text.ast.from_py`
+This module is not part of the public API. Use :func:`tvm_ffi.pyast.from_py`
 as the public entry point.
 """
 
@@ -27,7 +27,7 @@ import math
 import textwrap
 from typing import Callable
 
-from . import ast as tast
+from tvm_ffi import pyast as tast
 
 # ---------------------------------------------------------------------------
 # Operator mapping tables
@@ -744,7 +744,7 @@ def ast_translate(source: str | ast.AST) -> tast.Node:
     --------
     .. code-block:: python
 
-        from tvm_ffi.ir.text.ast import from_py
+        from tvm_ffi.pyast.ast import from_py
 
         # From source string
         node = from_py("x + 1")
@@ -760,7 +760,7 @@ def ast_translate(source: str | ast.AST) -> tast.Node:
     Note
     ----
     This function is internal. The public entry point is
-    :func:`tvm_ffi.ir.text.ast.from_py`.
+    :func:`tvm_ffi.pyast.from_py`.
 
     """
     if isinstance(source, str):

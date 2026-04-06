@@ -17,12 +17,15 @@
  * under the License.
  */
 /*!
- * \file src/ir/text/printer.cc
+ * \file src/ffi/extra/pyast_printer.cc
  * \brief Python-style text printer: converts text format AST to Python source.
  */
 #include <tvm/ffi/base_details.h>
 #include <tvm/ffi/cast.h>
-#include <tvm/ffi/ir/text/printer.h>
+#include <tvm/ffi/container/array.h>
+#include <tvm/ffi/container/map.h>
+#include <tvm/ffi/extra/ir_traits.h>
+#include <tvm/ffi/extra/pyast.h>
 #include <tvm/ffi/reflection/accessor.h>
 #include <tvm/ffi/reflection/registry.h>
 #include <tvm/ffi/string.h>
@@ -41,8 +44,12 @@
 
 namespace tvm {
 namespace ffi {
-namespace ir {
-namespace text {
+namespace pyast {
+
+// Forward declarations (defined in pyast_trait_print.cc)
+NodeAST TraitPrint(AnyView obj, const ObjectRef& trait, IRPrinter printer, AccessPath path);
+NodeAST DefaultPrint(ObjectRef obj, IRPrinter printer, AccessPath path);
+
 namespace {
 
 // ============================================================================
@@ -371,9 +378,8 @@ inline ExprPrecedence GetExprPrecedence(const ExprAST& doc) {
     }
     return table;
   }();
-  if (const auto* op_doc = doc->IsInstance<OperationASTObj>()
-                               ? static_cast<const OperationASTObj*>(doc.get())
-                               : nullptr) {
+  if (const auto* op_doc =
+          doc->IsInstance<OperationASTObj>() ? doc.as<OperationASTObj>() : nullptr) {
     ExprPrecedence precedence = op_kind_precedence.at(op_doc->op);
     if (precedence == ExprPrecedence::kUnkown) {
       TVM_FFI_THROW(ValueError) << "Unknown precedence for operator: " << op_doc->op;
@@ -883,14 +889,12 @@ inline void PythonDocPrinter::PrintTypedDoc(const LiteralAST& doc) {
 inline void PythonDocPrinter::PrintTypedDoc(const IdAST& doc) { output_ << doc->name; }
 
 inline void PythonDocPrinter::PrintTypedDoc(const AttrAST& doc) {
-  PrintChildExpr(doc->obj, ExprAST(  // NOLINT(clang-analyzer-core.NonNullParamChecker)
-                               GetObjectPtr<ExprASTObj>(const_cast<AttrASTObj*>(doc.get()))));
+  PrintChildExpr(doc->obj, ExprAST(doc));  // NOLINT(clang-analyzer-core.NonNullParamChecker)
   output_ << "." << doc->name;
 }
 
 inline void PythonDocPrinter::PrintTypedDoc(const IndexAST& doc) {
-  PrintChildExpr(doc->obj, ExprAST(  // NOLINT(clang-analyzer-core.NonNullParamChecker)
-                               GetObjectPtr<ExprASTObj>(const_cast<IndexASTObj*>(doc.get()))));
+  PrintChildExpr(doc->obj, ExprAST(doc));  // NOLINT(clang-analyzer-core.NonNullParamChecker)
   if (doc->idx.size() == 0) {
     output_ << "[()]";
   } else {
@@ -902,20 +906,19 @@ inline void PythonDocPrinter::PrintTypedDoc(const IndexAST& doc) {
 
 inline void PythonDocPrinter::PrintTypedDoc(const OperationAST& doc) {
   using OpKind = OperationASTObj::Kind;
-  ExprAST doc_as_expr(GetObjectPtr<ExprASTObj>(const_cast<OperationASTObj*>(doc.get())));
   if (doc->op < OpKind::kUnaryEnd) {
     if (doc->operands.size() != 1) {
       TVM_FFI_THROW(ValueError) << "ValueError: Unary operator requires 1 operand, but got "
                                 << doc->operands.size();
     }
     output_ << OpKindToString(doc->op);
-    PrintChildExpr(doc->operands[0], doc_as_expr);
+    PrintChildExpr(doc->operands[0], doc);
   } else if (doc->op == OpKind::kPow) {
     if (doc->operands.size() != 2) {
       TVM_FFI_THROW(ValueError) << "Operator '**' requires 2 operands, but got "
                                 << doc->operands.size();
     }
-    PrintChildExprConservatively(doc->operands[0], doc_as_expr);
+    PrintChildExprConservatively(doc->operands[0], doc);
     output_ << " ** ";
     PrintChildExpr(doc->operands[1], ExprPrecedence::kUnary);
   } else if (doc->op < OpKind::kBinaryEnd) {
@@ -924,30 +927,30 @@ inline void PythonDocPrinter::PrintTypedDoc(const OperationAST& doc) {
                                 << doc->operands.size();
     }
     // Support multi-operand And/Or: a and b and c
-    PrintChildExpr(doc->operands[0], doc_as_expr);
+    PrintChildExpr(doc->operands[0], doc);
     for (int64_t i = 1; i < static_cast<int64_t>(doc->operands.size()); ++i) {
       output_ << " " << OpKindToString(doc->op) << " ";
-      PrintChildExprConservatively(doc->operands[i], doc_as_expr);
+      PrintChildExprConservatively(doc->operands[i], doc);
     }
   } else if (doc->op == OpKind::kIfThenElse) {
     if (doc->operands.size() != 3) {
       TVM_FFI_THROW(ValueError) << "IfThenElse requires 3 operands, but got "
                                 << doc->operands.size();
     }
-    PrintChildExpr(doc->operands[1], doc_as_expr);
+    PrintChildExpr(doc->operands[1], doc);
     output_ << " if ";
-    PrintChildExprConservatively(doc->operands[0], doc_as_expr);
+    PrintChildExprConservatively(doc->operands[0], doc);
     output_ << " else ";
-    PrintChildExprConservatively(doc->operands[2], doc_as_expr);
+    PrintChildExprConservatively(doc->operands[2], doc);
   } else if (doc->op == OpKind::kChainedCompare) {
     // operands: [val0, Literal(op0), val1, Literal(op1), val2, ...]
     for (int64_t i = 0; i < static_cast<int64_t>(doc->operands.size()); ++i) {
       if (i % 2 == 0) {
         // Value operand
-        PrintChildExpr(doc->operands[i], doc_as_expr);
+        PrintChildExpr(doc->operands[i], doc);
       } else {
         // Op kind literal — extract the int value for the op string
-        const auto* lit = static_cast<const LiteralASTObj*>(doc->operands[i].get());
+        const auto* lit = doc->operands[i].as<LiteralASTObj>();
         output_ << " " << OpKindToString(lit->value.cast<int64_t>()) << " ";
       }
     }
@@ -961,8 +964,7 @@ inline void PythonDocPrinter::PrintTypedDoc(const OperationAST& doc) {
 }
 
 inline void PythonDocPrinter::PrintTypedDoc(const CallAST& doc) {
-  PrintChildExpr(doc->callee, ExprAST(  // NOLINT(clang-analyzer-core.NonNullParamChecker)
-                                  GetObjectPtr<ExprASTObj>(const_cast<CallASTObj*>(doc.get()))));
+  PrintChildExpr(doc->callee, ExprAST(doc));  // NOLINT(clang-analyzer-core.NonNullParamChecker)
   output_ << "(";
   bool is_first = true;
   for (ExprAST arg : doc->args) {
@@ -1000,8 +1002,7 @@ inline void PythonDocPrinter::PrintTypedDoc(const LambdaAST& doc) {
   output_ << "lambda ";
   PrintJoinedDocs(doc->args, ", ");
   output_ << ": ";
-  PrintChildExpr(doc->body,
-                 ExprAST(GetObjectPtr<ExprASTObj>(const_cast<LambdaASTObj*>(doc.get()))));
+  PrintChildExpr(doc->body, ExprAST(doc));
 }
 
 inline void PythonDocPrinter::PrintTypedDoc(const ListAST& doc) {
@@ -1032,9 +1033,9 @@ inline void PythonDocPrinter::PrintTypedDoc(const DictAST& doc) {
       output_ << ", ";
     }
     // Dict unpacking: StarredExpr(StarredExpr(v)) as key means **v
-    if (key.get()->IsInstance<StarredExprASTObj>()) {
-      const auto* outer = static_cast<const StarredExprASTObj*>(key.get());
-      if (outer->value.get()->IsInstance<StarredExprASTObj>()) {
+    if (key->IsInstance<StarredExprASTObj>()) {
+      const auto* outer = key.as<StarredExprASTObj>();
+      if (outer->value->IsInstance<StarredExprASTObj>()) {
         output_ << "**";
         PrintDoc(doc->values[idx]);
         idx++;
@@ -1148,9 +1149,7 @@ inline void PythonDocPrinter::PrintTypedDoc(const FStrAST& doc) {
   // (PEP 701 nested quotes only available in 3.12+).
   output_ << "f'";
   for (const ExprAST& part : doc->values) {
-    if (const auto* lit = part.get()->IsInstance<LiteralASTObj>()
-                              ? static_cast<const LiteralASTObj*>(part.get())
-                              : nullptr) {
+    if (const auto* lit = part->IsInstance<LiteralASTObj>() ? part.as<LiteralASTObj>() : nullptr) {
       if (lit->value.type_index() == TypeIndex::kTVMFFIStr ||
           lit->value.type_index() == TypeIndex::kTVMFFISmallStr) {
         // Escape backslashes and single quotes inside f-string text
@@ -1183,7 +1182,7 @@ inline void PythonDocPrinter::PrintTypedDoc(const FStrAST& doc) {
         continue;
       }
     }
-    if (!part.get()->IsInstance<FStrValueASTObj>()) {
+    if (!part->IsInstance<FStrValueASTObj>()) {
       output_ << "{";
       PrintDoc(part);
       output_ << "}";
@@ -1207,13 +1206,10 @@ inline void PythonDocPrinter::PrintTypedDoc(const FStrValueAST& doc) {
   if (doc->format_spec.has_value()) {
     output_ << ":";
     const ExprAST& spec = doc->format_spec.value();
-    if (const auto* fstr = spec.get()->IsInstance<FStrASTObj>()
-                               ? static_cast<const FStrASTObj*>(spec.get())
-                               : nullptr) {
+    if (const auto* fstr = spec->IsInstance<FStrASTObj>() ? spec.as<FStrASTObj>() : nullptr) {
       for (const ExprAST& fpart : fstr->values) {
-        if (const auto* lit2 = fpart.get()->IsInstance<LiteralASTObj>()
-                                   ? static_cast<const LiteralASTObj*>(fpart.get())
-                                   : nullptr) {
+        if (const auto* lit2 =
+                fpart->IsInstance<LiteralASTObj>() ? fpart.as<LiteralASTObj>() : nullptr) {
           if (lit2->value.type_index() == TypeIndex::kTVMFFIStr ||
               lit2->value.type_index() == TypeIndex::kTVMFFISmallStr) {
             output_ << lit2->value.cast<String>();
@@ -1243,16 +1239,15 @@ inline void PythonDocPrinter::PrintTypedDoc(const StmtBlockAST& doc) {
 
 inline void PythonDocPrinter::PrintTypedDoc(const AssignAST& doc) {
   bool lhs_empty = false;
-  if (const auto* tuple_doc = doc->lhs.get()->IsInstance<TupleASTObj>()
-                                  ? static_cast<const TupleASTObj*>(doc->lhs.get())
-                                  : nullptr) {
+  if (const auto* tuple_doc =
+          doc->lhs->IsInstance<TupleASTObj>() ? doc->lhs.as<TupleASTObj>() : nullptr) {
     if (tuple_doc->values.size() == 0) {
       lhs_empty = true;
       if (doc->annotation.has_value()) {
         TVM_FFI_THROW(ValueError)
             << "ValueError: `Assign.annotation` should be None when `Assign.lhs` is empty, "
                "but got: "
-            << doc->annotation.value().get()->GetTypeKey();
+            << doc->annotation.value()->GetTypeKey();
       }
     } else {
       PrintJoinedDocs(tuple_doc->values, ", ");
@@ -1261,14 +1256,12 @@ inline void PythonDocPrinter::PrintTypedDoc(const AssignAST& doc) {
         output_ << ",";
       }
     }
-  } else if (const auto* paren_op = doc->lhs.get()->IsInstance<OperationASTObj>()
-                                        ? static_cast<const OperationASTObj*>(doc->lhs.get())
-                                        : nullptr;
+  } else if (const auto* paren_op =
+                 doc->lhs->IsInstance<OperationASTObj>() ? doc->lhs.as<OperationASTObj>() : nullptr;
              paren_op && paren_op->op == OperationASTObj::kParens &&
-             paren_op->operands.size() == 1 &&
-             paren_op->operands[0].get()->IsInstance<TupleASTObj>()) {
+             paren_op->operands.size() == 1 && paren_op->operands[0]->IsInstance<TupleASTObj>()) {
     // Multi-target assign: Parens(Tuple([a, b])) renders as a = b
-    const auto* targets = static_cast<const TupleASTObj*>(paren_op->operands[0].get());
+    const auto* targets = paren_op->operands[0].as<TupleASTObj>();
     PrintJoinedDocs(targets->values, " = ");
   } else {
     PrintDoc(doc->lhs);
@@ -1320,9 +1313,8 @@ inline void PythonDocPrinter::PrintTypedDoc(const WhileAST& doc) {
 inline void PythonDocPrinter::PrintTypedDoc(const ForAST& doc) {
   MaybePrintCommentMultiLines(doc, true);
   output_ << (doc->is_async ? "async for " : "for ");
-  if (const auto* tuple = doc->lhs.get()->IsInstance<TupleASTObj>()
-                              ? static_cast<const TupleASTObj*>(doc->lhs.get())
-                              : nullptr) {
+  if (const auto* tuple =
+          doc->lhs->IsInstance<TupleASTObj>() ? doc->lhs.as<TupleASTObj>() : nullptr) {
     if (tuple->values.size() == 1) {
       PrintDoc(tuple->values[0]);
       output_ << ",";
@@ -1347,22 +1339,20 @@ inline void PythonDocPrinter::PrintTypedDoc(const WithAST& doc) {
   MaybePrintCommentMultiLines(doc, true);
   output_ << (doc->is_async ? "async with " : "with ");
   // Multi-item with: rhs is Tuple of context exprs, lhs is Tuple of targets
-  if (const auto* rhs_tuple = doc->rhs.get()->IsInstance<TupleASTObj>()
-                                  ? static_cast<const TupleASTObj*>(doc->rhs.get())
-                                  : nullptr) {
+  if (const auto* rhs_tuple =
+          doc->rhs->IsInstance<TupleASTObj>() ? doc->rhs.as<TupleASTObj>() : nullptr) {
     const TupleASTObj* lhs_tuple = nullptr;
     if (doc->lhs.has_value()) {
-      lhs_tuple = doc->lhs.value().get()->IsInstance<TupleASTObj>()
-                      ? static_cast<const TupleASTObj*>(doc->lhs.value().get())
-                      : nullptr;
+      lhs_tuple = doc->lhs.value()->IsInstance<TupleASTObj>() ? doc->lhs.value().as<TupleASTObj>()
+                                                              : nullptr;
     }
     for (int64_t i = 0; i < static_cast<int64_t>(rhs_tuple->values.size()); ++i) {
       if (i > 0) output_ << ", ";
       PrintDoc(rhs_tuple->values[i]);
       if (lhs_tuple && i < static_cast<int64_t>(lhs_tuple->values.size())) {
         // Id("") means no target
-        if (const auto* id = lhs_tuple->values[i].get()->IsInstance<IdASTObj>()
-                                 ? static_cast<const IdASTObj*>(lhs_tuple->values[i].get())
+        if (const auto* id = lhs_tuple->values[i]->IsInstance<IdASTObj>()
+                                 ? lhs_tuple->values[i].as<IdASTObj>()
                                  : nullptr) {
           if (!id->name.empty()) {
             output_ << " as ";
@@ -1547,25 +1537,14 @@ inline void PythonDocPrinter::PrintTypedDoc(const MatchAST& doc) {
 }
 
 }  // namespace
-}  // namespace text
-}  // namespace ir
-}  // namespace ffi
-}  // namespace tvm
+
+namespace details {
 
 // ============================================================================
-// Non-anonymous-namespace implementations (exported functions and methods)
+// PyAST2Str
 // ============================================================================
 
-namespace tvm {
-namespace ffi {
-namespace ir {
-namespace text {
-
-// ============================================================================
-// DocToPythonScript
-// ============================================================================
-
-String DocToPythonScript(NodeAST node, PrinterConfig cfg) {  // NOLINT(*-value-param)
+String PyAST2Str(NodeAST node, PrinterConfig cfg) {  // NOLINT(*-value-param)
   if (cfg->num_context_lines < 0) {
     constexpr int32_t kMaxInt32 = 2147483647;
     cfg->num_context_lines = kMaxInt32;
@@ -1582,61 +1561,39 @@ String DocToPythonScript(NodeAST node, PrinterConfig cfg) {  // NOLINT(*-value-p
 }
 
 // ============================================================================
-// NodeASTObj::ToPython
-// ============================================================================
-
-String NodeASTObj::ToPython(const PrinterConfig& cfg) const {
-  return DocToPythonScript(GetRef<NodeAST>(this), cfg);
-}
-
-// ============================================================================
 // IRPrintDispatch — look up __ffi_text_print__ type attribute and call it
 // ============================================================================
 
-NodeAST IRPrintDispatch(AnyView obj, AnyView printer, AnyView path) {
-  static reflection::TypeAttrColumn ir_print_column("__ffi_text_print__");
+NodeAST IRPrintDispatch(AnyView obj, AnyView printer_view, AnyView path) {
   int32_t type_index = obj.type_index();
-  AnyView func_view = ir_print_column[type_index];
-  if (func_view.type_index() == TypeIndex::kTVMFFINone) {
-    TVM_FFI_THROW(ValueError) << "No __ffi_text_print__ registered for type index " << type_index;
+
+  // Tier 1: manual override (__ffi_text_print__)
+  static reflection::TypeAttrColumn text_print_col("__ffi_text_print__");
+  AnyView func_view = text_print_col[type_index];
+  if (func_view.type_index() != TypeIndex::kTVMFFINone) {
+    Function func = func_view.cast<Function>();
+    Any ret;
+    AnyView args[3] = {obj, printer_view, path};
+    func.CallPacked(args, 3, &ret);
+    return ret.cast<NodeAST>();
   }
-  Function func = func_view.cast<Function>();
-  Any ret;
-  AnyView args[3] = {obj, printer, path};
-  func.CallPacked(args, 3, &ret);
-  return ret.cast<NodeAST>();
+
+  // Tier 2: trait-driven (__ffi_ir_traits__)
+  static reflection::TypeAttrColumn traits_col("__ffi_ir_traits__");
+  AnyView trait_view = traits_col[type_index];
+  if (trait_view.type_index() != TypeIndex::kTVMFFINone) {
+    return TraitPrint(obj, trait_view.cast<ObjectRef>(), printer_view.cast<IRPrinter>(),
+                      path.cast<AccessPath>());
+  }
+
+  // Tier 3: default (Level 0)
+  return DefaultPrint(obj.cast<ObjectRef>(), printer_view.cast<IRPrinter>(),
+                      path.cast<AccessPath>());
 }
 
-// ============================================================================
-// ToPython — convert any object to Python source code string
-// ============================================================================
+}  // namespace details
 
-String ToPython(ObjectRef obj, PrinterConfig cfg) {  // NOLINT(*-value-param)
-  IRPrinter printer(cfg);
-  DefaultFrame frame;
-  printer->FramePush(frame);
-  NodeAST ret = IRPrintDispatch(obj, printer, reflection::AccessPath::Root());
-  printer->FramePop();
-  if (frame->stmts.empty()) {
-    return ret->ToPython(cfg);
-  }
-  if (ret.get()->IsInstance<StmtBlockASTObj>()) {
-    const auto* block = static_cast<const StmtBlockASTObj*>(ret.get());
-    frame->stmts.insert(frame->stmts.end(), block->stmts.begin(), block->stmts.end());
-  } else if (ret.get()->IsInstance<ExprASTObj>()) {
-    frame->stmts.push_back(ExprStmtAST(List<AccessPath>{}, Optional<String>{},
-                                       GetRef<ExprAST>(static_cast<const ExprASTObj*>(ret.get()))));
-  } else if (ret.get()->IsInstance<StmtASTObj>()) {
-    frame->stmts.push_back(GetRef<StmtAST>(static_cast<const StmtASTObj*>(ret.get())));
-  } else {
-    TVM_FFI_THROW(ValueError) << "Unsupported type: " << ret.get()->GetTypeKey();
-  }
-  NodeAST block_node = StmtBlockAST(List<AccessPath>{}, Optional<String>{}, frame->stmts);
-  return block_node->ToPython(cfg);
-}
-
-}  // namespace text
-}  // namespace ir
+}  // namespace pyast
 }  // namespace ffi
 }  // namespace tvm
 
@@ -1647,15 +1604,11 @@ String ToPython(ObjectRef obj, PrinterConfig cfg) {  // NOLINT(*-value-param)
 namespace {
 
 TVM_FFI_STATIC_INIT_BLOCK() {
+  using namespace ::tvm::ffi;
   namespace refl = ::tvm::ffi::reflection;
-  namespace text = ::tvm::ffi::ir::text;
+  namespace text = ::tvm::ffi::pyast;
   // Ensure __ffi_text_print__ type attribute column exists
   refl::EnsureTypeAttrColumn("__ffi_text_print__");
-  // Register global functions
-  refl::GlobalDef()
-      .def("ffi.ir.text.DocToPythonScript", text::DocToPythonScript)
-      .def("ffi.ir.text.ToPython", text::ToPython)
-      .def("ffi.ir.text.IRPrintDispatch", text::IRPrintDispatch);
   // PrinterConfig
   refl::ObjectDef<text::PrinterConfigObj>()
       .def_rw("def_free_var", &text::PrinterConfigObj::def_free_var)
@@ -1672,7 +1625,7 @@ TVM_FFI_STATIC_INIT_BLOCK() {
       .def_rw("col_offset", &text::NodeASTObj::col_offset)
       .def_rw("end_lineno", &text::NodeASTObj::end_lineno)
       .def_rw("end_col_offset", &text::NodeASTObj::end_col_offset)
-      .def("to_python", &text::NodeASTObj::ToPython);
+      .def("_to_python", &text::NodeASTObj::ToPython);
   // ExprAST
   refl::ObjectDef<text::ExprASTObj>(refl::init(false))
       .def_ro("source_paths", &text::ExprASTObj::source_paths);
@@ -1924,6 +1877,66 @@ TVM_FFI_STATIC_INIT_BLOCK() {
       .def("frame_push", &text::IRPrinterObj::FramePush)
       .def("frame_pop", &text::IRPrinterObj::FramePop)
       .def("__call__", &text::IRPrinterObj::operator());
+
+  // ============================================================================
+  // Container printers: ffi.Array → ListAST, ffi.Map → DictAST
+  // Uses raw ArrayObj/MapBaseObj access to handle elements that may be raw
+  // non-object values (int, float, DataType) rather than ObjectRef.
+  // ============================================================================
+  // ffi.Array → [e1, e2, ...]
+  // Accesses elements via ArrayObj::at() which returns const Any&, handling
+  // raw non-object elements (e.g., raw ints in buffer_dim_align annotations).
+  refl::TypeAttrDef<ArrayObj>().def(
+      "__ffi_text_print__",
+      [](const ObjectRef& obj, const text::IRPrinter& printer,
+         const refl::AccessPath& path) -> text::NodeAST {
+        const ArrayObj* arr = obj.as<ArrayObj>();
+        int64_t n = static_cast<int64_t>(arr->size());
+        List<text::ExprAST> elts;
+        for (int64_t i = 0; i < n; ++i) {
+          const Any& elem = arr->at(i);
+          elts.push_back(printer->operator()(Any(elem), path->ArrayItem(i)).cast<text::ExprAST>());
+        }
+        return text::ListAST(List<refl::AccessPath>{}, std::move(elts));
+      });
+
+  // ffi.Map → {k1: v1, k2: v2, ...}
+  // Iterates via MapBaseObj to handle maps with raw non-object values.
+  // Keys are sorted alphabetically when all keys are String type.
+  refl::TypeAttrDef<MapObj>().def(
+      "__ffi_text_print__",
+      [](const ObjectRef& obj, const text::IRPrinter& printer,
+         const refl::AccessPath& path) -> text::NodeAST {
+        const MapBaseObj* map_obj = obj.as<MapBaseObj>();
+        // Collect items into a vector for potential sorting
+        using KV = std::pair<Any, Any>;
+        std::vector<KV> items;
+        for (const auto& kv : *map_obj) {
+          items.emplace_back(Any(kv.first), Any(kv.second));
+        }
+        // Sort by key when all keys are strings
+        bool all_str_keys = true;
+        for (const auto& kv : items) {
+          if (!kv.first.as<String>()) {
+            all_str_keys = false;
+            break;
+          }
+        }
+        if (all_str_keys) {
+          std::sort(items.begin(), items.end(), [](const KV& lhs, const KV& rhs) {
+            return lhs.first.cast<String>() < rhs.first.cast<String>();
+          });
+        }
+        List<text::ExprAST> keys;
+        List<text::ExprAST> values;
+        for (const auto& kv : items) {
+          keys.push_back(
+              printer->operator()(Any(kv.first), path->Attr("key")).cast<text::ExprAST>());
+          values.push_back(
+              printer->operator()(Any(kv.second), path->Attr("value")).cast<text::ExprAST>());
+        }
+        return text::DictAST(List<refl::AccessPath>{}, std::move(keys), std::move(values));
+      });
 }
 
 }  // namespace

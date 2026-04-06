@@ -14,7 +14,7 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-"""Tests for tvm_ffi.ir.text.ast.tast.from_py (Python ast -> TVM-FFI AST converter).
+"""Tests for tvm_ffi.pyast.from_py (Python ast -> TVM-FFI AST converter).
 
 Roundtrip fidelity tests
 ========================
@@ -42,8 +42,8 @@ import textwrap
 import warnings
 
 import pytest
-import tvm_ffi.ir.text as tt
-from tvm_ffi.ir.text import ast as tast
+import tvm_ffi.pyast as tt
+from tvm_ffi import pyast as tast
 from tvm_ffi.testing.testing import requires_py39, requires_py310, requires_py312
 
 pytestmark = requires_py39  # tast.from_py requires Python 3.9+ (ast.Index removed)
@@ -444,13 +444,13 @@ def test_class_docstring() -> None:
 
 def test_from_source_string() -> None:
     node = tast.from_py("x = 1")
-    assert isinstance(node, tt.ast.StmtBlock)
+    assert isinstance(node, tt.StmtBlock)
 
 
 def test_from_ast_node() -> None:
     tree = ast.parse("x + 1", mode="eval")
     node = tast.from_py(tree)
-    assert isinstance(node, tt.ast.Expr)
+    assert isinstance(node, tt.Expr)
 
 
 # ---------------------------------------------------------------------------
@@ -672,7 +672,7 @@ def test_span_info_expr() -> None:
 def test_span_info_stmt() -> None:
     node = tast.from_py("x = 42")
     # StmtBlock wrapping
-    assert isinstance(node, tt.ast.StmtBlock)
+    assert isinstance(node, tt.StmtBlock)
     stmt = node.stmts[0]
     assert stmt.lineno == 1
     assert stmt.col_offset == 0
@@ -680,7 +680,7 @@ def test_span_info_stmt() -> None:
 
 def test_span_info_default() -> None:
     # Manually constructed nodes have -1 span
-    node = tt.ast.Id("x")
+    node = tt.Id("x")
     assert node.lineno == -1
     assert node.col_offset == -1
     assert node.end_lineno == -1

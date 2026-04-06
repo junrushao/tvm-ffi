@@ -14,14 +14,14 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-"""Tests for tvm_ffi.ir.text.printer, ported from mlc-python's test_printer_ir_printer.py."""
+"""Tests for tvm_ffi.pyast printer, ported from mlc-python's test_printer_ir_printer.py."""
 
 from __future__ import annotations
 
 import re
 
 import pytest
-import tvm_ffi.ir.text as tt
+import tvm_ffi.pyast as tt
 from tvm_ffi.access_path import AccessPath
 from tvm_ffi.testing.testing import ToyAdd as Add
 from tvm_ffi.testing.testing import ToyAssign as Assign
