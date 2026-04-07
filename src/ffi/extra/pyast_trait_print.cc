@@ -20,15 +20,17 @@
  * \file src/ffi/extra/pyast_trait_print.cc
  * \brief Trait-driven printer and default (Level 0) printer.
  *
- * TraitPrint dispatches on the runtime type of the trait object to produce
- * the appropriate AST nodes. DefaultPrint renders any reflected object as
- * TypeKey(field1=val1, field2=val2, ...).
+ * Each concrete trait type registers a "__ffi_traits_print__" TypeAttrColumn
+ * handler so that the printer can dispatch via column lookup instead of
+ * a centralized if-then-else chain. DefaultPrint renders any reflected
+ * object as TypeKey(field1=val1, field2=val2, ...).
  */
 #include <tvm/ffi/container/map_base.h>
 #include <tvm/ffi/dtype.h>
 #include <tvm/ffi/extra/ir_traits.h>
 #include <tvm/ffi/extra/pyast.h>
 #include <tvm/ffi/reflection/accessor.h>
+#include <tvm/ffi/reflection/registry.h>
 
 #include <cstring>
 #include <string>
@@ -38,6 +40,8 @@
 namespace tvm {
 namespace ffi {
 namespace pyast {
+
+namespace tr = ::tvm::ffi::ir_traits;
 
 // Forward declarations
 NodeAST DefaultPrint(ObjectRef obj, IRPrinter printer, AccessPath path);
@@ -71,12 +75,6 @@ inline bool IsString(AnyView v) {
 inline bool IsListLike(AnyView obj) {
   int32_t type_index = obj.type_index();
   return type_index == TypeIndex::kTVMFFIList || type_index == TypeIndex::kTVMFFIArray;
-}
-
-/*! \brief Get the current frame from the printer, or null if no frames. */
-AnyView GetCurrentFrame(const IRPrinter& printer) {
-  if (printer->frames.empty()) return AnyView();
-  return printer->frames.back();
 }
 
 /************** Field-Reference Resolver **************/
@@ -135,7 +133,7 @@ Any FindFieldValue(AnyView obj, std::string_view name) {
   return result;
 }
 
-Any ResolveWithPrinter(const String& ref, AnyView obj, AnyView printer, AnyView frame) {
+Any ResolveWithPrinter(const String& ref, AnyView obj, AnyView printer) {
   std::string_view sv(ref.data(), ref.size());
   if (sv.size() > 8 && sv.substr(0, 8) == "$global:") {
     std::string_view name = sv.substr(8);
@@ -167,29 +165,13 @@ Any ResolveWithPrinter(const String& ref, AnyView obj, AnyView printer, AnyView 
 /*! \brief Resolve a field reference with printer context and print it through the printer. */
 ExprAST ResolveAndPrint(const String& ref, AnyView obj, const IRPrinter& printer,
                         const AccessPath& path) {
-  Any value = ResolveWithPrinter(ref, obj, printer, GetCurrentFrame(printer));
-  return printer->operator()(std::move(value), path).cast<ExprAST>();
-}
-
-Optional<ir_traits::IRTraits> GetTrait(AnyView obj) {
-  static reflection::TypeAttrColumn col("__ffi_ir_traits__");
-  AnyView v = col[obj.type_index()];
-  if (v.type_index() == TypeIndex::kTVMFFINone) return {};
-  return v.cast<ir_traits::IRTraits>();
-}
-
-/*! \brief Resolve an optional ref with printer context; return null ExprAST if ref is absent. */
-Optional<ExprAST> ResolveAndPrintOpt(const Optional<String>& ref, AnyView obj,
-                                     const IRPrinter& printer, const AccessPath& path) {
-  if (!ref.has_value()) return {};
-  Any value = ResolveWithPrinter(ref.value(), obj, printer, GetCurrentFrame(printer));
-  return printer->operator()(std::move(value), path).cast<ExprAST>();
+  return printer->operator()(ResolveWithPrinter(ref, obj, printer), path).cast<ExprAST>();
 }
 
 /*! \brief Resolve a body reference and print each element as statements. */
 List<StmtAST> PrintBody(const String& body_ref, AnyView obj, const IRPrinter& printer,
                         const AccessPath& path) {
-  Any body_val = ResolveWithPrinter(body_ref, obj, printer, GetCurrentFrame(printer));
+  Any body_val = ResolveWithPrinter(body_ref, obj, printer);
   DefaultFrame frame;
   printer->FramePush(frame);
 
@@ -236,25 +218,30 @@ List<StmtAST> PrintBody(const String& body_ref, AnyView obj, const IRPrinter& pr
 AssignAST PrintValueDef(const ObjectRef& var_obj, const IRPrinter& printer, const AccessPath& path,
                         const Optional<ObjectRef>& frame) {
   // Try to get the Value trait from the variable
-  auto var_trait = GetTrait(var_obj);
+  static reflection::TypeAttrColumn col("__ffi_ir_traits__");
+  AnyView trait_view = col[var_obj->type_index()];
+  Optional<tr::IRTraits> var_trait;
+  if (trait_view != nullptr) {
+    var_trait = trait_view.cast<tr::IRTraits>();
+  }
   String name_hint("v");
   Optional<ExprAST> ty_annotation;
   if (var_trait.has_value()) {
-    if (const auto* vt = var_trait.value().as<ir_traits::ValueTraitsObj>()) {
-      Any name_val = ResolveWithPrinter(vt->name, var_obj, printer, GetCurrentFrame(printer));
+    if (const auto* vt = var_trait.value().as<tr::ValueTraitsObj>()) {
+      Any name_val = ResolveWithPrinter(vt->name, var_obj, printer);
       if (IsString(name_val)) {
         name_hint = name_val.cast<String>();
       }
       // Type annotation from text_printer_type or ty
       if (vt->text_printer_type.has_value()) {
-        Any ty_val = ResolveWithPrinter(vt->text_printer_type.value(), var_obj, printer,
-                                        GetCurrentFrame(printer));
-        if (ty_val.type_index() != TypeIndex::kTVMFFINone) {
+        Any ty_val = ResolveWithPrinter(vt->text_printer_type.value(), var_obj, printer);
+        if (ty_val != nullptr) {
           ty_annotation =
               printer->operator()(std::move(ty_val), path->Attr("type")).cast<ExprAST>();
         }
       } else if (vt->ty.has_value()) {
-        ty_annotation = ResolveAndPrintOpt(vt->ty, var_obj, printer, path->Attr("type"));
+        Any ty_val = ResolveWithPrinter(vt->ty.value(), var_obj, printer);
+        ty_annotation = printer->operator()(std::move(ty_val), path->Attr("type")).cast<ExprAST>();
       }
     } else {
       // Fallback: try to extract a name from the object's reflected "name" field
@@ -278,12 +265,12 @@ AssignAST PrintValueDef(const ObjectRef& var_obj, const IRPrinter& printer, cons
 }
 
 /*! \brief Define variables from a region's def_values and return param AssignASTs. */
-List<AssignAST> DefineRegionVars(const ir_traits::RegionTraits& region, AnyView obj,
+List<AssignAST> DefineRegionVars(const tr::RegionTraits& region, AnyView obj,
                                  const IRPrinter& printer, const AccessPath& path,
                                  const Optional<ObjectRef>& frame) {
   List<AssignAST> params;
   if (!region->def_values.has_value()) return params;
-  Any dv = ResolveWithPrinter(region->def_values.value(), obj, printer, GetCurrentFrame(printer));
+  Any dv = ResolveWithPrinter(region->def_values.value(), obj, printer);
   // If def_values resolves to a list/array, define each element
   if (dv.type_index() >= TypeIndex::kTVMFFIStaticObjectBegin) {
     ObjectRef dv_obj = dv.cast<ObjectRef>();
@@ -319,7 +306,7 @@ OperationASTObj::Kind UnaryOpStringToKind(std::string_view op) {
 void CallPrinterHook(const Optional<String>& hook_ref, AnyView obj, const IRPrinter& printer,
                      const AccessPath& path, const DefaultFrame& frame) {
   if (!hook_ref.has_value()) return;
-  Any hook_fn_val = ResolveWithPrinter(hook_ref.value(), obj, printer, GetCurrentFrame(printer));
+  Any hook_fn_val = ResolveWithPrinter(hook_ref.value(), obj, printer);
   // The hook is expected to be a Function(obj, printer, frame)
   if (hook_fn_val.type_index() >= TypeIndex::kTVMFFIStaticObjectBegin) {
     Function hook_fn = hook_fn_val.cast<Function>();
@@ -330,12 +317,11 @@ void CallPrinterHook(const Optional<String>& hook_ref, AnyView obj, const IRPrin
 }
 
 /*! \brief Build a range() call AST from For trait fields. */
-ExprAST BuildRangeCall(AnyView obj, const ir_traits::ForTraitsObj& trait, const IRPrinter& printer,
+ExprAST BuildRangeCall(AnyView obj, const tr::ForTraits& trait, const IRPrinter& printer,
                        const AccessPath& path) {
-  if (trait.text_printer_kind.has_value()) {
+  if (trait->text_printer_kind.has_value()) {
     // Resolve the kind string (e.g. "$method:kind_prefix" → "T.serial" or "")
-    Any kind_val =
-        ResolveWithPrinter(trait.text_printer_kind.value(), obj, printer, GetCurrentFrame(printer));
+    Any kind_val = ResolveWithPrinter(trait->text_printer_kind.value(), obj, printer);
     // If it's an empty string, fall through to plain range()
     if (IsString(kind_val)) {
       String kind_str = kind_val.cast<String>();
@@ -367,37 +353,35 @@ ExprAST BuildRangeCall(AnyView obj, const ir_traits::ForTraitsObj& trait, const 
       return false;
     };
     auto is_empty_map = [](AnyView v) -> bool {
-      if (v.type_index() == TypeIndex::kTVMFFINone) return true;
+      if (v == nullptr) return true;
       if (const auto* m = v.as<MapObj>()) {
         return m->size() == 0;
       }
       return false;
     };
 
-    if (trait.start.has_value()) {
-      Any start_val =
-          ResolveWithPrinter(trait.start.value(), obj, printer, GetCurrentFrame(printer));
+    if (trait->start.has_value()) {
+      Any start_val = ResolveWithPrinter(trait->start.value(), obj, printer);
       if (!is_zero_val(start_val)) {
         args.push_back(
             printer->operator()(std::move(start_val), path->Attr("start")).cast<ExprAST>());
       }
     }
-    if (trait.end.has_value()) {
-      args.push_back(ResolveAndPrint(trait.end.value(), obj, printer, path->Attr("end")));
+    if (trait->end.has_value()) {
+      args.push_back(ResolveAndPrint(trait->end.value(), obj, printer, path->Attr("end")));
     }
     List<String> kwarg_keys;
     List<ExprAST> kwarg_values;
-    if (trait.step.has_value()) {
-      Any step_val = ResolveWithPrinter(trait.step.value(), obj, printer, GetCurrentFrame(printer));
-      if (!is_one_val(step_val) && step_val.type_index() != TypeIndex::kTVMFFINone) {
+    if (trait->step.has_value()) {
+      Any step_val = ResolveWithPrinter(trait->step.value(), obj, printer);
+      if (!is_one_val(step_val) && step_val != nullptr) {
         kwarg_keys.push_back("step");
         kwarg_values.push_back(
             printer->operator()(std::move(step_val), path->Attr("step")).cast<ExprAST>());
       }
     }
-    if (trait.attrs.has_value()) {
-      Any attrs_val =
-          ResolveWithPrinter(trait.attrs.value(), obj, printer, GetCurrentFrame(printer));
+    if (trait->attrs.has_value()) {
+      Any attrs_val = ResolveWithPrinter(trait->attrs.value(), obj, printer);
       if (!is_empty_map(attrs_val)) {
         kwarg_keys.push_back("annotations");
         kwarg_values.push_back(
@@ -411,21 +395,21 @@ use_range:
   // Default: range(start?, end, step?)
   List<ExprAST> args;
   bool has_start = false;
-  if (trait.start.has_value()) {
-    Any start_val = ResolveWithPrinter(trait.start.value(), obj, printer, GetCurrentFrame(printer));
+  if (trait->start.has_value()) {
+    Any start_val = ResolveWithPrinter(trait->start.value(), obj, printer);
     bool is_zero =
         (start_val.type_index() == TypeIndex::kTVMFFIInt && start_val.cast<int64_t>() == 0);
-    if (!is_zero || trait.step.has_value()) {
+    if (!is_zero || trait->step.has_value()) {
       args.push_back(
           printer->operator()(std::move(start_val), path->Attr("start")).cast<ExprAST>());
       has_start = true;
     }
   }
-  if (trait.end.has_value()) {
-    args.push_back(ResolveAndPrint(trait.end.value(), obj, printer, path->Attr("end")));
+  if (trait->end.has_value()) {
+    args.push_back(ResolveAndPrint(trait->end.value(), obj, printer, path->Attr("end")));
   }
-  if (trait.step.has_value()) {
-    Any step_val = ResolveWithPrinter(trait.step.value(), obj, printer, GetCurrentFrame(printer));
+  if (trait->step.has_value()) {
+    Any step_val = ResolveWithPrinter(trait->step.value(), obj, printer);
     bool is_one = (step_val.type_index() == TypeIndex::kTVMFFIInt && step_val.cast<int64_t>() == 1);
     if (!is_one) {
       if (!has_start && !args.empty()) {
@@ -442,17 +426,16 @@ use_range:
 // Expression-level trait printers
 // ============================================================================
 
-NodeAST PrintBinOp(AnyView obj, const ir_traits::BinOpTraitsObj& t, const IRPrinter& printer,
+NodeAST PrintBinOp(AnyView obj, const tr::BinOpTraits& t, const IRPrinter& printer,
                    const AccessPath& path) {
-  ExprAST lhs = ResolveAndPrint(t.lhs, obj, printer, path->Attr("lhs"));
-  ExprAST rhs = ResolveAndPrint(t.rhs, obj, printer, path->Attr("rhs"));
-  std::string_view op_sv(t.op.data(), t.op.size());
+  ExprAST lhs = ResolveAndPrint(t->lhs, obj, printer, path->Attr("lhs"));
+  ExprAST rhs = ResolveAndPrint(t->rhs, obj, printer, path->Attr("rhs"));
+  std::string_view op_sv(t->op.data(), t->op.size());
   // Check dynamic sugar guard: if text_printer_sugar_check is set and returns false,
   // fall back to function-call form T.OpName(lhs, rhs).
   bool use_sugar = true;
-  if (t.text_printer_sugar_check.has_value()) {
-    Any check_val = ResolveWithPrinter(t.text_printer_sugar_check.value(), obj, printer,
-                                       GetCurrentFrame(printer));
+  if (t->text_printer_sugar_check.has_value()) {
+    Any check_val = ResolveWithPrinter(t->text_printer_sugar_check.value(), obj, printer);
     if (check_val.type_index() == TypeIndex::kTVMFFIBool) {
       use_sugar = check_val.cast<bool>();
     } else if (check_val.type_index() == TypeIndex::kTVMFFIInt) {
@@ -481,8 +464,8 @@ NodeAST PrintBinOp(AnyView obj, const ir_traits::BinOpTraitsObj& t, const IRPrin
   // Non-standard operator or sugar check failed: render as T.FuncName(lhs, rhs)
   // Use text_printer_func_name if available (e.g. "Add", "FloorDiv"), else fall back to op.
   std::string func_name;
-  if (t.text_printer_func_name.has_value()) {
-    func_name = std::string(t.text_printer_func_name.value());
+  if (t->text_printer_func_name.has_value()) {
+    func_name = std::string(t->text_printer_func_name.value());
   } else {
     func_name = std::string(op_sv);
   }
@@ -490,14 +473,14 @@ NodeAST PrintBinOp(AnyView obj, const ir_traits::BinOpTraitsObj& t, const IRPrin
   return CallAST(callee, {lhs, rhs}, {}, {});
 }
 
-NodeAST PrintUnaryOp(AnyView obj, const ir_traits::UnaryOpTraitsObj& t, const IRPrinter& printer,
+NodeAST PrintUnaryOp(AnyView obj, const tr::UnaryOpTraits& t, const IRPrinter& printer,
                      const AccessPath& path) {
-  ExprAST operand = ResolveAndPrint(t.operand, obj, printer, path->Attr("operand"));
-  std::string_view op_sv(t.op.data(), t.op.size());
+  ExprAST operand = ResolveAndPrint(t->operand, obj, printer, path->Attr("operand"));
+  std::string_view op_sv(t->op.data(), t->op.size());
   return OperationAST(static_cast<int64_t>(UnaryOpStringToKind(op_sv)), {operand});
 }
 
-NodeAST PrintValueUse(AnyView obj, const ir_traits::ValueTraitsObj& t, const IRPrinter& printer,
+NodeAST PrintValueUse(AnyView obj, const tr::ValueTraits& t, const IRPrinter& printer,
                       const AccessPath& path) {
   ObjectRef obj_ref = obj.cast<ObjectRef>();
   // Use-site: just return the variable reference
@@ -505,7 +488,7 @@ NodeAST PrintValueUse(AnyView obj, const ir_traits::ValueTraitsObj& t, const IRP
   if (existing.has_value()) return existing.value();
   // Auto-define as free variable if allowed
   if (printer->cfg->def_free_var) {
-    Any name_val = ResolveWithPrinter(t.name, obj, printer, GetCurrentFrame(printer));
+    Any name_val = ResolveWithPrinter(t->name, obj, printer);
     String name_hint("v");
     if (IsString(name_val)) {
       name_hint = name_val.cast<String>();
@@ -519,7 +502,7 @@ NodeAST PrintValueUse(AnyView obj, const ir_traits::ValueTraitsObj& t, const IRP
 /*! \brief Resolve an indices reference and return the list of index/slice ExprASTs. */
 List<ExprAST> ResolveIndices(const String& indices_ref, AnyView obj, const IRPrinter& printer,
                              const AccessPath& path) {
-  Any indices_val = ResolveWithPrinter(indices_ref, obj, printer, GetCurrentFrame(printer));
+  Any indices_val = ResolveWithPrinter(indices_ref, obj, printer);
   List<ExprAST> idx_list;
   if (indices_val.type_index() >= TypeIndex::kTVMFFIStaticObjectBegin) {
     ObjectRef idx_obj = indices_val.cast<ObjectRef>();
@@ -558,14 +541,14 @@ List<ExprAST> ResolveIndices(const String& indices_ref, AnyView obj, const IRPri
   return idx_list;
 }
 
-NodeAST PrintLoad(AnyView obj, const ir_traits::LoadTraitsObj& t, const IRPrinter& printer,
+NodeAST PrintLoad(AnyView obj, const tr::LoadTraits& t, const IRPrinter& printer,
                   const AccessPath& path) {
-  ExprAST source = ResolveAndPrint(t.source, obj, printer, path->Attr("source"));
-  if (!t.indices.has_value()) return source;
-  List<ExprAST> idx_list = ResolveIndices(t.indices.value(), obj, printer, path);
-  if (t.predicate.has_value()) {
-    Any pred_val = ResolveWithPrinter(t.predicate.value(), obj, printer, GetCurrentFrame(printer));
-    if (pred_val.type_index() != TypeIndex::kTVMFFINone) {
+  ExprAST source = ResolveAndPrint(t->source, obj, printer, path->Attr("source"));
+  if (!t->indices.has_value()) return source;
+  List<ExprAST> idx_list = ResolveIndices(t->indices.value(), obj, printer, path);
+  if (t->predicate.has_value()) {
+    Any pred_val = ResolveWithPrinter(t->predicate.value(), obj, printer);
+    if (pred_val != nullptr) {
       ExprAST pred_expr =
           printer->operator()(std::move(pred_val), path->Attr("predicate")).cast<ExprAST>();
       List<ExprAST> args;
@@ -580,24 +563,19 @@ NodeAST PrintLoad(AnyView obj, const ir_traits::LoadTraitsObj& t, const IRPrinte
   return IndexAST(source, idx_list);
 }
 
-}  // namespace
-
 // ============================================================================
 // Statement-level trait printers
 // ============================================================================
 
-namespace {
-
-NodeAST PrintStore(AnyView obj, const ir_traits::StoreTraitsObj& t, const IRPrinter& printer,
+NodeAST PrintStore(AnyView obj, const tr::StoreTraits& t, const IRPrinter& printer,
                    const AccessPath& path) {
-  ExprAST target = ResolveAndPrint(t.target, obj, printer, path->Attr("target"));
-  ExprAST value = ResolveAndPrint(t.value, obj, printer, path->Attr("value"));
-  if (t.indices.has_value()) {
-    List<ExprAST> idx_list = ResolveIndices(t.indices.value(), obj, printer, path);
-    if (t.predicate.has_value()) {
-      Any pred_val =
-          ResolveWithPrinter(t.predicate.value(), obj, printer, GetCurrentFrame(printer));
-      if (pred_val.type_index() != TypeIndex::kTVMFFINone) {
+  ExprAST target = ResolveAndPrint(t->target, obj, printer, path->Attr("target"));
+  ExprAST value = ResolveAndPrint(t->value, obj, printer, path->Attr("value"));
+  if (t->indices.has_value()) {
+    List<ExprAST> idx_list = ResolveIndices(t->indices.value(), obj, printer, path);
+    if (t->predicate.has_value()) {
+      Any pred_val = ResolveWithPrinter(t->predicate.value(), obj, printer);
+      if (pred_val != nullptr) {
         ExprAST pred_expr =
             printer->operator()(std::move(pred_val), path->Attr("predicate")).cast<ExprAST>();
         List<ExprAST> args;
@@ -632,20 +610,19 @@ NodeAST WrapWithHookStmts(NodeAST result, DefaultFrame& frame, int64_t pre_count
   return StmtBlockAST(std::move(all));
 }
 
-NodeAST PrintAssign(AnyView obj, const ir_traits::AssignTraitsObj& t, const IRPrinter& printer,
+NodeAST PrintAssign(AnyView obj, const tr::AssignTraits& t, const IRPrinter& printer,
                     const AccessPath& path) {
   // Get current frame for pre/post hooks
   DefaultFrame frame = printer->frames.back().cast<DefaultFrame>();
   int64_t pre_count = static_cast<int64_t>(frame->stmts.size());
-  CallPrinterHook(t.text_printer_pre, obj, printer, path, frame);
+  CallPrinterHook(t->text_printer_pre, obj, printer, path, frame);
 
   // ---- Expression-statement mode (no LHS) ----
-  if (!t.def_values.has_value()) {
-    ExprAST expr = ResolveAndPrint(t.rhs, obj, printer, path->Attr("rhs"));
+  if (!t->def_values.has_value()) {
+    ExprAST expr = ResolveAndPrint(t->rhs, obj, printer, path->Attr("rhs"));
     // Check if this should be rendered as a return statement
-    if (t.text_printer_return_check.has_value()) {
-      Any check_val = ResolveWithPrinter(t.text_printer_return_check.value(), obj, printer,
-                                         GetCurrentFrame(printer));
+    if (t->text_printer_return_check.has_value()) {
+      Any check_val = ResolveWithPrinter(t->text_printer_return_check.value(), obj, printer);
       bool is_return = false;
       if (check_val.type_index() == TypeIndex::kTVMFFIBool) {
         is_return = check_val.cast<bool>();
@@ -655,13 +632,12 @@ NodeAST PrintAssign(AnyView obj, const ir_traits::AssignTraitsObj& t, const IRPr
       if (is_return) return ReturnAST(expr);
     }
     // Optional wrapper callee (e.g. "T.evaluate")
-    if (t.text_printer_kind.has_value()) {
-      std::string_view kind_sv(t.text_printer_kind.value().data(),
-                               t.text_printer_kind.value().size());
+    if (t->text_printer_kind.has_value()) {
+      std::string_view kind_sv(t->text_printer_kind.value().data(),
+                               t->text_printer_kind.value().size());
       if (kind_sv.substr(0, 1) == "$") {
-        Any kind_val =
-            ResolveWithPrinter(t.text_printer_kind.value(), obj, printer, GetCurrentFrame(printer));
-        if (kind_val.type_index() == TypeIndex::kTVMFFINone) return ExprStmtAST(expr);
+        Any kind_val = ResolveWithPrinter(t->text_printer_kind.value(), obj, printer);
+        if (kind_val == nullptr) return ExprStmtAST(expr);
         if (IsString(kind_val)) {
           String kind_str = kind_val.cast<String>();
           if (kind_str.size() == 0) return ExprStmtAST(expr);
@@ -669,20 +645,20 @@ NodeAST PrintAssign(AnyView obj, const ir_traits::AssignTraitsObj& t, const IRPr
         }
       }
       return ExprStmtAST(
-          CallAST(ParseCalleeString(std::string(t.text_printer_kind.value())), {expr}, {}, {}));
+          CallAST(ParseCalleeString(std::string(t->text_printer_kind.value())), {expr}, {}, {}));
     }
     return ExprStmtAST(expr);
   }
 
   // ---- Assignment mode ----
-  Any def_vals = ResolveWithPrinter(t.def_values.value(), obj, printer, GetCurrentFrame(printer));
-  Any rhs_val = ResolveWithPrinter(t.rhs, obj, printer, GetCurrentFrame(printer));
+  Any def_vals = ResolveWithPrinter(t->def_values.value(), obj, printer);
+  Any rhs_val = ResolveWithPrinter(t->rhs, obj, printer);
 
   // RHS is void/None -> expression statement of def_values
-  if (rhs_val.type_index() == TypeIndex::kTVMFFINone) {
+  if (rhs_val == nullptr) {
     ExprAST printed =
         printer->operator()(std::move(def_vals), path->Attr("target")).cast<ExprAST>();
-    CallPrinterHook(t.text_printer_post, obj, printer, path, frame);
+    CallPrinterHook(t->text_printer_post, obj, printer, path, frame);
     return WrapWithHookStmts(ExprStmtAST(printed), frame, pre_count);
   }
 
@@ -709,29 +685,29 @@ NodeAST PrintAssign(AnyView obj, const ir_traits::AssignTraitsObj& t, const IRPr
         IdAST lhs_id = GetRef<IdAST>(lhs_expr.as<IdASTObj>());
         NodeAST result =
             FunctionAST(lhs_id, func->args, func->decorators, func->return_type, func->body);
-        CallPrinterHook(t.text_printer_post, obj, printer, path, frame);
+        CallPrinterHook(t->text_printer_post, obj, printer, path, frame);
         return WrapWithHookStmts(std::move(result), frame, pre_count);
       }
     }
     // Statement-level RHS (If, StmtBlock): return directly
     if (rhs_node->IsInstance<IfASTObj>() || rhs_node->IsInstance<StmtBlockASTObj>()) {
-      CallPrinterHook(t.text_printer_post, obj, printer, path, frame);
+      CallPrinterHook(t->text_printer_post, obj, printer, path, frame);
       return WrapWithHookStmts(std::move(rhs_node), frame, pre_count);
     }
   }
 
   // Normal case: RHS is an expression
   StmtAST result_stmt = AssignAST(lhs_expr, rhs_result.cast<ExprAST>(), ty_annotation);
-  CallPrinterHook(t.text_printer_post, obj, printer, path, frame);
+  CallPrinterHook(t->text_printer_post, obj, printer, path, frame);
   return WrapWithHookStmts(std::move(result_stmt), frame, pre_count);
 }
 
-NodeAST PrintAssert(AnyView obj, const ir_traits::AssertTraitsObj& t, const IRPrinter& printer,
+NodeAST PrintAssert(AnyView obj, const tr::AssertTraits& t, const IRPrinter& printer,
                     const AccessPath& path) {
-  ExprAST cond = ResolveAndPrint(t.cond, obj, printer, path->Attr("cond"));
+  ExprAST cond = ResolveAndPrint(t->cond, obj, printer, path->Attr("cond"));
   Optional<ExprAST> msg;
-  if (t.message.has_value()) {
-    Any msg_val = ResolveWithPrinter(t.message.value(), obj, printer, GetCurrentFrame(printer));
+  if (t->message.has_value()) {
+    Any msg_val = ResolveWithPrinter(t->message.value(), obj, printer);
     if (msg_val.type_index() >= TypeIndex::kTVMFFIStaticObjectBegin) {
       ObjectRef msg_obj = msg_val.cast<ObjectRef>();
       if (IsListLike(msg_obj)) {
@@ -770,32 +746,27 @@ NodeAST PrintAssert(AnyView obj, const ir_traits::AssertTraitsObj& t, const IRPr
   return AssertAST(cond, msg);
 }
 
-NodeAST PrintReturn(AnyView obj, const ir_traits::ReturnTraitsObj& t, const IRPrinter& printer,
+NodeAST PrintReturn(AnyView obj, const tr::ReturnTraits& t, const IRPrinter& printer,
                     const AccessPath& path) {
-  ExprAST value = ResolveAndPrint(t.value, obj, printer, path->Attr("value"));
+  ExprAST value = ResolveAndPrint(t->value, obj, printer, path->Attr("value"));
   return ReturnAST(value);
 }
-
-}  // namespace
 
 // ============================================================================
 // Scope-level trait printers
 // ============================================================================
 
-namespace {
-
-NodeAST PrintFunc(AnyView obj, const ir_traits::FuncTraitsObj& t, const IRPrinter& printer,
+NodeAST PrintFunc(AnyView obj, const tr::FuncTraits& t, const IRPrinter& printer,
                   const AccessPath& path) {
   // Resolve symbol name
-  Any symbol_val = ResolveWithPrinter(t.symbol, obj, printer, GetCurrentFrame(printer));
+  Any symbol_val = ResolveWithPrinter(t->symbol, obj, printer);
   String symbol_str = symbol_val.cast<String>();
   IdAST name = IdAST(symbol_str);
 
   // Decorators from text_printer_kind
   List<ExprAST> decorators;
-  if (t.text_printer_kind.has_value()) {
-    Any kind_val =
-        ResolveWithPrinter(t.text_printer_kind.value(), obj, printer, GetCurrentFrame(printer));
+  if (t->text_printer_kind.has_value()) {
+    Any kind_val = ResolveWithPrinter(t->text_printer_kind.value(), obj, printer);
     if (IsString(kind_val)) {
       decorators.push_back(IdAST(kind_val.cast<String>()));
     } else {
@@ -809,17 +780,17 @@ NodeAST PrintFunc(AnyView obj, const ir_traits::FuncTraitsObj& t, const IRPrinte
   printer->FramePush(frame);
 
   // Define parameters
-  List<AssignAST> params = DefineRegionVars(t.region, obj, printer, path, frame);
+  List<AssignAST> params = DefineRegionVars(t->region, obj, printer, path, frame);
 
   // Call text_printer_pre hook
-  CallPrinterHook(t.text_printer_pre, obj, printer, path, frame);
+  CallPrinterHook(t->text_printer_pre, obj, printer, path, frame);
 
   // Print body
-  List<StmtAST> body = PrintBody(t.region->body, obj, printer, path);
+  List<StmtAST> body = PrintBody(t->region->body, obj, printer, path);
 
   // Handle region.ret
-  if (t.region->ret.has_value()) {
-    ExprAST ret_val = ResolveAndPrint(t.region->ret.value(), obj, printer, path->Attr("ret"));
+  if (t->region->ret.has_value()) {
+    ExprAST ret_val = ResolveAndPrint(t->region->ret.value(), obj, printer, path->Attr("ret"));
     body.push_back(ReturnAST(ret_val));
   }
 
@@ -831,12 +802,12 @@ NodeAST PrintFunc(AnyView obj, const ir_traits::FuncTraitsObj& t, const IRPrinte
   printer->FramePop();
 
   // Class-style rendering: no params, no return type → ClassAST
-  if (params.empty() && !t.region->ret.has_value()) {
+  if (params.empty() && !t->region->ret.has_value()) {
     // Resolve bases from attrs field
     List<ExprAST> bases;
-    if (t.attrs.has_value()) {
-      Any attrs_val = ResolveWithPrinter(t.attrs.value(), obj, printer, path->Attr("bases"));
-      if (attrs_val.type_index() != TypeIndex::kTVMFFINone) {
+    if (t->attrs.has_value()) {
+      Any attrs_val = ResolveWithPrinter(t->attrs.value(), obj, printer);
+      if (attrs_val != nullptr) {
         bases.push_back(
             printer->operator()(std::move(attrs_val), path->Attr("bases")).cast<ExprAST>());
       }
@@ -846,14 +817,14 @@ NodeAST PrintFunc(AnyView obj, const ir_traits::FuncTraitsObj& t, const IRPrinte
   return FunctionAST(name, params, decorators, Optional<ExprAST>{}, all_body);
 }
 
-NodeAST PrintFor(AnyView obj, const ir_traits::ForTraitsObj& t, const IRPrinter& printer,
+NodeAST PrintFor(AnyView obj, const tr::ForTraits& t, const IRPrinter& printer,
                  const AccessPath& path) {
   // Push frame for loop body
   DefaultFrame frame;
   printer->FramePush(frame);
 
   // Define loop variable
-  List<AssignAST> loop_var_defs = DefineRegionVars(t.region, obj, printer, path, frame);
+  List<AssignAST> loop_var_defs = DefineRegionVars(t->region, obj, printer, path, frame);
 
   // Build the LHS (loop variable as expression)
   ExprAST lhs;
@@ -871,10 +842,10 @@ NodeAST PrintFor(AnyView obj, const ir_traits::ForTraitsObj& t, const IRPrinter&
 
   // Build the iterator expression (RHS)
   ExprAST rhs;
-  if (t.end.has_value()) {
+  if (t->end.has_value()) {
     rhs = BuildRangeCall(obj, t, printer, path);
-  } else if (t.region->def_expr.has_value()) {
-    rhs = ResolveAndPrint(t.region->def_expr.value(), obj, printer, path->Attr("iter"));
+  } else if (t->region->def_expr.has_value()) {
+    rhs = ResolveAndPrint(t->region->def_expr.value(), obj, printer, path->Attr("iter"));
   } else {
     rhs = CallAST(IdAST("range"), {LiteralAST::Int(0)}, {}, {});
   }
@@ -882,13 +853,13 @@ NodeAST PrintFor(AnyView obj, const ir_traits::ForTraitsObj& t, const IRPrinter&
   // Call text_printer_pre hook (no hook for For in the design, but kept for extensibility)
 
   // Print body
-  List<StmtAST> body = PrintBody(t.region->body, obj, printer, path);
+  List<StmtAST> body = PrintBody(t->region->body, obj, printer, path);
 
   // Carry pattern (def_carry/carry_init) is reserved for future use.
 
   // Handle region.ret (yield for carry)
-  if (t.region->ret.has_value()) {
-    ExprAST ret_val = ResolveAndPrint(t.region->ret.value(), obj, printer, path->Attr("ret"));
+  if (t->region->ret.has_value()) {
+    ExprAST ret_val = ResolveAndPrint(t->region->ret.value(), obj, printer, path->Attr("ret"));
     body.push_back(ExprStmtAST(YieldAST(ret_val)));
   }
 
@@ -902,18 +873,18 @@ NodeAST PrintFor(AnyView obj, const ir_traits::ForTraitsObj& t, const IRPrinter&
   return ForAST(lhs, rhs, all_body);
 }
 
-NodeAST PrintWith(AnyView obj, const ir_traits::WithTraitsObj& t, const IRPrinter& printer,
+NodeAST PrintWith(AnyView obj, const tr::WithTraits& t, const IRPrinter& printer,
                   const AccessPath& path) {
-  bool no_frame = t.text_printer_no_frame.has_value() && t.text_printer_no_frame.value();
-  bool is_inline = !t.text_printer_kind.has_value() && !t.region->def_values.has_value() &&
-                   !t.region->def_expr.has_value() && !t.text_printer_pre.has_value() &&
-                   !t.text_printer_post.has_value();
+  bool no_frame = t->text_printer_no_frame.has_value() && t->text_printer_no_frame.value();
+  bool is_inline = !t->text_printer_kind.has_value() && !t->region->def_values.has_value() &&
+                   !t->region->def_expr.has_value() && !t->text_printer_pre.has_value() &&
+                   !t->text_printer_post.has_value();
 
   // Inline sequence mode: no with-header, just flatten body elements
   if (is_inline) {
     List<StmtAST> stmts;
     if (no_frame) {
-      Any elems_val = ResolveWithPrinter(t.region->body, obj, printer, GetCurrentFrame(printer));
+      Any elems_val = ResolveWithPrinter(t->region->body, obj, printer);
       if (elems_val.type_index() >= TypeIndex::kTVMFFIStaticObjectBegin) {
         ObjectRef elems_obj = elems_val.cast<ObjectRef>();
         if (IsListLike(elems_obj)) {
@@ -934,10 +905,10 @@ NodeAST PrintWith(AnyView obj, const ir_traits::WithTraitsObj& t, const IRPrinte
         }
       }
     } else {
-      stmts = PrintBody(t.region->body, obj, printer, path);
+      stmts = PrintBody(t->region->body, obj, printer, path);
     }
-    if (t.region->ret.has_value()) {
-      ExprAST ret_val = ResolveAndPrint(t.region->ret.value(), obj, printer, path->Attr("ret"));
+    if (t->region->ret.has_value()) {
+      ExprAST ret_val = ResolveAndPrint(t->region->ret.value(), obj, printer, path->Attr("ret"));
       stmts.push_back(ReturnAST(ret_val));
     }
     return StmtBlockAST(std::move(stmts));
@@ -945,23 +916,22 @@ NodeAST PrintWith(AnyView obj, const ir_traits::WithTraitsObj& t, const IRPrinte
 
   // Build context expression
   ExprAST ctx_expr;
-  if (t.text_printer_kind.has_value()) {
-    Any kind_val =
-        ResolveWithPrinter(t.text_printer_kind.value(), obj, printer, GetCurrentFrame(printer));
+  if (t->text_printer_kind.has_value()) {
+    Any kind_val = ResolveWithPrinter(t->text_printer_kind.value(), obj, printer);
     if (IsString(kind_val)) {
       // kind(def_expr_args...)
       ExprAST callee = IdAST(kind_val.cast<String>());
       List<ExprAST> args;
-      if (t.region->def_expr.has_value()) {
+      if (t->region->def_expr.has_value()) {
         args.push_back(
-            ResolveAndPrint(t.region->def_expr.value(), obj, printer, path->Attr("def_expr")));
+            ResolveAndPrint(t->region->def_expr.value(), obj, printer, path->Attr("def_expr")));
       }
       ctx_expr = CallAST(callee, args, {}, {});
     } else {
       ctx_expr = printer->operator()(std::move(kind_val), path->Attr("kind")).cast<ExprAST>();
     }
-  } else if (t.region->def_expr.has_value()) {
-    ctx_expr = ResolveAndPrint(t.region->def_expr.value(), obj, printer, path->Attr("def_expr"));
+  } else if (t->region->def_expr.has_value()) {
+    ctx_expr = ResolveAndPrint(t->region->def_expr.value(), obj, printer, path->Attr("def_expr"));
   } else {
     ctx_expr = IdAST("_context");
   }
@@ -972,7 +942,7 @@ NodeAST PrintWith(AnyView obj, const ir_traits::WithTraitsObj& t, const IRPrinte
 
   // Define as-variables
   Optional<ExprAST> as_var;
-  List<AssignAST> var_defs = DefineRegionVars(t.region, obj, printer, path, frame);
+  List<AssignAST> var_defs = DefineRegionVars(t->region, obj, printer, path, frame);
   if (var_defs.size() == 1) {
     as_var = var_defs[0]->lhs;
   } else if (var_defs.size() > 1) {
@@ -984,14 +954,14 @@ NodeAST PrintWith(AnyView obj, const ir_traits::WithTraitsObj& t, const IRPrinte
   }
 
   // Call text_printer_pre hook
-  CallPrinterHook(t.text_printer_pre, obj, printer, path, frame);
+  CallPrinterHook(t->text_printer_pre, obj, printer, path, frame);
 
   // Print body — when a post hook is present, print body items inline
   // (without a sub-frame) so that variables defined during body printing
   // remain accessible to the post hook via printer->VarGet.
   List<StmtAST> body;
-  if (t.text_printer_post.has_value()) {
-    Any body_val = ResolveWithPrinter(t.region->body, obj, printer, GetCurrentFrame(printer));
+  if (t->text_printer_post.has_value()) {
+    Any body_val = ResolveWithPrinter(t->region->body, obj, printer);
     if (body_val.type_index() >= TypeIndex::kTVMFFIStaticObjectBegin) {
       ObjectRef body_obj = body_val.cast<ObjectRef>();
       if (IsListLike(body_obj)) {
@@ -1024,18 +994,18 @@ NodeAST PrintWith(AnyView obj, const ir_traits::WithTraitsObj& t, const IRPrinte
       }
     }
   } else {
-    body = PrintBody(t.region->body, obj, printer, path);
+    body = PrintBody(t->region->body, obj, printer, path);
   }
 
   // Snapshot frame stmts before post hook (these are pre-body stmts)
   int64_t pre_stmts_end = static_cast<int64_t>(frame->stmts.size());
 
   // Call text_printer_post hook (new stmts go after body)
-  CallPrinterHook(t.text_printer_post, obj, printer, path, frame);
+  CallPrinterHook(t->text_printer_post, obj, printer, path, frame);
 
   // Handle region.ret
-  if (t.region->ret.has_value()) {
-    ExprAST ret_val = ResolveAndPrint(t.region->ret.value(), obj, printer, path->Attr("ret"));
+  if (t->region->ret.has_value()) {
+    ExprAST ret_val = ResolveAndPrint(t->region->ret.value(), obj, printer, path->Attr("ret"));
     body.push_back(ExprStmtAST(YieldAST(ret_val)));
   }
 
@@ -1050,25 +1020,24 @@ NodeAST PrintWith(AnyView obj, const ir_traits::WithTraitsObj& t, const IRPrinte
   return WithAST(as_var, ctx_expr, all_body);
 }
 
-NodeAST PrintWhile(AnyView obj, const ir_traits::WhileTraitsObj& t, const IRPrinter& printer,
+NodeAST PrintWhile(AnyView obj, const tr::WhileTraits& t, const IRPrinter& printer,
                    const AccessPath& path) {
-  ExprAST cond = ResolveAndPrint(t.cond, obj, printer, path->Attr("cond"));
+  ExprAST cond = ResolveAndPrint(t->cond, obj, printer, path->Attr("cond"));
 
   // Print body
-  List<StmtAST> body = PrintBody(t.region->body, obj, printer, path);
+  List<StmtAST> body = PrintBody(t->region->body, obj, printer, path);
   return WhileAST(cond, body);
 }
 
-NodeAST PrintIf(AnyView obj, const ir_traits::IfTraitsObj& t, const IRPrinter& printer,
+NodeAST PrintIf(AnyView obj, const tr::IfTraits& t, const IRPrinter& printer,
                 const AccessPath& path) {
-  ExprAST cond = ResolveAndPrint(t.cond, obj, printer, path->Attr("cond"));
-  List<StmtAST> then_branch = PrintBody(t.then_region->body, obj, printer, path->Attr("then"));
+  ExprAST cond = ResolveAndPrint(t->cond, obj, printer, path->Attr("cond"));
+  List<StmtAST> then_branch = PrintBody(t->then_region->body, obj, printer, path->Attr("then"));
   List<StmtAST> else_branch;
-  if (t.else_region.has_value()) {
-    Any else_val =
-        ResolveWithPrinter(t.else_region.value()->body, obj, printer, GetCurrentFrame(printer));
-    if (else_val.type_index() != TypeIndex::kTVMFFINone) {
-      else_branch = PrintBody(t.else_region.value()->body, obj, printer, path->Attr("else"));
+  if (t->else_region.has_value()) {
+    Any else_val = ResolveWithPrinter(t->else_region.value()->body, obj, printer);
+    if (else_val != nullptr) {
+      else_branch = PrintBody(t->else_region.value()->body, obj, printer, path->Attr("else"));
     }
   }
   return IfAST(cond, then_branch, else_branch);
@@ -1078,7 +1047,7 @@ NodeAST PrintIf(AnyView obj, const ir_traits::IfTraitsObj& t, const IRPrinter& p
 List<ExprAST> ResolveAsArgList(const Any& args_val, const IRPrinter& printer,
                                const AccessPath& path) {
   List<ExprAST> arg_docs;
-  if (args_val.type_index() == TypeIndex::kTVMFFINone) return arg_docs;
+  if (args_val == nullptr) return arg_docs;
   if (args_val.type_index() >= TypeIndex::kTVMFFIStaticObjectBegin) {
     ObjectRef args_obj = args_val.cast<ObjectRef>();
     if (IsListLike(args_obj)) {
@@ -1098,11 +1067,11 @@ List<ExprAST> ResolveAsArgList(const Any& args_val, const IRPrinter& printer,
 // When format="int": reads the object's dtype field. int32→bare number, bool→T.bool(...), else
 // T.<dtype>(value). When format="float": reads dtype. void→bare float, else T.<dtype>(value).
 // Otherwise: just print the resolved value.
-NodeAST PrintLiteral(AnyView obj, const ir_traits::LiteralTraitsObj& t, const IRPrinter& printer,
+NodeAST PrintLiteral(AnyView obj, const tr::LiteralTraits& t, const IRPrinter& printer,
                      const AccessPath& path) {
-  Any value = ResolveWithPrinter(t.value, obj, printer, GetCurrentFrame(printer));
-  if (t.format.has_value()) {
-    std::string fmt(t.format.value());
+  Any value = ResolveWithPrinter(t->value, obj, printer);
+  if (t->format.has_value()) {
+    std::string fmt(t->format.value());
     // Try to read dtype from the object itself (IntImm/FloatImm have a dtype field in the
     // PrimExprNode base via the `dtype` DataType field which is part of the object layout)
     Any dtype_any = FindFieldValue(obj, "dtype");
@@ -1147,23 +1116,22 @@ NodeAST PrintLiteral(AnyView obj, const ir_traits::LiteralTraitsObj& t, const IR
 // ---- Call: print op(args...) ----
 // The `op` field can be a $field/$method reference OR a literal callee string
 // like "I.GlobalVar" or "T.Ramp".
-NodeAST PrintCall(AnyView obj, const ir_traits::CallTraitsObj& t, const IRPrinter& printer,
+NodeAST PrintCall(AnyView obj, const tr::CallTraits& t, const IRPrinter& printer,
                   const AccessPath& path) {
   // Call text_printer_pre hook if set
-  if (t.text_printer_pre.has_value()) {
+  if (t->text_printer_pre.has_value()) {
     DefaultFrame frame = printer->frames.back().cast<DefaultFrame>();
-    CallPrinterHook(t.text_printer_pre, obj, printer, path, frame);
+    CallPrinterHook(t->text_printer_pre, obj, printer, path, frame);
   }
-  // Resolve callee -- dynamic override takes priority, but falls through to t.op if None
+  // Resolve callee -- dynamic override takes priority, but falls through to t->op if None
   ExprAST callee(ffi::UnsafeInit{});
   bool callee_resolved = false;
-  if (t.text_printer_callee.has_value()) {
-    Any callee_val =
-        ResolveWithPrinter(t.text_printer_callee.value(), obj, printer, GetCurrentFrame(printer));
+  if (t->text_printer_callee.has_value()) {
+    Any callee_val = ResolveWithPrinter(t->text_printer_callee.value(), obj, printer);
     if (IsString(callee_val)) {
       callee = ParseCalleeString(std::string(callee_val.cast<String>()));
       callee_resolved = true;
-    } else if (callee_val.type_index() != TypeIndex::kTVMFFINone) {
+    } else if (callee_val != nullptr) {
       // Check if the value is already an ExprAST (e.g. from $printer: method returning IdAST)
       if (callee_val.type_index() >= TypeIndex::kTVMFFIStaticObjectBegin) {
         ObjectRef callee_obj = callee_val.cast<ObjectRef>();
@@ -1177,13 +1145,13 @@ NodeAST PrintCall(AnyView obj, const ir_traits::CallTraitsObj& t, const IRPrinte
         callee_resolved = true;
       }
     }
-    // If None, fall through to t.op below
+    // If None, fall through to t->op below
   }
   if (!callee_resolved) {
-    std::string_view op_sv(t.op.data(), t.op.size());
+    std::string_view op_sv(t->op.data(), t->op.size());
     if (op_sv.substr(0, 1) == "$") {
       // $field: or $method: reference
-      Any op_val = ResolveWithPrinter(t.op, obj, printer, GetCurrentFrame(printer));
+      Any op_val = ResolveWithPrinter(t->op, obj, printer);
       if (IsString(op_val)) {
         callee = ParseCalleeString(std::string(op_val.cast<String>()));
       } else {
@@ -1195,22 +1163,22 @@ NodeAST PrintCall(AnyView obj, const ir_traits::CallTraitsObj& t, const IRPrinte
     }
   }
   // Resolve args
-  Any args_val = ResolveWithPrinter(t.args, obj, printer, GetCurrentFrame(printer));
+  Any args_val = ResolveWithPrinter(t->args, obj, printer);
   List<ExprAST> arg_docs = ResolveAsArgList(args_val, printer, path->Attr("args"));
   // Handle attrs (single named attribute)
   List<String> kw_keys;
   List<ExprAST> kw_vals;
-  if (t.attrs.has_value()) {
-    Any attrs_val = ResolveWithPrinter(t.attrs.value(), obj, printer, GetCurrentFrame(printer));
-    if (attrs_val.type_index() != TypeIndex::kTVMFFINone) {
+  if (t->attrs.has_value()) {
+    Any attrs_val = ResolveWithPrinter(t->attrs.value(), obj, printer);
+    if (attrs_val != nullptr) {
       kw_keys.push_back(String("attrs"));
       kw_vals.push_back(
           printer->operator()(std::move(attrs_val), path->Attr("attrs")).cast<ExprAST>());
     }
   }
   // Handle kwargs ($method: returning Map/Dict with String keys)
-  if (t.kwargs.has_value()) {
-    Any kwargs_val = ResolveWithPrinter(t.kwargs.value(), obj, printer, GetCurrentFrame(printer));
+  if (t->kwargs.has_value()) {
+    Any kwargs_val = ResolveWithPrinter(t->kwargs.value(), obj, printer);
     if (kwargs_val.type_index() >= TypeIndex::kTVMFFIStaticObjectBegin) {
       ObjectRef kwargs_obj = kwargs_val.cast<ObjectRef>();
       // Check if it's any map-like container (ffi.Map or ffi.Dict)
@@ -1231,9 +1199,9 @@ NodeAST PrintCall(AnyView obj, const ir_traits::CallTraitsObj& t, const IRPrinte
 
 // ---- Type trait printers ----
 
-NodeAST PrintPrimTy(AnyView obj, const ir_traits::PrimTyTraitsObj& t, const IRPrinter& printer,
+NodeAST PrintPrimTy(AnyView obj, const tr::PrimTyTraits& t, const IRPrinter& printer,
                     const AccessPath& path) {
-  Any dtype_val = ResolveWithPrinter(t.dtype, obj, printer, GetCurrentFrame(printer));
+  Any dtype_val = ResolveWithPrinter(t->dtype, obj, printer);
   // If it's a DataType, render as T.<dtype>
   if (dtype_val.type_index() == TypeIndex::kTVMFFIDataType) {
     DLDataType dtype = dtype_val.cast<DLDataType>();
@@ -1241,12 +1209,12 @@ NodeAST PrintPrimTy(AnyView obj, const ir_traits::PrimTyTraitsObj& t, const IRPr
     return ExprAttr(IdAST("T"), s);
   }
   // Fallback: resolve and print
-  return ResolveAndPrint(t.dtype, obj, printer, path->Attr("dtype"));
+  return ResolveAndPrint(t->dtype, obj, printer, path->Attr("dtype"));
 }
 
-NodeAST PrintTupleTy(AnyView obj, const ir_traits::TupleTyTraitsObj& t, const IRPrinter& printer,
+NodeAST PrintTupleTy(AnyView obj, const tr::TupleTyTraits& t, const IRPrinter& printer,
                      const AccessPath& path) {
-  Any fields_val = ResolveWithPrinter(t.fields, obj, printer, GetCurrentFrame(printer));
+  Any fields_val = ResolveWithPrinter(t->fields, obj, printer);
   List<ExprAST> field_docs = ResolveAsArgList(fields_val, printer, path->Attr("fields"));
   if (field_docs.empty()) {
     return LiteralAST::Null({path});
@@ -1254,30 +1222,30 @@ NodeAST PrintTupleTy(AnyView obj, const ir_traits::TupleTyTraitsObj& t, const IR
   return CallAST(ExprAttr(IdAST("T"), "Tuple"), std::move(field_docs), {}, {});
 }
 
-NodeAST PrintFuncTy(AnyView obj, const ir_traits::FuncTyTraitsObj& t, const IRPrinter& printer,
+NodeAST PrintFuncTy(AnyView obj, const tr::FuncTyTraits& t, const IRPrinter& printer,
                     const AccessPath& path) {
   List<ExprAST> args;
-  if (t.params.has_value()) {
-    args.push_back(ResolveAndPrint(t.params.value(), obj, printer, path->Attr("params")));
+  if (t->params.has_value()) {
+    args.push_back(ResolveAndPrint(t->params.value(), obj, printer, path->Attr("params")));
   }
-  if (t.ret.has_value()) {
-    args.push_back(ResolveAndPrint(t.ret.value(), obj, printer, path->Attr("ret")));
+  if (t->ret.has_value()) {
+    args.push_back(ResolveAndPrint(t->ret.value(), obj, printer, path->Attr("ret")));
   }
   return CallAST(ExprAttr(IdAST("I"), "FuncType"), std::move(args), {}, {});
 }
 
 // ---- BufferTy: T.Buffer(shape, dtype, ...) ----
-NodeAST PrintBufferTy(AnyView obj, const ir_traits::BufferTyTraitsObj& t, const IRPrinter& printer,
+NodeAST PrintBufferTy(AnyView obj, const tr::BufferTyTraits& t, const IRPrinter& printer,
                       const AccessPath& path) {
   // If buffer is already defined as a variable, return the var ref
   Optional<ExprAST> existing = printer->VarGet(obj.cast<ObjectRef>());
   if (existing.has_value()) return existing.value();
 
   // Resolve shape
-  ExprAST shape_expr = ResolveAndPrint(t.shape, obj, printer, path->Attr("shape"));
+  ExprAST shape_expr = ResolveAndPrint(t->shape, obj, printer, path->Attr("shape"));
 
   // Resolve dtype -- render as a string
-  Any dtype_val = ResolveWithPrinter(t.dtype, obj, printer, GetCurrentFrame(printer));
+  Any dtype_val = ResolveWithPrinter(t->dtype, obj, printer);
   ExprAST dtype_expr(ffi::UnsafeInit{});
   if (dtype_val.type_index() == TypeIndex::kTVMFFIDataType) {
     DLDataType dtype = dtype_val.cast<DLDataType>();
@@ -1296,10 +1264,10 @@ NodeAST PrintBufferTy(AnyView obj, const ir_traits::BufferTyTraitsObj& t, const 
   List<String> kw_keys;
   List<ExprAST> kw_vals;
 
-  if (t.strides.has_value()) {
-    Any strides_val = ResolveWithPrinter(t.strides.value(), obj, printer, GetCurrentFrame(printer));
+  if (t->strides.has_value()) {
+    Any strides_val = ResolveWithPrinter(t->strides.value(), obj, printer);
     // Skip empty strides (None, or empty array/list)
-    bool is_default = (strides_val.type_index() == TypeIndex::kTVMFFINone);
+    bool is_default = (strides_val == nullptr);
     if (!is_default && strides_val.type_index() >= TypeIndex::kTVMFFIStaticObjectBegin) {
       ObjectRef strides_obj = strides_val.cast<ObjectRef>();
       if (IsListLike(strides_obj)) {
@@ -1314,10 +1282,10 @@ NodeAST PrintBufferTy(AnyView obj, const ir_traits::BufferTyTraitsObj& t, const 
     }
   }
 
-  if (t.offset.has_value()) {
-    Any offset_val = ResolveWithPrinter(t.offset.value(), obj, printer, GetCurrentFrame(printer));
+  if (t->offset.has_value()) {
+    Any offset_val = ResolveWithPrinter(t->offset.value(), obj, printer);
     // Skip zero offset
-    bool is_default = (offset_val.type_index() == TypeIndex::kTVMFFINone);
+    bool is_default = (offset_val == nullptr);
     if (!is_default && offset_val.type_index() == TypeIndex::kTVMFFIInt) {
       is_default = (offset_val.cast<int64_t>() == 0);
     }
@@ -1328,10 +1296,10 @@ NodeAST PrintBufferTy(AnyView obj, const ir_traits::BufferTyTraitsObj& t, const 
     }
   }
 
-  if (t.scope.has_value()) {
-    Any scope_val = ResolveWithPrinter(t.scope.value(), obj, printer, GetCurrentFrame(printer));
+  if (t->scope.has_value()) {
+    Any scope_val = ResolveWithPrinter(t->scope.value(), obj, printer);
     // Skip default scope "global" or empty
-    bool is_default = (scope_val.type_index() == TypeIndex::kTVMFFINone);
+    bool is_default = (scope_val == nullptr);
     if (!is_default) {
       if (IsString(scope_val)) {
         String scope_str = scope_val.cast<String>();
@@ -1350,57 +1318,6 @@ NodeAST PrintBufferTy(AnyView obj, const ir_traits::BufferTyTraitsObj& t, const 
 }
 
 }  // namespace
-
-// ============================================================================
-// TraitPrint — dispatch on trait runtime type
-// ============================================================================
-
-NodeAST TraitPrint(AnyView obj_view, const ObjectRef& trait_ref, IRPrinter printer,
-                   AccessPath path) {
-  ObjectRef obj = obj_view.cast<ObjectRef>();
-  ir_traits::IRTraits trait = AnyView(trait_ref).cast<ir_traits::IRTraits>();
-  // Type traits: if obj is already defined in the printer, return its name.
-  if (trait->IsInstance<ir_traits::TyTraitsObj>()) {
-    if (auto doc = printer->VarGet(obj)) {
-      return doc.value();
-    }
-    if (auto* t = trait.as<ir_traits::PrimTyTraitsObj>()) {
-      return PrintPrimTy(obj, *t, printer, path);
-    }
-    if (auto* t = trait.as<ir_traits::TupleTyTraitsObj>()) {
-      return PrintTupleTy(obj, *t, printer, path);
-    }
-    if (auto* t = trait.as<ir_traits::FuncTyTraitsObj>()) {
-      return PrintFuncTy(obj, *t, printer, path);
-    }
-    if (auto* t = trait.as<ir_traits::BufferTyTraitsObj>()) {
-      return PrintBufferTy(obj, *t, printer, path);
-    }
-    return DefaultPrint(std::move(obj), std::move(printer), std::move(path));
-  }
-  // Expression traits
-  if (auto* t = trait.as<ir_traits::BinOpTraitsObj>()) return PrintBinOp(obj, *t, printer, path);
-  if (auto* t = trait.as<ir_traits::UnaryOpTraitsObj>()) {
-    return PrintUnaryOp(obj, *t, printer, path);
-  }
-  if (auto* t = trait.as<ir_traits::ValueTraitsObj>()) return PrintValueUse(obj, *t, printer, path);
-  if (auto* t = trait.as<ir_traits::LiteralTraitsObj>()) {
-    return PrintLiteral(obj, *t, printer, path);
-  }
-  if (auto* t = trait.as<ir_traits::CallTraitsObj>()) return PrintCall(obj, *t, printer, path);
-  if (auto* t = trait.as<ir_traits::LoadTraitsObj>()) return PrintLoad(obj, *t, printer, path);
-  // Statement traits
-  if (auto* t = trait.as<ir_traits::StoreTraitsObj>()) return PrintStore(obj, *t, printer, path);
-  if (auto* t = trait.as<ir_traits::AssignTraitsObj>()) return PrintAssign(obj, *t, printer, path);
-  if (auto* t = trait.as<ir_traits::AssertTraitsObj>()) return PrintAssert(obj, *t, printer, path);
-  if (auto* t = trait.as<ir_traits::ReturnTraitsObj>()) return PrintReturn(obj, *t, printer, path);
-  if (auto* t = trait.as<ir_traits::FuncTraitsObj>()) return PrintFunc(obj, *t, printer, path);
-  if (auto* t = trait.as<ir_traits::ForTraitsObj>()) return PrintFor(obj, *t, printer, path);
-  if (auto* t = trait.as<ir_traits::WithTraitsObj>()) return PrintWith(obj, *t, printer, path);
-  if (auto* t = trait.as<ir_traits::WhileTraitsObj>()) return PrintWhile(obj, *t, printer, path);
-  if (auto* t = trait.as<ir_traits::IfTraitsObj>()) return PrintIf(obj, *t, printer, path);
-  return DefaultPrint(std::move(obj), std::move(printer), std::move(path));
-}
 
 // ============================================================================
 // DefaultPrint — Level 0 printer: TypeKey(field1=val1, field2=val2, ...)
@@ -1430,22 +1347,15 @@ NodeAST DefaultPrint(ObjectRef obj, IRPrinter printer, AccessPath path) {
   return CallAST(callee, {}, kwarg_keys, kwarg_values);
 }
 
-}  // namespace pyast
-}  // namespace ffi
-}  // namespace tvm
-
-namespace tvm {
-namespace ffi {
-namespace ir_traits {
-
 /************** ObjectDef Registrations **************/
 
 TVM_FFI_STATIC_INIT_BLOCK() {
   namespace refl = ::tvm::ffi::reflection;
-  namespace tr = ::tvm::ffi::ir_traits;
 
   // Ensure the __ffi_ir_traits__ column exists
   refl::EnsureTypeAttrColumn("__ffi_ir_traits__");
+  // Ensure the __ffi_traits_print__ column exists (per-trait print dispatch)
+  refl::EnsureTypeAttrColumn("__ffi_traits_print__");
 
   // Region
   refl::ObjectDef<tr::RegionTraitsObj>()
@@ -1532,8 +1442,8 @@ TVM_FFI_STATIC_INIT_BLOCK() {
       .def_ro("attrs", &tr::FuncTraitsObj::attrs)
       .def_ro("text_printer_kind", &tr::FuncTraitsObj::text_printer_kind)
       .def_ro("text_printer_pre", &tr::FuncTraitsObj::text_printer_pre)
-      .def(
-          refl::init<String, RegionTraits, Optional<String>, Optional<String>, Optional<String>>());
+      .def(refl::init<String, tr::RegionTraits, Optional<String>, Optional<String>,
+                      Optional<String>>());
 
   // For
   refl::ObjectDef<tr::ForTraitsObj>()
@@ -1545,7 +1455,7 @@ TVM_FFI_STATIC_INIT_BLOCK() {
       .def_ro("carry_init", &tr::ForTraitsObj::carry_init)
       .def_ro("attrs", &tr::ForTraitsObj::attrs)
       .def_ro("text_printer_kind", &tr::ForTraitsObj::text_printer_kind)
-      .def(refl::init<RegionTraits, Optional<String>, Optional<String>, Optional<String>,
+      .def(refl::init<tr::RegionTraits, Optional<String>, Optional<String>, Optional<String>,
                       Optional<String>, Optional<String>, Optional<String>, Optional<String>>());
 
   // With
@@ -1557,21 +1467,21 @@ TVM_FFI_STATIC_INIT_BLOCK() {
       .def_ro("text_printer_pre", &tr::WithTraitsObj::text_printer_pre)
       .def_ro("text_printer_post", &tr::WithTraitsObj::text_printer_post)
       .def_ro("text_printer_no_frame", &tr::WithTraitsObj::text_printer_no_frame)
-      .def(refl::init<RegionTraits, Optional<String>, Optional<String>, Optional<String>,
+      .def(refl::init<tr::RegionTraits, Optional<String>, Optional<String>, Optional<String>,
                       Optional<String>, Optional<String>, Optional<bool>>());
 
   // While
   refl::ObjectDef<tr::WhileTraitsObj>()
       .def_ro("cond", &tr::WhileTraitsObj::cond)
       .def_ro("region", &tr::WhileTraitsObj::region)
-      .def(refl::init<String, RegionTraits>());
+      .def(refl::init<String, tr::RegionTraits>());
 
   // If
   refl::ObjectDef<tr::IfTraitsObj>()
       .def_ro("cond", &tr::IfTraitsObj::cond)
       .def_ro("then_region", &tr::IfTraitsObj::then_region)
       .def_ro("else_region", &tr::IfTraitsObj::else_region)
-      .def(refl::init<String, RegionTraits, Optional<RegionTraits>>());
+      .def(refl::init<String, tr::RegionTraits, Optional<tr::RegionTraits>>());
 
   // Literal
   refl::ObjectDef<tr::LiteralTraitsObj>()
@@ -1631,8 +1541,91 @@ TVM_FFI_STATIC_INIT_BLOCK() {
       .def_ro("dims", &tr::ShapeTyTraitsObj::dims)
       .def_ro("ndim", &tr::ShapeTyTraitsObj::ndim)
       .def(refl::init<Optional<String>, Optional<String>>());
+
+  // ============================================================================
+  // __ffi_traits_print__: per-trait print dispatch
+  // ============================================================================
+  // Expression traits
+  refl::TypeAttrDef<tr::BinOpTraitsObj>().def(
+      "__ffi_traits_print__",
+      [](AnyView obj, const tr::BinOpTraits& trait, const IRPrinter& printer,
+         const AccessPath& path) -> NodeAST { return PrintBinOp(obj, trait, printer, path); });
+  refl::TypeAttrDef<tr::UnaryOpTraitsObj>().def(
+      "__ffi_traits_print__",
+      [](AnyView obj, const tr::UnaryOpTraits& trait, const IRPrinter& printer,
+         const AccessPath& path) -> NodeAST { return PrintUnaryOp(obj, trait, printer, path); });
+  refl::TypeAttrDef<tr::ValueTraitsObj>().def(
+      "__ffi_traits_print__",
+      [](AnyView obj, const tr::ValueTraits& trait, const IRPrinter& printer,
+         const AccessPath& path) -> NodeAST { return PrintValueUse(obj, trait, printer, path); });
+  refl::TypeAttrDef<tr::LiteralTraitsObj>().def(
+      "__ffi_traits_print__",
+      [](AnyView obj, const tr::LiteralTraits& trait, const IRPrinter& printer,
+         const AccessPath& path) -> NodeAST { return PrintLiteral(obj, trait, printer, path); });
+  refl::TypeAttrDef<tr::CallTraitsObj>().def(
+      "__ffi_traits_print__",
+      [](AnyView obj, const tr::CallTraits& trait, const IRPrinter& printer,
+         const AccessPath& path) -> NodeAST { return PrintCall(obj, trait, printer, path); });
+  refl::TypeAttrDef<tr::LoadTraitsObj>().def(
+      "__ffi_traits_print__",
+      [](AnyView obj, const tr::LoadTraits& trait, const IRPrinter& printer,
+         const AccessPath& path) -> NodeAST { return PrintLoad(obj, trait, printer, path); });
+  // Statement traits
+  refl::TypeAttrDef<tr::StoreTraitsObj>().def(
+      "__ffi_traits_print__",
+      [](AnyView obj, const tr::StoreTraits& trait, const IRPrinter& printer,
+         const AccessPath& path) -> NodeAST { return PrintStore(obj, trait, printer, path); });
+  refl::TypeAttrDef<tr::AssignTraitsObj>().def(
+      "__ffi_traits_print__",
+      [](AnyView obj, const tr::AssignTraits& trait, const IRPrinter& printer,
+         const AccessPath& path) -> NodeAST { return PrintAssign(obj, trait, printer, path); });
+  refl::TypeAttrDef<tr::AssertTraitsObj>().def(
+      "__ffi_traits_print__",
+      [](AnyView obj, const tr::AssertTraits& trait, const IRPrinter& printer,
+         const AccessPath& path) -> NodeAST { return PrintAssert(obj, trait, printer, path); });
+  refl::TypeAttrDef<tr::ReturnTraitsObj>().def(
+      "__ffi_traits_print__",
+      [](AnyView obj, const tr::ReturnTraits& trait, const IRPrinter& printer,
+         const AccessPath& path) -> NodeAST { return PrintReturn(obj, trait, printer, path); });
+  refl::TypeAttrDef<tr::FuncTraitsObj>().def(
+      "__ffi_traits_print__",
+      [](AnyView obj, const tr::FuncTraits& trait, const IRPrinter& printer,
+         const AccessPath& path) -> NodeAST { return PrintFunc(obj, trait, printer, path); });
+  refl::TypeAttrDef<tr::ForTraitsObj>().def(
+      "__ffi_traits_print__",
+      [](AnyView obj, const tr::ForTraits& trait, const IRPrinter& printer,
+         const AccessPath& path) -> NodeAST { return PrintFor(obj, trait, printer, path); });
+  refl::TypeAttrDef<tr::WithTraitsObj>().def(
+      "__ffi_traits_print__",
+      [](AnyView obj, const tr::WithTraits& trait, const IRPrinter& printer,
+         const AccessPath& path) -> NodeAST { return PrintWith(obj, trait, printer, path); });
+  refl::TypeAttrDef<tr::WhileTraitsObj>().def(
+      "__ffi_traits_print__",
+      [](AnyView obj, const tr::WhileTraits& trait, const IRPrinter& printer,
+         const AccessPath& path) -> NodeAST { return PrintWhile(obj, trait, printer, path); });
+  refl::TypeAttrDef<tr::IfTraitsObj>().def(
+      "__ffi_traits_print__",
+      [](AnyView obj, const tr::IfTraits& trait, const IRPrinter& printer,
+         const AccessPath& path) -> NodeAST { return PrintIf(obj, trait, printer, path); });
+  // Type traits
+  refl::TypeAttrDef<tr::PrimTyTraitsObj>().def(
+      "__ffi_traits_print__",
+      [](AnyView obj, const tr::PrimTyTraits& trait, const IRPrinter& printer,
+         const AccessPath& path) -> NodeAST { return PrintPrimTy(obj, trait, printer, path); });
+  refl::TypeAttrDef<tr::TupleTyTraitsObj>().def(
+      "__ffi_traits_print__",
+      [](AnyView obj, const tr::TupleTyTraits& trait, const IRPrinter& printer,
+         const AccessPath& path) -> NodeAST { return PrintTupleTy(obj, trait, printer, path); });
+  refl::TypeAttrDef<tr::FuncTyTraitsObj>().def(
+      "__ffi_traits_print__",
+      [](AnyView obj, const tr::FuncTyTraits& trait, const IRPrinter& printer,
+         const AccessPath& path) -> NodeAST { return PrintFuncTy(obj, trait, printer, path); });
+  refl::TypeAttrDef<tr::BufferTyTraitsObj>().def(
+      "__ffi_traits_print__",
+      [](AnyView obj, const tr::BufferTyTraits& trait, const IRPrinter& printer,
+         const AccessPath& path) -> NodeAST { return PrintBufferTy(obj, trait, printer, path); });
 }
 
-}  // namespace ir_traits
+}  // namespace pyast
 }  // namespace ffi
 }  // namespace tvm

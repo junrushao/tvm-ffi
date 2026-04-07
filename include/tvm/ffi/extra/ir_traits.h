@@ -25,8 +25,8 @@
  * and visualizers.  Trait objects are immutable FFI objects stored
  * in TypeAttrColumn("__ffi_ir_traits__").
  *
- * This file also declares the TraitPrint / DefaultPrint dispatch
- * functions used by the text printer.
+ * Each concrete trait type registers a "__ffi_traits_print__" TypeAttrColumn
+ * handler used by the text printer for dispatch.
  */
 #ifndef TVM_FFI_EXTRA_IR_TRAITS_H_
 #define TVM_FFI_EXTRA_IR_TRAITS_H_

@@ -46,8 +46,7 @@ namespace tvm {
 namespace ffi {
 namespace pyast {
 
-// Forward declarations (defined in pyast_trait_print.cc)
-NodeAST TraitPrint(AnyView obj, const ObjectRef& trait, IRPrinter printer, AccessPath path);
+// Forward declaration (defined in pyast_trait_print.cc)
 NodeAST DefaultPrint(ObjectRef obj, IRPrinter printer, AccessPath path);
 
 namespace {
@@ -1570,7 +1569,7 @@ NodeAST IRPrintDispatch(AnyView obj, AnyView printer_view, AnyView path) {
   // Tier 1: manual override (__ffi_text_print__)
   static reflection::TypeAttrColumn text_print_col("__ffi_text_print__");
   AnyView func_view = text_print_col[type_index];
-  if (func_view.type_index() != TypeIndex::kTVMFFINone) {
+  if (func_view != nullptr) {
     Function func = func_view.cast<Function>();
     Any ret;
     AnyView args[3] = {obj, printer_view, path};
@@ -1578,12 +1577,21 @@ NodeAST IRPrintDispatch(AnyView obj, AnyView printer_view, AnyView path) {
     return ret.cast<NodeAST>();
   }
 
-  // Tier 2: trait-driven (__ffi_ir_traits__)
+  // Tier 2: trait-driven (__ffi_ir_traits__ + __ffi_traits_print__)
   static reflection::TypeAttrColumn traits_col("__ffi_ir_traits__");
   AnyView trait_view = traits_col[type_index];
-  if (trait_view.type_index() != TypeIndex::kTVMFFINone) {
-    return TraitPrint(obj, trait_view.cast<ObjectRef>(), printer_view.cast<IRPrinter>(),
-                      path.cast<AccessPath>());
+  if (trait_view != nullptr) {
+    static reflection::TypeAttrColumn print_col("__ffi_traits_print__");
+    AnyView print_fn_view = print_col[trait_view.type_index()];
+    if (print_fn_view != nullptr) {
+      Function print_fn = print_fn_view.cast<Function>();
+      Any ret;
+      AnyView args[4] = {obj, trait_view, printer_view, path};
+      print_fn.CallPacked(args, 4, &ret);
+      return ret.cast<NodeAST>();
+    }
+    return DefaultPrint(obj.cast<ObjectRef>(), printer_view.cast<IRPrinter>(),
+                        path.cast<AccessPath>());
   }
 
   // Tier 3: default (Level 0)
