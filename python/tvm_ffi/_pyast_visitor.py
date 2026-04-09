@@ -28,43 +28,45 @@ from functools import lru_cache
 from typing import Any
 
 
-def _collect_fields(node: Any) -> list[Any]:
-    """Return deduplicated field descriptors for *node* (parent-first order).
+class _FieldInfo:
+    """Pre-computed metadata for a single field descriptor."""
+
+    __slots__ = ("field", "optional")
+
+    def __init__(self, field: Any) -> None:
+        self.field = field
+        schema_json = field.metadata.get("type_schema", "")
+        if schema_json:
+            self.optional = json.loads(schema_json).get("type") == "Optional"
+        else:
+            self.optional = False
+
+
+@lru_cache(maxsize=None)
+def _collect_fields(cls: Any) -> list[_FieldInfo]:
+    """Return deduplicated field info for *cls* (parent-first order).
 
     Walks the ``__tvm_ffi_type_info__`` parent chain and collects fields,
     skipping any field whose name was already seen so that shadowed
     re-declarations (e.g. ``source_paths`` on both ``Node`` and ``Expr``)
     are yielded only once.
+
+    The result is cached per class, so repeated calls are free.
     """
-    type_info = type(node).__tvm_ffi_type_info__
-    ti = type_info
+    ti = cls.__tvm_ffi_type_info__
     chain: list[Any] = []
     while ti is not None:
         chain.append(ti)
         ti = ti.parent_type_info
     seen: set[str] = set()
-    result: list[Any] = []
+    result: list[_FieldInfo] = []
     for ancestor_info in reversed(chain):
         if ancestor_info.fields is not None:
             for field in ancestor_info.fields:
                 if field.name not in seen:
                     seen.add(field.name)
-                    result.append(field)
+                    result.append(_FieldInfo(field))
     return result
-
-
-@lru_cache(maxsize=None)
-def _field_type_schema(field: Any) -> dict[str, Any]:
-    """Parse and cache the type schema JSON for *field*."""
-    schema_json = field.metadata.get("type_schema", "")
-    if not schema_json:
-        return {}
-    return json.loads(schema_json)
-
-
-def _field_is_optional(field: Any) -> bool:
-    """Return whether *field* accepts ``None`` according to its type schema."""
-    return _field_type_schema(field).get("type") == "Optional"
 
 
 def iter_fields(node: Any) -> Generator[tuple[str, Any], None, None]:
@@ -85,8 +87,8 @@ def iter_fields(node: Any) -> Generator[tuple[str, Any], None, None]:
         ``(name, value)`` for every registered field on *node*.
 
     """
-    for field in _collect_fields(node):
-        yield field.name, getattr(node, field.name)
+    for fi in _collect_fields(type(node)):
+        yield fi.field.name, getattr(node, fi.field.name)
 
 
 def iter_child_nodes(node: Any) -> Generator[Any, None, None]:
@@ -188,8 +190,8 @@ class NodeTransformer(NodeVisitor):
         """Transform all child nodes when no explicit visitor exists."""
         from .pyast import Node  # noqa: PLC0415
 
-        for field in _collect_fields(node):
-            old_value = getattr(node, field.name)
+        for fi in _collect_fields(type(node)):
+            old_value = getattr(node, fi.field.name)
             if isinstance(old_value, (list, MutableSequence)):
                 new_values = []
                 for item in old_value:
@@ -208,8 +210,8 @@ class NodeTransformer(NodeVisitor):
             elif isinstance(old_value, Node):
                 new_node = self.visit(old_value)
                 if new_node is not None:
-                    field.setter(node, new_node)
-                elif _field_is_optional(field):
-                    field.setter(node, None)
+                    fi.field.setter(node, new_node)
+                elif fi.optional:
+                    fi.field.setter(node, None)
                 # else: non-optional field — keep the original node
         return node

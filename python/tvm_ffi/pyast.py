@@ -2354,8 +2354,8 @@ def to_python(obj: Any, cfg: PrinterConfig | None = None) -> str:
 # without triggering a circular import (it does so lazily inside methods).
 # ---------------------------------------------------------------------------
 # isort: off
-from tvm_ffi._pyast_visitor import NodeTransformer  # noqa: F401
-from tvm_ffi._pyast_visitor import NodeVisitor  # noqa: F401
-from tvm_ffi._pyast_visitor import iter_child_nodes  # noqa: F401
-from tvm_ffi._pyast_visitor import iter_fields  # noqa: F401
+from tvm_ffi._pyast_visitor import NodeTransformer as NodeTransformer  # noqa: PLC0414
+from tvm_ffi._pyast_visitor import NodeVisitor as NodeVisitor  # noqa: PLC0414
+from tvm_ffi._pyast_visitor import iter_child_nodes as iter_child_nodes  # noqa: PLC0414
+from tvm_ffi._pyast_visitor import iter_fields as iter_fields  # noqa: PLC0414
 # isort: on
