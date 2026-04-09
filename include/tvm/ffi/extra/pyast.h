@@ -42,6 +42,7 @@
 #include <iomanip>
 #include <sstream>
 #include <string>
+#include <unordered_set>
 
 namespace tvm {
 namespace ffi {
@@ -326,10 +327,13 @@ struct StmtBlockAST : public StmtAST {
 struct LiteralASTObj : public ExprASTObj {
   /*! \brief The literal value (bool, int, float, string, or null). */
   Any value;
+  /*! \brief Optional string prefix (e.g. "u" for u-strings). None for regular literals. */
+  Optional<String> kind;
   /// \cond Doxygen_Suppress
-  explicit LiteralASTObj(Any value) : LiteralASTObj(List<AccessPath>{}, std::move(value)) {}
-  explicit LiteralASTObj(List<AccessPath> source_paths, Any value)
-      : ExprASTObj(std::move(source_paths)), value(std::move(value)) {}
+  explicit LiteralASTObj(Any value, Optional<String> kind = {})
+      : LiteralASTObj(List<AccessPath>{}, std::move(value), std::move(kind)) {}
+  explicit LiteralASTObj(List<AccessPath> source_paths, Any value, Optional<String> kind = {})
+      : ExprASTObj(std::move(source_paths)), value(std::move(value)), kind(std::move(kind)) {}
   /// \endcond
   /// \cond Doxygen_Suppress
   TVM_FFI_DECLARE_OBJECT_INFO_FINAL("ffi.pyast.Literal", LiteralASTObj, ExprASTObj);
@@ -424,9 +428,11 @@ struct LiteralAST : public ExprAST {
     return LiteralAST(std::move(source_paths), Any());
   }
   /// \cond Doxygen_Suppress
-  explicit LiteralAST(Any value) : LiteralAST(List<AccessPath>{}, std::move(value)) {}
-  explicit LiteralAST(List<AccessPath> source_paths, Any value)
-      : LiteralAST(make_object<LiteralASTObj>(std::move(source_paths), std::move(value))) {}
+  explicit LiteralAST(Any value, Optional<String> kind = {})
+      : LiteralAST(List<AccessPath>{}, std::move(value), std::move(kind)) {}
+  explicit LiteralAST(List<AccessPath> source_paths, Any value, Optional<String> kind = {})
+      : LiteralAST(make_object<LiteralASTObj>(std::move(source_paths), std::move(value),
+                                              std::move(kind))) {}
   /// \endcond
   /// \cond Doxygen_Suppress
   TVM_FFI_DEFINE_OBJECT_REF_METHODS_NOTNULLABLE(LiteralAST, ExprAST, LiteralASTObj);
@@ -1048,16 +1054,20 @@ struct ComprehensionIterASTObj : public NodeASTObj {
   ExprAST iter;
   /*! \brief Zero or more filter conditions. */
   List<ExprAST> ifs;
+  /*! \brief Whether this is an async comprehension (`async for`). */
+  bool is_async;
   /// \cond Doxygen_Suppress
-  explicit ComprehensionIterASTObj(ExprAST target, ExprAST iter, List<ExprAST> ifs)
+  explicit ComprehensionIterASTObj(ExprAST target, ExprAST iter, List<ExprAST> ifs,
+                                   bool is_async = false)
       : ComprehensionIterASTObj(List<AccessPath>{}, std::move(target), std::move(iter),
-                                std::move(ifs)) {}
+                                std::move(ifs), is_async) {}
   explicit ComprehensionIterASTObj(List<AccessPath> source_paths, ExprAST target, ExprAST iter,
-                                   List<ExprAST> ifs)
+                                   List<ExprAST> ifs, bool is_async = false)
       : NodeASTObj(std::move(source_paths)),
         target(std::move(target)),
         iter(std::move(iter)),
-        ifs(std::move(ifs)) {}
+        ifs(std::move(ifs)),
+        is_async(is_async) {}
   /// \endcond
   /// \cond Doxygen_Suppress
   TVM_FFI_DECLARE_OBJECT_INFO_FINAL("ffi.pyast.ComprehensionIter", ComprehensionIterASTObj,
@@ -1068,13 +1078,15 @@ struct ComprehensionIterASTObj : public NodeASTObj {
 /*! \brief Reference wrapper for a comprehension iterator clause. */
 struct ComprehensionIterAST : public NodeAST {
   /// \cond Doxygen_Suppress
-  explicit ComprehensionIterAST(ExprAST target, ExprAST iter, List<ExprAST> ifs)
-      : ComprehensionIterAST(List<AccessPath>{}, std::move(target), std::move(iter),
-                             std::move(ifs)) {}
+  explicit ComprehensionIterAST(ExprAST target, ExprAST iter, List<ExprAST> ifs,
+                                bool is_async = false)
+      : ComprehensionIterAST(List<AccessPath>{}, std::move(target), std::move(iter), std::move(ifs),
+                             is_async) {}
   explicit ComprehensionIterAST(List<AccessPath> source_paths, ExprAST target, ExprAST iter,
-                                List<ExprAST> ifs)
-      : ComprehensionIterAST(make_object<ComprehensionIterASTObj>(
-            std::move(source_paths), std::move(target), std::move(iter), std::move(ifs))) {}
+                                List<ExprAST> ifs, bool is_async = false)
+      : ComprehensionIterAST(
+            make_object<ComprehensionIterASTObj>(std::move(source_paths), std::move(target),
+                                                 std::move(iter), std::move(ifs), is_async)) {}
   /// \endcond
   /// \cond Doxygen_Suppress
   TVM_FFI_DEFINE_OBJECT_REF_METHODS_NOTNULLABLE(ComprehensionIterAST, NodeAST,
@@ -2329,18 +2341,22 @@ struct TryASTObj : public StmtASTObj {
   List<StmtAST> orelse;
   /*! \brief The finally-branch statements. */
   List<StmtAST> finalbody;
+  /*! \brief Whether this uses except* (exception groups, PEP 654). */
+  bool is_star;
   /// \cond Doxygen_Suppress
   explicit TryASTObj(List<StmtAST> body, List<ExceptHandlerAST> handlers, List<StmtAST> orelse = {},
-                     List<StmtAST> finalbody = {})
+                     List<StmtAST> finalbody = {}, bool is_star = false)
       : TryASTObj(List<AccessPath>{}, Optional<String>{}, std::move(body), std::move(handlers),
-                  std::move(orelse), std::move(finalbody)) {}
+                  std::move(orelse), std::move(finalbody), is_star) {}
   explicit TryASTObj(List<AccessPath> source_paths, Optional<String> comment, List<StmtAST> body,
-                     List<ExceptHandlerAST> handlers, List<StmtAST> orelse, List<StmtAST> finalbody)
+                     List<ExceptHandlerAST> handlers, List<StmtAST> orelse, List<StmtAST> finalbody,
+                     bool is_star = false)
       : StmtASTObj(std::move(source_paths), std::move(comment)),
         body(std::move(body)),
         handlers(std::move(handlers)),
         orelse(std::move(orelse)),
-        finalbody(std::move(finalbody)) {}
+        finalbody(std::move(finalbody)),
+        is_star(is_star) {}
   /// \endcond
   /// \cond Doxygen_Suppress
   TVM_FFI_DECLARE_OBJECT_INFO_FINAL("ffi.pyast.Try", TryASTObj, StmtASTObj);
@@ -2351,14 +2367,15 @@ struct TryASTObj : public StmtASTObj {
 struct TryAST : public StmtAST {
   /// \cond Doxygen_Suppress
   explicit TryAST(List<StmtAST> body, List<ExceptHandlerAST> handlers, List<StmtAST> orelse = {},
-                  List<StmtAST> finalbody = {})
+                  List<StmtAST> finalbody = {}, bool is_star = false)
       : TryAST(List<AccessPath>{}, Optional<String>{}, std::move(body), std::move(handlers),
-               std::move(orelse), std::move(finalbody)) {}
+               std::move(orelse), std::move(finalbody), is_star) {}
   explicit TryAST(List<AccessPath> source_paths, Optional<String> comment, List<StmtAST> body,
-                  List<ExceptHandlerAST> handlers, List<StmtAST> orelse, List<StmtAST> finalbody)
+                  List<ExceptHandlerAST> handlers, List<StmtAST> orelse, List<StmtAST> finalbody,
+                  bool is_star = false)
       : TryAST(make_object<TryASTObj>(std::move(source_paths), std::move(comment), std::move(body),
-                                      std::move(handlers), std::move(orelse),
-                                      std::move(finalbody))) {}
+                                      std::move(handlers), std::move(orelse), std::move(finalbody),
+                                      is_star)) {}
   /// \endcond
   /// \cond Doxygen_Suppress
   TVM_FFI_DEFINE_OBJECT_REF_METHODS_NOTNULLABLE(TryAST, StmtAST, TryASTObj);
@@ -2833,6 +2850,8 @@ struct IRPrinterObj : public Object {
   List<Any> frames;
   /*! \brief Mapping from frames to variables defined in each. */
   Dict<Any, Any> frame_vars;
+  /*! \brief Cycle guard: objects currently being printed (not reflected). */
+  mutable std::unordered_set<const Object*> printing_stack_;
   /// \cond Doxygen_Suppress
   explicit IRPrinterObj(PrinterConfig cfg) : cfg(std::move(cfg)) {}
   explicit IRPrinterObj(PrinterConfig cfg, Dict<Any, VarInfo> obj2info,
@@ -3123,24 +3142,90 @@ inline String NodeASTObj::ToPython(const PrinterConfig& cfg) const {
   return details::PyAST2Str(GetRef<NodeAST>(this), cfg);
 }
 
+/************** Python identifier/keyword helpers **************/
+
+/*! \brief Check if a character is valid in a Python identifier.
+ *  \param c The character to check.
+ *  \param is_first Whether this is the first character (digits not allowed).
+ *  \return True if the character is valid in the given position. */
+inline bool IsIdentifierChar(char c, bool is_first) {
+  auto uc = static_cast<unsigned char>(c);
+  if (uc > 127) return true;  // UTF-8 lead/continuation byte
+  if (c == '_') return true;
+  if (c >= 'a' && c <= 'z') return true;
+  if (c >= 'A' && c <= 'Z') return true;
+  if (!is_first && c >= '0' && c <= '9') return true;
+  return false;
+}
+
+/*! \brief Check if a string is a valid Python identifier (PEP 3131).
+ *  Accepts ASCII [a-zA-Z_][a-zA-Z0-9_]* and non-ASCII (UTF-8) chars.
+ *  \param data Pointer to the string data.
+ *  \param len Length of the string.
+ *  \return True if the string is a valid Python identifier. */
+inline bool IsPythonIdentifier(const char* data, size_t len) {
+  if (len == 0) return false;
+  if (!IsIdentifierChar(data[0], /*is_first=*/true)) return false;
+  for (size_t i = 1; i < len; ++i) {
+    if (!IsIdentifierChar(data[i], /*is_first=*/false)) return false;
+  }
+  return true;
+}
+
+/*! \brief Check if a string is a Python keyword.
+ *  \param data Pointer to the string data.
+ *  \param len Length of the string.
+ *  \return True if the string is a Python keyword. */
+inline bool IsPythonKeyword(const char* data, size_t len) {
+  static const std::unordered_set<std::string> kKeywords = {
+      "False", "None",     "True",  "and",    "as",   "assert", "async",  "await",    "break",
+      "class", "continue", "def",   "del",    "elif", "else",   "except", "finally",  "for",
+      "from",  "global",   "if",    "import", "in",   "is",     "lambda", "nonlocal", "not",
+      "or",    "pass",     "raise", "return", "try",  "while",  "with",   "yield",
+  };
+  return kKeywords.count(std::string(data, len)) > 0;
+}
+
 /************** Inline: IRPrinterObj methods **************/
 
 inline IdAST IRPrinterObj::VarDef(String name_hint, const ObjectRef& obj,
                                   const Optional<ObjectRef>& frame) {
+  bool already_in_frame = false;
   if (auto it = obj2info.find(obj); it != obj2info.end()) {
     Optional<String> name = (*it).second->name;
-    return IdAST(name.value());
-  }
-  bool needs_normalize = std::any_of(name_hint.data(), name_hint.data() + name_hint.size(),
-                                     [](char c) { return c != '_' && !std::isalnum(c); });
-  if (needs_normalize) {
-    std::string buf(name_hint.data(), name_hint.size());
-    for (char& c : buf) {
-      if (c != '_' && !std::isalnum(c)) {
-        c = '_';
-      }
+    if (name.has_value()) {
+      return IdAST(name.value());
     }
-    name_hint = String(buf);
+    // VarDefNoName entry exists but has no name — assign one below without re-adding to frame
+    already_in_frame = true;
+  }
+  // Use default name if hint is empty
+  if (name_hint.size() == 0) {
+    name_hint = String("v");
+  }
+  // Normalize characters that aren't valid in Python identifiers.
+  // Non-ASCII bytes (UTF-8) are left as-is since Python allows Unicode identifiers (PEP 3131).
+  {
+    bool needs_normalize =
+        std::any_of(name_hint.data(), name_hint.data() + name_hint.size(),
+                    [](char c) { return !IsIdentifierChar(c, /*is_first=*/false); });
+    if (needs_normalize) {
+      std::string buf(name_hint.data(), name_hint.size());
+      for (char& c : buf) {
+        if (!IsIdentifierChar(c, /*is_first=*/false)) {
+          c = '_';
+        }
+      }
+      name_hint = String(buf);
+    }
+  }
+  // Prefix underscore if the name starts with a digit
+  if (name_hint.size() > 0 && !IsIdentifierChar(name_hint.data()[0], /*is_first=*/true)) {
+    name_hint = String(std::string("_") + std::string(name_hint.data(), name_hint.size()));
+  }
+  // Append underscore if the name is a Python keyword
+  if (IsPythonKeyword(name_hint.data(), name_hint.size())) {
+    name_hint = String(std::string(name_hint.data(), name_hint.size()) + "_");
   }
   std::string name_hint_str(name_hint.data(), name_hint.size());
   String name(name_hint_str);
@@ -3158,10 +3243,17 @@ inline IdAST IRPrinterObj::VarDef(String name_hint, const ObjectRef& obj,
   }
   defined_names.Set(name, 1);
   String captured_name = name;
-  this->VarDefInternal(VarInfo(name, Function::FromTyped([captured_name]() -> IdAST {
-                                 return IdAST(captured_name);
-                               })),
-                       obj, frame);
+  if (already_in_frame) {
+    // Update existing entry without re-adding to frame_vars
+    obj2info.Set(obj, VarInfo(name, Function::FromTyped([captured_name]() -> IdAST {
+                                return IdAST(captured_name);
+                              })));
+  } else {
+    this->VarDefInternal(VarInfo(name, Function::FromTyped([captured_name]() -> IdAST {
+                                   return IdAST(captured_name);
+                                 })),
+                         obj, frame);
+  }
   return IdAST(name);
 }
 
@@ -3175,6 +3267,11 @@ inline void IRPrinterObj::VarDefNoName(const Function& creator, const ObjectRef&
 
 inline void IRPrinterObj::VarDefInternal(VarInfo var_info,  // NOLINT(*-value-param)
                                          const ObjectRef& obj, const Optional<ObjectRef>& _frame) {
+  if (!_frame.has_value() && frames.empty()) {
+    TVM_FFI_THROW(ValueError) << "No frame is pushed to IRPrinter. "
+                                 "Use FramePush before defining variables, "
+                                 "or call operator() which auto-pushes a root frame.";
+  }
   ObjectRef frame_ref = _frame.has_value() ? _frame.value() : this->frames.back().cast<ObjectRef>();
   obj2info.Set(obj, var_info);
   auto it = frame_vars.find(frame_ref);
@@ -3233,8 +3330,32 @@ inline Any IRPrinterObj::operator()(Any source, AccessPath path) const {  // NOL
   if (ti < TypeIndex::kTVMFFIStaticObjectBegin) {
     TVM_FFI_THROW(ValueError) << "Unsupported type index: " << ti;
   }
+  // Cycle detection: if this object is already being printed, emit a placeholder
+  const Object* obj_ptr = source.cast<ObjectRef>().get();
+  if (printing_stack_.count(obj_ptr)) {
+    return LiteralAST::Str("<cycle>", {path});
+  }
+  // RAII guard: ensure obj_ptr is removed from printing_stack_ even on exception
+  printing_stack_.insert(obj_ptr);
+  struct CycleGuard {
+    const std::unordered_set<const Object*>& set_;
+    const Object* ptr_;
+    ~CycleGuard() { const_cast<std::unordered_set<const Object*>&>(set_).erase(ptr_); }
+  } guard{printing_stack_, obj_ptr};
+  // Auto-push a root frame if none exists, so trait printers (e.g. PrintAssign)
+  // that require frames.back() always have one. Pop it after dispatch to avoid
+  // leaking state across calls.
+  bool auto_frame = frames.empty();
+  if (auto_frame) {
+    const_cast<IRPrinterObj*>(this)->FramePush(DefaultFrame());
+  }
   NodeAST ret = details::IRPrintDispatch(source, this, path);
-  ret->source_paths.push_back(path);
+  if (auto_frame) {
+    const_cast<IRPrinterObj*>(this)->FramePop();
+  }
+  if (ret.get() != nullptr) {
+    ret->source_paths.push_back(path);
+  }
   return ret;
 }
 

@@ -42,24 +42,23 @@ import textwrap
 import warnings
 
 import pytest
-import tvm_ffi.pyast as tt
-from tvm_ffi import pyast as tast
+from tvm_ffi import pyast
 from tvm_ffi.testing.testing import requires_py39, requires_py310, requires_py312
 
-pytestmark = requires_py39  # tast.from_py requires Python 3.9+ (ast.Index removed)
+pytestmark = requires_py39  # pyast.from_py requires Python 3.9+ (ast.Index removed)
 
 
 def _roundtrip(source: str, *, indent: int = 4) -> str:
     """Parse source, convert to TVM-FFI AST, render back to Python."""
-    node = tast.from_py(textwrap.dedent(source))
-    cfg = tt.PrinterConfig(indent_spaces=indent)
+    node = pyast.from_py(textwrap.dedent(source))
+    cfg = pyast.PrinterConfig(indent_spaces=indent)
     return node.to_python(cfg)
 
 
 def _roundtrip_ast(source: str) -> ast.Module:
     """Parse, roundtrip through TVM-FFI AST, re-parse, return the new AST."""
     source = textwrap.dedent(source)
-    rendered = tast.from_py(ast.parse(source)).to_python()
+    rendered = pyast.from_py(ast.parse(source)).to_python()
     with warnings.catch_warnings():
         warnings.simplefilter("error", SyntaxWarning)
         result = ast.parse(rendered)
@@ -69,12 +68,12 @@ def _roundtrip_ast(source: str) -> ast.Module:
 
 def _roundtrip_src(source: str) -> str:
     """Parse, roundtrip through TVM-FFI AST, return the rendered source."""
-    return tast.from_py(textwrap.dedent(source)).to_python()
+    return pyast.from_py(textwrap.dedent(source)).to_python()
 
 
-# ---------------------------------------------------------------------------
-# Expression round-trips
-# ---------------------------------------------------------------------------
+# ============================================================================
+# Expression roundtrips
+# ============================================================================
 
 EXPR_CASES = [
     # Literals
@@ -146,32 +145,44 @@ EXPR_CASES = [
 @pytest.mark.parametrize("source,expected", EXPR_CASES, ids=itertools.count())
 def test_expr_roundtrip(source: str, expected: str) -> None:
     tree = ast.parse(source, mode="eval")
-    node = tast.from_py(tree)
+    node = pyast.from_py(tree)
     assert node.to_python() == expected
 
 
-# ---------------------------------------------------------------------------
+# ============================================================================
 # Chained comparison
-# ---------------------------------------------------------------------------
+# ============================================================================
 
 
 def test_chained_comparison() -> None:
     tree = ast.parse("a < b < c", mode="eval")
-    node = tast.from_py(tree)
+    node = pyast.from_py(tree)
     result = node.to_python()
     assert result == "a < b < c"
 
 
 def test_triple_chained_comparison() -> None:
     tree = ast.parse("a < b <= c < d", mode="eval")
-    node = tast.from_py(tree)
+    node = pyast.from_py(tree)
     result = node.to_python()
     assert result == "a < b <= c < d"
 
 
-# ---------------------------------------------------------------------------
-# Statement round-trips
-# ---------------------------------------------------------------------------
+def test_chained_compare_nested_roundtrip() -> None:
+    """``(a < s) == (s < b) == True`` must preserve nested comparisons."""
+    src = "if (a < s) == (s < b) == True:\n    pass"
+    out = pyast.from_py(src).to_python()
+    if_stmt = ast.parse(out).body[0]
+    assert isinstance(if_stmt, ast.If)
+    parsed = if_stmt.test
+    assert isinstance(parsed, ast.Compare)
+    assert len(parsed.ops) == 2
+    assert isinstance(parsed.comparators[0], ast.Compare)
+
+
+# ============================================================================
+# Statement roundtrips
+# ============================================================================
 
 
 def test_assign() -> None:
@@ -403,9 +414,9 @@ def test_nonlocal() -> None:
     assert "nonlocal x" in result
 
 
-# ---------------------------------------------------------------------------
+# ============================================================================
 # Docstring detection
-# ---------------------------------------------------------------------------
+# ============================================================================
 
 
 def test_function_docstring() -> None:
@@ -437,25 +448,69 @@ def test_class_docstring() -> None:
     assert '"""' in result
 
 
-# ---------------------------------------------------------------------------
+def test_docstring_from_py_preserves_span() -> None:
+    """``from_py`` must set source spans on synthesized DocString nodes."""
+    node = pyast.from_py(
+        textwrap.dedent(
+            """\
+            def f():
+                \"\"\"doc\"\"\"
+                return 1
+            """
+        )
+    )
+    assert isinstance(node, pyast.StmtBlock)
+    func = node.stmts[0]
+    assert isinstance(func, pyast.Function)
+    doc = func.body[0]
+    assert (doc.lineno, doc.col_offset, doc.end_lineno, doc.end_col_offset) == (2, 4, 2, 13)
+
+
+def test_docstring_carriage_return_roundtrip() -> None:
+    r"""Docstring containing ``\r\n`` must preserve it through roundtrip."""
+    tree = ast.Module(
+        body=[ast.Expr(value=ast.Constant(value="hello\r\nworld"))],
+        type_ignores=[],
+    )
+    ast.fix_missing_locations(tree)
+    out = pyast.from_py(tree).to_python()
+    parsed = ast.parse(out)
+    expr_stmt = parsed.body[0]
+    assert isinstance(expr_stmt, ast.Expr)
+    assert isinstance(expr_stmt.value, ast.Constant)
+    assert expr_stmt.value.value == "hello\r\nworld"
+
+
+def test_docstring_with_triple_quotes_roundtrips() -> None:
+    """Docstring containing triple-quote sequence must survive roundtrip."""
+    src = textwrap.dedent('''\
+        def f():
+            '"""'
+            pass
+    ''')
+    out = pyast.from_py(src).to_python()
+    ast.parse(out)
+
+
+# ============================================================================
 # Source string input
-# ---------------------------------------------------------------------------
+# ============================================================================
 
 
 def test_from_source_string() -> None:
-    node = tast.from_py("x = 1")
-    assert isinstance(node, tt.StmtBlock)
+    node = pyast.from_py("x = 1")
+    assert isinstance(node, pyast.StmtBlock)
 
 
 def test_from_ast_node() -> None:
     tree = ast.parse("x + 1", mode="eval")
-    node = tast.from_py(tree)
-    assert isinstance(node, tt.Expr)
+    node = pyast.from_py(tree)
+    assert isinstance(node, pyast.Expr)
 
 
-# ---------------------------------------------------------------------------
-# Unsupported constructs
-# ---------------------------------------------------------------------------
+# ============================================================================
+# Extended operators & constructs
+# ============================================================================
 
 
 def test_try_except() -> None:
@@ -474,50 +529,50 @@ def test_try_except_finally() -> None:
 
 def test_matmul() -> None:
     tree = ast.parse("a @ b", mode="eval")
-    node = tast.from_py(tree)
+    node = pyast.from_py(tree)
     assert node.to_python() == "a @ b"
 
 
 def test_is_operator() -> None:
     tree = ast.parse("x is None", mode="eval")
-    node = tast.from_py(tree)
+    node = pyast.from_py(tree)
     assert node.to_python() == "x is None"
 
 
 def test_is_not_operator() -> None:
     tree = ast.parse("x is not None", mode="eval")
-    node = tast.from_py(tree)
+    node = pyast.from_py(tree)
     assert node.to_python() == "x is not None"
 
 
 def test_in_operator() -> None:
     tree = ast.parse("x in y", mode="eval")
-    node = tast.from_py(tree)
+    node = pyast.from_py(tree)
     assert node.to_python() == "x in y"
 
 
 def test_not_in_operator() -> None:
     tree = ast.parse("x not in y", mode="eval")
-    node = tast.from_py(tree)
+    node = pyast.from_py(tree)
     assert node.to_python() == "x not in y"
 
 
 def test_starred_expr() -> None:
     node = ast.Expression(body=ast.Starred(value=ast.Name(id="x"), ctx=ast.Load()))
     ast.fix_missing_locations(node)
-    result = tast.from_py(node)
+    result = pyast.from_py(node)
     assert result.to_python() == "*x"
 
 
 def test_kwargs_splat() -> None:
     tree = ast.parse("f(**d)", mode="eval")
-    node = tast.from_py(tree)
+    node = pyast.from_py(tree)
     assert node.to_python() == "f(**d)"
 
 
 def test_fstring() -> None:
     tree = ast.parse('f"hello {x}"', mode="eval")
-    node = tast.from_py(tree)
+    node = pyast.from_py(tree)
     result = node.to_python()
     assert "hello" in result
     assert "{x}" in result
@@ -525,7 +580,7 @@ def test_fstring() -> None:
 
 def test_walrus_expr() -> None:
     tree = ast.parse("(x := 10)", mode="eval")
-    node = tast.from_py(tree)
+    node = pyast.from_py(tree)
     result = node.to_python()
     assert "x := 10" in result
 
@@ -576,32 +631,72 @@ def test_function_varargs() -> None:
     assert "**kwargs" in result
 
 
-# ---------------------------------------------------------------------------
-# New node types: set, comprehension, yield
-# ---------------------------------------------------------------------------
+def test_async_comprehension_roundtrip() -> None:
+    """``async for`` in comprehensions must survive roundtrip."""
+    src = "async def f():\n    return [x async for x in agen()]"
+    out = pyast.from_py(src).to_python()
+    func_def = ast.parse(out).body[0]
+    assert isinstance(func_def, ast.AsyncFunctionDef)
+    ret_stmt = func_def.body[0]
+    assert isinstance(ret_stmt, ast.Return)
+    parsed = ret_stmt.value
+    assert isinstance(parsed, ast.ListComp)
+    assert parsed.generators[0].is_async == 1
+
+
+def test_class_keyword_unpacking_roundtrip() -> None:
+    """``class C(**kw)`` must preserve keyword unpacking through roundtrip."""
+    src = "class C(**kw):\n    pass"
+    out = pyast.from_py(src).to_python()
+    parsed = ast.parse(out).body[0]
+    assert isinstance(parsed, ast.ClassDef)
+    assert len(parsed.keywords) == 1
+    assert parsed.keywords[0].arg is None
+
+
+@pytest.mark.skipif(
+    not hasattr(__import__("ast"), "TryStar"),
+    reason="TryStar requires Python 3.11+",
+)
+def test_try_star_roundtrip() -> None:
+    """``try / except*`` must survive roundtrip."""
+    src = "try:\n    f()\nexcept* ValueError as e:\n    g()"
+    out = pyast.from_py(src).to_python()
+    assert isinstance(ast.parse(out).body[0], getattr(ast, "TryStar"))
+
+
+@requires_py310
+def test_match_statement() -> None:
+    rendered = _roundtrip_src("match x:\n    case 1:\n        a = 1\n    case _:\n        b = 2")
+    assert "match x:" in rendered
+
+
+# ============================================================================
+# Set, Comprehension, Yield
+# ============================================================================
 
 
 def test_set_literal() -> None:
     tree = ast.parse("{1, 2, 3}", mode="eval")
-    node = tast.from_py(tree)
+    node = pyast.from_py(tree)
     assert node.to_python() == "{1, 2, 3}"
 
 
 def test_list_comprehension() -> None:
     tree = ast.parse("[x for x in items]", mode="eval")
-    node = tast.from_py(tree)
+    node = pyast.from_py(tree)
     assert node.to_python() == "[x for x in items]"
 
 
 def test_set_comprehension() -> None:
     tree = ast.parse("{x for x in items}", mode="eval")
-    node = tast.from_py(tree)
+    node = pyast.from_py(tree)
     assert node.to_python() == "{x for x in items}"
 
 
 def test_dict_comprehension() -> None:
     tree = ast.parse("{k: v for k, v in items}", mode="eval")
-    node = tast.from_py(tree)
+    node = pyast.from_py(tree)
     result = node.to_python()
     assert "k: v" in result
     assert "for (k, v) in items" in result
@@ -609,19 +704,19 @@ def test_dict_comprehension() -> None:
 
 def test_generator_expression() -> None:
     tree = ast.parse("(x for x in items)", mode="eval")
-    node = tast.from_py(tree)
+    node = pyast.from_py(tree)
     assert node.to_python() == "(x for x in items)"
 
 
 def test_comprehension_with_filter() -> None:
     tree = ast.parse("[x for x in items if x > 0]", mode="eval")
-    node = tast.from_py(tree)
+    node = pyast.from_py(tree)
     assert node.to_python() == "[x for x in items if x > 0]"
 
 
 def test_comprehension_nested() -> None:
     tree = ast.parse("[x + y for x in xs for y in ys]", mode="eval")
-    node = tast.from_py(tree)
+    node = pyast.from_py(tree)
     result = node.to_python()
     assert "for x in xs" in result
     assert "for y in ys" in result
@@ -654,14 +749,14 @@ def test_yield_from() -> None:
     assert "yield from items" in result
 
 
-# ---------------------------------------------------------------------------
+# ============================================================================
 # Span information
-# ---------------------------------------------------------------------------
+# ============================================================================
 
 
 def test_span_info_expr() -> None:
     tree = ast.parse("x + 1", mode="eval")
-    node = tast.from_py(tree)
+    node = pyast.from_py(tree)
     # The top-level BinOp node should have span info
     assert node.lineno == 1
     assert node.col_offset == 0
@@ -670,9 +765,9 @@ def test_span_info_expr() -> None:
 
 
 def test_span_info_stmt() -> None:
-    node = tast.from_py("x = 42")
+    node = pyast.from_py("x = 42")
     # StmtBlock wrapping
-    assert isinstance(node, tt.StmtBlock)
+    assert isinstance(node, pyast.StmtBlock)
     stmt = node.stmts[0]
     assert stmt.lineno == 1
     assert stmt.col_offset == 0
@@ -680,16 +775,16 @@ def test_span_info_stmt() -> None:
 
 def test_span_info_default() -> None:
     # Manually constructed nodes have -1 span
-    node = tt.Id("x")
+    node = pyast.Id("x")
     assert node.lineno == -1
     assert node.col_offset == -1
     assert node.end_lineno == -1
     assert node.end_col_offset == -1
 
 
-# ---------------------------------------------------------------------------
-# Complex round-trip
-# ---------------------------------------------------------------------------
+# ============================================================================
+# Complex roundtrip
+# ============================================================================
 
 
 def test_complex_function() -> None:
@@ -709,6 +804,38 @@ def test_complex_function() -> None:
     assert "if x > 0:" in result
     assert "return x + y" in result
     assert "return y" in result
+
+
+def test_dict_unpacking_roundtrip() -> None:
+    rendered = _roundtrip_src("z = {**d}")
+    assert "**d:" not in rendered
+    ast.parse(rendered)
+
+
+def test_tuple_default_in_function_args() -> None:
+    rendered = _roundtrip_src("def f(x=(0, 0)):\n    pass")
+    ast.parse(rendered)
+    assert "(0, 0)" in rendered
+
+
+def test_bare_star_separator() -> None:
+    b = _roundtrip_ast("def f(a, *, key=1):\n    pass")
+    assert b.body[0].args.vararg is None  # ty: ignore[unresolved-attribute]
+    assert len(b.body[0].args.kwonlyargs) == 1  # ty: ignore[unresolved-attribute]
+
+
+def test_fstr_set_comprehension_roundtrip() -> None:
+    """F-string with set comprehension must survive roundtrip."""
+    src = 'x = f"items { {p.x for p in items} }."'
+    out = pyast.from_py(src).to_python()
+    assign = ast.parse(out).body[0]
+    assert isinstance(assign, ast.Assign)
+    parsed = assign.value
+    # Should be a JoinedStr with a FormattedValue containing a SetComp
+    assert isinstance(parsed, ast.JoinedStr)
+    formatted = [v for v in parsed.values if isinstance(v, ast.FormattedValue)]
+    assert len(formatted) >= 1
+    assert isinstance(formatted[0].value, ast.SetComp)
 
 
 # ===================================================================
@@ -778,7 +905,7 @@ class TestFStringEscaping:
 
 
 class TestStringNullByte:
-    r"""Bug: ``PrintEscapeString`` emitted raw null bytes.
+    r"""Bug: ``EscapedStringPy`` emitted raw null bytes.
 
     Fix: escape control chars (< 0x20) as ``\\xNN``.
     """
@@ -1037,28 +1164,16 @@ class TestFloatInf:
         assert b.body[0].value.value == float("inf")  # ty: ignore[unresolved-attribute]
 
 
-# --- Miscellaneous roundtrip tests ---
+# --- 5. String kind & encoding ---
 
 
-def test_dict_unpacking_roundtrip() -> None:
-    rendered = _roundtrip_src("z = {**d}")
-    assert "**d:" not in rendered
-    ast.parse(rendered)
-
-
-def test_tuple_default_in_function_args() -> None:
-    rendered = _roundtrip_src("def f(x=(0, 0)):\n    pass")
-    ast.parse(rendered)
-    assert "(0, 0)" in rendered
-
-
-def test_bare_star_separator() -> None:
-    b = _roundtrip_ast("def f(a, *, key=1):\n    pass")
-    assert b.body[0].args.vararg is None  # ty: ignore[unresolved-attribute]
-    assert len(b.body[0].args.kwonlyargs) == 1  # ty: ignore[unresolved-attribute]
-
-
-@requires_py310
-def test_match_statement() -> None:
-    rendered = _roundtrip_src("match x:\n    case 1:\n        a = 1\n    case _:\n        b = 2")
-    assert "match x:" in rendered
+def test_u_string_kind_roundtrip() -> None:
+    """``u"hello"`` must preserve ``kind='u'`` through roundtrip."""
+    src = 'x = u"hello"'
+    out = pyast.from_py(src).to_python()
+    assign = ast.parse(out).body[0]
+    assert isinstance(assign, ast.Assign)
+    parsed = assign.value
+    assert isinstance(parsed, ast.Constant)
+    assert parsed.kind == "u"
+    assert parsed.value == "hello"

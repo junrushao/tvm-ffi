@@ -111,6 +111,7 @@ class CallTraits(ExprTraits):
     attrs: str | None
     kwargs: str | None
     text_printer_callee: str | None
+    text_printer_pre: str | None
 
 
 @c_class("ffi.ir_traits.LoadTraits")

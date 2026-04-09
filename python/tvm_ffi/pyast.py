@@ -703,13 +703,16 @@ class Literal(Expr):
     # tvm-ffi-stubgen(begin): object/ffi.pyast.Literal
     # fmt: off
     value: Any
+    kind: str | None
     if TYPE_CHECKING:
-        def __init__(self, _0: Any, /) -> None: ...
         def __ffi_shallow_copy__(self, /) -> Object: ...
         @staticmethod
-        def __c_ffi_init__(_0: Any, /) -> Object: ...
+        def __c_ffi_init__(_0: Any, _1: str | None, /) -> Object: ...
     # fmt: on
     # tvm-ffi-stubgen(end)
+
+    def __init__(self, value: Any, kind: str | None = None) -> None:
+        self.__ffi_init__(value, kind)
 
 
 @c_class("ffi.pyast.Id")
@@ -1816,11 +1819,12 @@ class ComprehensionIter(Node):
     target: Expr
     iter: Expr
     ifs: MutableSequence[Expr]
+    is_async: bool
     if TYPE_CHECKING:
-        def __init__(self, _0: Expr, _1: Expr, _2: MutableSequence[Expr], /) -> None: ...
+        def __init__(self, _0: Expr, _1: Expr, _2: MutableSequence[Expr], _3: bool, /) -> None: ...
         def __ffi_shallow_copy__(self, /) -> Object: ...
         @staticmethod
-        def __c_ffi_init__(_0: Expr, _1: Expr, _2: MutableSequence[Expr], /) -> Object: ...
+        def __c_ffi_init__(_0: Expr, _1: Expr, _2: MutableSequence[Expr], _3: bool, /) -> Object: ...
     # fmt: on
     # tvm-ffi-stubgen(end)
 
@@ -2048,12 +2052,13 @@ class Try(Stmt):
         handlers: MutableSequence[ExceptHandler],
         orelse: MutableSequence[Stmt] | None = None,
         finalbody: MutableSequence[Stmt] | None = None,
+        is_star: bool = False,
     ) -> None:
         if orelse is None:
             orelse = []
         if finalbody is None:
             finalbody = []
-        self.__ffi_init__(body, handlers, orelse, finalbody)
+        self.__ffi_init__(body, handlers, orelse, finalbody, is_star)
 
 
 @c_class("ffi.pyast.MatchCase")
@@ -2326,6 +2331,9 @@ def to_python(obj: Any, cfg: PrinterConfig | None = None) -> str:
     """Convert any TVM FFI object to Python-style source code."""
     if cfg is None:
         cfg = PrinterConfig()
+    # If the object is already a pyast Node, print it directly
+    if isinstance(obj, Node):
+        return obj.to_python(cfg)
     printer = IRPrinter(cfg)
     with printer.with_frame(DefaultFrame()) as frame:
         ret = printer(obj, AccessPath.root())

@@ -35,9 +35,8 @@ from typing import Any, ClassVar, List, Optional
 
 import pytest
 
-from tvm_ffi import Object, get_global_func
-from tvm_ffi import ir_traits as traits
-from tvm_ffi import pyast as text
+from tvm_ffi import Object, get_global_func, pyast
+from tvm_ffi import ir_traits as tr
 from tvm_ffi.access_path import AccessPath
 from tvm_ffi.dataclasses import c_class, py_class
 from tvm_ffi.dataclasses import field as dc_field
@@ -566,7 +565,7 @@ class ToyVar(ToyExpr):
     def __add__(self, other: ToyVar) -> ToyAdd:
         return ToyAdd(lhs=self, rhs=other)
 
-    def __ffi_text_print__(self, printer: text.IRPrinter, path: AccessPath) -> Any:
+    def __ffi_text_print__(self, printer: pyast.IRPrinter, path: AccessPath) -> Any:
         if not printer.var_is_defined(self):
             printer.var_def(self.name, self, None)
         ret = printer.var_get(self)
@@ -581,7 +580,7 @@ class ToyAdd(ToyExpr):
     lhs: ToyExpr
     rhs: ToyExpr
 
-    def __ffi_text_print__(self, printer: text.IRPrinter, path: AccessPath) -> Any:
+    def __ffi_text_print__(self, printer: pyast.IRPrinter, path: AccessPath) -> Any:
         lhs = printer(self.lhs, path=path.attr("lhs"))
         rhs = printer(self.rhs, path=path.attr("rhs"))
         return lhs + rhs
@@ -594,11 +593,11 @@ class ToyAssign(ToyStmt):
     rhs: ToyExpr
     lhs: ToyVar = dc_field(structural_eq="def")
 
-    def __ffi_text_print__(self, printer: text.IRPrinter, path: AccessPath) -> Any:
+    def __ffi_text_print__(self, printer: pyast.IRPrinter, path: AccessPath) -> Any:
         rhs = printer(self.rhs, path=path.attr("rhs"))
         printer.var_def(self.lhs.name, self.lhs, None)
         lhs = printer(self.lhs, path=path.attr("lhs"))
-        return text.Assign(lhs, rhs)
+        return pyast.Assign(lhs, rhs)
 
 
 @py_class("testing.text.toy_ir.Func", structural_eq="tree")
@@ -610,8 +609,8 @@ class ToyFunc(ToyNode):
     stmts: List[ToyStmt]  # noqa: UP006
     ret: ToyVar
 
-    def __ffi_text_print__(self, printer: text.IRPrinter, path: AccessPath) -> Any:
-        with printer.with_frame(text.DefaultFrame()):
+    def __ffi_text_print__(self, printer: pyast.IRPrinter, path: AccessPath) -> Any:
+        with printer.with_frame(pyast.DefaultFrame()):
             for arg in self.args:
                 printer.var_def(arg.name, arg, None)
             args = [
@@ -622,10 +621,10 @@ class ToyFunc(ToyNode):
                 printer(stmt, path=path.attr("stmts").array_item(i))
                 for i, stmt in enumerate(self.stmts)
             ]
-            ret_stmt = text.Return(printer(self.ret, path=path.attr("ret")))
-            return text.Function(
-                text.Id(self.name),
-                [text.Assign(arg, None) for arg in args],
+            ret_stmt = pyast.Return(printer(self.ret, path=path.attr("ret")))
+            return pyast.Function(
+                pyast.Id(self.name),
+                [pyast.Assign(arg, None) for arg in args],
                 [],
                 None,
                 [*stmts, ret_stmt],
@@ -642,9 +641,9 @@ def _trait_region(
     def_values: str | None = None,
     def_expr: str | None = None,
     ret: str | None = None,
-) -> traits.RegionTraits:
+) -> tr.RegionTraits:
     """Create a Region with positional convenience."""
-    return traits.RegionTraits(body, def_values, def_expr, ret)
+    return tr.RegionTraits(body, def_values, def_expr, ret)
 
 
 @py_class("testing.ir_traits.Expr")
@@ -666,7 +665,7 @@ class TraitToyVar(TraitToyExpr):
     """Variable with Value trait."""
 
     __test__: ClassVar[bool] = False
-    __ffi_ir_traits__ = traits.ValueTraits("$field:name", None, None)
+    __ffi_ir_traits__ = tr.ValueTraits("$field:name", None, None)
     name: str = dc_field(structural_eq="ignore")
 
 
@@ -675,7 +674,7 @@ class TraitToyTypedVar(TraitToyExpr):
     """Variable with type annotation."""
 
     __test__: ClassVar[bool] = False
-    __ffi_ir_traits__ = traits.ValueTraits("$field:name", "$field:ty", None)
+    __ffi_ir_traits__ = tr.ValueTraits("$field:name", "$field:ty", None)
     name: str = dc_field(structural_eq="ignore")
     ty: Optional[str] = dc_field(default=None, structural_eq="ignore")  # noqa: UP045
 
@@ -685,7 +684,7 @@ class TraitToyAdd(TraitToyExpr):
     """Binary add expression."""
 
     __test__: ClassVar[bool] = False
-    __ffi_ir_traits__ = traits.BinOpTraits("$field:lhs", "$field:rhs", "+", None, None)
+    __ffi_ir_traits__ = tr.BinOpTraits("$field:lhs", "$field:rhs", "+", None, None)
     lhs: TraitToyExpr
     rhs: TraitToyExpr
 
@@ -695,7 +694,7 @@ class TraitToySub(TraitToyExpr):
     """Binary subtract expression."""
 
     __test__: ClassVar[bool] = False
-    __ffi_ir_traits__ = traits.BinOpTraits("$field:lhs", "$field:rhs", "-", None, None)
+    __ffi_ir_traits__ = tr.BinOpTraits("$field:lhs", "$field:rhs", "-", None, None)
     lhs: TraitToyExpr
     rhs: TraitToyExpr
 
@@ -705,7 +704,7 @@ class TraitToyMul(TraitToyExpr):
     """Binary multiply expression."""
 
     __test__: ClassVar[bool] = False
-    __ffi_ir_traits__ = traits.BinOpTraits("$field:lhs", "$field:rhs", "*", None, None)
+    __ffi_ir_traits__ = tr.BinOpTraits("$field:lhs", "$field:rhs", "*", None, None)
     lhs: TraitToyExpr
     rhs: TraitToyExpr
 
@@ -715,7 +714,7 @@ class TraitToyDiv(TraitToyExpr):
     """Binary divide expression."""
 
     __test__: ClassVar[bool] = False
-    __ffi_ir_traits__ = traits.BinOpTraits("$field:lhs", "$field:rhs", "/", None, None)
+    __ffi_ir_traits__ = tr.BinOpTraits("$field:lhs", "$field:rhs", "/", None, None)
     lhs: TraitToyExpr
     rhs: TraitToyExpr
 
@@ -725,7 +724,7 @@ class TraitToyFloorDiv(TraitToyExpr):
     """Floor division expression."""
 
     __test__: ClassVar[bool] = False
-    __ffi_ir_traits__ = traits.BinOpTraits("$field:lhs", "$field:rhs", "//", None, None)
+    __ffi_ir_traits__ = tr.BinOpTraits("$field:lhs", "$field:rhs", "//", None, None)
     lhs: TraitToyExpr
     rhs: TraitToyExpr
 
@@ -735,7 +734,7 @@ class TraitToyMod(TraitToyExpr):
     """Modulo expression."""
 
     __test__: ClassVar[bool] = False
-    __ffi_ir_traits__ = traits.BinOpTraits("$field:lhs", "$field:rhs", "%", None, None)
+    __ffi_ir_traits__ = tr.BinOpTraits("$field:lhs", "$field:rhs", "%", None, None)
     lhs: TraitToyExpr
     rhs: TraitToyExpr
 
@@ -745,7 +744,7 @@ class TraitToyPow(TraitToyExpr):
     """Power expression."""
 
     __test__: ClassVar[bool] = False
-    __ffi_ir_traits__ = traits.BinOpTraits("$field:lhs", "$field:rhs", "**", None, None)
+    __ffi_ir_traits__ = tr.BinOpTraits("$field:lhs", "$field:rhs", "**", None, None)
     lhs: TraitToyExpr
     rhs: TraitToyExpr
 
@@ -755,7 +754,7 @@ class TraitToyLShift(TraitToyExpr):
     """Left shift expression."""
 
     __test__: ClassVar[bool] = False
-    __ffi_ir_traits__ = traits.BinOpTraits("$field:lhs", "$field:rhs", "<<", None, None)
+    __ffi_ir_traits__ = tr.BinOpTraits("$field:lhs", "$field:rhs", "<<", None, None)
     lhs: TraitToyExpr
     rhs: TraitToyExpr
 
@@ -765,7 +764,7 @@ class TraitToyRShift(TraitToyExpr):
     """Right shift expression."""
 
     __test__: ClassVar[bool] = False
-    __ffi_ir_traits__ = traits.BinOpTraits("$field:lhs", "$field:rhs", ">>", None, None)
+    __ffi_ir_traits__ = tr.BinOpTraits("$field:lhs", "$field:rhs", ">>", None, None)
     lhs: TraitToyExpr
     rhs: TraitToyExpr
 
@@ -775,7 +774,7 @@ class TraitToyBitAnd(TraitToyExpr):
     """Bitwise AND expression."""
 
     __test__: ClassVar[bool] = False
-    __ffi_ir_traits__ = traits.BinOpTraits("$field:lhs", "$field:rhs", "&", None, None)
+    __ffi_ir_traits__ = tr.BinOpTraits("$field:lhs", "$field:rhs", "&", None, None)
     lhs: TraitToyExpr
     rhs: TraitToyExpr
 
@@ -785,7 +784,7 @@ class TraitToyBitOr(TraitToyExpr):
     """Bitwise OR expression."""
 
     __test__: ClassVar[bool] = False
-    __ffi_ir_traits__ = traits.BinOpTraits("$field:lhs", "$field:rhs", "|", None, None)
+    __ffi_ir_traits__ = tr.BinOpTraits("$field:lhs", "$field:rhs", "|", None, None)
     lhs: TraitToyExpr
     rhs: TraitToyExpr
 
@@ -795,7 +794,7 @@ class TraitToyBitXor(TraitToyExpr):
     """Bitwise XOR expression."""
 
     __test__: ClassVar[bool] = False
-    __ffi_ir_traits__ = traits.BinOpTraits("$field:lhs", "$field:rhs", "^", None, None)
+    __ffi_ir_traits__ = tr.BinOpTraits("$field:lhs", "$field:rhs", "^", None, None)
     lhs: TraitToyExpr
     rhs: TraitToyExpr
 
@@ -805,7 +804,7 @@ class TraitToyLt(TraitToyExpr):
     """Less-than comparison."""
 
     __test__: ClassVar[bool] = False
-    __ffi_ir_traits__ = traits.BinOpTraits("$field:lhs", "$field:rhs", "<", None, None)
+    __ffi_ir_traits__ = tr.BinOpTraits("$field:lhs", "$field:rhs", "<", None, None)
     lhs: TraitToyExpr
     rhs: TraitToyExpr
 
@@ -815,7 +814,7 @@ class TraitToyLtE(TraitToyExpr):
     """Less-than-or-equal comparison."""
 
     __test__: ClassVar[bool] = False
-    __ffi_ir_traits__ = traits.BinOpTraits("$field:lhs", "$field:rhs", "<=", None, None)
+    __ffi_ir_traits__ = tr.BinOpTraits("$field:lhs", "$field:rhs", "<=", None, None)
     lhs: TraitToyExpr
     rhs: TraitToyExpr
 
@@ -825,7 +824,7 @@ class TraitToyEq(TraitToyExpr):
     """Equality comparison."""
 
     __test__: ClassVar[bool] = False
-    __ffi_ir_traits__ = traits.BinOpTraits("$field:lhs", "$field:rhs", "==", None, None)
+    __ffi_ir_traits__ = tr.BinOpTraits("$field:lhs", "$field:rhs", "==", None, None)
     lhs: TraitToyExpr
     rhs: TraitToyExpr
 
@@ -835,7 +834,7 @@ class TraitToyNotEq(TraitToyExpr):
     """Not-equal comparison."""
 
     __test__: ClassVar[bool] = False
-    __ffi_ir_traits__ = traits.BinOpTraits("$field:lhs", "$field:rhs", "!=", None, None)
+    __ffi_ir_traits__ = tr.BinOpTraits("$field:lhs", "$field:rhs", "!=", None, None)
     lhs: TraitToyExpr
     rhs: TraitToyExpr
 
@@ -845,7 +844,7 @@ class TraitToyGt(TraitToyExpr):
     """Greater-than comparison."""
 
     __test__: ClassVar[bool] = False
-    __ffi_ir_traits__ = traits.BinOpTraits("$field:lhs", "$field:rhs", ">", None, None)
+    __ffi_ir_traits__ = tr.BinOpTraits("$field:lhs", "$field:rhs", ">", None, None)
     lhs: TraitToyExpr
     rhs: TraitToyExpr
 
@@ -855,7 +854,7 @@ class TraitToyGtE(TraitToyExpr):
     """Greater-than-or-equal comparison."""
 
     __test__: ClassVar[bool] = False
-    __ffi_ir_traits__ = traits.BinOpTraits("$field:lhs", "$field:rhs", ">=", None, None)
+    __ffi_ir_traits__ = tr.BinOpTraits("$field:lhs", "$field:rhs", ">=", None, None)
     lhs: TraitToyExpr
     rhs: TraitToyExpr
 
@@ -865,7 +864,7 @@ class TraitToyAnd(TraitToyExpr):
     """Logical AND expression."""
 
     __test__: ClassVar[bool] = False
-    __ffi_ir_traits__ = traits.BinOpTraits("$field:lhs", "$field:rhs", "and", None, None)
+    __ffi_ir_traits__ = tr.BinOpTraits("$field:lhs", "$field:rhs", "and", None, None)
     lhs: TraitToyExpr
     rhs: TraitToyExpr
 
@@ -875,7 +874,7 @@ class TraitToyOr(TraitToyExpr):
     """Logical OR expression."""
 
     __test__: ClassVar[bool] = False
-    __ffi_ir_traits__ = traits.BinOpTraits("$field:lhs", "$field:rhs", "or", None, None)
+    __ffi_ir_traits__ = tr.BinOpTraits("$field:lhs", "$field:rhs", "or", None, None)
     lhs: TraitToyExpr
     rhs: TraitToyExpr
 
@@ -885,7 +884,7 @@ class TraitToyNeg(TraitToyExpr):
     """Unary negation."""
 
     __test__: ClassVar[bool] = False
-    __ffi_ir_traits__ = traits.UnaryOpTraits("$field:x", "-")
+    __ffi_ir_traits__ = tr.UnaryOpTraits("$field:x", "-")
     x: TraitToyExpr
 
 
@@ -894,7 +893,7 @@ class TraitToyInvert(TraitToyExpr):
     """Bitwise invert."""
 
     __test__: ClassVar[bool] = False
-    __ffi_ir_traits__ = traits.UnaryOpTraits("$field:x", "~")
+    __ffi_ir_traits__ = tr.UnaryOpTraits("$field:x", "~")
     x: TraitToyExpr
 
 
@@ -903,7 +902,7 @@ class TraitToyNot(TraitToyExpr):
     """Logical not."""
 
     __test__: ClassVar[bool] = False
-    __ffi_ir_traits__ = traits.UnaryOpTraits("$field:x", "not")
+    __ffi_ir_traits__ = tr.UnaryOpTraits("$field:x", "not")
     x: TraitToyExpr
 
 
@@ -912,7 +911,7 @@ class TraitToyAssign(TraitToyStmt):
     """Assignment statement."""
 
     __test__: ClassVar[bool] = False
-    __ffi_ir_traits__ = traits.AssignTraits("$field:target", "$field:value", None, None, None, None)
+    __ffi_ir_traits__ = tr.AssignTraits("$field:target", "$field:value", None, None, None, None)
     value: TraitToyExpr
     target: TraitToyVar = dc_field(structural_eq="def")
 
@@ -922,7 +921,7 @@ class TraitToyTypedAssign(TraitToyStmt):
     """Assignment with typed variable."""
 
     __test__: ClassVar[bool] = False
-    __ffi_ir_traits__ = traits.AssignTraits("$field:target", "$field:value", None, None, None, None)
+    __ffi_ir_traits__ = tr.AssignTraits("$field:target", "$field:value", None, None, None, None)
     value: TraitToyExpr
     target: TraitToyTypedVar = dc_field(structural_eq="def")
 
@@ -932,7 +931,7 @@ class TraitToyLoad(TraitToyExpr):
     """Load from buffer with indices."""
 
     __test__: ClassVar[bool] = False
-    __ffi_ir_traits__ = traits.LoadTraits("$field:buf", "$field:indices", None)
+    __ffi_ir_traits__ = tr.LoadTraits("$field:buf", "$field:indices", None)
     buf: TraitToyVar
     indices: List[TraitToyExpr]  # noqa: UP006
 
@@ -942,7 +941,7 @@ class TraitToyScalarLoad(TraitToyExpr):
     """Scalar load (no indices)."""
 
     __test__: ClassVar[bool] = False
-    __ffi_ir_traits__ = traits.LoadTraits("$field:buf", None, None)
+    __ffi_ir_traits__ = tr.LoadTraits("$field:buf", None, None)
     buf: TraitToyVar
 
 
@@ -951,7 +950,7 @@ class TraitToyStore(TraitToyStmt):
     """Store to buffer with indices."""
 
     __test__: ClassVar[bool] = False
-    __ffi_ir_traits__ = traits.StoreTraits("$field:buf", "$field:val", "$field:indices", None)
+    __ffi_ir_traits__ = tr.StoreTraits("$field:buf", "$field:val", "$field:indices", None)
     buf: TraitToyVar
     val: TraitToyExpr
     indices: List[TraitToyExpr]  # noqa: UP006
@@ -962,7 +961,7 @@ class TraitToyScalarStore(TraitToyStmt):
     """Scalar store (no indices)."""
 
     __test__: ClassVar[bool] = False
-    __ffi_ir_traits__ = traits.StoreTraits("$field:buf", "$field:val", None, None)
+    __ffi_ir_traits__ = tr.StoreTraits("$field:buf", "$field:val", None, None)
     buf: TraitToyVar
     val: TraitToyExpr
 
@@ -972,7 +971,7 @@ class TraitToyAssertNode(TraitToyStmt):
     """Assert statement."""
 
     __test__: ClassVar[bool] = False
-    __ffi_ir_traits__ = traits.AssertTraits("$field:cond", "$field:msg")
+    __ffi_ir_traits__ = tr.AssertTraits("$field:cond", "$field:msg")
     cond: TraitToyExpr
     msg: Optional[str] = None  # noqa: UP045
 
@@ -982,7 +981,7 @@ class TraitToyReturnNode(TraitToyStmt):
     """Return statement."""
 
     __test__: ClassVar[bool] = False
-    __ffi_ir_traits__ = traits.ReturnTraits("$field:val")
+    __ffi_ir_traits__ = tr.ReturnTraits("$field:val")
     val: TraitToyExpr
 
 
@@ -991,7 +990,7 @@ class TraitToyIfNode(TraitToyStmt):
     """If statement."""
 
     __test__: ClassVar[bool] = False
-    __ffi_ir_traits__ = traits.IfTraits(
+    __ffi_ir_traits__ = tr.IfTraits(
         "$field:cond",
         _trait_region("$field:then_body"),
         None,
@@ -1005,7 +1004,7 @@ class TraitToyIfElseNode(TraitToyStmt):
     """If-else statement."""
 
     __test__: ClassVar[bool] = False
-    __ffi_ir_traits__ = traits.IfTraits(
+    __ffi_ir_traits__ = tr.IfTraits(
         "$field:cond",
         _trait_region("$field:then_body"),
         _trait_region("$field:else_body"),
@@ -1020,7 +1019,7 @@ class TraitToyForNode(TraitToyStmt):
     """For loop statement."""
 
     __test__: ClassVar[bool] = False
-    __ffi_ir_traits__ = traits.ForTraits(
+    __ffi_ir_traits__ = tr.ForTraits(
         _trait_region("$field:body", "$field:loop_var"),  # region
         None,  # start
         "$field:extent",  # end
@@ -1040,7 +1039,7 @@ class TraitToyForRangeNode(TraitToyStmt):
     """For loop with start, end, step."""
 
     __test__: ClassVar[bool] = False
-    __ffi_ir_traits__ = traits.ForTraits(
+    __ffi_ir_traits__ = tr.ForTraits(
         _trait_region("$field:body", "$field:loop_var"),  # region
         "$field:start",  # start
         "$field:end",  # end
@@ -1062,7 +1061,7 @@ class TraitToyWhileNode(TraitToyStmt):
     """While loop statement."""
 
     __test__: ClassVar[bool] = False
-    __ffi_ir_traits__ = traits.WhileTraits(
+    __ffi_ir_traits__ = tr.WhileTraits(
         "$field:cond",
         _trait_region("$field:body"),
     )
@@ -1075,7 +1074,7 @@ class TraitToyFuncNode(Object):
     """Function definition."""
 
     __test__: ClassVar[bool] = False
-    __ffi_ir_traits__ = traits.FuncTraits(
+    __ffi_ir_traits__ = tr.FuncTraits(
         "$field:name",  # symbol
         _trait_region("$field:body", "$field:params", None, "$field:ret"),  # region
         None,  # attrs
@@ -1093,7 +1092,7 @@ class TraitToyDecoratedFunc(Object):
     """Function with decorator (text_printer_kind)."""
 
     __test__: ClassVar[bool] = False
-    __ffi_ir_traits__ = traits.FuncTraits(
+    __ffi_ir_traits__ = tr.FuncTraits(
         "$field:name",  # symbol
         _trait_region("$field:body", "$field:params"),  # region
         None,  # attrs
@@ -1110,7 +1109,7 @@ class TraitToyWithNode(TraitToyStmt):
     """With statement."""
 
     __test__: ClassVar[bool] = False
-    __ffi_ir_traits__ = traits.WithTraits(
+    __ffi_ir_traits__ = tr.WithTraits(
         _trait_region("$field:body", "$field:as_var"),  # region
         None,  # def_carry
         None,  # carry_init
@@ -1128,7 +1127,7 @@ class TraitToyModuleNode(Object):
     """Module container."""
 
     __test__: ClassVar[bool] = False
-    __ffi_ir_traits__ = traits.FuncTraits(
+    __ffi_ir_traits__ = tr.FuncTraits(
         "$field:name",  # symbol
         _trait_region("$field:body"),  # region
         None,  # attrs
@@ -1144,7 +1143,7 @@ class TraitToyDecoratedModule(Object):
     """Module with decorator."""
 
     __test__: ClassVar[bool] = False
-    __ffi_ir_traits__ = traits.FuncTraits(
+    __ffi_ir_traits__ = tr.FuncTraits(
         "$field:name",  # symbol
         _trait_region("$field:body"),  # region
         None,  # attrs
@@ -1160,7 +1159,7 @@ class TraitToyClassNode(Object):
     """Class definition."""
 
     __test__: ClassVar[bool] = False
-    __ffi_ir_traits__ = traits.FuncTraits(
+    __ffi_ir_traits__ = tr.FuncTraits(
         "$field:name",  # symbol
         _trait_region("$field:body"),  # region
         None,  # bases
@@ -1187,11 +1186,11 @@ class TraitToyOverrideObj(TraitToyExpr):
     """Object with both manual print and trait -- manual should win."""
 
     __test__: ClassVar[bool] = False
-    __ffi_ir_traits__ = traits.BinOpTraits("$field:lhs", "$field:rhs", "+", None, None)
+    __ffi_ir_traits__ = tr.BinOpTraits("$field:lhs", "$field:rhs", "+", None, None)
     lhs: TraitToyExpr
     rhs: TraitToyExpr
 
-    def __ffi_text_print__(self, printer: text.IRPrinter, path: AccessPath) -> Any:
+    def __ffi_text_print__(self, printer: pyast.IRPrinter, path: AccessPath) -> Any:
         lhs = printer(self.lhs, path=path.attr("lhs"))
         rhs = printer(self.rhs, path=path.attr("rhs"))
         return lhs + rhs
@@ -1215,5 +1214,5 @@ def ast_roundtrip(node: Any) -> str:
         The rendered Python source code.
 
     """
-    tvm_node = text.from_py(node)
+    tvm_node = pyast.from_py(node)
     return tvm_node.to_python()

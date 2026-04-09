@@ -39,6 +39,7 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -118,8 +119,8 @@ class DocPrinter {
     #define TVM_FFI_PRINTER_VTABLE_ENTRY_(Type)                                    \
       { Type##Obj::RuntimeTypeIndex(),                                             \
         [](DocPrinter* printer, const NodeASTObj* d) {                         \
-          printer->PrintTypedDoc(Type(GetObjectPtr<Type##Obj>(                     \
-              const_cast<Type##Obj*>(static_cast<const Type##Obj*>(d)))));          \
+          printer->PrintTypedDoc(                                                  \
+              GetRef<Type>(static_cast<const Type##Obj*>(d)));                     \
         } }
     // clang-format on
     static PrinterVTable vtable{
@@ -183,6 +184,8 @@ class DocPrinter {
   }
   std::ostringstream output_;
   std::vector<ByteSpan> underlines_exempted_;
+  /*! \brief Cycle guard: AST nodes currently being printed. */
+  std::unordered_set<const NodeASTObj*> printing_stack_;
 
  private:
   void MarkSpan(const ByteSpan& span, const AccessPath& path);
@@ -643,9 +646,17 @@ inline String DocPrinter::GetString() const {
 }
 
 inline void DocPrinter::PrintDoc(const NodeAST& doc) {
+  // Cycle detection: if this node is already being printed, emit placeholder
+  const NodeASTObj* ptr = doc.get();
+  if (printing_stack_.count(ptr)) {
+    output_ << "\"<cycle>\"";
+    return;
+  }
+  printing_stack_.insert(ptr);
   size_t start_pos = output_.tellp();
   this->PrintTypedDoc(doc.get());
   size_t end_pos = output_.tellp();
+  printing_stack_.erase(ptr);
   for (AccessPath path : doc->source_paths) {
     MarkSpan({start_pos, end_pos}, path);
   }
@@ -711,6 +722,7 @@ class PythonDocPrinter : public DocPrinter {
   void PrintTypedDoc(const FStrAST& doc) final;
   void PrintTypedDoc(const FStrValueAST& doc) final;
   void PrintTypedDoc(const ExceptHandlerAST& doc) final;
+  void PrintExceptHandler(const ExceptHandlerAST& doc, bool is_star);
   void PrintTypedDoc(const TryAST& doc) final;
   void PrintTypedDoc(const MatchCaseAST& doc) final;
   void PrintTypedDoc(const MatchAST& doc) final;
@@ -865,8 +877,10 @@ inline void PythonDocPrinter::PrintTypedDoc(const LiteralAST& doc) {
     output_ << value.cast<int64_t>();
   } else if (type_index == TypeIndex::kTVMFFIFloat) {
     double v = value.cast<double>();
-    if (std::isinf(v) || std::isnan(v)) {
-      output_ << '"' << v << '"';
+    if (std::isinf(v)) {
+      output_ << (v > 0 ? "float(\"inf\")" : "float(\"-inf\")");
+    } else if (std::isnan(v)) {
+      output_ << "float(\"nan\")";
     } else if (std::nearbyint(v) == v) {
       std::showpoint(output_);
       std::fixed(output_);
@@ -879,7 +893,10 @@ inline void PythonDocPrinter::PrintTypedDoc(const LiteralAST& doc) {
       output_ << v;
     }
   } else if (type_index == TypeIndex::kTVMFFIStr || type_index == TypeIndex::kTVMFFISmallStr) {
-    PrintEscapeString(output_, value.cast<String>());
+    if (doc->kind.has_value()) {
+      output_ << doc->kind.value();
+    }
+    output_ << EscapedStringPy(value.cast<String>());
   } else {
     TVM_FFI_THROW(TypeError) << "TypeError: Unsupported literal value type: " << value.type_index();
   }
@@ -925,6 +942,12 @@ inline void PythonDocPrinter::PrintTypedDoc(const OperationAST& doc) {
       TVM_FFI_THROW(ValueError) << "Binary operator requires at least 2 operands, but got "
                                 << doc->operands.size();
     }
+    // Only And/Or support multi-operand chaining; all others require exactly 2
+    if (doc->op != OpKind::kAnd && doc->op != OpKind::kOr && doc->operands.size() != 2) {
+      TVM_FFI_THROW(ValueError) << "Binary operator '" << OpKindToString(doc->op)
+                                << "' requires exactly 2 operands, but got "
+                                << doc->operands.size();
+    }
     // Support multi-operand And/Or: a and b and c
     PrintChildExpr(doc->operands[0], doc);
     for (int64_t i = 1; i < static_cast<int64_t>(doc->operands.size()); ++i) {
@@ -943,17 +966,34 @@ inline void PythonDocPrinter::PrintTypedDoc(const OperationAST& doc) {
     PrintChildExprConservatively(doc->operands[2], doc);
   } else if (doc->op == OpKind::kChainedCompare) {
     // operands: [val0, Literal(op0), val1, Literal(op1), val2, ...]
+    if (doc->operands.size() < 3 || doc->operands.size() % 2 == 0) {
+      TVM_FFI_THROW(ValueError)
+          << "ChainedCompare requires an odd number of operands >= 3, but got "
+          << doc->operands.size();
+    }
     for (int64_t i = 0; i < static_cast<int64_t>(doc->operands.size()); ++i) {
       if (i % 2 == 0) {
-        // Value operand
-        PrintChildExpr(doc->operands[i], doc);
+        // Value operand — use conservative parens to preserve nested
+        // comparisons like `(a < s) == (s < b) == True`
+        PrintChildExprConservatively(doc->operands[i], doc);
       } else {
         // Op kind literal — extract the int value for the op string
         const auto* lit = doc->operands[i].as<LiteralASTObj>();
-        output_ << " " << OpKindToString(lit->value.cast<int64_t>()) << " ";
+        if (lit != nullptr && lit->value.type_index() == TypeIndex::kTVMFFIInt) {
+          output_ << " " << OpKindToString(lit->value.cast<int64_t>()) << " ";
+        } else {
+          // Fallback: print the operand as-is (graceful degradation)
+          output_ << " ";
+          PrintDoc(doc->operands[i]);
+          output_ << " ";
+        }
       }
     }
   } else if (doc->op == OpKind::kParens) {
+    if (doc->operands.size() != 1) {
+      TVM_FFI_THROW(ValueError) << "Parens operation requires exactly 1 operand, but got "
+                                << doc->operands.size();
+    }
     output_ << "(";
     PrintDoc(doc->operands[0]);
     output_ << ")";
@@ -989,6 +1029,14 @@ inline void PythonDocPrinter::PrintTypedDoc(const CallAST& doc) {
       output_ << "**";
       PrintDoc(doc->kwargs_values[i]);
     } else {
+      // Validate that the keyword is a valid Python identifier (incl. Unicode)
+      if (!IsPythonIdentifier(keyword.data(), keyword.size())) {
+        TVM_FFI_THROW(ValueError) << "Invalid keyword argument name: " << keyword;
+      }
+      if (IsPythonKeyword(keyword.data(), keyword.size())) {
+        TVM_FFI_THROW(ValueError) << "Python keyword cannot be used as keyword argument name: "
+                                  << keyword;
+      }
       output_ << keyword;
       output_ << "=";
       PrintDoc(doc->kwargs_values[i]);
@@ -998,6 +1046,25 @@ inline void PythonDocPrinter::PrintTypedDoc(const CallAST& doc) {
 }
 
 inline void PythonDocPrinter::PrintTypedDoc(const LambdaAST& doc) {
+  // Validate: `/` separator must not appear without leading positional parameters
+  if (!doc->args.empty()) {
+    if (const auto* id = doc->args[0].as<IdASTObj>()) {
+      if (std::string_view(id->name.data(), id->name.size()) == "/") {
+        TVM_FFI_THROW(ValueError)
+            << "Lambda '/': positional-only separator must not be the first parameter";
+      }
+    }
+  }
+  // Validate: bare `*` separator must have at least one parameter after it
+  const int64_t num_args = static_cast<int64_t>(doc->args.size());
+  for (int64_t i = 0; i < num_args; ++i) {
+    if (const auto* id = doc->args[i].as<IdASTObj>()) {
+      if (std::string_view(id->name.data(), id->name.size()) == "*" && i + 1 >= num_args) {
+        TVM_FFI_THROW(ValueError)
+            << "Lambda '*': keyword-only separator must have at least one parameter after it";
+      }
+    }
+  }
   output_ << "lambda ";
   PrintJoinedDocs(doc->args, ", ");
   output_ << ": ";
@@ -1064,25 +1131,32 @@ inline void PythonDocPrinter::PrintTypedDoc(const SliceAST& doc) {
 }
 
 inline void PythonDocPrinter::PrintTypedDoc(const SetAST& doc) {
-  output_ << "{";
-  PrintJoinedDocs(doc->values, ", ");
-  output_ << "}";
+  if (doc->values.empty()) {
+    output_ << "set()";
+  } else {
+    output_ << "{";
+    PrintJoinedDocs(doc->values, ", ");
+    output_ << "}";
+  }
 }
 
 inline void PythonDocPrinter::PrintTypedDoc(const ComprehensionIterAST& doc) {
-  output_ << "for ";
+  output_ << (doc->is_async ? "async for " : "for ");
   PrintDoc(doc->target);
   output_ << " in ";
-  PrintDoc(doc->iter);
+  PrintChildExpr(doc->iter, ExprPrecedence::kIfThenElse, true);
   for (const ExprAST& cond : doc->ifs) {
     output_ << " if ";
-    PrintDoc(cond);
+    PrintChildExpr(cond, ExprPrecedence::kIfThenElse, true);
   }
 }
 
 inline void PythonDocPrinter::PrintTypedDoc(const ComprehensionAST& doc) {
   using Kind = ComprehensionASTObj::Kind;
   auto kind = static_cast<Kind>(doc->kind);
+  if (doc->iters.empty()) {
+    TVM_FFI_THROW(ValueError) << "Comprehension requires at least one iterator clause";
+  }
   // Opening bracket
   if (kind == Kind::kList) {
     output_ << "[";
@@ -1092,6 +1166,9 @@ inline void PythonDocPrinter::PrintTypedDoc(const ComprehensionAST& doc) {
     output_ << "(";
   }
   // Element expression
+  if (kind == Kind::kDict && !doc->value.has_value()) {
+    TVM_FFI_THROW(ValueError) << "Dict comprehension requires a value expression";
+  }
   PrintDoc(doc->elt);
   if (kind == Kind::kDict && doc->value.has_value()) {
     output_ << ": ";
@@ -1127,12 +1204,12 @@ inline void PythonDocPrinter::PrintTypedDoc(const YieldFromAST& doc) {
 
 inline void PythonDocPrinter::PrintTypedDoc(const StarredExprAST& doc) {
   output_ << "*";
-  PrintDoc(doc->value);
+  PrintChildExpr(doc->value, ExprAST(doc));
 }
 
 inline void PythonDocPrinter::PrintTypedDoc(const AwaitExprAST& doc) {
   output_ << "await ";
-  PrintDoc(doc->value);
+  PrintChildExpr(doc->value, ExprAST(doc));
 }
 
 inline void PythonDocPrinter::PrintTypedDoc(const WalrusExprAST& doc) {
@@ -1183,7 +1260,21 @@ inline void PythonDocPrinter::PrintTypedDoc(const FStrAST& doc) {
     }
     if (!part->IsInstance<FStrValueASTObj>()) {
       output_ << "{";
+      // Set/dict comprehensions and literals start with '{', which would create
+      // '{{' — Python reads that as a literal brace. Wrap them in parens.
+      bool needs_parens = part->IsInstance<SetASTObj>() || part->IsInstance<DictASTObj>();
+      if (!needs_parens) {
+        if (const auto* comp = part->IsInstance<ComprehensionASTObj>()
+                                   ? part.as<ComprehensionASTObj>()
+                                   : nullptr) {
+          auto kind = static_cast<ComprehensionASTObj::Kind>(comp->kind);
+          needs_parens =
+              (kind == ComprehensionASTObj::Kind::kSet || kind == ComprehensionASTObj::Kind::kDict);
+        }
+      }
+      if (needs_parens) output_ << "(";
       PrintDoc(part);
+      if (needs_parens) output_ << ")";
       output_ << "}";
     } else {
       PrintDoc(part);
@@ -1194,7 +1285,22 @@ inline void PythonDocPrinter::PrintTypedDoc(const FStrAST& doc) {
 
 inline void PythonDocPrinter::PrintTypedDoc(const FStrValueAST& doc) {
   output_ << "{";
+  // Set/dict comprehensions and literals start with '{', which would create
+  // '{{' inside the f-string — Python reads that as a literal brace.
+  // Wrap them in parens to disambiguate: {({...})}
+  bool needs_parens = doc->value->IsInstance<SetASTObj>() || doc->value->IsInstance<DictASTObj>();
+  if (!needs_parens) {
+    if (const auto* comp = doc->value->IsInstance<ComprehensionASTObj>()
+                               ? doc->value.as<ComprehensionASTObj>()
+                               : nullptr) {
+      auto kind = static_cast<ComprehensionASTObj::Kind>(comp->kind);
+      needs_parens =
+          (kind == ComprehensionASTObj::Kind::kSet || kind == ComprehensionASTObj::Kind::kDict);
+    }
+  }
+  if (needs_parens) output_ << "(";
   PrintDoc(doc->value);
+  if (needs_parens) output_ << ")";
   if (doc->conversion == 115) {
     output_ << "!s";
   } else if (doc->conversion == 114) {
@@ -1205,20 +1311,48 @@ inline void PythonDocPrinter::PrintTypedDoc(const FStrValueAST& doc) {
   if (doc->format_spec.has_value()) {
     output_ << ":";
     const ExprAST& spec = doc->format_spec.value();
+    // Helper: print a single format-spec part
+    auto print_spec_part = [&](const ExprAST& part) {
+      if (const auto* lit2 =
+              part->IsInstance<LiteralASTObj>() ? part.as<LiteralASTObj>() : nullptr) {
+        if (lit2->value.type_index() == TypeIndex::kTVMFFIStr ||
+            lit2->value.type_index() == TypeIndex::kTVMFFISmallStr) {
+          String s = lit2->value.cast<String>();
+          // Check if the string contains braces
+          bool has_braces = false;
+          for (size_t j = 0; j < s.size(); ++j) {
+            if (s.data()[j] == '{' || s.data()[j] == '}') {
+              has_braces = true;
+              break;
+            }
+          }
+          if (has_braces) {
+            // Braces in format spec need a nested expression
+            output_ << "{";
+            output_ << EscapedStringPy(s);
+            output_ << "}";
+          } else {
+            // Plain text — output raw
+            output_ << s;
+          }
+          return;
+        }
+      }
+      if (part->IsInstance<FStrValueASTObj>()) {
+        PrintDoc(part);
+      } else {
+        // Non-literal, non-FStrValue expression: wrap in {expr} for nested evaluation
+        output_ << "{";
+        PrintDoc(part);
+        output_ << "}";
+      }
+    };
     if (const auto* fstr = spec->IsInstance<FStrASTObj>() ? spec.as<FStrASTObj>() : nullptr) {
       for (const ExprAST& fpart : fstr->values) {
-        if (const auto* lit2 =
-                fpart->IsInstance<LiteralASTObj>() ? fpart.as<LiteralASTObj>() : nullptr) {
-          if (lit2->value.type_index() == TypeIndex::kTVMFFIStr ||
-              lit2->value.type_index() == TypeIndex::kTVMFFISmallStr) {
-            output_ << lit2->value.cast<String>();
-            continue;
-          }
-        }
-        PrintDoc(fpart);
+        print_spec_part(fpart);
       }
     } else {
-      PrintDoc(spec);
+      print_spec_part(spec);
     }
   }
   output_ << "}";
@@ -1345,6 +1479,10 @@ inline void PythonDocPrinter::PrintTypedDoc(const WithAST& doc) {
       lhs_tuple = doc->lhs.value()->IsInstance<TupleASTObj>() ? doc->lhs.value().as<TupleASTObj>()
                                                               : nullptr;
     }
+    if (lhs_tuple && lhs_tuple->values.size() != rhs_tuple->values.size()) {
+      TVM_FFI_THROW(ValueError) << "With statement: lhs tuple has " << lhs_tuple->values.size()
+                                << " elements but rhs tuple has " << rhs_tuple->values.size();
+    }
     for (int64_t i = 0; i < static_cast<int64_t>(rhs_tuple->values.size()); ++i) {
       if (i > 0) output_ << ", ";
       PrintDoc(rhs_tuple->values[i]);
@@ -1399,6 +1537,30 @@ inline void PythonDocPrinter::PrintTypedDoc(const ReturnAST& doc) {
 }
 
 inline void PythonDocPrinter::PrintTypedDoc(const FunctionAST& doc) {
+  // Validate: `/` separator must not appear without leading positional parameters
+  if (!doc->args.empty()) {
+    const auto& first = doc->args[0];
+    if (const auto* assign = first.as<AssignASTObj>()) {
+      if (const auto* id = assign->lhs.as<IdASTObj>()) {
+        if (std::string_view(id->name.data(), id->name.size()) == "/") {
+          TVM_FFI_THROW(ValueError)
+              << "Function '/': positional-only separator must not be the first parameter";
+        }
+      }
+    }
+  }
+  // Validate: bare `*` separator must have at least one parameter after it
+  const int64_t num_args = static_cast<int64_t>(doc->args.size());
+  for (int64_t i = 0; i < num_args; ++i) {
+    if (const auto* assign = doc->args[i].as<AssignASTObj>()) {
+      if (const auto* id = assign->lhs.as<IdASTObj>()) {
+        if (std::string_view(id->name.data(), id->name.size()) == "*" && i + 1 >= num_args) {
+          TVM_FFI_THROW(ValueError)
+              << "Function '*': keyword-only separator must have at least one parameter after it";
+        }
+      }
+    }
+  }
   PrintDecorators(doc->decorators);
   output_ << (doc->is_async ? "async def " : "def ");
   PrintDoc(doc->name);
@@ -1421,13 +1583,31 @@ inline void PythonDocPrinter::PrintTypedDoc(const ClassAST& doc) {
   PrintDecorators(doc->decorators);
   output_ << "class ";
   PrintDoc(doc->name);
+  if (doc->kwargs_keys.size() != doc->kwargs_values.size()) {
+    TVM_FFI_THROW(ValueError)
+        << "ClassDoc should have equal number of elements in kwargs_keys and kwargs_values.";
+  }
   if (!doc->bases.empty() || !doc->kwargs_keys.empty()) {
     output_ << "(";
     PrintJoinedDocs(doc->bases, ", ");
     for (int64_t i = 0; i < static_cast<int64_t>(doc->kwargs_keys.size()); ++i) {
       if (!doc->bases.empty() || i > 0) output_ << ", ";
-      output_ << doc->kwargs_keys[i] << "=";
-      PrintDoc(doc->kwargs_values[i]);
+      const String& keyword = doc->kwargs_keys[i];
+      if (keyword.empty()) {
+        // Keyword unpacking: **expr
+        output_ << "**";
+        PrintDoc(doc->kwargs_values[i]);
+      } else {
+        if (!IsPythonIdentifier(keyword.data(), keyword.size())) {
+          TVM_FFI_THROW(ValueError) << "Invalid class keyword argument name: " << keyword;
+        }
+        if (IsPythonKeyword(keyword.data(), keyword.size())) {
+          TVM_FFI_THROW(ValueError)
+              << "Python keyword cannot be used as class keyword argument: " << keyword;
+        }
+        output_ << keyword << "=";
+        PrintDoc(doc->kwargs_values[i]);
+      }
     }
     output_ << ")";
   }
@@ -1467,10 +1647,22 @@ inline void PythonDocPrinter::PrintTypedDoc(const DocStringAST& doc) {
         consecutive_quotes = 0;
         if (c == '\\') {
           output_ << "\\\\";
+        } else if (c == '\r') {
+          output_ << "\\r";
+        } else if (c == '\0') {
+          output_ << "\\x00";
         } else {
           output_ << c;
         }
       }
+    }
+    // If the string ends with 1 or 2 raw quotes, they would merge with
+    // the closing """ to form an invalid 4- or 5-quote sequence.
+    // Escape the last emitted quote to break the run.
+    if (consecutive_quotes > 0) {
+      auto pos = output_.tellp();
+      output_.seekp(pos - static_cast<std::streamoff>(1));
+      output_ << "\\\"";
     }
     output_ << R"(""")";
     size_t end_pos = output_.tellp();
@@ -1478,17 +1670,24 @@ inline void PythonDocPrinter::PrintTypedDoc(const DocStringAST& doc) {
   }
 }
 
-inline void PythonDocPrinter::PrintTypedDoc(const ExceptHandlerAST& doc) {
-  output_ << "except";
+inline void PythonDocPrinter::PrintExceptHandler(const ExceptHandlerAST& doc, bool is_star) {
+  output_ << (is_star ? "except*" : "except");
   if (doc->type.has_value()) {
     output_ << " ";
     PrintDoc(doc->type.value());
     if (doc->name.has_value()) {
       output_ << " as " << doc->name.value();
     }
+  } else if (doc->name.has_value()) {
+    TVM_FFI_THROW(ValueError) << "ExceptHandler has name '" << doc->name.value()
+                              << "' but no type — this is invalid Python syntax";
   }
   output_ << ":";
   PrintIndentedBlock(doc->body);
+}
+
+inline void PythonDocPrinter::PrintTypedDoc(const ExceptHandlerAST& doc) {
+  PrintExceptHandler(doc, /*is_star=*/false);
 }
 
 inline void PythonDocPrinter::PrintTypedDoc(const TryAST& doc) {
@@ -1497,9 +1696,19 @@ inline void PythonDocPrinter::PrintTypedDoc(const TryAST& doc) {
   PrintIndentedBlock(doc->body);
   for (const ExceptHandlerAST& handler : doc->handlers) {
     NewLine();
-    PrintDoc(handler);
+    PrintExceptHandler(handler, doc->is_star);
   }
   if (!doc->orelse.empty()) {
+    // `else` requires at least one `except` clause in Python.
+    // If none was emitted, add a bare `except: raise` as a transparent passthrough.
+    if (doc->handlers.empty()) {
+      NewLine();
+      output_ << "except:";
+      IncreaseIndent();
+      NewLine();
+      output_ << "raise";
+      DecreaseIndent();
+    }
     NewLine();
     output_ << "else:";
     PrintIndentedBlock(doc->orelse);
@@ -1508,6 +1717,15 @@ inline void PythonDocPrinter::PrintTypedDoc(const TryAST& doc) {
     NewLine();
     output_ << "finally:";
     PrintIndentedBlock(doc->finalbody);
+  }
+  // If no handlers and no finally, emit a bare except to make valid Python
+  if (doc->handlers.empty() && doc->finalbody.empty()) {
+    NewLine();
+    output_ << "finally:";
+    IncreaseIndent();
+    NewLine();
+    output_ << "pass";
+    DecreaseIndent();
   }
 }
 
@@ -1528,6 +1746,15 @@ inline void PythonDocPrinter::PrintTypedDoc(const MatchAST& doc) {
   PrintDoc(doc->subject);
   output_ << ":";
   IncreaseIndent();
+  if (doc->cases.empty()) {
+    // Emit a placeholder case to produce valid Python
+    NewLine();
+    output_ << "case _:";
+    IncreaseIndent();
+    NewLine();
+    output_ << "pass";
+    DecreaseIndent();
+  }
   for (const MatchCaseAST& case_doc : doc->cases) {
     NewLine();
     PrintDoc(case_doc);
@@ -1574,6 +1801,10 @@ NodeAST IRPrintDispatch(AnyView obj, AnyView printer_view, AnyView path) {
     Any ret;
     AnyView args[3] = {obj, printer_view, path};
     func.CallPacked(args, 3, &ret);
+    if (ret == nullptr) {
+      TVM_FFI_THROW(ValueError) << "__ffi_text_print__ of type '" << TypeIndexToTypeKey(type_index)
+                                << "' returned None; it must return a NodeAST";
+    }
     return ret.cast<NodeAST>();
   }
 
@@ -1648,7 +1879,8 @@ TVM_FFI_STATIC_INIT_BLOCK() {
   // LiteralAST
   refl::ObjectDef<text::LiteralASTObj>()
       .def_ro("value", &text::LiteralASTObj::value)
-      .def(refl::init<::tvm::ffi::Any>());
+      .def_ro("kind", &text::LiteralASTObj::kind)
+      .def(refl::init<::tvm::ffi::Any, ::tvm::ffi::Optional<::tvm::ffi::String>>());
   // IdAST
   refl::ObjectDef<text::IdASTObj>()
       .def_ro("name", &text::IdASTObj::name)
@@ -1703,7 +1935,8 @@ TVM_FFI_STATIC_INIT_BLOCK() {
       .def_ro("target", &text::ComprehensionIterASTObj::target)
       .def_ro("iter", &text::ComprehensionIterASTObj::iter)
       .def_ro("ifs", &text::ComprehensionIterASTObj::ifs)
-      .def(refl::init<text::ExprAST, text::ExprAST, ::tvm::ffi::List<text::ExprAST>>());
+      .def_ro("is_async", &text::ComprehensionIterASTObj::is_async)
+      .def(refl::init<text::ExprAST, text::ExprAST, ::tvm::ffi::List<text::ExprAST>, bool>());
   // ComprehensionAST
   refl::ObjectDef<text::ComprehensionASTObj>()
       .def_ro("kind", &text::ComprehensionASTObj::kind)
@@ -1843,8 +2076,9 @@ TVM_FFI_STATIC_INIT_BLOCK() {
       .def_ro("handlers", &text::TryASTObj::handlers)
       .def_ro("orelse", &text::TryASTObj::orelse)
       .def_ro("finalbody", &text::TryASTObj::finalbody)
+      .def_ro("is_star", &text::TryASTObj::is_star)
       .def(refl::init<::tvm::ffi::List<text::StmtAST>, ::tvm::ffi::List<text::ExceptHandlerAST>,
-                      ::tvm::ffi::List<text::StmtAST>, ::tvm::ffi::List<text::StmtAST>>());
+                      ::tvm::ffi::List<text::StmtAST>, ::tvm::ffi::List<text::StmtAST>, bool>());
   // MatchCaseAST
   refl::ObjectDef<text::MatchCaseASTObj>()
       .def_ro("pattern", &text::MatchCaseASTObj::pattern)

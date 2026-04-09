@@ -825,11 +825,15 @@ class String {
 };
 
 /*!
- * \brief Return an escaped version of the string
+ * \brief Return a JSON-escaped version of the string (RFC 8259).
+ *
+ * Uses ``\\uXXXX`` for control characters, escapes ``\\/``, ``\\b``, ``\\f`` per the JSON spec.
+ * Non-ASCII bytes are passed through as-is (valid UTF-8 is preserved).
+ *
  * \param value The input string
  * \return The escaped string, quoted with double quotes
  */
-inline String EscapeString(const String& value) {
+inline String EscapeStringJSON(const String& value) {
   std::ostringstream oss;
   oss << '"';
   const char* data = value.data();
@@ -871,17 +875,19 @@ inline String EscapeString(const String& value) {
 }
 
 /*!
- * \brief Write a Python-style escaped string representation to an output stream.
+ * \brief Return a Python-style escaped string representation.
  *
  * Handles ANSI escape sequences, UTF-8 multibyte characters, and standard
- * C escape sequences (\\n, \\t, \\r, \\\\, \\"). The output is double-quoted.
+ * C escape sequences (\\n, \\t, \\r, \\\\, \\"). Uses \\xNN for control
+ * characters and \\uXXXX / \\UXXXXXXXX for non-ASCII codepoints.
  *
- * \param oss The output stream to write to.
  * \param value The input string to escape.
+ * \return The escaped string, quoted with double quotes.
  */
-inline void PrintEscapeString(std::ostream& oss, const String& value) {
+inline String EscapedStringPy(const String& value) {
   const char* data = value.data();
   const size_t length = value.size();
+  std::ostringstream oss;
   oss << '"';
   for (size_t i = 0; i < length;) {
     unsigned char c = static_cast<unsigned char>(data[i]);
@@ -930,7 +936,7 @@ inline void PrintEscapeString(std::ostream& oss, const String& value) {
       if (c < 0x20 || c == 0x7f) {
         // Escape control characters as \xNN
         char buf[5];
-        snprintf(buf, sizeof(buf), "\\x%02x", static_cast<unsigned>(c));
+        TVM_FFI_SNPRINTF(buf, sizeof(buf), "\\x%02x", static_cast<unsigned>(c));
         oss << buf;
       } else {
         oss << static_cast<char>(c);
@@ -961,6 +967,7 @@ inline void PrintEscapeString(std::ostream& oss, const String& value) {
     oss.fill(' ');
   }
   oss << '"';
+  return String(oss.str());
 }
 
 /*! \brief Convert TVMFFIByteArray to std::string_view */

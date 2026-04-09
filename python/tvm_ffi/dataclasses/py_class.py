@@ -84,7 +84,6 @@ _PENDING_CLASSES: list[_PendingClass] = []
 #: variable by Python.
 _PY_CLASS_BY_MODULE: dict[str, dict[str, type]] = {}
 
-
 # ---------------------------------------------------------------------------
 # Phase 1: type registration
 # ---------------------------------------------------------------------------
