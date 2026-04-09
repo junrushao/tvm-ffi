@@ -2346,3 +2346,16 @@ def to_python(obj: Any, cfg: PrinterConfig | None = None) -> str:
     elif isinstance(ret, Stmt):
         frame.stmts.append(ret)
     return StmtBlock(frame.stmts).to_python(cfg)
+
+
+# ---------------------------------------------------------------------------
+# Re-export visitor utilities.
+# Placed after all node classes so that `_pyast_visitor` can import `Node`
+# without triggering a circular import (it does so lazily inside methods).
+# ---------------------------------------------------------------------------
+# isort: off
+from tvm_ffi._pyast_visitor import NodeTransformer  # noqa: F401
+from tvm_ffi._pyast_visitor import NodeVisitor  # noqa: F401
+from tvm_ffi._pyast_visitor import iter_child_nodes  # noqa: F401
+from tvm_ffi._pyast_visitor import iter_fields  # noqa: F401
+# isort: on
