@@ -111,7 +111,7 @@ class PrinterConfig(Object):
     path_to_underline: MutableSequence[AccessPath]
     if TYPE_CHECKING:
         def __init__(self, def_free_var: bool, indent_spaces: int, print_line_numbers: int, num_context_lines: int, print_addr_on_dup_var: bool, path_to_underline: MutableSequence[AccessPath]) -> None: ...
-        def __ffi_init__(self, _0: bool, _1: int, _2: int, _3: int, _4: bool, _5: MutableSequence[AccessPath], /) -> None: ...
+        def __ffi_init__(self, _0: bool, _1: int, _2: int, _3: int, _4: bool, _5: MutableSequence[AccessPath], /) -> None: ...  # ty: ignore[invalid-method-override]
     # fmt: on
     # tvm-ffi-stubgen(end)
 
@@ -664,7 +664,7 @@ class StmtBlock(Stmt):
     stmts: MutableSequence[Stmt]
     if TYPE_CHECKING:
         def __init__(self, stmts: MutableSequence[Stmt], *, comment: str | None = ...) -> None: ...
-        def __ffi_init__(self, stmts: MutableSequence[Stmt], *, comment: str | None = ...) -> None: ...
+        def __ffi_init__(self, stmts: MutableSequence[Stmt], *, comment: str | None = ...) -> None: ...  # ty: ignore[invalid-method-override]
     # fmt: on
     # tvm-ffi-stubgen(end)
 
@@ -697,7 +697,7 @@ class Literal(Expr):
     kind: str | None
     if TYPE_CHECKING:
         def __init__(self, value: Any, kind: str | None = ...) -> None: ...
-        def __ffi_init__(self, value: Any, kind: str | None = ...) -> None: ...
+        def __ffi_init__(self, value: Any, kind: str | None = ...) -> None: ...  # ty: ignore[invalid-method-override]
     # fmt: on
     # tvm-ffi-stubgen(end)
 
@@ -728,7 +728,7 @@ class Id(Expr):
     name: str
     if TYPE_CHECKING:
         def __init__(self, name: str) -> None: ...
-        def __ffi_init__(self, name: str) -> None: ...
+        def __ffi_init__(self, name: str) -> None: ...  # ty: ignore[invalid-method-override]
     # fmt: on
     # tvm-ffi-stubgen(end)
 
@@ -760,7 +760,7 @@ class Attr(Expr):
     name: str
     if TYPE_CHECKING:
         def __init__(self, obj: Expr, name: str) -> None: ...
-        def __ffi_init__(self, obj: Expr, name: str) -> None: ...
+        def __ffi_init__(self, obj: Expr, name: str) -> None: ...  # ty: ignore[invalid-method-override]
     # fmt: on
     # tvm-ffi-stubgen(end)
 
@@ -792,7 +792,7 @@ class Index(Expr):
     idx: MutableSequence[Expr]
     if TYPE_CHECKING:
         def __init__(self, obj: Expr, idx: MutableSequence[Expr]) -> None: ...
-        def __ffi_init__(self, obj: Expr, idx: MutableSequence[Expr]) -> None: ...
+        def __ffi_init__(self, obj: Expr, idx: MutableSequence[Expr]) -> None: ...  # ty: ignore[invalid-method-override]
     # fmt: on
     # tvm-ffi-stubgen(end)
 
@@ -836,7 +836,7 @@ class Call(Expr):
     kwargs_values: MutableSequence[Expr]
     if TYPE_CHECKING:
         def __init__(self, callee: Expr, args: MutableSequence[Expr], kwargs_keys: MutableSequence[str], kwargs_values: MutableSequence[Expr]) -> None: ...
-        def __ffi_init__(self, callee: Expr, args: MutableSequence[Expr], kwargs_keys: MutableSequence[str], kwargs_values: MutableSequence[Expr]) -> None: ...
+        def __ffi_init__(self, callee: Expr, args: MutableSequence[Expr], kwargs_keys: MutableSequence[str], kwargs_values: MutableSequence[Expr]) -> None: ...  # ty: ignore[invalid-method-override]
     # fmt: on
     # tvm-ffi-stubgen(end)
 
@@ -946,7 +946,7 @@ class Operation(Expr):
     operands: MutableSequence[Expr]
     if TYPE_CHECKING:
         def __init__(self, op: int, operands: MutableSequence[Expr]) -> None: ...
-        def __ffi_init__(self, op: int, operands: MutableSequence[Expr]) -> None: ...
+        def __ffi_init__(self, op: int, operands: MutableSequence[Expr]) -> None: ...  # ty: ignore[invalid-method-override]
     # fmt: on
     # tvm-ffi-stubgen(end)
 
@@ -979,7 +979,7 @@ class Lambda(Expr):
     body: Expr
     if TYPE_CHECKING:
         def __init__(self, args: MutableSequence[Expr], body: Expr) -> None: ...
-        def __ffi_init__(self, args: MutableSequence[Expr], body: Expr) -> None: ...
+        def __ffi_init__(self, args: MutableSequence[Expr], body: Expr) -> None: ...  # ty: ignore[invalid-method-override]
     # fmt: on
     # tvm-ffi-stubgen(end)
 
@@ -1008,7 +1008,7 @@ class Tuple(Expr):
     values: MutableSequence[Expr]
     if TYPE_CHECKING:
         def __init__(self, values: MutableSequence[Expr]) -> None: ...
-        def __ffi_init__(self, values: MutableSequence[Expr]) -> None: ...
+        def __ffi_init__(self, values: MutableSequence[Expr]) -> None: ...  # ty: ignore[invalid-method-override]
     # fmt: on
     # tvm-ffi-stubgen(end)
 
@@ -1037,7 +1037,7 @@ class List(Expr):
     values: MutableSequence[Expr]
     if TYPE_CHECKING:
         def __init__(self, values: MutableSequence[Expr]) -> None: ...
-        def __ffi_init__(self, values: MutableSequence[Expr]) -> None: ...
+        def __ffi_init__(self, values: MutableSequence[Expr]) -> None: ...  # ty: ignore[invalid-method-override]
     # fmt: on
     # tvm-ffi-stubgen(end)
 
@@ -1072,7 +1072,7 @@ class Dict(Expr):
     values: MutableSequence[Expr]
     if TYPE_CHECKING:
         def __init__(self, keys: MutableSequence[Expr], values: MutableSequence[Expr]) -> None: ...
-        def __ffi_init__(self, keys: MutableSequence[Expr], values: MutableSequence[Expr]) -> None: ...
+        def __ffi_init__(self, keys: MutableSequence[Expr], values: MutableSequence[Expr]) -> None: ...  # ty: ignore[invalid-method-override]
     # fmt: on
     # tvm-ffi-stubgen(end)
 
@@ -1110,7 +1110,7 @@ class Slice(Expr):
     step: Expr | None
     if TYPE_CHECKING:
         def __init__(self, start: Expr | None = ..., stop: Expr | None = ..., step: Expr | None = ...) -> None: ...
-        def __ffi_init__(self, start: Expr | None = ..., stop: Expr | None = ..., step: Expr | None = ...) -> None: ...
+        def __ffi_init__(self, start: Expr | None = ..., stop: Expr | None = ..., step: Expr | None = ...) -> None: ...  # ty: ignore[invalid-method-override]
     # fmt: on
     # tvm-ffi-stubgen(end)
 
@@ -1150,7 +1150,7 @@ class Assign(Stmt):
     aug_op: int
     if TYPE_CHECKING:
         def __init__(self, lhs: Expr, rhs: Expr | None = ..., annotation: Expr | None = ..., aug_op: int = ..., *, comment: str | None = ...) -> None: ...
-        def __ffi_init__(self, lhs: Expr, rhs: Expr | None = ..., annotation: Expr | None = ..., aug_op: int = ..., *, comment: str | None = ...) -> None: ...
+        def __ffi_init__(self, lhs: Expr, rhs: Expr | None = ..., annotation: Expr | None = ..., aug_op: int = ..., *, comment: str | None = ...) -> None: ...  # ty: ignore[invalid-method-override]
     # fmt: on
     # tvm-ffi-stubgen(end)
 
@@ -1194,7 +1194,7 @@ class If(Stmt):
     else_branch: MutableSequence[Stmt]
     if TYPE_CHECKING:
         def __init__(self, cond: Expr, then_branch: MutableSequence[Stmt], else_branch: MutableSequence[Stmt], *, comment: str | None = ...) -> None: ...
-        def __ffi_init__(self, cond: Expr, then_branch: MutableSequence[Stmt], else_branch: MutableSequence[Stmt], *, comment: str | None = ...) -> None: ...
+        def __ffi_init__(self, cond: Expr, then_branch: MutableSequence[Stmt], else_branch: MutableSequence[Stmt], *, comment: str | None = ...) -> None: ...  # ty: ignore[invalid-method-override]
     # fmt: on
     # tvm-ffi-stubgen(end)
 
@@ -1232,7 +1232,7 @@ class While(Stmt):
     orelse: MutableSequence[Stmt]
     if TYPE_CHECKING:
         def __init__(self, cond: Expr, body: MutableSequence[Stmt], orelse: MutableSequence[Stmt] = ..., *, comment: str | None = ...) -> None: ...
-        def __ffi_init__(self, cond: Expr, body: MutableSequence[Stmt], orelse: MutableSequence[Stmt] = ..., *, comment: str | None = ...) -> None: ...
+        def __ffi_init__(self, cond: Expr, body: MutableSequence[Stmt], orelse: MutableSequence[Stmt] = ..., *, comment: str | None = ...) -> None: ...  # ty: ignore[invalid-method-override]
     # fmt: on
     # tvm-ffi-stubgen(end)
 
@@ -1275,7 +1275,7 @@ class For(Stmt):
     orelse: MutableSequence[Stmt]
     if TYPE_CHECKING:
         def __init__(self, lhs: Expr, rhs: Expr, body: MutableSequence[Stmt], is_async: bool = ..., orelse: MutableSequence[Stmt] = ..., *, comment: str | None = ...) -> None: ...
-        def __ffi_init__(self, lhs: Expr, rhs: Expr, body: MutableSequence[Stmt], is_async: bool = ..., orelse: MutableSequence[Stmt] = ..., *, comment: str | None = ...) -> None: ...
+        def __ffi_init__(self, lhs: Expr, rhs: Expr, body: MutableSequence[Stmt], is_async: bool = ..., orelse: MutableSequence[Stmt] = ..., *, comment: str | None = ...) -> None: ...  # ty: ignore[invalid-method-override]
     # fmt: on
     # tvm-ffi-stubgen(end)
 
@@ -1319,7 +1319,7 @@ class With(Stmt):
     is_async: bool
     if TYPE_CHECKING:
         def __init__(self, lhs: Expr | None, rhs: Expr, body: MutableSequence[Stmt], is_async: bool = ..., *, comment: str | None = ...) -> None: ...
-        def __ffi_init__(self, lhs: Expr | None, rhs: Expr, body: MutableSequence[Stmt], is_async: bool = ..., *, comment: str | None = ...) -> None: ...
+        def __ffi_init__(self, lhs: Expr | None, rhs: Expr, body: MutableSequence[Stmt], is_async: bool = ..., *, comment: str | None = ...) -> None: ...  # ty: ignore[invalid-method-override]
     # fmt: on
     # tvm-ffi-stubgen(end)
 
@@ -1348,7 +1348,7 @@ class ExprStmt(Stmt):
     expr: Expr
     if TYPE_CHECKING:
         def __init__(self, expr: Expr, *, comment: str | None = ...) -> None: ...
-        def __ffi_init__(self, expr: Expr, *, comment: str | None = ...) -> None: ...
+        def __ffi_init__(self, expr: Expr, *, comment: str | None = ...) -> None: ...  # ty: ignore[invalid-method-override]
     # fmt: on
     # tvm-ffi-stubgen(end)
 
@@ -1385,7 +1385,7 @@ class Assert(Stmt):
     msg: Expr | None
     if TYPE_CHECKING:
         def __init__(self, cond: Expr, msg: Expr | None = ..., *, comment: str | None = ...) -> None: ...
-        def __ffi_init__(self, cond: Expr, msg: Expr | None = ..., *, comment: str | None = ...) -> None: ...
+        def __ffi_init__(self, cond: Expr, msg: Expr | None = ..., *, comment: str | None = ...) -> None: ...  # ty: ignore[invalid-method-override]
     # fmt: on
     # tvm-ffi-stubgen(end)
 
@@ -1416,7 +1416,7 @@ class Return(Stmt):
     value: Expr | None
     if TYPE_CHECKING:
         def __init__(self, value: Expr | None = ..., *, comment: str | None = ...) -> None: ...
-        def __ffi_init__(self, value: Expr | None = ..., *, comment: str | None = ...) -> None: ...
+        def __ffi_init__(self, value: Expr | None = ..., *, comment: str | None = ...) -> None: ...  # ty: ignore[invalid-method-override]
     # fmt: on
     # tvm-ffi-stubgen(end)
 
@@ -1471,7 +1471,7 @@ class Function(Stmt):
     is_async: bool
     if TYPE_CHECKING:
         def __init__(self, name: Id, args: MutableSequence[Assign], decorators: MutableSequence[Expr], return_type: Expr | None, body: MutableSequence[Stmt], is_async: bool = ..., *, comment: str | None = ...) -> None: ...
-        def __ffi_init__(self, _0: Id, _1: MutableSequence[Assign], _2: MutableSequence[Expr], _3: Expr | None, _4: MutableSequence[Stmt], _5: bool, /) -> None: ...
+        def __ffi_init__(self, _0: Id, _1: MutableSequence[Assign], _2: MutableSequence[Expr], _3: Expr | None, _4: MutableSequence[Stmt], _5: bool, /) -> None: ...  # ty: ignore[invalid-method-override]
     # fmt: on
     # tvm-ffi-stubgen(end)
 
@@ -1530,7 +1530,7 @@ class Class(Stmt):
     kwargs_values: MutableSequence[Expr]
     if TYPE_CHECKING:
         def __init__(self, name: Id, bases: MutableSequence[Expr] = ..., decorators: MutableSequence[Expr] = ..., body: MutableSequence[Stmt] = ..., kwargs_keys: MutableSequence[str] = ..., kwargs_values: MutableSequence[Expr] = ..., *, comment: str | None = ...) -> None: ...
-        def __ffi_init__(self, _0: Id, _1: MutableSequence[Expr], _2: MutableSequence[Expr], _3: MutableSequence[Stmt], _4: MutableSequence[str], _5: MutableSequence[Expr], /) -> None: ...
+        def __ffi_init__(self, _0: Id, _1: MutableSequence[Expr], _2: MutableSequence[Expr], _3: MutableSequence[Stmt], _4: MutableSequence[str], _5: MutableSequence[Expr], /) -> None: ...  # ty: ignore[invalid-method-override]
     # fmt: on
     # tvm-ffi-stubgen(end)
 
@@ -1581,7 +1581,7 @@ class Comment(Stmt):
     # fmt: off
     if TYPE_CHECKING:
         def __init__(self, *, comment: str | None = ...) -> None: ...
-        def __ffi_init__(self, *, comment: str | None = ...) -> None: ...
+        def __ffi_init__(self, *, comment: str | None = ...) -> None: ...  # ty: ignore[invalid-method-override]
     # fmt: on
     # tvm-ffi-stubgen(end)
 
@@ -1610,7 +1610,7 @@ class DocString(Stmt):
     # fmt: off
     if TYPE_CHECKING:
         def __init__(self, *, comment: str | None = ...) -> None: ...
-        def __ffi_init__(self, *, comment: str | None = ...) -> None: ...
+        def __ffi_init__(self, *, comment: str | None = ...) -> None: ...  # ty: ignore[invalid-method-override]
     # fmt: on
     # tvm-ffi-stubgen(end)
 
@@ -1634,7 +1634,7 @@ class Set(Expr):
     values: MutableSequence[Expr]
     if TYPE_CHECKING:
         def __init__(self, values: MutableSequence[Expr]) -> None: ...
-        def __ffi_init__(self, values: MutableSequence[Expr]) -> None: ...
+        def __ffi_init__(self, values: MutableSequence[Expr]) -> None: ...  # ty: ignore[invalid-method-override]
     # fmt: on
     # tvm-ffi-stubgen(end)
 
@@ -1662,7 +1662,7 @@ class ComprehensionIter(Node):
     is_async: bool
     if TYPE_CHECKING:
         def __init__(self, target: Expr, iter: Expr, ifs: MutableSequence[Expr], is_async: bool) -> None: ...
-        def __ffi_init__(self, target: Expr, iter: Expr, ifs: MutableSequence[Expr], is_async: bool) -> None: ...
+        def __ffi_init__(self, target: Expr, iter: Expr, ifs: MutableSequence[Expr], is_async: bool) -> None: ...  # ty: ignore[invalid-method-override]
     # fmt: on
     # tvm-ffi-stubgen(end)
 
@@ -1705,7 +1705,7 @@ class Comprehension(Expr):
     iters: MutableSequence[ComprehensionIter]
     if TYPE_CHECKING:
         def __init__(self, kind: int, elt: Expr, value: Expr | None, iters: MutableSequence[ComprehensionIter]) -> None: ...
-        def __ffi_init__(self, kind: int, elt: Expr, value: Expr | None, iters: MutableSequence[ComprehensionIter]) -> None: ...
+        def __ffi_init__(self, kind: int, elt: Expr, value: Expr | None, iters: MutableSequence[ComprehensionIter]) -> None: ...  # ty: ignore[invalid-method-override]
     # fmt: on
     # tvm-ffi-stubgen(end)
 
@@ -1726,7 +1726,7 @@ class Yield(Expr):
     value: Expr | None
     if TYPE_CHECKING:
         def __init__(self, value: Expr | None = ...) -> None: ...
-        def __ffi_init__(self, value: Expr | None = ...) -> None: ...
+        def __ffi_init__(self, value: Expr | None = ...) -> None: ...  # ty: ignore[invalid-method-override]
     # fmt: on
     # tvm-ffi-stubgen(end)
 
@@ -1747,7 +1747,7 @@ class YieldFrom(Expr):
     value: Expr
     if TYPE_CHECKING:
         def __init__(self, value: Expr) -> None: ...
-        def __ffi_init__(self, value: Expr) -> None: ...
+        def __ffi_init__(self, value: Expr) -> None: ...  # ty: ignore[invalid-method-override]
     # fmt: on
     # tvm-ffi-stubgen(end)
 
@@ -1761,7 +1761,7 @@ class StarredExpr(Expr):
     value: Expr
     if TYPE_CHECKING:
         def __init__(self, value: Expr) -> None: ...
-        def __ffi_init__(self, value: Expr) -> None: ...
+        def __ffi_init__(self, value: Expr) -> None: ...  # ty: ignore[invalid-method-override]
     # fmt: on
     # tvm-ffi-stubgen(end)
 
@@ -1775,7 +1775,7 @@ class AwaitExpr(Expr):
     value: Expr
     if TYPE_CHECKING:
         def __init__(self, value: Expr) -> None: ...
-        def __ffi_init__(self, value: Expr) -> None: ...
+        def __ffi_init__(self, value: Expr) -> None: ...  # ty: ignore[invalid-method-override]
     # fmt: on
     # tvm-ffi-stubgen(end)
 
@@ -1790,7 +1790,7 @@ class WalrusExpr(Expr):
     value: Expr
     if TYPE_CHECKING:
         def __init__(self, target: Expr, value: Expr) -> None: ...
-        def __ffi_init__(self, target: Expr, value: Expr) -> None: ...
+        def __ffi_init__(self, target: Expr, value: Expr) -> None: ...  # ty: ignore[invalid-method-override]
     # fmt: on
     # tvm-ffi-stubgen(end)
 
@@ -1808,7 +1808,7 @@ class FStr(Expr):
     values: MutableSequence[Expr]
     if TYPE_CHECKING:
         def __init__(self, values: MutableSequence[Expr]) -> None: ...
-        def __ffi_init__(self, values: MutableSequence[Expr]) -> None: ...
+        def __ffi_init__(self, values: MutableSequence[Expr]) -> None: ...  # ty: ignore[invalid-method-override]
     # fmt: on
     # tvm-ffi-stubgen(end)
 
@@ -1824,7 +1824,7 @@ class FStrValue(Expr):
     format_spec: Expr | None
     if TYPE_CHECKING:
         def __init__(self, value: Expr, conversion: int = ..., format_spec: Expr | None = ...) -> None: ...
-        def __ffi_init__(self, value: Expr, conversion: int = ..., format_spec: Expr | None = ...) -> None: ...
+        def __ffi_init__(self, value: Expr, conversion: int = ..., format_spec: Expr | None = ...) -> None: ...  # ty: ignore[invalid-method-override]
     # fmt: on
     # tvm-ffi-stubgen(end)
 
@@ -1840,7 +1840,7 @@ class ExceptHandler(Node):
     body: MutableSequence[Stmt]
     if TYPE_CHECKING:
         def __init__(self, type: Expr | None, name: str | None, body: MutableSequence[Stmt]) -> None: ...
-        def __ffi_init__(self, type: Expr | None, name: str | None, body: MutableSequence[Stmt]) -> None: ...
+        def __ffi_init__(self, type: Expr | None, name: str | None, body: MutableSequence[Stmt]) -> None: ...  # ty: ignore[invalid-method-override]
     # fmt: on
     # tvm-ffi-stubgen(end)
 
@@ -1849,11 +1849,18 @@ class ExceptHandler(Node):
 class Try(Stmt):
     """A ``try / except / else / finally`` statement."""
 
+    # tvm-ffi-stubgen(begin): object/ffi.pyast.Try
+    # fmt: off
     body: MutableSequence[Stmt]
     handlers: MutableSequence[ExceptHandler]
     orelse: MutableSequence[Stmt]
     finalbody: MutableSequence[Stmt]
     is_star: bool
+    if TYPE_CHECKING:
+        def __init__(self, body: MutableSequence[Stmt], handlers: MutableSequence[ExceptHandler], orelse: MutableSequence[Stmt] = ..., finalbody: MutableSequence[Stmt] = ..., is_star: bool = ..., *, comment: str | None = ...) -> None: ...
+        def __ffi_init__(self, body: MutableSequence[Stmt], handlers: MutableSequence[ExceptHandler], orelse: MutableSequence[Stmt] = ..., finalbody: MutableSequence[Stmt] = ..., is_star: bool = ..., *, comment: str | None = ...) -> None: ...  # ty: ignore[invalid-method-override]
+    # fmt: on
+    # tvm-ffi-stubgen(end)
 
 
 @c_class("ffi.pyast.MatchCase")
@@ -1867,7 +1874,7 @@ class MatchCase(Node):
     body: MutableSequence[Stmt]
     if TYPE_CHECKING:
         def __init__(self, pattern: Expr, guard: Expr | None, body: MutableSequence[Stmt]) -> None: ...
-        def __ffi_init__(self, pattern: Expr, guard: Expr | None, body: MutableSequence[Stmt]) -> None: ...
+        def __ffi_init__(self, pattern: Expr, guard: Expr | None, body: MutableSequence[Stmt]) -> None: ...  # ty: ignore[invalid-method-override]
     # fmt: on
     # tvm-ffi-stubgen(end)
 
@@ -1882,7 +1889,7 @@ class Match(Stmt):
     cases: MutableSequence[MatchCase]
     if TYPE_CHECKING:
         def __init__(self, subject: Expr, cases: MutableSequence[MatchCase], *, comment: str | None = ...) -> None: ...
-        def __ffi_init__(self, subject: Expr, cases: MutableSequence[MatchCase], *, comment: str | None = ...) -> None: ...
+        def __ffi_init__(self, subject: Expr, cases: MutableSequence[MatchCase], *, comment: str | None = ...) -> None: ...  # ty: ignore[invalid-method-override]
     # fmt: on
     # tvm-ffi-stubgen(end)
 
@@ -1937,7 +1944,7 @@ class VarInfo(Object):
     creator: Callable[..., Any]
     if TYPE_CHECKING:
         def __init__(self, name: str | None, creator: Callable[..., Any]) -> None: ...
-        def __ffi_init__(self, _0: str | None, _1: Callable[..., Any], /) -> None: ...
+        def __ffi_init__(self, _0: str | None, _1: Callable[..., Any], /) -> None: ...  # ty: ignore[invalid-method-override]
     # fmt: on
     # tvm-ffi-stubgen(end)
 
@@ -1975,7 +1982,7 @@ class DefaultFrame(Object):
     stmts: MutableSequence[Stmt]
     if TYPE_CHECKING:
         def __init__(self, stmts: MutableSequence[Stmt]) -> None: ...
-        def __ffi_init__(self, _0: MutableSequence[Stmt], /) -> None: ...
+        def __ffi_init__(self, _0: MutableSequence[Stmt], /) -> None: ...  # ty: ignore[invalid-method-override]
     # fmt: on
     # tvm-ffi-stubgen(end)
 
@@ -2032,7 +2039,7 @@ class IRPrinter(Object):
     frame_vars: MutableMapping[Any, Any]
     if TYPE_CHECKING:
         def __init__(self, cfg: PrinterConfig, obj2info: MutableMapping[Any, VarInfo], defined_names: MutableMapping[str, int], frames: MutableSequence[Any], frame_vars: MutableMapping[Any, Any]) -> None: ...
-        def __ffi_init__(self, _0: PrinterConfig, _1: MutableMapping[Any, VarInfo], _2: MutableMapping[str, int], _3: MutableSequence[Any], _4: MutableMapping[Any, Any], /) -> None: ...
+        def __ffi_init__(self, _0: PrinterConfig, _1: MutableMapping[Any, VarInfo], _2: MutableMapping[str, int], _3: MutableSequence[Any], _4: MutableMapping[Any, Any], /) -> None: ...  # ty: ignore[invalid-method-override]
         def var_is_defined(self, _1: Object, /) -> bool: ...
         def var_def(self, _1: str, _2: Object, _3: Object | None, /) -> Id: ...
         def var_def_no_name(self, _1: Callable[..., Any], _2: Object, _3: Object | None, /) -> None: ...

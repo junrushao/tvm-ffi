@@ -150,7 +150,15 @@ def _collect_own_fields(  # noqa: PLR0912
     """
     fields: list[Field] = []
     kw_only_active = decorator_kw_only
-    own_annotations: dict[str, str] = cls.__dict__.get("__annotations__", {})
+    # Python 3.14+ (PEP 749): annotations are lazily evaluated via
+    # __annotate__ and no longer stored directly in __dict__.  getattr()
+    # triggers evaluation and returns per-class annotations correctly.
+    # On Python < 3.14, getattr() follows MRO and returns *parent*
+    # annotations when the child has none — use __dict__ to avoid that.
+    if sys.version_info >= (3, 14):
+        own_annotations: dict[str, str] = getattr(cls, "__annotations__", {})
+    else:
+        own_annotations = cls.__dict__.get("__annotations__", {})
 
     for name in own_annotations:
         resolved_type = hints.get(name)
@@ -208,12 +216,15 @@ def _collect_own_fields(  # noqa: PLR0912
 
 
 def _collect_py_methods(cls: type) -> list[tuple[str, Any, bool]] | None:
-    """Extract recognized FFI dunder methods from the class body.
+    """Extract recognized FFI dunder methods and type attrs from the class body.
 
     Only names listed in :data:`_FFI_RECOGNIZED_METHODS` are collected.
+    Callables are collected with their ``is_static`` flag; non-callable
+    values (e.g. ``__ffi_ir_traits__``) are collected as-is — the Cython
+    layer routes them to ``TVMFFITypeRegisterAttr`` based on name.
 
-    Returns a list of ``(name, func, is_static)`` tuples, or ``None``
-    if no eligible methods were found.
+    Returns a list of ``(name, value, is_static)`` tuples, or ``None``
+    if no eligible entries were found.
     """
     methods: list[tuple[str, Any, bool]] = []
     for name, value in cls.__dict__.items():
@@ -226,26 +237,10 @@ def _collect_py_methods(cls: type) -> list[tuple[str, Any, bool]] | None:
             func = value
             is_static = False
         else:
-            continue
+            func = value
+            is_static = False
         methods.append((name, func, is_static))
     return methods if methods else None
-
-
-#: Class-level attributes that ``@py_class`` registers as TypeAttr
-#: (via ``TVMFFITypeRegisterAttr``) but NOT as TypeMethod.
-_FFI_RECOGNIZED_ATTRS: frozenset[str] = frozenset({"__ffi_ir_traits__"})
-
-
-def _collect_py_attrs(cls: type) -> list[tuple[str, Any]] | None:
-    """Extract recognized FFI class attributes (non-methods).
-
-    Returns a list of ``(name, value)`` tuples, or ``None`` if empty.
-    """
-    attrs: list[tuple[str, Any]] = []
-    for name in _FFI_RECOGNIZED_ATTRS:
-        if name in cls.__dict__:
-            attrs.append((name, cls.__dict__[name]))
-    return attrs if attrs else None
 
 
 def _register_fields_into_type(
@@ -271,15 +266,14 @@ def _register_fields_into_type(
 
     own_fields = _collect_own_fields(cls, hints, params["kw_only"], params["frozen"])
     py_methods = _collect_py_methods(cls)
-    py_attrs = _collect_py_attrs(cls)
 
     # Register fields and type-level structural eq/hash kind with the C layer.
     structure_kind = _STRUCTURE_KIND_MAP.get(params.get("structural_eq"))
     type_info._register_fields(own_fields, structure_kind)
     # Register user-defined dunder methods and read back system-generated ones.
+    # Non-callable entries whose names are in _FFI_TYPE_ATTR_NAMES are routed
+    # to TVMFFITypeRegisterAttr by the Cython layer.
     type_info._register_py_methods(py_methods, type_attr_names=_FFI_TYPE_ATTR_NAMES)
-    # Register recognized class-level attributes as TypeAttr.
-    type_info._register_py_attrs(py_attrs)
     _add_class_attrs(cls, type_info)
 
     # Remove deferred __init__ and restore user-defined __init__ if saved
@@ -424,6 +418,8 @@ _FFI_TYPE_ATTR_NAMES: frozenset[str] = frozenset(
         "__ffi_text_print__",
         # Per-trait print dispatch
         "__ffi_traits_print__",
+        # IR semantic traits (non-callable object, registered as TypeAttr)
+        "__ffi_ir_traits__",
     }
 )
 

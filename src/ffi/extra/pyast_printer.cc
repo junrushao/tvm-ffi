@@ -1871,16 +1871,10 @@ TVM_FFI_STATIC_INIT_BLOCK() {
       .def_rw("end_col_offset", &text::NodeASTObj::end_col_offset, refl::init(false),
               refl::default_value(int64_t{-1}))
       .def("_to_python", &text::NodeASTObj::ToPython);
-  // ExprAST
-  refl::ObjectDef<text::ExprASTObj>(refl::init(false))
-      .def_ro("source_paths", &text::ExprASTObj::source_paths, refl::init(false),
-              refl::default_factory(
-                  Function::FromTyped([]() -> List<text::AccessPath> { return {}; })));
-  // StmtAST
+  // ExprAST (source_paths inherited from NodeAST)
+  (void)refl::ObjectDef<text::ExprASTObj>(refl::init(false));
+  // StmtAST (source_paths inherited from NodeAST)
   refl::ObjectDef<text::StmtASTObj>(refl::init(false))
-      .def_ro(
-          "source_paths", &text::StmtASTObj::source_paths, refl::init(false),
-          refl::default_factory(Function::FromTyped([]() -> List<text::AccessPath> { return {}; })))
       .def_rw("comment", &text::StmtASTObj::comment, refl::kw_only(true),
               refl::default_value(Optional<String>{}));
   // StmtBlockText
@@ -2036,9 +2030,9 @@ TVM_FFI_STATIC_INIT_BLOCK() {
                       ::tvm::ffi::List<text::StmtAST>, ::tvm::ffi::List<::tvm::ffi::String>,
                       ::tvm::ffi::List<text::ExprAST>>());
   // CommentText
-  refl::ObjectDef<text::CommentASTObj>();
+  (void)refl::ObjectDef<text::CommentASTObj>();
   // DocStringText
-  refl::ObjectDef<text::DocStringASTObj>();
+  (void)refl::ObjectDef<text::DocStringASTObj>();
   // ExceptHandlerAST
   refl::ObjectDef<text::ExceptHandlerASTObj>()
       .def_ro("type", &text::ExceptHandlerASTObj::type)

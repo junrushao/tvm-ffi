@@ -294,17 +294,20 @@ class ObjectInfo:
         """Render ``__ffi_init__`` TypeMethod as an instance method returning None."""
         indent_str = " " * indent
         schema = method.schema
+        # Subclass __ffi_init__ signatures legitimately differ from the parent
+        # (different fields → different constructor params), so suppress LSP.
+        ignore = "  # ty: ignore[invalid-method-override]"
         if schema.origin != "Callable" or not schema.args:
             ty_map("Any")
-            return f"{indent_str}def __ffi_init__(self, *args: Any) -> None: ..."
+            return f"{indent_str}def __ffi_init__(self, *args: Any) -> None: ...{ignore}"
         # schema.args[0] is return type, schema.args[1:] are param types.
         parts: list[str] = []
         for i, arg in enumerate(schema.args[1:]):
             parts.append(f"_{i}: {arg.repr(ty_map)}")
         if parts:
             params = ", ".join(parts)
-            return f"{indent_str}def __ffi_init__(self, {params}, /) -> None: ..."
-        return f"{indent_str}def __ffi_init__(self) -> None: ..."
+            return f"{indent_str}def __ffi_init__(self, {params}, /) -> None: ...{ignore}"
+        return f"{indent_str}def __ffi_init__(self) -> None: ...{ignore}"
 
     def gen_ffi_init(self, ty_map: Callable[[str], str], indent: int) -> list[str]:
         """Generate a ``__ffi_init__`` stub when it's not already in TypeMethod.
@@ -362,7 +365,10 @@ class ObjectInfo:
     def _gen_ffi_init_from_fields(self, ty_map: Callable[[str], str], indent: int) -> list[str]:
         """Generate ``__ffi_init__`` stub from field metadata for auto-generated init."""
         indent_str = " " * indent
+        # Subclass __ffi_init__ signatures legitimately differ from the parent
+        # (different fields → different constructor params), so suppress LSP.
+        ignore = "  # ty: ignore[invalid-method-override]"
         params = self._format_field_params(ty_map)
         if params:
-            return [f"{indent_str}def __ffi_init__(self, {params}) -> None: ..."]
-        return [f"{indent_str}def __ffi_init__(self) -> None: ..."]
+            return [f"{indent_str}def __ffi_init__(self, {params}) -> None: ...{ignore}"]
+        return [f"{indent_str}def __ffi_init__(self) -> None: ...{ignore}"]
