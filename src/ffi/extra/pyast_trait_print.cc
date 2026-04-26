@@ -32,10 +32,13 @@
 #include <tvm/ffi/reflection/accessor.h>
 #include <tvm/ffi/reflection/registry.h>
 
+#include <algorithm>
 #include <cstring>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <vector>
 
 namespace tvm {
 namespace ffi {
@@ -106,6 +109,36 @@ inline String GetTypePrefix(AnyView obj) {
 inline bool IsListLike(AnyView obj) {
   int32_t type_index = obj.type_index();
   return type_index == TypeIndex::kTVMFFIList || type_index == TypeIndex::kTVMFFIArray;
+}
+
+/*! \brief Check if an object is a map/dict container (ffi.Map or ffi.Dict). */
+inline bool IsMapLike(AnyView obj) {
+  int32_t type_index = obj.type_index();
+  return type_index == TypeIndex::kTVMFFIMap || type_index == TypeIndex::kTVMFFIDict;
+}
+
+/*! \brief Shorten dtype names in text format, e.g. float32 -> f32. */
+std::string ShortDTypeName(std::string_view dtype) {
+  auto replace_prefix = [dtype](std::string_view prefix,
+                                std::string_view short_prefix) -> std::optional<std::string> {
+    if (dtype.size() >= prefix.size() && dtype.substr(0, prefix.size()) == prefix) {
+      std::string result(short_prefix);
+      result.append(dtype.substr(prefix.size()));
+      return result;
+    }
+    return std::nullopt;
+  };
+  if (auto result = replace_prefix("bfloat", "bf")) return result.value();
+  if (auto result = replace_prefix("float", "f")) return result.value();
+  if (auto result = replace_prefix("uint", "u")) return result.value();
+  if (auto result = replace_prefix("int", "i")) return result.value();
+  return std::string(dtype);
+}
+
+std::string ShortDTypeName(DLDataType dtype) {
+  if (dtype.bits == 0 && dtype.lanes == 0) return "void";
+  String dtype_str = DLDataTypeToString(dtype);
+  return ShortDTypeName({dtype_str.data(), dtype_str.size()});
 }
 
 /*! \brief RAII guard that pops a frame on destruction, ensuring exception safety. */
@@ -223,6 +256,65 @@ Any ResolveWithPrinter(const String& ref, AnyView obj, AnyView printer) {
 ExprAST ResolveAndPrint(const String& ref, AnyView obj, const IRPrinter& printer,
                         const AccessPath& path) {
   return printer->operator()(ResolveWithPrinter(ref, obj, printer), path).cast<ExprAST>();
+}
+
+/*! \brief Append map entries as keyword arguments. */
+void AppendMapAsKwargs(const MapBaseObj* map_obj, const IRPrinter& printer, const AccessPath& path,
+                       List<String>* kw_keys, List<ExprAST>* kw_vals, std::string_view trait_name) {
+  using KV = std::pair<String, Any>;
+  std::vector<KV> items;
+  for (const auto& kv : *map_obj) {
+    if (!IsString(kv.first)) {
+      TVM_FFI_THROW(ValueError) << trait_name << ": attrs keys must be strings, but got "
+                                << (kv.first.type_index() >= TypeIndex::kTVMFFIStaticObjectBegin
+                                        ? kv.first.cast<ObjectRef>()->GetTypeKey()
+                                        : "non-object type");
+    }
+    items.emplace_back(kv.first.cast<String>(), Any(kv.second));
+  }
+  std::sort(items.begin(), items.end(),
+            [](const KV& lhs, const KV& rhs) { return lhs.first < rhs.first; });
+  for (const auto& kv : items) {
+    kw_keys->push_back(kv.first);
+    kw_vals->push_back(printer->operator()(Any(kv.second), path->Attr("attrs")).cast<ExprAST>());
+  }
+}
+
+/*! \brief Append function attrs as decorator keyword arguments.
+ *
+ * Accepts ffi.Map/ffi.Dict directly.  For dialect attr objects, also accepts
+ * values that print as a dict expression.  Non-dict attr objects are preserved
+ * as a single ``attrs=...`` keyword.
+ */
+void AppendFuncAttrsAsKwargs(Any attrs_val, const IRPrinter& printer, const AccessPath& path,
+                             List<String>* kw_keys, List<ExprAST>* kw_vals) {
+  if (attrs_val == nullptr) return;
+  if (attrs_val.type_index() >= TypeIndex::kTVMFFIStaticObjectBegin) {
+    ObjectRef attrs_obj = attrs_val.cast<ObjectRef>();
+    if (IsMapLike(attrs_obj)) {
+      AppendMapAsKwargs(attrs_obj.as<MapBaseObj>(), printer, path, kw_keys, kw_vals, "FuncTraits");
+      return;
+    }
+  }
+
+  ExprAST attrs_expr =
+      printer->operator()(std::move(attrs_val), path->Attr("attrs")).cast<ExprAST>();
+  if (const auto* dict = attrs_expr.as<DictASTObj>()) {
+    int64_t num_items = static_cast<int64_t>(dict->keys.size());
+    for (int64_t i = 0; i < num_items; ++i) {
+      const auto* lit = dict->keys[i].as<LiteralASTObj>();
+      if (lit == nullptr || !IsString(lit->value)) {
+        TVM_FFI_THROW(ValueError)
+            << "FuncTraits: attrs printed as a dict must have string literal keys";
+      }
+      kw_keys->push_back(lit->value.cast<String>());
+      kw_vals->push_back(dict->values[i]);
+    }
+    return;
+  }
+
+  kw_keys->push_back(String("attrs"));
+  kw_vals->push_back(attrs_expr);
 }
 
 /*! \brief Resolve a body reference and print each element as statements. */
@@ -923,8 +1015,9 @@ NodeAST PrintFunc(AnyView obj, const tr::FuncTraits& t, const IRPrinter& printer
   String symbol_str = symbol_val.cast<String>();
   IdAST name = IdAST(symbol_str);
 
-  // Decorators from text_printer_kind
-  List<ExprAST> decorators;
+  // Decorator from text_printer_kind.  Function-style rendering may wrap this
+  // callee with attrs-derived keyword arguments after class/function style is known.
+  Optional<ExprAST> decorator;
   if (t->text_printer_kind.has_value()) {
     Any kind_val = ResolveWithPrinter(t->text_printer_kind.value(), obj, printer);
     if (kind_val == nullptr) {
@@ -932,11 +1025,10 @@ NodeAST PrintFunc(AnyView obj, const tr::FuncTraits& t, const IRPrinter& printer
     } else if (IsString(kind_val)) {
       String kind_str = kind_val.cast<String>();
       if (!kind_str.empty()) {
-        decorators.push_back(IdAST(kind_str));
+        decorator = IdAST(kind_str);
       }
     } else {
-      decorators.push_back(
-          printer->operator()(std::move(kind_val), path->Attr("decorator")).cast<ExprAST>());
+      decorator = printer->operator()(std::move(kind_val), path->Attr("decorator")).cast<ExprAST>();
     }
   }
 
@@ -972,6 +1064,10 @@ NodeAST PrintFunc(AnyView obj, const tr::FuncTraits& t, const IRPrinter& printer
   // Class-style rendering: region has no def_values (no params declared), no return type → ClassAST
   // To get a zero-arg function, specify def_values pointing to an empty list.
   if (params.empty() && !t->region->def_values.has_value() && !t->region->ret.has_value()) {
+    List<ExprAST> decorators;
+    if (decorator.has_value()) {
+      decorators.push_back(decorator.value());
+    }
     // Resolve bases from attrs field
     List<ExprAST> bases;
     if (t->attrs.has_value()) {
@@ -992,6 +1088,21 @@ NodeAST PrintFunc(AnyView obj, const tr::FuncTraits& t, const IRPrinter& printer
       }
     }
     return ClassAST(name, bases, decorators, all_body, {}, {});
+  }
+
+  List<ExprAST> decorators;
+  if (decorator.has_value()) {
+    List<String> kw_keys;
+    List<ExprAST> kw_vals;
+    if (t->attrs.has_value()) {
+      Any attrs_val = ResolveWithPrinter(t->attrs.value(), obj, printer);
+      AppendFuncAttrsAsKwargs(std::move(attrs_val), printer, path, &kw_keys, &kw_vals);
+    }
+    if (kw_keys.empty()) {
+      decorators.push_back(decorator.value());
+    } else {
+      decorators.push_back(CallAST(decorator.value(), {}, std::move(kw_keys), std::move(kw_vals)));
+    }
   }
   return FunctionAST(name, params, decorators, Optional<ExprAST>{}, all_body);
 }
@@ -1305,7 +1416,7 @@ NodeAST PrintLiteral(AnyView obj, const tr::LiteralTraits& t, const IRPrinter& p
         }
         // other → <prefix>.<dtype>(value)
         std::string ds = DLDataTypeToString(dtype);
-        return CallAST(ExprAttr(IdAST(prefix), ds),
+        return CallAST(ExprAttr(IdAST(prefix), ShortDTypeName(ds)),
                        {LiteralAST::Int(int_val, {path->Attr("value")})}, {}, {});
       }
       if (fmt == "float") {
@@ -1318,8 +1429,7 @@ NodeAST PrintLiteral(AnyView obj, const tr::LiteralTraits& t, const IRPrinter& p
         if (dtype.bits == 0 && dtype.lanes == 0) {
           return LiteralAST::Float(float_val, {path->Attr("value")});
         }
-        std::string ds = DLDataTypeToString(dtype);
-        return CallAST(ExprAttr(IdAST(GetTypePrefix(obj)), ds),
+        return CallAST(ExprAttr(IdAST(GetTypePrefix(obj)), ShortDTypeName(dtype)),
                        {LiteralAST::Float(float_val, {path->Attr("value")})}, {}, {});
       }
     }
@@ -1439,13 +1549,12 @@ NodeAST PrintPrimTy(AnyView obj, const tr::PrimTyTraits& t, const IRPrinter& pri
   // If it's a DataType, render as <prefix>.<dtype>
   if (dtype_val.type_index() == TypeIndex::kTVMFFIDataType) {
     DLDataType dtype = dtype_val.cast<DLDataType>();
-    std::string s = (dtype.bits == 0 && dtype.lanes == 0) ? "void" : DLDataTypeToString(dtype);
-    return ExprAttr(IdAST(GetTypePrefix(obj)), s);
+    return ExprAttr(IdAST(GetTypePrefix(obj)), ShortDTypeName(dtype));
   }
   // If it's a string like "int32", render as <prefix>.<dtype> (attribute access, not a call)
   if (IsString(dtype_val)) {
     std::string ds(dtype_val.cast<String>().data(), dtype_val.cast<String>().size());
-    return ExprAttr(IdAST(GetTypePrefix(obj)), ds);
+    return ExprAttr(IdAST(GetTypePrefix(obj)), ShortDTypeName(ds));
   }
   // Fallback: resolve and print
   return ResolveAndPrint(t->dtype, obj, printer, path->Attr("dtype"));
@@ -1500,8 +1609,10 @@ NodeAST PrintBufferTy(AnyView obj, const tr::BufferTyTraits& t, const IRPrinter&
   if (dtype_val != nullptr) {
     if (dtype_val.type_index() == TypeIndex::kTVMFFIDataType) {
       DLDataType dtype = dtype_val.cast<DLDataType>();
-      std::string ds = DLDataTypeToString(dtype);
-      args.push_back(LiteralAST::Str(ds));
+      args.push_back(LiteralAST::Str(ShortDTypeName(dtype)));
+    } else if (IsString(dtype_val)) {
+      String dtype_str = dtype_val.cast<String>();
+      args.push_back(LiteralAST::Str(ShortDTypeName({dtype_str.data(), dtype_str.size()})));
     } else {
       args.push_back(
           printer->operator()(std::move(dtype_val), path->Attr("dtype")).cast<ExprAST>());
@@ -1582,8 +1693,10 @@ NodeAST PrintTensorTy(AnyView obj, const tr::TensorTyTraits& t, const IRPrinter&
       // None dtype → elide
     } else if (dtype_val.type_index() == TypeIndex::kTVMFFIDataType) {
       DLDataType dtype = dtype_val.cast<DLDataType>();
-      std::string ds = DLDataTypeToString(dtype);
-      args.push_back(LiteralAST::Str(ds));
+      args.push_back(LiteralAST::Str(ShortDTypeName(dtype)));
+    } else if (IsString(dtype_val)) {
+      String dtype_str = dtype_val.cast<String>();
+      args.push_back(LiteralAST::Str(ShortDTypeName({dtype_str.data(), dtype_str.size()})));
     } else {
       args.push_back(
           printer->operator()(std::move(dtype_val), path->Attr("dtype")).cast<ExprAST>());

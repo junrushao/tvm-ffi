@@ -40,7 +40,7 @@ Concrete node types correspond closely to the Python AST: ``Literal``, ``Id``,
 # fmt: off
 # isort: off
 from __future__ import annotations
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 if TYPE_CHECKING:
     from collections.abc import MutableMapping, MutableSequence
     from tvm_ffi import Object
@@ -910,6 +910,38 @@ class OperationKind:
     ChainedCompare = 34
     Parens = 35
     SpecialEnd = 36
+
+    _NAMES: ClassVar[dict[int, str]] = {
+        USub: "__neg__",  # -x
+        UAdd: "__pos__",  # +x
+        Invert: "__invert__",  # ~x
+        Not: "__not__",  # not x
+        Add: "__add__",  # x + y
+        Sub: "__sub__",  # x - y
+        Mult: "__mul__",  # x * y
+        Div: "__truediv__",  # x / y
+        FloorDiv: "__floordiv__",  # x // y
+        Mod: "__mod__",  # x % y
+        Pow: "__pow__",  # x ** y
+        LShift: "__lshift__",  # x << y
+        RShift: "__rshift__",  # x >> y
+        BitAnd: "__and__",  # x & y
+        BitOr: "__or__",  # x | y
+        BitXor: "__xor__",  # x ^ y
+        MatMult: "__matmul__",  # x @ y
+        Lt: "__lt__",  # x < y
+        LtE: "__le__",  # x <= y
+        Gt: "__gt__",  # x > y
+        GtE: "__ge__",  # x >= y
+        Eq: "__eq__",  # x == y
+        NotEq: "__ne__",  # x != y
+        Is: "__is__",  # x is y
+        IsNot: "__is_not__",  # x is not y
+        In: "__in__",  # x in y
+        NotIn: "__not_in__",  # x not in y
+        And: "__logical_and__",  # x and y
+        Or: "__logical_or__",  # x or y
+    }
 
 
 @c_class("ffi.pyast.Operation")
@@ -1894,14 +1926,16 @@ class Match(Stmt):
     # tvm-ffi-stubgen(end)
 
 
-def from_py(source: Any) -> Node:
+def from_py(source: Any, feature_version: tuple[int, int] = (3, 14)) -> Node:
     """Convert a Python source string or ``ast.AST`` node to a TVM-FFI text AST node.
 
     Parameters
     ----------
-    source : str | ast.AST
+    source
         Either a Python source string or a Python standard-library ``ast``
         node to convert.
+    feature_version
+        Python grammar version passed to ``ast.parse`` when parsing source strings.
 
     Returns
     -------
@@ -1920,7 +1954,7 @@ def from_py(source: Any) -> Node:
     """
     from ._pyast_translator import ast_translate  # noqa: PLC0415
 
-    return ast_translate(source)
+    return ast_translate(source, feature_version=feature_version)
 
 
 @c_class("ffi.pyast.VarInfo")

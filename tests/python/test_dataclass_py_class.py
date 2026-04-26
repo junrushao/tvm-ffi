@@ -3803,6 +3803,33 @@ class TestContainerFieldAnnotations:
         assert obj.matrix[0][0] == 1
         assert obj.matrix[1][2] == 6
 
+    def test_list_field_error_includes_field_path(self) -> None:
+        @py_class(_unique_key("ListErr"))
+        class ListErr(Object):
+            items: List[int]
+
+        with pytest.raises(TypeError) as exc_info:
+            ListErr(items=[1, None])  # ty: ignore[invalid-argument-type]
+
+        message = str(exc_info.value)
+        assert ".__ffi_init__() field 'items':\n" in message
+        assert "  element [1]: expected int, got None" in message
+
+    def test_field_error_indents_multiline_ffi_convert_error(self) -> None:
+        cls = _make_type(
+            "ShapeErr",
+            [Field(name="shape", _ty_schema=TypeSchema("ffi.Shape"), default=MISSING)],
+        )
+
+        with pytest.raises(TypeError) as exc_info:
+            cls(shape=[1, "x"])
+
+        message = str(exc_info.value)
+        assert ".__ffi_init__() field 'shape':\n" in message
+        assert "  expected ffi.Shape, got ffi.Array\n" in message
+        assert "    __ffi_convert__ failed:\n" in message
+        assert "      Cannot cast from `ffi.Array` to `ffi.Shape`" in message
+
     def test_dict_str_list_int_field(self) -> None:
         @py_class(_unique_key("DictStrListInt"))
         class DictStrListInt(Object):
@@ -5087,6 +5114,15 @@ class TestDtypeDeviceFields:
         assert obj.dt == "float32"
         assert isinstance(obj.dt, tvm_ffi.dtype)
 
+    def test_dtype_field_from_str(self) -> None:
+        @py_class(_unique_key("DtypeFieldFromStr"))
+        class DtypeHolder(Object):
+            dt: tvm_ffi.dtype
+
+        obj = DtypeHolder(dt="float32")  # ty: ignore[invalid-argument-type]
+        assert obj.dt == "float32"
+        assert isinstance(obj.dt, tvm_ffi.dtype)
+
     def test_dtype_field_setter(self) -> None:
         @py_class(_unique_key("DtypeFieldSet"))
         class DtypeHolder2(Object):
@@ -5104,6 +5140,14 @@ class TestDtypeDeviceFields:
         dev = tvm_ffi.device("cpu", 0)
         obj = DeviceHolder(dev=dev)
         assert obj.dev == dev
+
+    def test_device_field_from_str(self) -> None:
+        @py_class(_unique_key("DeviceFieldFromStr"))
+        class DeviceHolder(Object):
+            dev: tvm_ffi.Device
+
+        obj = DeviceHolder(dev="cpu")  # ty: ignore[invalid-argument-type]
+        assert obj.dev == tvm_ffi.device("cpu", 0)
 
     def test_dtype_device_together(self) -> None:
         @py_class(_unique_key("DtypeDeviceTogether"))

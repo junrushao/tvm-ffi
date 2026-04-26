@@ -146,6 +146,8 @@ class NodeVisitor:
         """Traverse all child nodes when no explicit visitor exists."""
         from .pyast import Node  # noqa: PLC0415
 
+        if not isinstance(node, Node):
+            raise TypeError(f"expected Node, got {type(node).__name__}")
         for _name, value in iter_fields(node):
             if isinstance(value, Node):
                 self.visit(value)

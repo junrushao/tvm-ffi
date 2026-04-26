@@ -983,6 +983,9 @@ cdef int _f_type_convert(void* type_converter, const TVMFFIAny* value, TVMFFIAny
         cany.cdata.type_index = kTVMFFINone
         cany.cdata.v_int64 = 0
         return 0
+    except _ConvertError as err:
+        set_last_ffi_error(TypeError(err.message))
+        return -1
     except Exception as err:
         set_last_ffi_error(err)
         return -1

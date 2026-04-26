@@ -734,7 +734,7 @@ class _Converter:
 _converter = _Converter()
 
 
-def ast_translate(source: str | ast.AST) -> pyast.Node:
+def ast_translate(source: str | ast.AST, feature_version: tuple[int, int]) -> pyast.Node:
     """Convert a Python source string or ``ast.AST`` node to a TVM-FFI AST node.
 
     Parameters
@@ -742,6 +742,9 @@ def ast_translate(source: str | ast.AST) -> pyast.Node:
     source
         Either a Python source-code string (parsed with ``ast.parse``) or an
         already-parsed ``ast.AST`` node.
+    feature_version
+        Python grammar version passed to ``ast.parse`` when parsing source
+        strings.
 
     Returns
     -------
@@ -779,6 +782,6 @@ def ast_translate(source: str | ast.AST) -> pyast.Node:
     """
     if isinstance(source, str):
         source = textwrap.dedent(source)
-        tree = ast.parse(source)
+        tree = ast.parse(source, feature_version=feature_version)
         return _converter.convert(tree)
     return _converter.convert(source)

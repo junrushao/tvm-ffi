@@ -401,6 +401,21 @@ class _FuncEmptyKind(Object):
     kind: Any
 
 
+@py_class("testing.tr.DecoratedFuncWithAttrs")
+class _DecoratedFuncWithAttrs(Object):
+    __ffi_ir_traits__ = tr.FuncTraits(
+        "$field:name",
+        tr.RegionTraits("$field:body", "$field:params", None, None),
+        "$field:attrs",
+        "prim_func",
+        None,
+    )
+    name: str
+    params: list[Object]
+    body: list[Object]
+    attrs: Any
+
+
 @py_class("testing.tr.Proc")
 class _ProcNodeP6(Object):
     __ffi_ir_traits__ = tr.FuncTraits(
@@ -1689,6 +1704,21 @@ def test_func_with_decorator() -> None:
     assert "x = a" in result
 
 
+def test_func_decorator_with_attrs() -> None:
+    a = TraitToyVar(name="a")
+    f = _DecoratedFuncWithAttrs(
+        name="kernel",
+        params=[a],
+        body=[],
+        attrs=tvm_ffi.Dict({"private": True, "tag": "nms"}),
+    )
+
+    result = pyast.to_python(f)
+
+    assert '@prim_func(private=True, tag="nms")' in result
+    assert "def kernel(a):" in result
+
+
 def test_func_with_return() -> None:
     a = TraitToyVar(name="a")
     f = TraitToyFuncNode(name="identity", params=[a], body=[], ret=a)
@@ -1889,6 +1919,7 @@ def test_return_printing() -> None:
 def test_tensor_ty_traits_dispatched() -> None:
     out = pyast.to_python(_TensorTy(shape="S", dtype="float32", device="cpu"))
     assert "Toy.Tensor" in out
+    assert '"f32"' in out
     assert "testing.tr.TensorTy(" not in out
 
 
@@ -1933,7 +1964,7 @@ def test_buffer_ty_none_dtype_elided() -> None:
 
 
 def test_prim_ty_string_prints_as_type_syntax() -> None:
-    assert pyast.to_python(_PrimTyNodeP6(dtype="int32")) == "Toy.int32"
+    assert pyast.to_python(_PrimTyNodeP6(dtype="int32")) == "Toy.i32"
 
 
 def test_empty_tuple_type_is_not_none() -> None:

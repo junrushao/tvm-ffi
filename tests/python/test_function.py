@@ -99,6 +99,16 @@ def test_echo() -> None:
     check_tensor()
 
 
+def test_typed_device_arg_accepts_string() -> None:
+    schema_id_device = tvm_ffi.get_global_func("testing.schema_id_device")
+    result = schema_id_device("cpu")
+    assert isinstance(result, tvm_ffi.Device)
+    assert result == tvm_ffi.device("cpu", 0)
+
+    result = schema_id_device("cuda:1")
+    assert result == tvm_ffi.device("cuda", 1)
+
+
 def test_return_raw_str_bytes() -> None:
     assert tvm_ffi.convert(lambda: "hello")() == "hello"
     assert tvm_ffi.convert(lambda: b"hello")() == b"hello"

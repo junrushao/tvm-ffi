@@ -249,7 +249,9 @@ if (TVM_FFI_BUILD_PYTHON_MODULE)
       ${CMAKE_CURRENT_SOURCE_DIR}/python/tvm_ffi/cython/dtype.pxi
       ${CMAKE_CURRENT_SOURCE_DIR}/python/tvm_ffi/cython/error.pxi
       ${CMAKE_CURRENT_SOURCE_DIR}/python/tvm_ffi/cython/function.pxi
+      ${CMAKE_CURRENT_SOURCE_DIR}/python/tvm_ffi/cython/pyclass_type_converter.pxi
       ${CMAKE_CURRENT_SOURCE_DIR}/python/tvm_ffi/cython/tensor.pxi
+      ${CMAKE_CURRENT_SOURCE_DIR}/python/tvm_ffi/cython/type_info.pxi
       ${CMAKE_CURRENT_SOURCE_DIR}/python/tvm_ffi/cython/object.pxi
       ${CMAKE_CURRENT_SOURCE_DIR}/python/tvm_ffi/cython/string.pxi
   )
