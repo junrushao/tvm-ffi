@@ -32,8 +32,6 @@ Bug categories:
 4. **Literal edge cases** — special values needing special rendering.
 """
 
-# ruff: noqa: D102
-
 from __future__ import annotations
 
 import ast

@@ -213,6 +213,7 @@ unfixable = []
   "E741", # pycodestyle: ambiguous-variable-name
   "D100", # pydocstyle: undocumented-public-module
   "D101", # pydocstyle: undocumented-public-class
+  "D102", # pydocstyle: undocumented-public-method
   "D103", # pydocstyle: undocumented-public-function
   "D107", # pydocstyle: undocumented-public-init
   "D205", # pydocstyle: missing-blank-line-after-summary

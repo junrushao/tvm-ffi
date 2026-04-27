@@ -308,51 +308,23 @@ def _register_print_prefix(cls: type, prefix: str) -> None:
     )
 
 
-def finalize_module(
-    module_name: str | None = None,
-    *,
-    prefix: str,
-) -> None:
-    """Finalize a dialect module after all IR classes are declared.
+def register_module_prefix(module_name: str, prefix: str) -> None:
+    """Register ``__ffi_print_prefix__`` on every FFI class in ``module_name``.
 
-    Call once at the bottom of every dialect file. Currently sets
-    ``__ffi_print_prefix__`` on each FFI-registered class in the
-    module; future revisions will layer additional dialect-wide
-    wiring through this entry point (e.g. parser hooks, op factories,
-    dtype handles).
+    Lightweight cousin of :func:`tvm_ffi.finalize_module`: just walks the
+    module for directly-decorated ``@py_class`` / ``@c_class`` types and
+    sets the printer prefix on each. Use this for fixture modules that
+    only need the printer wired up (no parser-dispatch registration);
+    prefer :func:`tvm_ffi.finalize_module` for real dialect modules.
 
-    **Selection rule** — ``finalize_module`` walks every value in
-    ``sys.modules[module_name].__dict__`` and applies its work to a
-    class only if all three hold:
+    Selection rule mirrors :func:`finalize_module`:
 
-    1. The class was *directly* decorated by ``@py_class`` or
-       ``@c_class``. Both decorators write ``__tvm_ffi_type_info__``
-       into ``cls.__dict__`` through the same code path, so a single
-       ``"__tvm_ffi_type_info__" in cls.__dict__`` check picks up
-       both uniformly. Plain Python classes — and undecorated
-       subclasses that merely *inherit* the attribute from an FFI
-       base — are skipped (the latter would otherwise clobber the
-       parent's TypeAttrColumn entry).
-    2. The class is defined in this module
-       (``cls.__module__ == module_name``), so re-exported imports
-       from other dialects are left alone.
-    3. The class does not already declare the attribute being set
-       directly in its body — an explicit per-class override always
-       wins over the module-wide default.
-
-    Parameters
-    ----------
-    module_name: str | None
-        Dotted import path of the dialect module to finalize
-        (e.g. ``"tvm_ffi.testing.mini.tir"``).  When ``None``
-        (the default), the caller's module is auto-detected.
-    prefix: str
-        Keyword-only.  The dialect's printer prefix (e.g. ``"T"``,
-        ``"R"``).  Required for printer and parser.
-
+    1. ``"__tvm_ffi_type_info__" in cls.__dict__`` (own dict, not
+       inherited) — picks up direct decoratees only.
+    2. ``cls.__module__ == module_name`` — skips foreign re-exports.
+    3. ``"__ffi_print_prefix__" not in cls.__dict__`` — explicit
+       per-class overrides take precedence.
     """
-    if module_name is None:
-        module_name = sys._getframe(1).f_globals["__name__"]
     module = sys.modules[module_name]
     for value in module.__dict__.values():
         if not isinstance(value, type):

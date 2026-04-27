@@ -72,7 +72,9 @@ if TYPE_CHECKING or not _is_config_mode():
     from ._tensor import Device, device, DLDeviceType
     from ._tensor import from_dlpack, Tensor, Shape
     from .container import Array, Dict, List, Map
-    from .dataclasses.py_class import finalize_module, method
+    from .dataclasses.py_class import method
+    from .dialect_autogen import finalize_module
+    from ._parse_decorators import parse_hook, parse_slot
     from .module import Module, system_lib, load_module
     from .stream import StreamContext, get_raw_stream, use_raw_stream, use_torch_stream
     from .structural import (
@@ -175,6 +177,8 @@ __all__ = [
     "init_ffi_api",
     "load_module",
     "method",
+    "parse_hook",
+    "parse_slot",
     "register_error",
     "register_global_func",
     "register_object",

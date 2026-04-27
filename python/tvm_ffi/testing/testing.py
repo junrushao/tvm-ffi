@@ -35,11 +35,12 @@ from typing import Any, ClassVar, List, Optional
 
 import pytest
 
-from tvm_ffi import Object, finalize_module, get_global_func, pyast
+from tvm_ffi import Object, get_global_func, pyast
 from tvm_ffi import ir_traits as tr
 from tvm_ffi.access_path import AccessPath
 from tvm_ffi.dataclasses import c_class, py_class
 from tvm_ffi.dataclasses import field as dc_field
+from tvm_ffi.dataclasses.py_class import register_module_prefix
 
 from .. import _ffi_api
 from .. import core as tvm_ffi_core
@@ -1185,4 +1186,4 @@ def ast_roundtrip(node: Any) -> str:
 #
 # Registers ``__ffi_print_prefix__ = "Toy"`` on every ``@py_class`` /
 # ``@c_class`` fixture defined in this module.
-finalize_module(prefix="Toy")
+register_module_prefix(__name__, "Toy")

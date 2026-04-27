@@ -28,10 +28,11 @@ if sys.version_info < (3, 9):
     pytest.skip("requires Python 3.9+ runtime annotation support", allow_module_level=True)
 
 import tvm_ffi
-from tvm_ffi import Object, finalize_module, method, pyast
+from tvm_ffi import Object, method, pyast
 from tvm_ffi import ir_traits as tr
 from tvm_ffi.dataclasses import field as dc_field
 from tvm_ffi.dataclasses import py_class
+from tvm_ffi.dataclasses.py_class import register_module_prefix
 from tvm_ffi.pyast import AccessPath, DefaultFrame, IRPrinter
 from tvm_ffi.testing.testing import (
     TraitToyAdd,
@@ -2233,4 +2234,4 @@ def test_raw_irprinter_does_not_leak_names_across_calls() -> None:
 #
 # Registers ``__ffi_print_prefix__ = "Toy"`` on every ``@py_class``
 # fixture defined in this test module.
-finalize_module(prefix="Toy")
+register_module_prefix(__name__, "Toy")
