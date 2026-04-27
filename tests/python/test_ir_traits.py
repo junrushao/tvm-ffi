@@ -28,7 +28,7 @@ if sys.version_info < (3, 9):
     pytest.skip("requires Python 3.9+ runtime annotation support", allow_module_level=True)
 
 import tvm_ffi
-from tvm_ffi import Object, pyast
+from tvm_ffi import Object, finalize_module, method, pyast
 from tvm_ffi import ir_traits as tr
 from tvm_ffi.dataclasses import field as dc_field
 from tvm_ffi.dataclasses import py_class
@@ -200,7 +200,7 @@ class _SymbolicFor(Object):
         None,
         None,
         None,
-        "T.serial",
+        "Toy.serial",
     )
     loop_var: TraitToyVar
     start: TraitToyVar
@@ -259,7 +259,7 @@ class _ForMaybeBounds(Object):
         None,
         None,
         None,
-        "T.serial",
+        "Toy.serial",
     )
     loop_var: TraitToyVar
     start: Any
@@ -716,6 +716,115 @@ def _make_post_hook(printer: IRPrinter, obj: Object) -> Any:
     return hook
 
 
+# --- `$method:` parity fixtures ---
+
+
+@py_class("testing.tr.AssignWithMethodPost")
+class _AssignWithMethodPost(Object):
+    """Same shape as :class:`_AssignWithPost` but the post-hook lives on
+    the class via ``@method`` instead of in the global registry.
+    """
+
+    __ffi_ir_traits__ = tr.AssignTraits(
+        "$field:lhs",
+        "$field:rhs",
+        None,
+        "$method:_make_post",
+        None,
+        None,
+    )
+    lhs: Object
+    rhs: Object
+
+    @method
+    def _make_post(self, _printer: IRPrinter) -> Any:
+        def hook(obj2: Object, printer2: IRPrinter, frame: DefaultFrame) -> None:
+            frame.stmts.append(pyast.ExprStmt(pyast.Id("after")))
+
+        return hook
+
+
+@py_class("testing.tr.VarMethodType")
+class _VarMethodType(Object):
+    """``ValueTraits.text_printer_type`` resolved via ``$method:`` —
+    proves the per-Var def-site type annotation comes from the
+    user-decorated method.
+    """
+
+    __ffi_ir_traits__ = tr.ValueTraits(
+        "$field:name",
+        None,
+        "$method:_kind_str",
+    )
+    name: str = dc_field(structural_eq="ignore")
+
+    @method
+    def _kind_str(self, _printer: IRPrinter) -> str:
+        return f"k_{self.name}"
+
+
+@py_class("testing.tr.FuncMethodHost")
+class _FuncMethodHost(Object):
+    """Function host used to surface :class:`_VarMethodType`'s def-site
+    annotation rendering — the method only fires at def-site, so we
+    need a Function whose params force def-site formatting.
+    """
+
+    __ffi_ir_traits__ = tr.FuncTraits(
+        "$field:fn_name",
+        tr.RegionTraits("$field:body", "$field:params", None, None),
+        None,
+        "Toy.fn",
+        None,
+    )
+    fn_name: str = dc_field(structural_eq="ignore")
+    params: list[Any] = dc_field(structural_eq="def")
+    body: list[Any]
+
+
+@py_class("testing.tr.AddMethodSugarRefuse")
+class _AddMethodSugarRefuse(Object):
+    """``BinOpTraits.text_printer_sugar_check`` via ``$method:`` returning
+    ``False`` — forces the de-sugared call form ``T.Add(a, b)`` instead
+    of infix ``a + b``.
+    """
+
+    __ffi_ir_traits__ = tr.BinOpTraits(
+        "$field:lhs",
+        "$field:rhs",
+        "+",
+        "$method:_no_sugar",
+        "Add",
+    )
+    lhs: Object
+    rhs: Object
+
+    @method
+    def _no_sugar(self, _printer: IRPrinter) -> bool:
+        return False
+
+
+@py_class("testing.tr.AddMethodSugarAllow")
+class _AddMethodSugarAllow(Object):
+    """``BinOpTraits.text_printer_sugar_check`` via ``$method:`` returning
+    ``True`` — the printer keeps the infix sugar.
+    """
+
+    __ffi_ir_traits__ = tr.BinOpTraits(
+        "$field:lhs",
+        "$field:rhs",
+        "+",
+        "$method:_yes_sugar",
+        "Add",
+    )
+    lhs: Object
+    rhs: Object
+
+    @method
+    def _yes_sugar(self, _printer: IRPrinter) -> bool:
+        return True
+
+
 # ============================================================================
 # Trait query API
 # ============================================================================
@@ -1150,16 +1259,100 @@ def test_assign_traits_dynamic_kind_accepts_exprast_callee() -> None:
     src = pyast.to_python(
         _AssignDynamicKind(
             rhs=TraitToyVar(name="x"),
-            kind=pyast.Attr(pyast.Id("T"), "evaluate"),
+            kind=pyast.Attr(pyast.Id("Toy"), "evaluate"),
         )
     )
-    assert src == "T.evaluate(x)"
+    assert src == "Toy.evaluate(x)"
 
 
 def test_assign_post_hook_runs_after_assignment() -> None:
     """text_printer_post must emit stmts after the assignment, not before."""
     src = pyast.to_python(_AssignWithPost(lhs=TraitToyVar(name="y"), rhs=TraitToyVar(name="x")))
     assert src.splitlines() == ["y = x", "after"]
+
+
+# ============================================================================
+# `$method:` resolution end-to-end through the C++ trait printer
+# ============================================================================
+
+
+def test_method_post_hook_matches_global() -> None:
+    """``$method:`` and ``$global:`` post-hooks must produce identical
+    printer output. Pure parity check — the ``@method`` machinery is a
+    true peer of ``register_global_func`` for trait-driven printing.
+    """
+    via_global = pyast.to_python(
+        _AssignWithPost(lhs=TraitToyVar(name="y"), rhs=TraitToyVar(name="x")),
+    )
+    via_method = pyast.to_python(
+        _AssignWithMethodPost(lhs=TraitToyVar(name="y"), rhs=TraitToyVar(name="x")),
+    )
+    assert via_global == via_method, (
+        "``$global:`` and ``$method:`` post-hooks must produce identical output; "
+        f"global={via_global!r} method={via_method!r}"
+    )
+
+
+def test_method_value_trait_text_printer_type() -> None:
+    """``ValueTraits.text_printer_type = "$method:..."`` — the def-site
+    annotation comes from the ``@method``-decorated method's return.
+    Wraps the var inside a Function so def-site annotation rendering
+    fires (use-site var rendering omits the annotation).
+    """
+    v = _VarMethodType(name="i")
+    f = _FuncMethodHost(fn_name="g", params=[v], body=[])
+    out = pyast.to_python(f)
+    # Strings resolved at print-time are rendered as literals (matches the
+    # `x: "int32" = a` convention for static ``ty`` refs).
+    assert 'i: "k_i"' in out, f"def-site annotation must come from @method method; got {out!r}"
+
+
+def test_method_binop_sugar_check_refuses_infix() -> None:
+    """``BinOpTraits.text_printer_sugar_check`` resolved via ``$method:``
+    returning ``False`` forces the de-sugared call form.
+    """
+    a, b = TraitToyVar(name="a"), TraitToyVar(name="b")
+    out = pyast.to_python(_AddMethodSugarRefuse(lhs=a, rhs=b))
+    assert out == "Toy.Add(a, b)", (
+        f"sugar-check returning False must emit de-sugared call; got {out!r}"
+    )
+
+
+def test_method_binop_sugar_check_allows_infix() -> None:
+    """``BinOpTraits.text_printer_sugar_check`` resolved via ``$method:``
+    returning ``True`` keeps the infix form.
+    """
+    a, b = TraitToyVar(name="a"), TraitToyVar(name="b")
+    out = pyast.to_python(_AddMethodSugarAllow(lhs=a, rhs=b))
+    assert out == "a + b", f"sugar-check returning True must emit infix; got {out!r}"
+
+
+def test_method_undecorated_method_raises_at_print() -> None:
+    """A trait with ``$method:NAME`` referencing a method that exists
+    on the class but lacks ``@method`` decoration — the C++ printer's
+    ``ResolveWithPrinter`` must raise loudly. This is the failure
+    mode users hit when they forget to decorate.
+    """
+
+    @py_class("testing.tr.AddMethodMissing")
+    class _AddMethodMissing(Object):
+        __ffi_ir_traits__ = tr.BinOpTraits(
+            "$field:lhs",
+            "$field:rhs",
+            "+",
+            "$method:_undecorated",
+            "Add",
+        )
+        lhs: Object
+        rhs: Object
+
+        def _undecorated(self, _printer: IRPrinter) -> bool:
+            # Plain Python method — never registered via @method.
+            return False
+
+    a, b = TraitToyVar(name="a"), TraitToyVar(name="b")
+    with pytest.raises((ValueError, RuntimeError), match=r"Cannot resolve method reference"):
+        pyast.to_python(_AddMethodMissing(lhs=a, rhs=b))
 
 
 # ============================================================================
@@ -1359,7 +1552,7 @@ def test_symbolic_custom_loop_no_crash() -> None:
             body=[],
         )
     )
-    assert "T.serial" in out
+    assert "Toy.serial" in out
 
 
 def test_none_start_step_elided_from_range() -> None:
@@ -1694,13 +1887,13 @@ def test_return_printing() -> None:
 
 def test_tensor_ty_traits_dispatched() -> None:
     out = pyast.to_python(_TensorTy(shape="S", dtype="float32", device="cpu"))
-    assert "T.Tensor" in out
+    assert "Toy.Tensor" in out
     assert "testing.tr.TensorTy(" not in out
 
 
 def test_shape_ty_traits_dispatched() -> None:
     out = pyast.to_python(_ShapeTy(dims="D", ndim="2"))
-    assert "T.Shape" in out
+    assert "Toy.Shape" in out
     assert "testing.tr.ShapeTy(" not in out
 
 
@@ -1739,11 +1932,27 @@ def test_buffer_ty_none_dtype_elided() -> None:
 
 
 def test_prim_ty_string_prints_as_type_syntax() -> None:
-    assert pyast.to_python(_PrimTyNodeP6(dtype="int32")) == "T.int32"
+    assert pyast.to_python(_PrimTyNodeP6(dtype="int32")) == "Toy.int32"
 
 
 def test_empty_tuple_type_is_not_none() -> None:
-    assert pyast.to_python(_TupleTyNodeP6(fields=[])) == "T.Tuple()"
+    assert pyast.to_python(_TupleTyNodeP6(fields=[])) == "Toy.Tuple()"
+
+
+def test_missing_prefix_raises_value_error() -> None:
+    """Class with no ``__ffi_print_prefix__`` (defined AFTER
+    ``finalize_module`` ran, so it is invisible to the module-wide
+    registration) must raise loudly at print time, naming the class
+    and pointing at ``finalize_module`` in the error message.
+    """
+
+    @py_class("testing.tr.MissingPrefixBackstop")
+    class _MissingPrefix(Object):
+        __ffi_ir_traits__ = tr.PrimTyTraits("$field:dtype")
+        dtype: str
+
+    with pytest.raises(ValueError, match="__ffi_print_prefix__"):
+        pyast.to_python(_MissingPrefix(dtype="int32"))
 
 
 # ============================================================================
@@ -1795,11 +2004,11 @@ def test_call_traits_fake_map_type_key_is_not_memory_safe() -> None:
 
 
 def test_bool_literal_true_stays_true() -> None:
-    assert pyast.to_python(_BoolImm(value=True, dtype=tvm_ffi.bool)) == "T.bool(True)"
+    assert pyast.to_python(_BoolImm(value=True, dtype=tvm_ffi.bool)) == "Toy.bool(True)"
 
 
 def test_bool_literal_false_stays_false() -> None:
-    assert pyast.to_python(_BoolImm(value=False, dtype=tvm_ffi.bool)) == "T.bool(False)"
+    assert pyast.to_python(_BoolImm(value=False, dtype=tvm_ffi.bool)) == "Toy.bool(False)"
 
 
 def test_float_literal_format_rejects_int_payload() -> None:
@@ -2016,3 +2225,12 @@ def test_raw_irprinter_does_not_leak_names_across_calls() -> None:
     p = IRPrinter()
     assert p(TraitToyVar(name="x"), AccessPath.root()).to_python() == "x"
     assert p(TraitToyVar(name="x"), AccessPath.root()).to_python() == "x"
+
+
+# ============================================================================
+# Module-wide prefix registration
+# ============================================================================
+#
+# Registers ``__ffi_print_prefix__ = "Toy"`` on every ``@py_class``
+# fixture defined in this test module.
+finalize_module(prefix="Toy")

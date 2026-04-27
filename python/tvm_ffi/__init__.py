@@ -72,7 +72,7 @@ if TYPE_CHECKING or not _is_config_mode():
     from ._tensor import Device, device, DLDeviceType
     from ._tensor import from_dlpack, Tensor, Shape
     from .container import Array, Dict, List, Map
-    from .dataclasses.py_class import method
+    from .dataclasses.py_class import finalize_module, method
     from .module import Module, system_lib, load_module
     from .stream import StreamContext, get_raw_stream, use_raw_stream, use_torch_stream
     from .structural import (
@@ -166,6 +166,7 @@ __all__ = [
     "dtype",
     "eval_assign",
     "eval_expr",
+    "finalize_module",
     "from_dlpack",
     "get_first_structural_mismatch",
     "get_global_func",

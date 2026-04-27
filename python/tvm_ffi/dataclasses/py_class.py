@@ -292,6 +292,80 @@ def method(fn: Any) -> Any:
     return fn
 
 
+def _register_print_prefix(cls: type, prefix: str) -> None:
+    """Register ``__ffi_print_prefix__`` on one FFI-registered class."""
+    type_info = getattr(cls, "__tvm_ffi_type_info__", None)
+    if type_info is None:
+        raise TypeError(
+            f"finalize_module: {cls.__name__!r} is not a @py_class / "
+            "@c_class registered class — has no __tvm_ffi_type_info__ "
+            "attribute.",
+        )
+    cls.__ffi_print_prefix__ = prefix  # ty: ignore[unresolved-attribute]
+    type_info._register_py_methods(
+        [("__ffi_print_prefix__", prefix, False)],
+        type_attr_names=frozenset({"__ffi_print_prefix__"}),
+    )
+
+
+def finalize_module(
+    module_name: str | None = None,
+    *,
+    prefix: str,
+) -> None:
+    """Finalize a dialect module after all IR classes are declared.
+
+    Call once at the bottom of every dialect file. Currently sets
+    ``__ffi_print_prefix__`` on each FFI-registered class in the
+    module; future revisions will layer additional dialect-wide
+    wiring through this entry point (e.g. parser hooks, op factories,
+    dtype handles).
+
+    **Selection rule** — ``finalize_module`` walks every value in
+    ``sys.modules[module_name].__dict__`` and applies its work to a
+    class only if all three hold:
+
+    1. The class was *directly* decorated by ``@py_class`` or
+       ``@c_class``. Both decorators write ``__tvm_ffi_type_info__``
+       into ``cls.__dict__`` through the same code path, so a single
+       ``"__tvm_ffi_type_info__" in cls.__dict__`` check picks up
+       both uniformly. Plain Python classes — and undecorated
+       subclasses that merely *inherit* the attribute from an FFI
+       base — are skipped (the latter would otherwise clobber the
+       parent's TypeAttrColumn entry).
+    2. The class is defined in this module
+       (``cls.__module__ == module_name``), so re-exported imports
+       from other dialects are left alone.
+    3. The class does not already declare the attribute being set
+       directly in its body — an explicit per-class override always
+       wins over the module-wide default.
+
+    Parameters
+    ----------
+    module_name: str | None
+        Dotted import path of the dialect module to finalize
+        (e.g. ``"tvm_ffi.testing.mini.tir"``).  When ``None``
+        (the default), the caller's module is auto-detected.
+    prefix: str
+        Keyword-only.  The dialect's printer prefix (e.g. ``"T"``,
+        ``"R"``).  Required for printer and parser.
+
+    """
+    if module_name is None:
+        module_name = sys._getframe(1).f_globals["__name__"]
+    module = sys.modules[module_name]
+    for value in module.__dict__.values():
+        if not isinstance(value, type):
+            continue
+        if "__tvm_ffi_type_info__" not in value.__dict__:
+            continue
+        if value.__module__ != module_name:
+            continue
+        if "__ffi_print_prefix__" in value.__dict__:
+            continue
+        _register_print_prefix(value, prefix)
+
+
 def _is_method_marked(value: Any) -> bool:
     """Return True when ``value`` is a callable marked by :func:`method`."""
     if isinstance(value, (staticmethod, classmethod)):
@@ -615,6 +689,8 @@ _FFI_TYPE_ATTR_NAMES: frozenset[str] = frozenset(
         "__ffi_traits_print__",
         # IR semantic traits (non-callable object, registered as TypeAttr)
         "__ffi_ir_traits__",
+        # printer prefix override (e.g. "T" or "I")
+        "__ffi_print_prefix__",
     }
 )
 
