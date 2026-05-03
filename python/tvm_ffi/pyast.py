@@ -88,6 +88,9 @@ class PrinterConfig(Object):
         A list of ``AccessPath`` instances identifying
         sub-expressions to underline in the printed output. Default
         is an empty list.
+    dialect_print_map
+        Mapping from dialect or full mnemonic to printed prefix/name. The
+        value ``"*"`` suppresses the prefix.
 
     Examples
     --------
@@ -109,9 +112,10 @@ class PrinterConfig(Object):
     num_context_lines: int
     print_addr_on_dup_var: bool
     path_to_underline: MutableSequence[AccessPath]
+    dialect_print_map: MutableMapping[str, str]
     if TYPE_CHECKING:
-        def __init__(self, def_free_var: bool, indent_spaces: int, print_line_numbers: int, num_context_lines: int, print_addr_on_dup_var: bool, path_to_underline: MutableSequence[AccessPath]) -> None: ...
-        def __ffi_init__(self, _0: bool, _1: int, _2: int, _3: int, _4: bool, _5: MutableSequence[AccessPath], /) -> None: ...  # ty: ignore[invalid-method-override]
+        def __init__(self, def_free_var: bool, indent_spaces: int, print_line_numbers: int, num_context_lines: int, print_addr_on_dup_var: bool, path_to_underline: MutableSequence[AccessPath], dialect_print_map: MutableMapping[str, str]) -> None: ...
+        def __ffi_init__(self, _0: bool, _1: int, _2: int, _3: int, _4: bool, _5: MutableSequence[AccessPath], _6: MutableMapping[str, str], /) -> None: ...  # ty: ignore[invalid-method-override]
     # fmt: on
     # tvm-ffi-stubgen(end)
 
@@ -123,6 +127,7 @@ class PrinterConfig(Object):
         num_context_lines: int = -1,
         print_addr_on_dup_var: bool = False,
         path_to_underline: list[AccessPath] | None = None,
+        dialect_print_map: dict[str, str] | None = None,
     ) -> None:
         """Initialize a PrinterConfig.
 
@@ -144,10 +149,15 @@ class PrinterConfig(Object):
         path_to_underline
             A list of ``AccessPath`` instances identifying sub-expressions
             to underline. Default ``None`` (empty list).
+        dialect_print_map
+            Mapping from dialect or full mnemonic to printed prefix/name.
+            Default ``None`` (empty dict).
 
         """
         if path_to_underline is None:
             path_to_underline = []
+        if dialect_print_map is None:
+            dialect_print_map = {}
         self.__ffi_init__(
             def_free_var,
             indent_spaces,
@@ -155,6 +165,7 @@ class PrinterConfig(Object):
             num_context_lines,
             print_addr_on_dup_var,
             path_to_underline,
+            dialect_print_map,
         )
 
 
@@ -2036,6 +2047,7 @@ class IRPrinter(Object):
     obj2info: MutableMapping[Any, VarInfo]
     defined_names: MutableMapping[str, int]
     frames: MutableSequence[Any]
+    dialects: MutableSequence[str]
     frame_vars: MutableMapping[Any, Any]
     if TYPE_CHECKING:
         def __init__(self, cfg: PrinterConfig, obj2info: MutableMapping[Any, VarInfo], defined_names: MutableMapping[str, int], frames: MutableSequence[Any], frame_vars: MutableMapping[Any, Any]) -> None: ...
