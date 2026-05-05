@@ -86,6 +86,7 @@ if TYPE_CHECKING or not _is_config_mode():
     from . import dataclasses
     from . import structural
     from . import cpp
+    from . import std
 
     # optional module to speedup dlpack conversion
     from . import _optional_torch_c_dlpack
@@ -164,6 +165,7 @@ __all__ = [
     "register_object",
     "remove_global_func",
     "serialization",
+    "std",
     "structural",
     "structural_equal",
     "structural_hash",

@@ -151,6 +151,12 @@ def c_class(
     )
 
     def decorator(cls: _T) -> _T:
+        for name, value in list(cls.__dict__.items()):
+            if isinstance(value, Field):
+                try:
+                    delattr(cls, name)
+                except AttributeError:
+                    pass
         cls = register_object(type_key, init=False)(cls)
         type_info = getattr(cls, "__tvm_ffi_type_info__", None)
         assert type_info is not None

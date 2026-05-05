@@ -77,8 +77,7 @@ TVM_FFI_STATIC_INIT_BLOCK() {
       .def_ro("a", &TestIntPairObj::a, "Field `a`")
       .def_ro("b", &TestIntPairObj::b, "Field `b`")
       .def("sum", &TestIntPair::Sum, "Method to compute sum of a and b");
-  refl::TypeAttrDef<TestIntPairObj>().def(
-      refl::type_attr::kConvert, &refl::details::FFIConvertFromAnyViewToObjectRef<TestIntPair>);
+  refl::TypeAttrDef<TestIntPairObj>().def_convert<TestIntPair>();
 }
 
 // C++-backed enum used by the Python ``Enum`` tests to exercise both
@@ -99,8 +98,7 @@ TVM_FFI_STATIC_INIT_BLOCK() {
   // ObjectDef registers the type on destruction, so the temporary is intentional;
   // silence clang-tidy's bugprone-unused-raii since the RAII finalisation is the point.
   refl::ObjectDef<TestEnumVariantObj>(refl::init(false));  // NOLINT(bugprone-unused-raii)
-  refl::TypeAttrDef<TestEnumVariantObj>().def(
-      refl::type_attr::kConvert, &refl::details::FFIConvertFromAnyViewToObjectRef<TestEnumVariant>);
+  refl::TypeAttrDef<TestEnumVariantObj>().def_convert<TestEnumVariant>();
   refl::EnumDef<TestEnumVariantObj>("Alpha").set_attr("code", int64_t{10});
   refl::EnumDef<TestEnumVariantObj>("Beta").set_attr("code", int64_t{20});
 }

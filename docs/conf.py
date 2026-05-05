@@ -250,6 +250,21 @@ def _mark_exhale_root_orphan(
         source[0] = ":orphan:\n\n" + source[0]
 
 
+def _escape_exhale_cpp_trailing_underscores(
+    app: sphinx.application.Sphinx, docname: str, source: list[str]
+) -> None:
+    """Escape trailing underscores in Exhale C++ titles so docutils does not treat them as refs."""
+    if not docname.startswith("reference/cpp/generated/"):
+        return
+
+    def escape_title(text: str, title: str) -> str:
+        escaped = title[:-1] + r"\_" if title.endswith("_") else title
+        return text.replace(f"{title}\n{'=' * len(title)}", f"{escaped}\n{'=' * len(escaped)}")
+
+    source[0] = escape_title(source[0], "Namespace tvm::ffi::std_")
+    source[0] = escape_title(source[0], "Struct Yield_")
+
+
 def setup(app: sphinx.application.Sphinx) -> None:
     """Register custom Sphinx configuration values."""
     _prepare_stub_files()
@@ -258,6 +273,7 @@ def setup(app: sphinx.application.Sphinx) -> None:
     app.add_config_value("build_rust_docs", build_rust_docs, "env")
     app.connect("config-inited", _apply_config_overrides)
     app.connect("source-read", _mark_exhale_root_orphan)
+    app.connect("source-read", _escape_exhale_cpp_trailing_underscores)
     app.connect("build-finished", _copy_rust_docs_to_output)
     app.connect("autodoc-skip-member", _filter_inherited_members)
     app.connect("autodoc-process-docstring", _link_inherited_members)

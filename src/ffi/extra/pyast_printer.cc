@@ -1767,9 +1767,7 @@ inline void PythonDocPrinter::PrintTypedDoc(const MatchAST& doc) {
 NodeAST DefaultPrint(ObjectRef obj, IRPrinter printer, AccessPath path) {
   int32_t type_index = obj->type_index();
   const TVMFFITypeInfo* info = TVMFFIGetTypeInfo(type_index);
-  String type_key(info->type_key.data, info->type_key.size);
-
-  ExprAST callee = IdAST(type_key);
+  ExprAST callee = DottedName(String(info->type_key.data, info->type_key.size));
   List<String> kwarg_keys;
   List<ExprAST> kwarg_values;
 
@@ -1813,7 +1811,7 @@ String PyAST2Str(NodeAST node, PrinterConfig cfg) {  // NOLINT(*-value-param)
 NodeAST IRPrintDispatch(AnyView obj, AnyView printer_view, AnyView path) {
   int32_t type_index = obj.type_index();
 
-  static reflection::TypeAttrColumn text_print_col("__ffi_text_print__");
+  static reflection::TypeAttrColumn text_print_col(reflection::type_attr::kTextPrint);
   AnyView func_view = text_print_col[type_index];
   if (func_view != nullptr) {
     Function func = func_view.cast<Function>();
@@ -1848,7 +1846,8 @@ TVM_FFI_STATIC_INIT_BLOCK() {
   namespace refl = ::tvm::ffi::reflection;
   namespace text = ::tvm::ffi::pyast;
   // Ensure __ffi_text_print__ type attribute column exists
-  refl::EnsureTypeAttrColumn("__ffi_text_print__");
+  refl::EnsureTypeAttrColumn(refl::type_attr::kTextPrint);
+  refl::EnsureTypeAttrColumn(refl::type_attr::kDialectMnemonic);
   // PrinterConfig
   refl::ObjectDef<text::PrinterConfigObj>()
       .def_rw("def_free_var", &text::PrinterConfigObj::def_free_var)
@@ -1857,7 +1856,9 @@ TVM_FFI_STATIC_INIT_BLOCK() {
       .def_rw("num_context_lines", &text::PrinterConfigObj::num_context_lines)
       .def_rw("print_addr_on_dup_var", &text::PrinterConfigObj::print_addr_on_dup_var)
       .def_rw("path_to_underline", &text::PrinterConfigObj::path_to_underline)
-      .def(refl::init<bool, int32_t, int8_t, int32_t, bool, ::tvm::ffi::List<text::AccessPath>>());
+      .def_rw("dialect_print_map", &text::PrinterConfigObj::dialect_print_map)
+      .def(refl::init<bool, int32_t, int8_t, int32_t, bool, ::tvm::ffi::List<text::AccessPath>,
+                      ::tvm::ffi::Dict<::tvm::ffi::String, ::tvm::ffi::String>>());
   // NodeAST
   refl::ObjectDef<text::NodeASTObj>(refl::init(false))
       .def_ro(
@@ -2074,6 +2075,7 @@ TVM_FFI_STATIC_INIT_BLOCK() {
       .def_rw("obj2info", &text::IRPrinterObj::obj2info)
       .def_rw("defined_names", &text::IRPrinterObj::defined_names)
       .def_rw("frames", &text::IRPrinterObj::frames)
+      .def_rw("dialects", &text::IRPrinterObj::dialects)
       .def_rw("frame_vars", &text::IRPrinterObj::frame_vars)
       .def(refl::init<text::PrinterConfig, ::tvm::ffi::Dict<::tvm::ffi::Any, text::VarInfo>,
                       ::tvm::ffi::Dict<::tvm::ffi::String, int64_t>,
@@ -2097,7 +2099,7 @@ TVM_FFI_STATIC_INIT_BLOCK() {
   // Accesses elements via ArrayObj::at() which returns const Any&, handling
   // raw non-object elements (e.g., raw ints in buffer_dim_align annotations).
   refl::TypeAttrDef<ArrayObj>().def(
-      "__ffi_text_print__",
+      refl::type_attr::kTextPrint,
       [](const ObjectRef& obj, const text::IRPrinter& printer,
          const refl::AccessPath& path) -> text::NodeAST {
         const ArrayObj* arr = obj.as<ArrayObj>();
@@ -2114,7 +2116,7 @@ TVM_FFI_STATIC_INIT_BLOCK() {
   // Iterates via MapBaseObj to handle maps with raw non-object values.
   // Keys are sorted alphabetically when all keys are String type.
   refl::TypeAttrDef<MapObj>().def(
-      "__ffi_text_print__",
+      refl::type_attr::kTextPrint,
       [](const ObjectRef& obj, const text::IRPrinter& printer,
          const refl::AccessPath& path) -> text::NodeAST {
         const MapBaseObj* map_obj = obj.as<MapBaseObj>();

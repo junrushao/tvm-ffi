@@ -24,7 +24,7 @@ import gc
 import inspect
 import itertools
 import math
-from typing import Any, ClassVar, Dict, List, Optional
+from typing import Any, ClassVar, Dict, List, Optional, Tuple
 
 import pytest
 import tvm_ffi
@@ -383,6 +383,69 @@ class TestClassVar:
             tag: ClassVar[str] = "hello"
 
         assert CVPres.tag == "hello"
+
+    def test_ffi_dialect_mnemonic_classvar_registered_as_type_attr(self) -> None:
+        @py_class(_unique_key("CVDialectMnemonic"))
+        class CVDialectMnemonic(Object):
+            __ffi_dialect_mnemonic__: ClassVar[Tuple[str, str]] = (
+                "test",
+                "CVDialectMnemonic",
+            )
+            x: int
+
+        info = _get_type_info(CVDialectMnemonic)
+        field_names = [f.name for f in info.fields]
+
+        assert CVDialectMnemonic.__ffi_dialect_mnemonic__ == ("test", "CVDialectMnemonic")
+        assert "__ffi_dialect_mnemonic__" not in field_names
+        assert tuple(core._lookup_type_attr(info.type_index, "__ffi_dialect_mnemonic__")) == (
+            "test",
+            "CVDialectMnemonic",
+        )
+
+    def test_ffi_dialect_mnemonic_is_not_registered_as_type_method(self) -> None:
+        @py_class(_unique_key("CVDialectMnemonicNoMethod"))
+        class CVDialectMnemonicNoMethod(Object):
+            __ffi_dialect_mnemonic__: ClassVar[Tuple[str, str, str]] = (
+                "test",
+                "CVDialectMnemonicNoMethod",
+                "__demo__",
+            )
+            x: int
+
+        info = _get_type_info(CVDialectMnemonicNoMethod)
+
+        assert "__ffi_dialect_mnemonic__" not in [method.name for method in info.methods]
+        assert tuple(core._lookup_type_attr(info.type_index, "__ffi_dialect_mnemonic__")) == (
+            "test",
+            "CVDialectMnemonicNoMethod",
+            "__demo__",
+        )
+
+    def test_ffi_dialect_mnemonic_rejects_non_tuple_value(self) -> None:
+        with pytest.raises(TypeError, match="'__ffi_dialect_mnemonic__' must be"):
+
+            @py_class(_unique_key("CVDialectMnemonicBadInt"))
+            class _CVDialectMnemonicBadInt(Object):
+                __ffi_dialect_mnemonic__: ClassVar[int] = 1
+                x: int
+
+    def test_ffi_dialect_mnemonic_rejects_bad_tuple_value(self) -> None:
+        with pytest.raises(TypeError, match="'__ffi_dialect_mnemonic__' must be"):
+
+            @py_class(_unique_key("CVDialectMnemonicBadTuple"))
+            class _CVDialectMnemonicBadTuple(Object):
+                x: int
+                __ffi_dialect_mnemonic__: ClassVar[Tuple[str, int]] = ("test", 1)
+
+    def test_ffi_dialect_mnemonic_rejects_staticmethod_value(self) -> None:
+        with pytest.raises(TypeError, match="'__ffi_dialect_mnemonic__' must be"):
+
+            @py_class(_unique_key("CVDialectMnemonicBadStatic"))
+            class _CVDialectMnemonicBadStatic(Object):
+                x: int
+                __ffi_dialect_mnemonic__ = staticmethod(lambda: ("test", "Bad"))
+                x: int
 
 
 # ###########################################################################
