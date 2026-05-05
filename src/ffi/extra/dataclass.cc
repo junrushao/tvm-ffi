@@ -80,6 +80,17 @@ bool IsBytesType(int32_t ti) {
   return ti == TypeIndex::kTVMFFIBytes || ti == TypeIndex::kTVMFFISmallBytes;
 }
 
+/*! \brief Append an indented child conversion error. */
+void AppendNestedErrorMessage(std::string* out, std::string_view message) {
+  out->append(":\n  ");
+  for (char ch : message) {
+    out->push_back(ch);
+    if (ch == '\n') {
+      out->append("  ");
+    }
+  }
+}
+
 /*! \brief Extract raw pointer and length from a String or SmallStr value. */
 void GetStringData(const Any& val, const TVMFFIAny* data, int32_t ti, const char** out_ptr,
                    size_t* out_len) {
@@ -1925,8 +1936,21 @@ void BindFieldArgs(Object* obj, const AutoInitInfo& info, const TVMFFIAny* raw_a
   std::vector<bool> field_set(info.all_fields.size(), false);
 
   auto set_field = [&](size_t fi, const TVMFFIAny* value) {
-    void* addr = reinterpret_cast<char*>(obj) + info.all_fields[fi].info->offset;
-    TVM_FFI_CHECK_SAFE_CALL(refl::CallFieldSetter(info.all_fields[fi].info, addr, value));
+    const TVMFFIFieldInfo* field_info = info.all_fields[fi].info;
+    void* addr = reinterpret_cast<char*>(obj) + field_info->offset;
+    int ret_code = refl::CallFieldSetter(field_info, addr, value);
+    if (ret_code != 0) {
+      Error err = details::MoveFromSafeCallRaised();
+      auto field_name = std::string_view(field_info->name.data, field_info->name.size);
+      std::string message;
+      message.reserve(info.type_key.size() + field_name.size() + err.message().size() + 32);
+      message.append(info.type_key);
+      message.append(".__ffi_init__() field '");
+      message.append(field_name);
+      message.append("'");
+      AppendNestedErrorMessage(&message, err.message());
+      throw Error(err.kind(), std::move(message), err.backtrace(), err, std::nullopt);
+    }
     field_set[fi] = true;
   };
 
