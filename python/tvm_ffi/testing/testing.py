@@ -31,14 +31,12 @@ if TYPE_CHECKING:
 # tvm-ffi-stubgen(end)
 
 import sys
-from typing import Any, ClassVar, List
+from typing import Any, ClassVar
 
 import pytest
 
-from tvm_ffi import Object, get_global_func, pyast
-from tvm_ffi.access_path import AccessPath
-from tvm_ffi.dataclasses import c_class, py_class
-from tvm_ffi.dataclasses import field as dc_field
+from tvm_ffi import Object, get_global_func
+from tvm_ffi.dataclasses import c_class
 
 from .. import _ffi_api
 from .. import core as tvm_ffi_core
@@ -494,120 +492,3 @@ class _TestCxxAutoInitChild(_TestCxxAutoInitParent):
         def __ffi_init__(self, parent_required: int, child_required: int, parent_default: int = ..., *, child_kw_only: int) -> None: ...  # ty: ignore[invalid-method-override]
     # fmt: on
     # tvm-ffi-stubgen(end)
-
-
-# ============================================================================
-# Toy IR types for text printer tests
-# ============================================================================
-
-
-@py_class("testing.text.toy_ir.Node")
-class ToyNode(Object):
-    """Base class for all toy IR nodes."""
-
-
-@py_class("testing.text.toy_ir.Expr")
-class ToyExpr(ToyNode):
-    """Base class for toy IR expression nodes."""
-
-
-@py_class("testing.text.toy_ir.Stmt")
-class ToyStmt(ToyNode):
-    """Base class for toy IR statement nodes."""
-
-
-@py_class("testing.text.toy_ir.Var", structural_eq="var")
-class ToyVar(ToyExpr):
-    """A variable reference in the toy IR."""
-
-    name: str = dc_field(structural_eq="ignore")
-
-    def __add__(self, other: ToyVar) -> ToyAdd:
-        return ToyAdd(lhs=self, rhs=other)
-
-    def __ffi_text_print__(self, printer: pyast.IRPrinter, path: AccessPath) -> Any:
-        if not printer.var_is_defined(self):
-            printer.var_def(self.name, self, None)
-        ret = printer.var_get(self)
-        assert ret is not None
-        return ret
-
-
-@py_class("testing.text.toy_ir.Add", structural_eq="dag")
-class ToyAdd(ToyExpr):
-    """Binary addition expression in the toy IR."""
-
-    lhs: ToyExpr
-    rhs: ToyExpr
-
-    def __ffi_text_print__(self, printer: pyast.IRPrinter, path: AccessPath) -> Any:
-        lhs = printer(self.lhs, path=path.attr("lhs"))
-        rhs = printer(self.rhs, path=path.attr("rhs"))
-        return lhs + rhs
-
-
-@py_class("testing.text.toy_ir.Assign", structural_eq="tree")
-class ToyAssign(ToyStmt):
-    """Assignment statement in the toy IR."""
-
-    rhs: ToyExpr
-    lhs: ToyVar = dc_field(structural_eq="def")
-
-    def __ffi_text_print__(self, printer: pyast.IRPrinter, path: AccessPath) -> Any:
-        rhs = printer(self.rhs, path=path.attr("rhs"))
-        printer.var_def(self.lhs.name, self.lhs, None)
-        lhs = printer(self.lhs, path=path.attr("lhs"))
-        return pyast.Assign(lhs, rhs)
-
-
-@py_class("testing.text.toy_ir.Func", structural_eq="tree")
-class ToyFunc(ToyNode):
-    """A function definition in the toy IR."""
-
-    name: str = dc_field(structural_eq="ignore")
-    args: List[ToyVar] = dc_field(structural_eq="def")  # noqa: UP006
-    stmts: List[ToyStmt]  # noqa: UP006
-    ret: ToyVar
-
-    def __ffi_text_print__(self, printer: pyast.IRPrinter, path: AccessPath) -> Any:
-        with printer.with_frame(pyast.DefaultFrame()):
-            for arg in self.args:
-                printer.var_def(arg.name, arg, None)
-            args = [
-                printer(arg, path=path.attr("args").array_item(i))
-                for i, arg in enumerate(self.args)
-            ]
-            stmts = [
-                printer(stmt, path=path.attr("stmts").array_item(i))
-                for i, stmt in enumerate(self.stmts)
-            ]
-            ret_stmt = pyast.Return(printer(self.ret, path=path.attr("ret")))
-            return pyast.Function(
-                pyast.Id(self.name),
-                [pyast.Assign(arg, None) for arg in args],
-                [],
-                None,
-                [*stmts, ret_stmt],
-            )
-
-
-def ast_roundtrip(node: Any) -> str:
-    """Convert a Python AST to TVM-FFI AST and render back to source.
-
-    This function is used by the ``ast-testsuite`` roundtrip checker to
-    validate that ``ast_translate`` + ``to_python()`` produce
-    Python source whose AST matches the original.
-
-    Parameters
-    ----------
-    node
-        A Python ``ast.AST`` node (typically an ``ast.Module``).
-
-    Returns
-    -------
-    source
-        The rendered Python source code.
-
-    """
-    tvm_node = pyast.from_py(node)
-    return tvm_node.to_python()

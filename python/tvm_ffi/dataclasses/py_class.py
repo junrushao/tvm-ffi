@@ -91,15 +91,20 @@ _PY_CLASS_BY_MODULE: dict[str, dict[str, type]] = {}
 # ---------------------------------------------------------------------------
 
 
+def _registered_type_info(cls: type) -> core.TypeInfo | None:
+    """Return the TypeInfo registered directly for *cls*, not inherited metadata."""
+    info = core._type_cls_to_type_info(cls)
+    if info is not None:
+        return info
+    return cls.__dict__.get("__tvm_ffi_type_info__", None)
+
+
 def _register_type_without_fields(cls: type, type_key: str | None) -> Any:
     """Phase 1: allocate type index and register the type (always succeeds)."""
-    parent_info: core.TypeInfo | None = None
-    for base in cls.__bases__:
-        parent_info = core._type_cls_to_type_info(base)
-        if parent_info is None:
-            parent_info = getattr(base, "__tvm_ffi_type_info__", None)
-        if parent_info is not None:
-            break
+    parent_info = next(
+        (info for base in cls.__mro__[1:] if (info := _registered_type_info(base)) is not None),
+        None,
+    )
     if parent_info is None:
         raise TypeError(
             f"{cls.__name__} must inherit from a registered FFI Object type (e.g. tvm_ffi.Object)"
@@ -152,7 +157,7 @@ def _own_annotations(cls: type) -> dict[str, Any]:
 def _field_owner_classes(cls: type) -> list[type]:
     """Classes whose annotations become this type's own fields."""
     registered_parent = next(
-        (b for b in cls.__mro__[1:] if "__tvm_ffi_type_info__" in b.__dict__), object
+        (b for b in cls.__mro__[1:] if _registered_type_info(b) is not None), object
     )
     represented = set(registered_parent.__mro__)
     return [
