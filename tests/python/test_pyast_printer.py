@@ -19,15 +19,103 @@
 from __future__ import annotations
 
 import re
+from typing import Any, List
 
 import pytest
-from tvm_ffi import pyast
+from tvm_ffi import Object, pyast
 from tvm_ffi.access_path import AccessPath
-from tvm_ffi.testing.testing import ToyAdd as Add
-from tvm_ffi.testing.testing import ToyAssign as Assign
-from tvm_ffi.testing.testing import ToyFunc as Func
-from tvm_ffi.testing.testing import ToyStmt as Stmt
-from tvm_ffi.testing.testing import ToyVar as Var
+from tvm_ffi.dataclasses import field as dc_field
+from tvm_ffi.dataclasses import py_class
+
+
+@py_class("testing.text.toy_ir.Node")
+class Node(Object):
+    """Base class for all toy IR nodes."""
+
+
+@py_class("testing.text.toy_ir.Expr")
+class Expr(Node):
+    """Base class for toy IR expression nodes."""
+
+
+@py_class("testing.text.toy_ir.Stmt")
+class Stmt(Node):
+    """Base class for toy IR statement nodes."""
+
+
+@py_class("testing.text.toy_ir.Var", structural_eq="var")
+class Var(Expr):
+    """A variable reference in the toy IR."""
+
+    name: str = dc_field(structural_eq="ignore")
+
+    def __add__(self, other: Var) -> Add:
+        return Add(lhs=self, rhs=other)
+
+    def __ffi_text_print__(self, printer: pyast.IRPrinter, path: AccessPath) -> Any:
+        if not printer.var_is_defined(self):
+            printer.var_def(self.name, self, None)
+        ret = printer.var_get(self)
+        assert ret is not None
+        return ret
+
+
+@py_class("testing.text.toy_ir.Add", structural_eq="dag")
+class Add(Expr):
+    """Binary addition expression in the toy IR."""
+
+    lhs: Expr
+    rhs: Expr
+
+    def __ffi_text_print__(self, printer: pyast.IRPrinter, path: AccessPath) -> Any:
+        lhs = printer(self.lhs, path=path.attr("lhs"))
+        rhs = printer(self.rhs, path=path.attr("rhs"))
+        return lhs + rhs
+
+
+@py_class("testing.text.toy_ir.Assign", structural_eq="tree")
+class Assign(Stmt):
+    """Assignment statement in the toy IR."""
+
+    rhs: Expr
+    lhs: Var = dc_field(structural_eq="def")
+
+    def __ffi_text_print__(self, printer: pyast.IRPrinter, path: AccessPath) -> Any:
+        rhs = printer(self.rhs, path=path.attr("rhs"))
+        printer.var_def(self.lhs.name, self.lhs, None)
+        lhs = printer(self.lhs, path=path.attr("lhs"))
+        return pyast.Assign(lhs, rhs)
+
+
+@py_class("testing.text.toy_ir.Func", structural_eq="tree")
+class Func(Node):
+    """A function definition in the toy IR."""
+
+    name: str = dc_field(structural_eq="ignore")
+    args: List[Var] = dc_field(structural_eq="def")  # noqa: UP006
+    stmts: List[Stmt]  # noqa: UP006
+    ret: Var
+
+    def __ffi_text_print__(self, printer: pyast.IRPrinter, path: AccessPath) -> Any:
+        with printer.with_frame(pyast.DefaultFrame()):
+            for arg in self.args:
+                printer.var_def(arg.name, arg, None)
+            args = [
+                printer(arg, path=path.attr("args").array_item(i))
+                for i, arg in enumerate(self.args)
+            ]
+            stmts = [
+                printer(stmt, path=path.attr("stmts").array_item(i))
+                for i, stmt in enumerate(self.stmts)
+            ]
+            ret_stmt = pyast.Return(printer(self.ret, path=path.attr("ret")))
+            return pyast.Function(
+                pyast.Id(self.name),
+                [pyast.Assign(arg, None) for arg in args],
+                [],
+                None,
+                [*stmts, ret_stmt],
+            )
 
 
 def test_var_print() -> None:

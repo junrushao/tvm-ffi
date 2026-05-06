@@ -32,7 +32,16 @@ from tvm_ffi import core
 from tvm_ffi._dunder import _install_dataclass_dunders
 from tvm_ffi._ffi_api import DeepCopy, RecursiveEq, RecursiveHash, ReprPrint
 from tvm_ffi.core import MISSING, Object, TypeInfo, TypeSchema, _to_py_class_value
-from tvm_ffi.dataclasses import KW_ONLY, Field, IntEnum, StrEnum, entry, field, fields, py_class
+from tvm_ffi.dataclasses import (
+    KW_ONLY,
+    Field,
+    IntEnum,
+    StrEnum,
+    entry,
+    field,
+    fields,
+    py_class,
+)
 from tvm_ffi.registry import _add_class_attrs
 from tvm_ffi.testing import TestObjectBase as _TestObjectBase
 from tvm_ffi.testing.testing import requires_py310
@@ -821,6 +830,96 @@ class TestInheritance:
         assert obj.rhs == 2
         assert [f.name for f in fields(Add)] == ["x", "lhs", "rhs"]
         assert [f.name for f in _get_type_info(Add).fields] == ["lhs", "rhs"]
+
+    def test_collects_fields_from_non_py_class_parent_with_c_class_ancestor(self) -> None:
+        class BaseBinOp(_TestObjectBase):
+            lhs: int
+            rhs: int
+
+        class AnnotatedBinOp(BaseBinOp):
+            op_name: str
+
+        @py_class(_unique_key("NPCCxxAdd"))
+        class Add(AnnotatedBinOp):
+            scale: int
+
+        obj = Add(
+            v_i64=1,
+            v_f64=2.0,
+            v_str="base",
+            lhs=3,  # ty: ignore[unknown-argument]
+            rhs=4,  # ty: ignore[unknown-argument]
+            op_name="add",  # ty: ignore[unknown-argument]
+            scale=5,
+        )
+        assert obj.v_i64 == 1
+        assert obj.v_f64 == 2.0
+        assert obj.v_str == "base"
+        assert obj.lhs == 3
+        assert obj.rhs == 4
+        assert obj.op_name == "add"
+        assert obj.scale == 5
+        assert _get_type_info(Add).parent_type_info is _get_type_info(_TestObjectBase)
+        assert [f.name for f in fields(Add)] == [
+            "v_i64",
+            "v_f64",
+            "v_str",
+            "lhs",
+            "rhs",
+            "op_name",
+            "scale",
+        ]
+        assert [f.name for f in _get_type_info(Add).fields] == [
+            "lhs",
+            "rhs",
+            "op_name",
+            "scale",
+        ]
+
+    def test_c_class_ancestor_wins_over_inherited_object_metadata(self) -> None:
+        class ObjectMixin(Object):
+            mixin: int
+
+        class BaseBinOp(_TestObjectBase):
+            lhs: int
+            rhs: int
+
+        @py_class(_unique_key("NPCCxxMROAdd"))
+        class Add(ObjectMixin, BaseBinOp):
+            scale: int
+
+        obj = Add(
+            v_i64=1,
+            v_f64=2.0,
+            v_str="base",
+            lhs=3,  # ty: ignore[unknown-argument]
+            rhs=4,  # ty: ignore[unknown-argument]
+            mixin=5,  # ty: ignore[unknown-argument]
+            scale=6,
+        )
+        assert obj.v_i64 == 1
+        assert obj.v_f64 == 2.0
+        assert obj.v_str == "base"
+        assert obj.lhs == 3
+        assert obj.rhs == 4
+        assert obj.mixin == 5
+        assert obj.scale == 6
+        assert _get_type_info(Add).parent_type_info is _get_type_info(_TestObjectBase)
+        assert [f.name for f in fields(Add)] == [
+            "v_i64",
+            "v_f64",
+            "v_str",
+            "lhs",
+            "rhs",
+            "mixin",
+            "scale",
+        ]
+        assert [f.name for f in _get_type_info(Add).fields] == [
+            "lhs",
+            "rhs",
+            "mixin",
+            "scale",
+        ]
 
     def test_collects_non_py_class_parent_field_options(self) -> None:
         @py_class(_unique_key("NPCOptNode"))
