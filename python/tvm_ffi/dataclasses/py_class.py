@@ -484,7 +484,7 @@ def _register_fields_into_type(
     # Non-callable entries whose names are in _FFI_TYPE_ATTR_NAMES are routed
     # to TVMFFITypeRegisterAttr by the Cython layer.
     type_info._register_py_methods(py_methods, type_attr_names=_FFI_TYPE_ATTR_NAMES)
-    _add_class_attrs(cls, type_info)
+    _add_class_attrs(cls, type_info, type_attr_names=_FFI_TYPE_ATTR_NAMES)
 
     # Remove deferred __init__ and restore user-defined __init__ if saved
     if "_py_class_deferred_init" in cls.__dict__:
