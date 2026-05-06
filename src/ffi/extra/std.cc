@@ -54,7 +54,7 @@ TVM_FFI_STD_TEXT_PRINT_DECL(Node)
 TVM_FFI_STD_TEXT_PRINT_DECL(Ty)
 TVM_FFI_STD_TEXT_PRINT_DECL(Stmt)
 TVM_FFI_STD_TEXT_PRINT_DECL(Attrs)
-TVM_FFI_STD_TEXT_PRINT_DECL(Structure)
+TVM_FFI_STD_TEXT_PRINT_DECL(Aggregate)
 TVM_FFI_STD_TEXT_PRINT_DECL(Expr)
 TVM_FFI_STD_TEXT_PRINT_DECL(Var)
 TVM_FFI_STD_TEXT_PRINT_DECL(Func)
@@ -568,7 +568,7 @@ TVM_FFI_STD_GENERIC_TEXT_PRINT(Node)
 TVM_FFI_STD_GENERIC_TEXT_PRINT(Ty)
 TVM_FFI_STD_GENERIC_TEXT_PRINT(Stmt)
 TVM_FFI_STD_GENERIC_TEXT_PRINT(Attrs)
-TVM_FFI_STD_GENERIC_TEXT_PRINT(Structure)
+TVM_FFI_STD_GENERIC_TEXT_PRINT(Aggregate)
 TVM_FFI_STD_GENERIC_TEXT_PRINT(Expr)
 TVM_FFI_STD_GENERIC_TEXT_PRINT(Bind)
 
@@ -1118,7 +1118,7 @@ TVM_FFI_STATIC_INIT_BLOCK() {
   TVM_FFI_STD_OBJECT_DEF_BASE_INIT(StmtObj, Stmt, refl::init(false))
       .def_rw("attrs", &StmtObj::attrs, refl::kw_only(true), refl::default_value(nullptr));
   TVM_FFI_STD_OBJECT_DEF_BASE_INIT(AttrsObj, Attrs, refl::init(false)).def_convert<Attrs>();
-  TVM_FFI_STD_OBJECT_DEF_BASE_INIT(StructureObj, Structure, refl::init(false));
+  TVM_FFI_STD_OBJECT_DEF_BASE_INIT(AggregateObj, Aggregate, refl::init(false));
   TVM_FFI_STD_OBJECT_DEF_BASE_INIT(ExprObj, Expr, refl::init(false))
       .def_convert<Expr>()
       .def_rw("ty", &ExprObj::ty);

@@ -289,7 +289,7 @@ TEST(StdDialect, AbstractBasesDoNotHaveDialectMnemonics) {
             ffi::TypeIndex::kTVMFFINone);
   EXPECT_EQ(dialect_mnemonic_col[stdir::AttrsObj::RuntimeTypeIndex()].type_index(),
             ffi::TypeIndex::kTVMFFINone);
-  EXPECT_EQ(dialect_mnemonic_col[stdir::StructureObj::RuntimeTypeIndex()].type_index(),
+  EXPECT_EQ(dialect_mnemonic_col[stdir::AggregateObj::RuntimeTypeIndex()].type_index(),
             ffi::TypeIndex::kTVMFFINone);
   EXPECT_EQ(dialect_mnemonic_col[stdir::ExprObj::RuntimeTypeIndex()].type_index(),
             ffi::TypeIndex::kTVMFFINone);

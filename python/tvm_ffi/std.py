@@ -84,9 +84,9 @@ class Stmt(Node):
     attrs: Attrs | None = field(default=None, kw_only=True)
 
 
-@c_class("ffi.std.Structure", init=False)
-class Structure(Node):
-    """Base class for standard dialect structural helper nodes."""
+@c_class("ffi.std.Aggregate", init=False)
+class Aggregate(Node):
+    """Base class for standard dialect aggregate helper nodes."""
 
 
 @c_class("ffi.std.Expr", init=False)
@@ -138,7 +138,7 @@ class Module(Node):
 
 
 @c_class("ffi.std.Range")
-class Range(Structure):
+class Range(Aggregate):
     """A half-open range or slice."""
 
     __ffi_dialect_mnemonic__: ClassVar[DialectMnemonic] = ("std", "Range")
@@ -713,6 +713,7 @@ class DictAttrs(Attrs):
 
 __all__ = [
     "Add",
+    "Aggregate",
     "And",
     "AnyTy",
     "Assert",
@@ -754,7 +755,6 @@ __all__ = [
     "Stmt",
     "Store",
     "StringImm",
-    "Structure",
     "Sub",
     "TensorTy",
     "TupleType",

@@ -118,17 +118,17 @@ struct TypeTraits<std_::Attrs> : public ObjectRefTypeTraitsBase<std_::Attrs> {
 
 namespace std_ {
 
-/*! \brief Base object for standard dialect structural helper nodes. */
-struct StructureObj : public NodeObj {
+/*! \brief Base object for standard dialect aggregate helper nodes. */
+struct AggregateObj : public NodeObj {
   /// \cond Doxygen_Suppress
-  TVM_FFI_DECLARE_OBJECT_INFO("ffi.std.Structure", StructureObj, NodeObj);
+  TVM_FFI_DECLARE_OBJECT_INFO("ffi.std.Aggregate", AggregateObj, NodeObj);
   /// \endcond
 };
 
-/*! \brief Nullable reference to a standard dialect structural helper node. */
-struct Structure : public Node {
+/*! \brief Nullable reference to a standard dialect aggregate helper node. */
+struct Aggregate : public Node {
   /// \cond Doxygen_Suppress
-  TVM_FFI_DEFINE_OBJECT_REF_METHODS_NULLABLE(Structure, Node, StructureObj);
+  TVM_FFI_DEFINE_OBJECT_REF_METHODS_NULLABLE(Aggregate, Node, AggregateObj);
   /// \endcond
 };
 
@@ -252,7 +252,7 @@ struct Module : public Node {
 };
 
 /*! \brief Data object for a half-open iteration or indexing range. */
-struct RangeObj : public StructureObj {
+struct RangeObj : public AggregateObj {
   /*! \brief Optional range start. */
   Optional<Expr> start;
   /*! \brief Optional range stop. */
@@ -265,12 +265,12 @@ struct RangeObj : public StructureObj {
   explicit RangeObj(Optional<Expr> start, Optional<Expr> stop = {}, Optional<Expr> step = {})
       : start(std::move(start)), stop(std::move(stop)), step(std::move(step)) {}
 
-  TVM_FFI_DECLARE_OBJECT_INFO("ffi.std.Range", RangeObj, StructureObj);
+  TVM_FFI_DECLARE_OBJECT_INFO("ffi.std.Range", RangeObj, AggregateObj);
   /// \endcond
 };
 
 /*! \brief Reference wrapper for a half-open iteration or indexing range. */
-struct Range : public Structure {
+struct Range : public Aggregate {
   /*! \brief Construct a half-open range. */
   explicit Range(Optional<Expr> start, Optional<Expr> stop = {}, Optional<Expr> step = {})
       : Range(make_object<RangeObj>(std::move(start), std::move(stop), std::move(step))) {}
@@ -278,7 +278,7 @@ struct Range : public Structure {
   static Range FromAny(AnyView src);
 
   /// \cond Doxygen_Suppress
-  TVM_FFI_DEFINE_OBJECT_REF_METHODS_NULLABLE(Range, Structure, RangeObj);
+  TVM_FFI_DEFINE_OBJECT_REF_METHODS_NULLABLE(Range, Aggregate, RangeObj);
   /// \endcond
 };
 
