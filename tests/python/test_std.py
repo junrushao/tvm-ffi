@@ -99,13 +99,13 @@ class TestAttrs:
         assert node.text() == 'std.DictAttrs(tag="demo")'
 
 
-class TestStructure:
-    def test_range_is_structure(self) -> None:
+class TestAggregate:
+    def test_range_is_aggregate(self) -> None:
         node = std.Range(start=1)
 
-        assert isinstance(node, std.Structure)
-        assert issubclass(std.Range, std.Structure)
-        assert tuple(field.name for field in fields(std.Structure)) == ()
+        assert isinstance(node, std.Aggregate)
+        assert issubclass(std.Range, std.Aggregate)
+        assert tuple(field.name for field in fields(std.Aggregate)) == ()
 
 
 class TestTupleType:
@@ -2636,7 +2636,7 @@ class TestDictAttrs:
 
 class TestDialectMnemonic:
     def test_base_classes_do_not_have_ffi_dialect_mnemonics(self) -> None:
-        for cls in [std.Node, std.Ty, std.Stmt, std.Expr, std.Attrs, std.Structure, std.Bind]:
+        for cls in [std.Node, std.Ty, std.Stmt, std.Expr, std.Attrs, std.Aggregate, std.Bind]:
             cls_any = cast(Any, cls)
             info = cls_any.__tvm_ffi_type_info__
 
@@ -2702,7 +2702,7 @@ class TestDialectMnemonic:
             )
 
     def test_every_exported_concrete_node_has_registered_dialect_mnemonic(self) -> None:
-        abstract = {std.Node, std.Ty, std.Stmt, std.Expr, std.Attrs, std.Structure, std.Bind}
+        abstract = {std.Node, std.Ty, std.Stmt, std.Expr, std.Attrs, std.Aggregate, std.Bind}
         concrete_classes = []
         for name in std.__all__:
             cls = getattr(std, name)
@@ -2728,7 +2728,7 @@ class TestDialectMnemonic:
             assert info.type_key == f"ffi.std.{cls.__name__}"
 
     def test_dialect_mnemonics_are_unique_and_well_formed(self) -> None:
-        abstract = {std.Node, std.Ty, std.Stmt, std.Expr, std.Attrs, std.Structure, std.Bind}
+        abstract = {std.Node, std.Ty, std.Stmt, std.Expr, std.Attrs, std.Aggregate, std.Bind}
         dialect_mnemonics = []
         for name in std.__all__:
             cls = getattr(std, name)
@@ -2754,7 +2754,7 @@ class TestDialectMnemonic:
                 seen_generics.add((dialect, generic))
 
     def test_dialect_mnemonics_are_classvars_not_reflected_fields(self) -> None:
-        abstract = {std.Node, std.Ty, std.Stmt, std.Expr, std.Attrs, std.Structure, std.Bind}
+        abstract = {std.Node, std.Ty, std.Stmt, std.Expr, std.Attrs, std.Aggregate, std.Bind}
         for name in std.__all__:
             cls = getattr(std, name)
             if isinstance(cls, type) and issubclass(cls, std.Node) and cls not in abstract:
@@ -3047,7 +3047,7 @@ class TestDialectPrintMap:
 
 
 def test_std_base_classes_cannot_be_constructed_directly() -> None:
-    for cls in [std.Node, std.Ty, std.Stmt, std.Expr, std.Attrs, std.Structure, std.Bind]:
+    for cls in [std.Node, std.Ty, std.Stmt, std.Expr, std.Attrs, std.Aggregate, std.Bind]:
         ctor = cast(Any, cls)
         with pytest.raises(TypeError, match="cannot be constructed directly"):
             ctor()
