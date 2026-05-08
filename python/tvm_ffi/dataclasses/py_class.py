@@ -426,6 +426,34 @@ def _build_localns(cls: type, *, cross_module: bool = False) -> dict[str, Any]:
     return localns
 
 
+def _resolve_own_type_hints(
+    owner: type,
+    globalns: dict[str, Any],
+    localns: dict[str, Any],
+) -> dict[str, Any]:
+    """Resolve only annotations declared directly on ``owner``.
+
+    ``typing.get_type_hints(cls)`` merges annotations across the full MRO.
+    That is wrong for py_class phase 2 because inherited C++/c_class fields
+    are already registered by the parent type.  Resolving only the owner
+    annotations also avoids evaluating parent annotations in the child
+    module's namespace, e.g. ``std.Expr.ty: Ty`` while registering a ``tirx``
+    subclass.
+    """
+    annotations = _own_annotations(owner)
+    if not annotations:
+        return {}
+    shim = type(
+        f"_{owner.__name__}OwnAnnotations",
+        (),
+        {"__annotations__": annotations, "__module__": owner.__module__},
+    )
+    kwargs: dict[str, Any] = {"globalns": globalns, "localns": localns}
+    if sys.version_info >= (3, 11):
+        kwargs["include_extras"] = True
+    return typing.get_type_hints(shim, **kwargs)
+
+
 def _register_fields_into_type(
     cls: type,
     type_info: Any,
@@ -443,25 +471,40 @@ def _register_fields_into_type(
     # from every registered module — this handles circular imports where the
     # target of a forward reference is imported only under TYPE_CHECKING and
     # therefore never enters the declaring module's globals.
-    kwargs: dict[str, Any] = {"globalns": globalns, "localns": _build_localns(cls)}
-    if sys.version_info >= (3, 11):
-        kwargs["include_extras"] = True
+    owners = _field_owner_classes(cls)
+    localns = _build_localns(cls)
+    localns.update({owner.__name__: owner for owner in owners})
     try:
-        hints = typing.get_type_hints(cls, **kwargs)
+        hints_by_owner = {
+            owner: _resolve_own_type_hints(
+                owner,
+                getattr(sys.modules.get(owner.__module__, None), "__dict__", globalns),
+                localns,
+            )
+            for owner in owners
+        }
     except (NameError, AttributeError):
-        kwargs["localns"] = _build_localns(cls, cross_module=True)
+        localns = _build_localns(cls, cross_module=True)
+        localns.update({owner.__name__: owner for owner in owners})
         try:
-            hints = typing.get_type_hints(cls, **kwargs)
+            hints_by_owner = {
+                owner: _resolve_own_type_hints(
+                    owner,
+                    getattr(sys.modules.get(owner.__module__, None), "__dict__", globalns),
+                    localns,
+                )
+                for owner in owners
+            }
         except (NameError, AttributeError):
             return False
 
     fields_map: dict[str, Field] = {}
     kw_only_active = params["kw_only"]
-    for owner in _field_owner_classes(cls):
+    for owner in owners:
         owner_fields, kw_only_active = _collect_own_fields(
             cls,
             owner,
-            hints,
+            hints_by_owner[owner],
             kw_only_active,
             params["frozen"],
         )
@@ -544,8 +587,8 @@ def _raise_unresolved_forward_reference(cls: type, globalns: dict[str, Any]) -> 
             if isinstance(ann_str, str):
                 try:
                     eval(ann_str, globalns, localns)
-                except NameError:
-                    unresolved.append(f"{name}: {ann_str}")
+                except (NameError, AttributeError) as err:
+                    unresolved.append(f"{name}: {ann_str} ({err})")
     raise TypeError(
         f"Cannot instantiate {cls.__name__}: unresolved forward references: {unresolved}"
     )

@@ -237,7 +237,7 @@ class TestFunc:
             attrs={"tag": "demo"},
             args=[x],
             ret_type=i32,
-            body=[std.Return(vars=[x])],
+            body=[std.Return(exprs=[x])],
         )
 
         assert isinstance(node, std.Func)
@@ -263,7 +263,7 @@ class TestFunc:
             attrs={"tag": "demo"},
             args=[x],
             ret_type=i32,
-            body=[std.Return(vars=[x])],
+            body=[std.Return(exprs=[x])],
         )
 
         assert node.text() == (
@@ -278,7 +278,7 @@ class TestFunc:
             attrs=None,
             args=[x],
             ret_type=None,
-            body=[std.Return(vars=[x])],
+            body=[std.Return(exprs=[x])],
         )
 
         assert node.text() == "@std.Func\ndef main(x: std.i32):\n  return x"
@@ -293,21 +293,21 @@ class TestFunc:
             attrs={"tag": "demo"},
             args=[lhs_x],
             ret_type=i32,
-            body=[std.Return(vars=[lhs_x])],
+            body=[std.Return(exprs=[lhs_x])],
         )
         rhs = std.Func(
             symbol="main",
             attrs={"tag": "demo"},
             args=[rhs_x],
             ret_type=i32,
-            body=[std.Return(vars=[rhs_x])],
+            body=[std.Return(exprs=[rhs_x])],
         )
         different = std.Func(
             symbol="other",
             attrs={"tag": "demo"},
             args=[other_x],
             ret_type=i32,
-            body=[std.Return(vars=[other_x])],
+            body=[std.Return(exprs=[other_x])],
         )
 
         assert tvm_ffi.structural_equal(lhs, rhs)
@@ -338,28 +338,28 @@ class TestFunc:
             attrs=attrs,
             args=[x],
             ret_type=i32,
-            body=[std.Return(vars=[x])],
+            body=[std.Return(exprs=[x])],
         )
         with_plain_dict_attrs = std.Func(
             symbol="main",
             attrs={"tag": "demo"},
             args=[x],
             ret_type=i32,
-            body=[std.Return(vars=[x])],
+            body=[std.Return(exprs=[x])],
         )
         with_empty_attrs = std.Func(
             symbol="main",
             attrs={},
             args=[x],
             ret_type=i32,
-            body=[std.Return(vars=[x])],
+            body=[std.Return(exprs=[x])],
         )
         without_attrs = std.Func(
             symbol="main",
             attrs=None,
             args=[x],
             ret_type=i32,
-            body=[std.Return(vars=[x])],
+            body=[std.Return(exprs=[x])],
         )
 
         assert isinstance(with_attrs.attrs, std.DictAttrs)
@@ -388,7 +388,7 @@ class TestModule:
             attrs={"tag": "demo"},
             args=[x],
             ret_type=i32,
-            body=[std.Return(vars=[x])],
+            body=[std.Return(exprs=[x])],
         )
         node = std.Module(funcs=[func])
 
@@ -406,13 +406,14 @@ class TestModule:
                     attrs={"tag": "demo"},
                     args=[x],
                     ret_type=i32,
-                    body=[std.Return(vars=[x])],
+                    body=[std.Return(exprs=[x])],
                 )
             ]
         )
 
         assert node.text() == (
-            '@std.Func(tag="demo")\ndef main(x: std.i32) -> std.i32:\n  return x'
+            '@std.Module\nclass MyModule:\n  @std.Func(tag="demo")\n'
+            "  def main(x: std.i32) -> std.i32:\n    return x"
         )
 
     def test_structural_equality(self) -> None:
@@ -427,7 +428,7 @@ class TestModule:
                     attrs={"tag": "demo"},
                     args=[lhs_x],
                     ret_type=i32,
-                    body=[std.Return(vars=[lhs_x])],
+                    body=[std.Return(exprs=[lhs_x])],
                 )
             ]
         )
@@ -438,7 +439,7 @@ class TestModule:
                     attrs={"tag": "demo"},
                     args=[rhs_x],
                     ret_type=i32,
-                    body=[std.Return(vars=[rhs_x])],
+                    body=[std.Return(exprs=[rhs_x])],
                 )
             ]
         )
@@ -449,7 +450,7 @@ class TestModule:
                     attrs={"tag": "demo"},
                     args=[other_x],
                     ret_type=i32,
-                    body=[std.Return(vars=[other_x])],
+                    body=[std.Return(exprs=[other_x])],
                 )
             ]
         )
@@ -1248,19 +1249,23 @@ class TestLoad:
             stop=2,
             step=3,
         )
-        node = std.Load(ty=i32, var=x, indices=[first, second])
+        node = std.Load(ty=i32, lhs=x, indices=[first, second])
 
         assert isinstance(node, std.Load)
-        assert tuple(field.name for field in fields(std.Load)) == ("ty", "var", "indices")
+        assert tuple(field.name for field in fields(std.Load)) == (
+            "ty",
+            "lhs",
+            "indices",
+        )
         assert node.ty == i32
-        assert node.var == x
+        assert node.lhs == x
         assert list(node.indices) == [first, second]
 
     def test_text_format(self) -> None:
         i32 = std.PrimTy("int32")
         node = std.Load(
             ty=i32,
-            var=std.Var(ty=i32, name="x"),
+            lhs=std.Var(ty=i32, name="x"),
             indices=[
                 std.Range(
                     start=1,
@@ -1279,19 +1284,19 @@ class TestLoad:
     def test_text_format_index_variants(self) -> None:
         i32 = std.PrimTy("int32")
 
-        no_indices = std.Load(ty=i32, var=std.Var(ty=i32, name="x"), indices=[])
+        no_indices = std.Load(ty=i32, lhs=std.Var(ty=i32, name="x"), indices=[])
         assert no_indices.text() == "x[()]"
 
         point = std.Load(
             ty=i32,
-            var=std.Var(ty=i32, name="x"),
+            lhs=std.Var(ty=i32, name="x"),
             indices=[1],
         )
         assert point.text() == "x[1]"
 
         slice_without_step = std.Load(
             ty=i32,
-            var=std.Var(ty=i32, name="x"),
+            lhs=std.Var(ty=i32, name="x"),
             indices=[
                 std.Range(
                     start=1,
@@ -1303,7 +1308,7 @@ class TestLoad:
 
         slice_without_start = std.Load(
             ty=i32,
-            var=std.Var(ty=i32, name="x"),
+            lhs=std.Var(ty=i32, name="x"),
             indices=[
                 std.Range(
                     start=None,
@@ -1315,7 +1320,7 @@ class TestLoad:
 
         slice_without_stop = std.Load(
             ty=i32,
-            var=std.Var(ty=i32, name="x"),
+            lhs=std.Var(ty=i32, name="x"),
             indices=[
                 std.Range(
                     start=1,
@@ -1329,7 +1334,7 @@ class TestLoad:
         i32 = std.PrimTy("int32")
         lhs = std.Load(
             ty=i32,
-            var=std.Var(ty=i32, name="x"),
+            lhs=std.Var(ty=i32, name="x"),
             indices=[
                 std.Range(
                     start=1,
@@ -1344,7 +1349,7 @@ class TestLoad:
         )
         rhs = std.Load(
             ty=i32,
-            var=std.Var(ty=i32, name="x"),
+            lhs=std.Var(ty=i32, name="x"),
             indices=[
                 std.Range(
                     start=1,
@@ -1359,7 +1364,7 @@ class TestLoad:
         )
         different = std.Load(
             ty=i32,
-            var=std.Var(ty=i32, name="x"),
+            lhs=std.Var(ty=i32, name="x"),
             indices=[2],
         )
 
@@ -1474,7 +1479,7 @@ class TestCall:
             attrs=None,
             args=[x],
             ret_type=i32,
-            body=[std.Return(vars=[x])],
+            body=[std.Return(exprs=[x])],
         )
         node = std.Call(
             ty=i32,
@@ -1569,8 +1574,8 @@ class TestIfStmt:
         y = std.Var(ty=i32, name="y")
         two = 2
         cond = std.Lt(ty=i32, a=x, b=two)
-        then_body = [std.Return(vars=[x])]
-        else_body = [std.Return(vars=[y])]
+        then_body = [std.Return(exprs=[x])]
+        else_body = [std.Return(exprs=[y])]
         node = std.IfStmt(cond=cond, then_body=then_body, else_body=else_body)
 
         assert isinstance(node, std.IfStmt)
@@ -1600,8 +1605,8 @@ class TestIfStmt:
         y = std.Var(ty=i32, name="y")
         node = std.IfStmt(
             cond=std.Lt(ty=i32, a=x, b=2),
-            then_body=[std.Return(vars=[x])],
-            else_body=[std.Return(vars=[y])],
+            then_body=[std.Return(exprs=[x])],
+            else_body=[std.Return(exprs=[y])],
         )
 
         assert node.text() == "if x < 2:\n  return x\nelse:\n  return y"
@@ -1611,7 +1616,7 @@ class TestIfStmt:
         x = std.Var(ty=i32, name="x")
         node = std.IfStmt(
             cond=std.Lt(ty=i32, a=x, b=2),
-            then_body=[std.Return(vars=[x])],
+            then_body=[std.Return(exprs=[x])],
             else_body=[],
         )
 
@@ -1625,8 +1630,8 @@ class TestIfStmt:
                 a=std.Var(ty=i32, name="x"),
                 b=2,
             ),
-            then_body=[std.Return(vars=[std.Var(ty=i32, name="x")])],
-            else_body=[std.Return(vars=[std.Var(ty=i32, name="y")])],
+            then_body=[std.Return(exprs=[std.Var(ty=i32, name="x")])],
+            else_body=[std.Return(exprs=[std.Var(ty=i32, name="y")])],
         )
         rhs = std.IfStmt(
             cond=std.Lt(
@@ -1634,8 +1639,8 @@ class TestIfStmt:
                 a=std.Var(ty=i32, name="x"),
                 b=2,
             ),
-            then_body=[std.Return(vars=[std.Var(ty=i32, name="x")])],
-            else_body=[std.Return(vars=[std.Var(ty=i32, name="y")])],
+            then_body=[std.Return(exprs=[std.Var(ty=i32, name="x")])],
+            else_body=[std.Return(exprs=[std.Var(ty=i32, name="y")])],
         )
         different = std.IfStmt(
             cond=std.Gt(
@@ -1643,8 +1648,8 @@ class TestIfStmt:
                 a=std.Var(ty=i32, name="x"),
                 b=2,
             ),
-            then_body=[std.Return(vars=[std.Var(ty=i32, name="x")])],
-            else_body=[std.Return(vars=[std.Var(ty=i32, name="y")])],
+            then_body=[std.Return(exprs=[std.Var(ty=i32, name="x")])],
+            else_body=[std.Return(exprs=[std.Var(ty=i32, name="y")])],
         )
 
         assert tvm_ffi.structural_equal(lhs, rhs)
@@ -1662,7 +1667,7 @@ class TestFor:
         )
         body = [
             std.Store(
-                var=x,
+                lhs=x,
                 indices=[1],
                 rhs=2,
             )
@@ -1670,7 +1675,7 @@ class TestFor:
         node = std.For(
             range_=range_node,
             attrs={"tag": "demo"},
-            vars=[std.BindVarDef(vars=[x], attrs=None)],
+            binds=[std.BindVarDef(vars=[x], attrs=None)],
             body=body,
         )
 
@@ -1679,14 +1684,14 @@ class TestFor:
         assert issubclass(std.For, std.Scope)
         assert tuple(field.name for field in fields(std.For)) == (
             "attrs",
-            "vars",
+            "binds",
             "body",
             "range_",
         )
         assert node.range_ == range_node
         assert node.attrs is not None
-        assert isinstance(node.vars[0], std.BindVarDef)
-        assert list(node.vars[0].vars) == [x]
+        assert isinstance(node.binds[0], std.BindVarDef)
+        assert list(node.binds[0].vars) == [x]
         assert list(node.body) == body
 
     def test_attrs_field_accepts_dict_attrs_and_none(self) -> None:
@@ -1698,7 +1703,7 @@ class TestFor:
         )
         body = [
             std.Store(
-                var=x,
+                lhs=x,
                 indices=[1],
                 rhs=2,
             )
@@ -1707,19 +1712,19 @@ class TestFor:
         with_attrs = std.For(
             range_=cond_range,
             attrs=attrs,
-            vars=[std.BindVarDef(vars=[x], attrs=None)],
+            binds=[std.BindVarDef(vars=[x], attrs=None)],
             body=body,
         )
         without_attrs = std.For(
             range_=cond_range,
             attrs=None,
-            vars=[std.BindVarDef(vars=[x], attrs=None)],
+            binds=[std.BindVarDef(vars=[x], attrs=None)],
             body=body,
         )
         with_empty_attrs = std.For(
             range_=cond_range,
             attrs={},
-            vars=[std.BindVarDef(vars=[x], attrs=None)],
+            binds=[std.BindVarDef(vars=[x], attrs=None)],
             body=body,
         )
 
@@ -1739,10 +1744,10 @@ class TestFor:
                 stop=2,
             ),
             attrs={"tag": "demo"},
-            vars=[std.BindVarDef(vars=[x], attrs=None)],
+            binds=[std.BindVarDef(vars=[x], attrs=None)],
             body=[
                 std.Store(
-                    var=x,
+                    lhs=x,
                     indices=[1],
                     rhs=2,
                 )
@@ -1760,10 +1765,10 @@ class TestFor:
                 stop=2,
             ),
             attrs={"z": 3, "a": 1},
-            vars=[std.BindVarDef(vars=[x], attrs=None)],
+            binds=[std.BindVarDef(vars=[x], attrs=None)],
             body=[
                 std.Store(
-                    var=x,
+                    lhs=x,
                     indices=[1],
                     rhs=2,
                 )
@@ -1780,10 +1785,10 @@ class TestFor:
                 stop=2,
             ),
             attrs={"tag": "demo"},
-            vars=[std.BindVarDef(vars=[std.Var(ty=i32, name="x")], attrs=None)],
+            binds=[std.BindVarDef(vars=[std.Var(ty=i32, name="x")], attrs=None)],
             body=[
                 std.Store(
-                    var=std.Var(ty=i32, name="x"),
+                    lhs=std.Var(ty=i32, name="x"),
                     indices=[1],
                     rhs=2,
                 )
@@ -1795,10 +1800,10 @@ class TestFor:
                 stop=2,
             ),
             attrs={"tag": "demo"},
-            vars=[std.BindVarDef(vars=[std.Var(ty=i32, name="x")], attrs=None)],
+            binds=[std.BindVarDef(vars=[std.Var(ty=i32, name="x")], attrs=None)],
             body=[
                 std.Store(
-                    var=std.Var(ty=i32, name="x"),
+                    lhs=std.Var(ty=i32, name="x"),
                     indices=[1],
                     rhs=2,
                 )
@@ -1810,10 +1815,10 @@ class TestFor:
                 stop=3,
             ),
             attrs={"tag": "demo"},
-            vars=[std.BindVarDef(vars=[std.Var(ty=i32, name="x")], attrs=None)],
+            binds=[std.BindVarDef(vars=[std.Var(ty=i32, name="x")], attrs=None)],
             body=[
                 std.Store(
-                    var=std.Var(ty=i32, name="x"),
+                    lhs=std.Var(ty=i32, name="x"),
                     indices=[1],
                     rhs=2,
                 )
@@ -1835,7 +1840,7 @@ class TestWhile:
         node = std.While(
             cond=cond,
             attrs={"tag": "demo"},
-            vars=[std.BindVarDef(vars=[x], attrs=None)],
+            binds=[std.BindVarDef(vars=[x], attrs=None)],
             body=body,
         )
 
@@ -1844,14 +1849,14 @@ class TestWhile:
         assert issubclass(std.While, std.Scope)
         assert tuple(field.name for field in fields(std.While)) == (
             "attrs",
-            "vars",
+            "binds",
             "body",
             "cond",
         )
         assert node.cond == cond
         assert node.attrs is not None
-        assert isinstance(node.vars[0], std.BindVarDef)
-        assert list(node.vars[0].vars) == [x]
+        assert isinstance(node.binds[0], std.BindVarDef)
+        assert list(node.binds[0].vars) == [x]
         assert list(node.body) == body
 
     def test_attrs_field_accepts_dict_attrs_and_none(self) -> None:
@@ -1870,19 +1875,19 @@ class TestWhile:
         with_attrs = std.While(
             cond=cond,
             attrs=attrs,
-            vars=[std.BindVarDef(vars=[x], attrs=None)],
+            binds=[std.BindVarDef(vars=[x], attrs=None)],
             body=body,
         )
         without_attrs = std.While(
             cond=cond,
             attrs=None,
-            vars=[std.BindVarDef(vars=[x], attrs=None)],
+            binds=[std.BindVarDef(vars=[x], attrs=None)],
             body=body,
         )
         with_empty_attrs = std.While(
             cond=cond,
             attrs={},
-            vars=[],
+            binds=[],
             body=body,
         )
 
@@ -1904,7 +1909,7 @@ class TestWhile:
         node = std.While(
             cond=std.Lt(ty=i32, a=x, b=2),
             attrs={"tag": "demo"},
-            vars=[std.BindVarDef(vars=[x], attrs=None)],
+            binds=[std.BindVarDef(vars=[x], attrs=None)],
             body=[
                 std.BindExpr(
                     expr=2,
@@ -1925,7 +1930,7 @@ class TestWhile:
         node = std.While(
             cond=std.Lt(ty=i32, a=x, b=2),
             attrs=None,
-            vars=[],
+            binds=[],
             body=[
                 std.BindExpr(
                     expr=2,
@@ -1944,7 +1949,7 @@ class TestWhile:
         node = std.While(
             cond=std.Lt(ty=i32, a=x, b=2),
             attrs={"z": 3, "a": 1},
-            vars=[
+            binds=[
                 std.BindVarDef(vars=[x], attrs=None),
                 std.BindVarDef(vars=[state], attrs=None),
             ],
@@ -1971,7 +1976,7 @@ class TestWhile:
                 b=2,
             ),
             attrs={"tag": "demo"},
-            vars=[std.BindVarDef(vars=[std.Var(ty=i32, name="x")], attrs=None)],
+            binds=[std.BindVarDef(vars=[std.Var(ty=i32, name="x")], attrs=None)],
             body=[
                 std.BindExpr(
                     expr=2,
@@ -1987,7 +1992,7 @@ class TestWhile:
                 b=2,
             ),
             attrs={"tag": "demo"},
-            vars=[std.BindVarDef(vars=[std.Var(ty=i32, name="x")], attrs=None)],
+            binds=[std.BindVarDef(vars=[std.Var(ty=i32, name="x")], attrs=None)],
             body=[
                 std.BindExpr(
                     expr=2,
@@ -2003,7 +2008,7 @@ class TestWhile:
                 b=2,
             ),
             attrs={"tag": "demo"},
-            vars=[std.BindVarDef(vars=[std.Var(ty=i32, name="x")], attrs=None)],
+            binds=[std.BindVarDef(vars=[std.Var(ty=i32, name="x")], attrs=None)],
             body=[
                 std.BindExpr(
                     expr=2,
@@ -2022,34 +2027,34 @@ class TestScope:
     def test_constructor(self) -> None:
         i32 = std.PrimTy("int32")
         x = std.Var(ty=i32, name="x")
-        body = [std.Return(vars=[x])]
+        body = [std.Return(exprs=[x])]
         node = std.Scope(
             attrs={"tag": "demo"},
-            vars=[std.BindVarDef(vars=[x], attrs=None)],
+            binds=[std.BindVarDef(vars=[x], attrs=None)],
             body=body,
         )
 
         assert isinstance(node, std.Scope)
         assert tuple(field.name for field in fields(std.Scope)) == (
             "attrs",
-            "vars",
+            "binds",
             "body",
         )
         assert node.attrs is not None
-        assert isinstance(node.vars[0], std.BindVarDef)
-        assert list(node.vars[0].vars) == [x]
+        assert isinstance(node.binds[0], std.BindVarDef)
+        assert list(node.binds[0].vars) == [x]
         assert list(node.body) == body
 
     def test_attrs_field_accepts_dict_attrs_and_none(self) -> None:
         i32 = std.PrimTy("int32")
         x = std.Var(ty=i32, name="x")
-        body = [std.Return(vars=[x])]
+        body = [std.Return(exprs=[x])]
         attrs = {"pragma": "scope"}
-        with_attrs = std.Scope(attrs=attrs, vars=[], body=body)
-        without_attrs = std.Scope(attrs=None, vars=[], body=body)
+        with_attrs = std.Scope(attrs=attrs, binds=[], body=body)
+        without_attrs = std.Scope(attrs=None, binds=[], body=body)
         with_empty_attrs = std.Scope(
             attrs={},
-            vars=[],
+            binds=[],
             body=body,
         )
 
@@ -2065,8 +2070,8 @@ class TestScope:
         x = std.Var(ty=i32, name="x")
         node = std.Scope(
             attrs=None,
-            vars=[std.BindVarDef(vars=[x], attrs=None)],
-            body=[std.Return(vars=[x])],
+            binds=[std.BindVarDef(vars=[x], attrs=None)],
+            body=[std.Return(exprs=[x])],
         )
 
         assert node.text() == "with std.Scope(std.BindVarDef(std.i32)) as x:\n  return x"
@@ -2074,7 +2079,7 @@ class TestScope:
     def test_text_format_with_simple_scope(self) -> None:
         i32 = std.PrimTy("int32")
         x = std.Var(ty=i32, name="x")
-        node = std.Scope(attrs=None, vars=[], body=[std.Return(vars=[x])])
+        node = std.Scope(attrs=None, binds=[], body=[std.Return(exprs=[x])])
 
         assert node.text() == "return x"
 
@@ -2084,11 +2089,11 @@ class TestScope:
         state = std.Var(ty=i32, name="state")
         node = std.Scope(
             attrs={"z": 3, "a": 1},
-            vars=[
+            binds=[
                 std.BindVarDef(vars=[x], attrs=None),
                 std.BindVarDef(vars=[state], attrs=None),
             ],
-            body=[std.Return(vars=[x])],
+            body=[std.Return(exprs=[x])],
         )
 
         assert (
@@ -2100,18 +2105,18 @@ class TestScope:
         i32 = std.PrimTy("int32")
         lhs = std.Scope(
             attrs={"tag": "demo"},
-            vars=[std.BindVarDef(vars=[std.Var(ty=i32, name="x")], attrs=None)],
-            body=[std.Return(vars=[std.Var(ty=i32, name="x")])],
+            binds=[std.BindVarDef(vars=[std.Var(ty=i32, name="x")], attrs=None)],
+            body=[std.Return(exprs=[std.Var(ty=i32, name="x")])],
         )
         rhs = std.Scope(
             attrs={"tag": "demo"},
-            vars=[std.BindVarDef(vars=[std.Var(ty=i32, name="x")], attrs=None)],
-            body=[std.Return(vars=[std.Var(ty=i32, name="x")])],
+            binds=[std.BindVarDef(vars=[std.Var(ty=i32, name="x")], attrs=None)],
+            body=[std.Return(exprs=[std.Var(ty=i32, name="x")])],
         )
         different = std.Scope(
             attrs={"tag": "other"},
-            vars=[std.BindVarDef(vars=[std.Var(ty=i32, name="x")], attrs=None)],
-            body=[std.Return(vars=[std.Var(ty=i32, name="x")])],
+            binds=[std.BindVarDef(vars=[std.Var(ty=i32, name="x")], attrs=None)],
+            body=[std.Return(exprs=[std.Var(ty=i32, name="x")])],
         )
 
         assert tvm_ffi.structural_equal(lhs, rhs)
@@ -2291,17 +2296,17 @@ class TestStore:
         x = std.Var(ty=i32, name="x")
         index = 1
         rhs = 2
-        node = std.Store(var=x, indices=[index], rhs=rhs)
+        node = std.Store(lhs=x, indices=[index], rhs=rhs)
 
         assert isinstance(node, std.Store)
         assert tuple(field.name for field in fields(std.Store)) == (
             "attrs",
-            "var",
+            "lhs",
             "indices",
             "rhs",
         )
         assert node.attrs is None
-        assert node.var == x
+        assert node.lhs == x
         indices = list(node.indices)
         assert isinstance(indices[0], std.Range)
         assert isinstance(indices[0].start, std.IntImm)
@@ -2309,14 +2314,14 @@ class TestStore:
         assert isinstance(node.rhs, std.IntImm)
         assert node.rhs.value == rhs
 
-        with_attrs = std.Store(var=x, indices=[index], rhs=rhs, attrs={"tag": "demo"})
+        with_attrs = std.Store(lhs=x, indices=[index], rhs=rhs, attrs={"tag": "demo"})
         assert isinstance(with_attrs.attrs, std.DictAttrs)
         assert dict(with_attrs.attrs.values) == {"tag": "demo"}
 
     def test_text_format(self) -> None:
         i32 = std.PrimTy("int32")
         node = std.Store(
-            var=std.Var(ty=i32, name="x"),
+            lhs=std.Var(ty=i32, name="x"),
             indices=[1],
             rhs=2,
         )
@@ -2327,14 +2332,14 @@ class TestStore:
         i32 = std.PrimTy("int32")
 
         no_indices = std.Store(
-            var=std.Var(ty=i32, name="x"),
+            lhs=std.Var(ty=i32, name="x"),
             indices=[],
             rhs=2,
         )
         assert no_indices.text() == "x[()] = 2"
 
         slice_without_step = std.Store(
-            var=std.Var(ty=i32, name="x"),
+            lhs=std.Var(ty=i32, name="x"),
             indices=[
                 std.Range(
                     start=1,
@@ -2346,7 +2351,7 @@ class TestStore:
         assert slice_without_step.text() == "x[1:2] = 3"
 
         slice_without_start = std.Store(
-            var=std.Var(ty=i32, name="x"),
+            lhs=std.Var(ty=i32, name="x"),
             indices=[
                 std.Range(
                     start=None,
@@ -2358,7 +2363,7 @@ class TestStore:
         assert slice_without_start.text() == "x[:2] = 3"
 
         mixed_indices = std.Store(
-            var=std.Var(ty=i32, name="x"),
+            lhs=std.Var(ty=i32, name="x"),
             indices=[
                 std.Range(
                     start=1,
@@ -2373,7 +2378,7 @@ class TestStore:
     def test_constructor_converts_python_indices_and_rhs(self) -> None:
         i32 = std.PrimTy("int32")
         node = std.Store(
-            var=std.Var(ty=i32, name="x"),
+            lhs=std.Var(ty=i32, name="x"),
             indices=[1],
             rhs=2,
         )
@@ -2387,17 +2392,17 @@ class TestStore:
     def test_structural_equality(self) -> None:
         i32 = std.PrimTy("int32")
         lhs = std.Store(
-            var=std.Var(ty=i32, name="x"),
+            lhs=std.Var(ty=i32, name="x"),
             indices=[1],
             rhs=2,
         )
         rhs = std.Store(
-            var=std.Var(ty=i32, name="x"),
+            lhs=std.Var(ty=i32, name="x"),
             indices=[1],
             rhs=2,
         )
         different = std.Store(
-            var=std.Var(ty=i32, name="x"),
+            lhs=std.Var(ty=i32, name="x"),
             indices=[1],
             rhs=3,
         )
@@ -2466,30 +2471,30 @@ class TestReturn:
         i32 = std.PrimTy("int32")
         x = std.Var(ty=i32, name="x")
         y = std.Var(ty=i32, name="y")
-        node = std.Return(vars=[x, y])
+        node = std.Return(exprs=[x, y])
 
         assert isinstance(node, std.Return)
-        assert tuple(field.name for field in fields(std.Return)) == ("attrs", "vars")
+        assert tuple(field.name for field in fields(std.Return)) == ("attrs", "exprs")
         assert node.attrs is None
-        assert list(node.vars) == [x, y]
+        assert list(node.exprs) == [x, y]
 
-        with_attrs = std.Return(vars=[x, y], attrs={"tag": "demo"})
+        with_attrs = std.Return(exprs=[x, y], attrs={"tag": "demo"})
         assert isinstance(with_attrs.attrs, std.DictAttrs)
         assert dict(with_attrs.attrs.values) == {"tag": "demo"}
 
     def test_text_format(self) -> None:
         i32 = std.PrimTy("int32")
-        node = std.Return(vars=[std.Var(ty=i32, name="x"), std.Var(ty=i32, name="y")])
+        node = std.Return(exprs=[std.Var(ty=i32, name="x"), std.Var(ty=i32, name="y")])
 
         assert node.text() == "return (x, y)"
 
     def test_structural_equality(self) -> None:
         i32 = std.PrimTy("int32")
-        lhs = std.Return(vars=[std.Var(ty=i32, name="x"), std.Var(ty=i32, name="y")])
+        lhs = std.Return(exprs=[std.Var(ty=i32, name="x"), std.Var(ty=i32, name="y")])
         rhs = std.Return(
-            vars=[std.Var(ty=i32, name="renamed_x"), std.Var(ty=i32, name="renamed_y")]
+            exprs=[std.Var(ty=i32, name="renamed_x"), std.Var(ty=i32, name="renamed_y")]
         )
-        different = std.Return(vars=[std.Var(ty=i32, name="x")])
+        different = std.Return(exprs=[std.Var(ty=i32, name="x")])
 
         assert tvm_ffi.structural_equal(lhs, rhs)
         assert tvm_ffi.structural_hash(lhs) == tvm_ffi.structural_hash(rhs)
@@ -2500,38 +2505,40 @@ class TestYield:
     def test_constructor(self) -> None:
         x = std.Var(ty=std.PrimTy("int32"), name="x")
         y = std.Var(ty=std.PrimTy("int32"), name="y")
-        node = std.Yield(vars=[x, y])
+        node = std.Yield(exprs=[x, y])
 
         assert isinstance(node, std.Yield)
-        assert tuple(field.name for field in fields(std.Yield)) == ("attrs", "vars")
+        assert tuple(field.name for field in fields(std.Yield)) == ("attrs", "exprs")
         assert node.attrs is None
-        assert list(node.vars) == [x, y]
+        assert list(node.exprs) == [x, y]
 
-        with_attrs = std.Yield(vars=[x, y], attrs={"tag": "demo"})
+        with_attrs = std.Yield(exprs=[x, y], attrs={"tag": "demo"})
         assert isinstance(with_attrs.attrs, std.DictAttrs)
         assert dict(with_attrs.attrs.values) == {"tag": "demo"}
 
     def test_text_format(self) -> None:
-        node = std.Yield(vars=[std.Var(ty=std.PrimTy("int32"), name="x")])
+        node = std.Yield(exprs=[std.Var(ty=std.PrimTy("int32"), name="x")])
 
         assert node.text() == "yield x"
 
     def test_text_format_with_multiple_vars(self) -> None:
         i32 = std.PrimTy("int32")
-        node = std.Yield(vars=[std.Var(ty=i32, name="x"), std.Var(ty=i32, name="y")])
+        node = std.Yield(exprs=[std.Var(ty=i32, name="x"), std.Var(ty=i32, name="y")])
 
         assert node.text() == "yield (x, y)"
 
     def test_text_format_without_vars(self) -> None:
-        node = std.Yield(vars=[])
+        node = std.Yield(exprs=[])
 
         assert node.text() == "yield"
 
     def test_structural_equality(self) -> None:
         i32 = std.PrimTy("int32")
-        lhs = std.Yield(vars=[std.Var(ty=i32, name="x"), std.Var(ty=i32, name="y")])
-        rhs = std.Yield(vars=[std.Var(ty=i32, name="renamed_x"), std.Var(ty=i32, name="renamed_y")])
-        different = std.Yield(vars=[std.Var(ty=i32, name="x")])
+        lhs = std.Yield(exprs=[std.Var(ty=i32, name="x"), std.Var(ty=i32, name="y")])
+        rhs = std.Yield(
+            exprs=[std.Var(ty=i32, name="renamed_x"), std.Var(ty=i32, name="renamed_y")]
+        )
+        different = std.Yield(exprs=[std.Var(ty=i32, name="x")])
 
         assert tvm_ffi.structural_equal(lhs, rhs)
         assert tvm_ffi.structural_hash(lhs) == tvm_ffi.structural_hash(rhs)
@@ -2552,8 +2559,10 @@ class TestBreak:
 
     def test_text_format(self) -> None:
         node = std.Break()
+        with_attrs = std.Break(attrs={"tag": "demo"})
 
         assert node.text() == "break"
+        assert with_attrs.text() == 'std.Break(tag="demo")'
 
     def test_structural_equality(self) -> None:
         lhs = std.Break()
@@ -2579,8 +2588,10 @@ class TestContinue:
 
     def test_text_format(self) -> None:
         node = std.Continue()
+        with_attrs = std.Continue(attrs={"tag": "demo"})
 
         assert node.text() == "continue"
+        assert with_attrs.text() == 'std.Continue(tag="demo")'
 
     def test_structural_equality(self) -> None:
         lhs = std.Continue()
@@ -2635,13 +2646,21 @@ class TestDictAttrs:
 
 
 class TestDialectMnemonic:
-    def test_base_classes_do_not_have_ffi_dialect_mnemonics(self) -> None:
-        for cls in [std.Node, std.Ty, std.Stmt, std.Expr, std.Attrs, std.Aggregate, std.Bind]:
+    def test_base_classes_have_python_dialect_mnemonics_but_no_type_attr(self) -> None:
+        cases = [
+            (std.Node, ("std", "Node")),
+            (std.Ty, ("std", "Ty")),
+            (std.Stmt, ("std", "Stmt")),
+            (std.Expr, ("std", "Expr")),
+            (std.Attrs, ("std", "Attrs")),
+            (std.Aggregate, ("std", "Aggregate")),
+            (std.Bind, ("std", "Bind")),
+        ]
+        for cls, dialect_mnemonic in cases:
             cls_any = cast(Any, cls)
             info = cls_any.__tvm_ffi_type_info__
 
-            assert "__ffi_dialect_mnemonic__" not in cls.__dict__
-            assert not hasattr(cls, "__ffi_dialect_mnemonic__")
+            assert cls_any.__ffi_dialect_mnemonic__ == dialect_mnemonic
             assert core._lookup_type_attr(info.type_index, "__ffi_dialect_mnemonic__") is None
 
     def test_concrete_classes_have_exact_ffi_dialect_mnemonics(self) -> None:
@@ -2997,7 +3016,7 @@ class TestDialectPrintMap:
             attrs=None,
             args=[x],
             ret_type=i32,
-            body=[std.Return(vars=[x])],
+            body=[std.Return(exprs=[x])],
         )
         cfg = pyast.PrinterConfig(dialect_print_map={"std": "core"})
 
@@ -3011,7 +3030,7 @@ class TestDialectPrintMap:
             attrs={"tag": "demo"},
             args=[x],
             ret_type=i32,
-            body=[std.Return(vars=[x])],
+            body=[std.Return(exprs=[x])],
         )
         cfg = pyast.PrinterConfig(dialect_print_map={"std$Func": "ffi_func"})
 
@@ -3044,6 +3063,32 @@ class TestDialectPrintMap:
         assert std.Call(i32, "callee", [x], {"tag": "demo"}).text(cfg) == (
             'ffi.call(callee, x, tag="demo")'
         )
+
+    def test_dialect_prefix_applies_to_for_range_mnemonic(self) -> None:
+        i32 = std.PrimTy("int32")
+        x = std.Var(ty=i32, name="x")
+        node = std.For(
+            range_=std.Range(start=1, stop=2),
+            attrs=None,
+            binds=[std.BindVarDef(vars=[x], attrs=None)],
+            body=[std.Store(lhs=x, indices=[1], rhs=2)],
+        )
+        cfg = pyast.PrinterConfig(dialect_print_map={"std": "core"})
+
+        assert node.text(cfg) == "for x in core.range(1, 2):\n  x[1] = 2"
+
+    def test_full_mnemonic_applies_to_for_range_mnemonic(self) -> None:
+        i32 = std.PrimTy("int32")
+        x = std.Var(ty=i32, name="x")
+        node = std.For(
+            range_=std.Range(start=1, stop=2),
+            attrs=None,
+            binds=[std.BindVarDef(vars=[x], attrs=None)],
+            body=[std.Store(lhs=x, indices=[1], rhs=2)],
+        )
+        cfg = pyast.PrinterConfig(dialect_print_map={"std$For": "ffi.range"})
+
+        assert node.text(cfg) == "for x in ffi.range(1, 2):\n  x[1] = 2"
 
 
 def test_std_base_classes_cannot_be_constructed_directly() -> None:
