@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import ast
 import math
+import sys
 import textwrap
 from typing import Callable
 
@@ -734,7 +735,10 @@ class _Converter:
 _converter = _Converter()
 
 
-def ast_translate(source: str | ast.AST) -> pyast.Node:
+def ast_translate(
+    source: str | ast.AST,
+    feature_version: tuple[int, int] = sys.version_info[:2],
+) -> pyast.Node:
     """Convert a Python source string or ``ast.AST`` node to a TVM-FFI AST node.
 
     Parameters
@@ -742,6 +746,10 @@ def ast_translate(source: str | ast.AST) -> pyast.Node:
     source
         Either a Python source-code string (parsed with ``ast.parse``) or an
         already-parsed ``ast.AST`` node.
+
+    feature_version
+        The Python version to target for feature support (e.g. (3, 10)). This controls which Python constructs are supported and how they are
+        translated.
 
     Returns
     -------
@@ -779,6 +787,6 @@ def ast_translate(source: str | ast.AST) -> pyast.Node:
     """
     if isinstance(source, str):
         source = textwrap.dedent(source)
-        tree = ast.parse(source)
+        tree = ast.parse(source, feature_version=feature_version)
         return _converter.convert(tree)
     return _converter.convert(source)

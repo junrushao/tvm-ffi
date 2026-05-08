@@ -3027,18 +3027,6 @@ struct IRPrinterObj : public Object {
   Optional<ExprAST> VarGet(const ObjectRef& obj);
 
   /*!
-   * \brief Build a call target expression from an object's registered mnemonic.
-   *
-   * The ``__ffi_dialect_mnemonic__`` type attribute must be an
-   * ``Array<String>`` with ``{dialect, mnemonic}`` or
-   * ``{dialect, mnemonic, generics}``, for example ``{"std", "Add"}``.
-   *
-   * Full mnemonic aliases in ``cfg->dialect_print_map`` take precedence over
-   * dialect aliases.  The alias value ``"*"`` drops the prefix and returns just
-   * the printed name.
-   */
-  ExprAST CallMnemonic(const ObjectRef& obj) const;
-  /*!
    * \brief Convert a source value to a text format AST node using registered
    *        __ffi_text_print__ dispatch.
    *
@@ -3404,39 +3392,6 @@ inline Optional<ExprAST> IRPrinterObj::VarGet(const ObjectRef& obj) {
     return Optional<ExprAST>{};
   }
   return (*it).second->creator().cast<ExprAST>();
-}
-
-inline ExprAST IRPrinterObj::CallMnemonic(const ObjectRef& obj) const {
-  static reflection::TypeAttrColumn dialect_mnemonic_col(reflection::type_attr::kDialectMnemonic);
-  AnyView dialect_mnemonic_view = dialect_mnemonic_col[obj->type_index()];
-  if (dialect_mnemonic_view == nullptr) {
-    TVM_FFI_THROW(ValueError) << "No __ffi_dialect_mnemonic__ registered for " << obj->GetTypeKey();
-  }
-  Array<String> dialect_mnemonic = dialect_mnemonic_view.cast<Array<String>>();
-  if (dialect_mnemonic.size() != 2 && dialect_mnemonic.size() != 3) {
-    TVM_FFI_THROW(ValueError) << "Invalid __ffi_dialect_mnemonic__ for " << obj->GetTypeKey()
-                              << ", expected `{dialect, mnemonic}` or "
-                                 "`{dialect, mnemonic, generics}`";
-  }
-  String dialect = dialect_mnemonic[0];
-  String printed_name = dialect_mnemonic[1];
-  String full_mnemonic = String(std::string(dialect.data(), dialect.size()) + "$" +
-                                std::string(printed_name.data(), printed_name.size()));
-  if (this->cfg->dialect_print_map.count(full_mnemonic)) {
-    String mapped = this->cfg->dialect_print_map[full_mnemonic];
-    if (mapped == "*") {
-      return IdAST(std::move(printed_name));
-    }
-    return DottedName(std::move(mapped));
-  }
-  if (this->cfg->dialect_print_map.count(dialect)) {
-    String mapped = this->cfg->dialect_print_map[dialect];
-    if (mapped == "*") {
-      return IdAST(std::move(printed_name));
-    }
-    return ExprAttr(DottedName(std::move(mapped)), std::move(printed_name));
-  }
-  return ExprAttr(DottedName(std::move(dialect)), std::move(printed_name));
 }
 
 inline Any IRPrinterObj::operator()(Any source, AccessPath path) const {  // NOLINT(*-value-param)

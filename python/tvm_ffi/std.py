@@ -46,9 +46,19 @@ if TYPE_CHECKING:
 class Node(Object):
     """Base class for the standard dialect."""
 
+    __ffi_dialect_mnemonic__: ClassVar[DialectMnemonic] = ("std", "Node")
+
     if TYPE_CHECKING:
 
         def __init__(self, _no_direct_init: Never) -> None: ...
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        super().__init_subclass__(**kwargs)
+        if "__ffi_dialect_mnemonic__" not in cls.__dict__:
+            raise TypeError(
+                f"{cls.__name__}: subclasses of std.Node must define "
+                "__ffi_dialect_mnemonic__ directly on the class"
+            )
 
     def text(self, config: PrinterConfig | None = None) -> str:
         """Render this standard dialect node with the FFI text printer."""
@@ -71,15 +81,21 @@ class Node(Object):
 class Ty(Node):
     """Base class for standard dialect types."""
 
+    __ffi_dialect_mnemonic__: ClassVar[DialectMnemonic] = ("std", "Ty")
+
 
 @c_class("ffi.std.Attrs", init=False)
 class Attrs(Node):
     """Base class for standard dialect attributes."""
 
+    __ffi_dialect_mnemonic__: ClassVar[DialectMnemonic] = ("std", "Attrs")
+
 
 @c_class("ffi.std.Stmt", init=False)
 class Stmt(Node):
     """Base class for standard dialect statements."""
+
+    __ffi_dialect_mnemonic__: ClassVar[DialectMnemonic] = ("std", "Stmt")
 
     attrs: Attrs | None = field(default=None, kw_only=True)
 
@@ -88,10 +104,14 @@ class Stmt(Node):
 class Aggregate(Node):
     """Base class for standard dialect aggregate helper nodes."""
 
+    __ffi_dialect_mnemonic__: ClassVar[DialectMnemonic] = ("std", "Aggregate")
+
 
 @c_class("ffi.std.Expr", init=False)
 class Expr(Node):
     """Base class for standard dialect expressions."""
+
+    __ffi_dialect_mnemonic__: ClassVar[DialectMnemonic] = ("std", "Expr")
 
     ty: Ty
 
@@ -437,11 +457,11 @@ class Load(Expr):
 
     __ffi_dialect_mnemonic__: ClassVar[DialectMnemonic] = ("std", "Load", "__load__")
 
-    var: Var
+    lhs: Expr
     indices: MutableSequence[Range]
     if TYPE_CHECKING:
 
-        def __init__(self, ty: Ty, var: Var, indices: Sequence[RangeLike]) -> None: ...
+        def __init__(self, ty: Ty, lhs: ExprLike, indices: Sequence[RangeLike]) -> None: ...
 
 
 @c_class("ffi.std.Cast")
@@ -503,13 +523,13 @@ class Scope(Stmt):
 
     __ffi_dialect_mnemonic__: ClassVar[DialectMnemonic] = ("std", "Scope")
 
-    vars: MutableSequence[Bind]
+    binds: MutableSequence[Bind]
     body: MutableSequence[Stmt]
     if TYPE_CHECKING:
 
         def __init__(
             self,
-            vars: MutableSequence[Bind],
+            binds: MutableSequence[Bind],
             body: MutableSequence[Stmt],
             *,
             attrs: AttrsLike = ...,
@@ -527,7 +547,7 @@ class For(Scope):
 
         def __init__(
             self,
-            vars: MutableSequence[Bind],
+            binds: MutableSequence[Bind],
             body: MutableSequence[Stmt],
             range_: RangeLike,
             *,
@@ -546,7 +566,7 @@ class While(Scope):
 
         def __init__(
             self,
-            vars: MutableSequence[Bind],
+            binds: MutableSequence[Bind],
             body: MutableSequence[Stmt],
             cond: ExprLike,
             *,
@@ -557,6 +577,8 @@ class While(Scope):
 @c_class("ffi.std.Bind", init=False)
 class Bind(Stmt):
     """Base variable binding statement."""
+
+    __ffi_dialect_mnemonic__: ClassVar[DialectMnemonic] = ("std", "Bind")
 
     vars: MutableSequence[Var]
     if TYPE_CHECKING:
@@ -608,14 +630,14 @@ class Store(Stmt):
 
     __ffi_dialect_mnemonic__: ClassVar[DialectMnemonic] = ("std", "Store", "__store__")
 
-    var: Var
+    lhs: Expr
     indices: MutableSequence[Range]
     rhs: Expr
     if TYPE_CHECKING:
 
         def __init__(
             self,
-            var: Var,
+            lhs: ExprLike,
             indices: Sequence[RangeLike],
             rhs: ExprLike,
             *,
@@ -646,12 +668,12 @@ class Return(Stmt):
 
     __ffi_dialect_mnemonic__: ClassVar[DialectMnemonic] = ("std", "Return", "__return__")
 
-    vars: MutableSequence[Var]
+    exprs: MutableSequence[Expr]
     if TYPE_CHECKING:
 
         def __init__(
             self,
-            vars: MutableSequence[Var],
+            exprs: MutableSequence[ExprLike],
             *,
             attrs: AttrsLike = ...,
         ) -> None: ...
@@ -663,12 +685,12 @@ class Yield(Stmt):
 
     __ffi_dialect_mnemonic__: ClassVar[DialectMnemonic] = ("std", "Yield", "__yield__")
 
-    vars: MutableSequence[Var]
+    exprs: MutableSequence[Expr]
     if TYPE_CHECKING:
 
         def __init__(
             self,
-            vars: MutableSequence[Var],
+            exprs: MutableSequence[ExprLike],
             *,
             attrs: AttrsLike = ...,
         ) -> None: ...
