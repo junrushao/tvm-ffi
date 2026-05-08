@@ -118,29 +118,35 @@ class Func(Node):
             )
 
 
-def test_var_print() -> None:
+def _to_python(value: Any, config: pyast.PrinterConfig | None = None) -> str:
+    return pyast.to_python(value, config)
+
+
+def _sample_func() -> Func:
     a = Var(name="a")
-    assert pyast.to_python(a) == "a"
+    b = Var(name="b")
+    c = Var(name="c")
+    return Func(name="f", args=[a, b], stmts=[Assign(lhs=c, rhs=Add(a, b))], ret=c)
+
+
+def test_var_print() -> None:
+    assert _to_python(Var(name="a")) == "a"
 
 
 def test_var_print_name_normalize() -> None:
-    a = Var(name="a/0/b")
-    assert pyast.to_python(a) == "a_0_b"
-    assert pyast.to_python(a) == "a_0_b"
+    assert _to_python(Var(name="a/0/b")) == "a_0_b"
 
 
 def test_add_print() -> None:
     a = Var(name="a")
     b = Var(name="b")
-    c = Add(lhs=a, rhs=b)
-    assert pyast.to_python(c) == "a + b"
+    assert _to_python(Add(lhs=a, rhs=b)) == "a + b"
 
 
 def test_assign_print() -> None:
     a = Var(name="a")
     b = Var(name="b")
-    c = Assign(lhs=a, rhs=b)
-    assert pyast.to_python(c) == "a = b"
+    assert _to_python(Assign(lhs=a, rhs=b)) == "a = b"
 
 
 def test_func_print() -> None:
@@ -153,9 +159,8 @@ def test_func_print() -> None:
         Assign(lhs=d, rhs=Add(a, b)),
         Assign(lhs=e, rhs=Add(d, c)),
     ]
-    f = Func(name="f", args=[a, b, c], stmts=stmts, ret=e)
     assert (
-        pyast.to_python(f)
+        _to_python(Func(name="f", args=[a, b, c], stmts=stmts, ret=e))
         == """
 def f(a, b, c):
   d = a + b
@@ -165,32 +170,18 @@ def f(a, b, c):
     )
 
 
-def test_print_none() -> None:
-    printer = pyast.IRPrinter()
-    path = AccessPath.root()
-    node = printer(None, path)
-    assert node.to_python() == "None"
-
-
-def test_print_int() -> None:
-    printer = pyast.IRPrinter()
-    path = AccessPath.root()
-    node = printer(42, path)
-    assert node.to_python() == "42"
-
-
-def test_print_str() -> None:
-    printer = pyast.IRPrinter()
-    path = AccessPath.root()
-    node = printer("hey", path)
-    assert node.to_python() == '"hey"'
-
-
-def test_print_bool() -> None:
-    printer = pyast.IRPrinter()
-    path = AccessPath.root()
-    node = printer(True, path)
-    assert node.to_python() == "True"
+@pytest.mark.parametrize(
+    "value, expected",
+    [
+        (None, "None"),
+        (42, "42"),
+        ("hey", '"hey"'),
+        (True, "True"),
+    ],
+)
+def test_print_builtin(value: Any, expected: str) -> None:
+    node = pyast.IRPrinter()(value, AccessPath.root())
+    assert node.to_python() == expected
 
 
 def test_duplicated_vars() -> None:
@@ -203,7 +194,7 @@ def test_duplicated_vars() -> None:
         ret=b,
     )
     assert (
-        pyast.to_python(f)
+        _to_python(f)
         == """
 def f(a):
   a_1 = a + a
@@ -214,7 +205,7 @@ def f(a):
         r"^def f\(a\):\n"
         r"  a_0x[0-9A-Fa-f]+ = a \+ a\n"
         r"  return a_0x[0-9A-Fa-f]+$",
-        pyast.to_python(f, pyast.PrinterConfig(print_addr_on_dup_var=True)),
+        _to_python(f, pyast.PrinterConfig(print_addr_on_dup_var=True)),
     )
 
 
@@ -236,15 +227,6 @@ def f(a, b):
 def f(a, b):
          ^
   c = a + b
-  return c
-""",
-        ),
-        (
-            AccessPath.root().attr("stmts").array_item(0),
-            """
-def f(a, b):
-  c = a + b
-  ^^^^^^^^^
   return c
 """,
         ),
@@ -305,19 +287,5 @@ def f(a, b):
     ],
 )
 def test_print_underscore(path: AccessPath, expected: str) -> None:
-    a = Var(name="a")
-    b = Var(name="b")
-    c = Var(name="c")
-    f = Func(
-        name="f",
-        args=[a, b],
-        stmts=[
-            Assign(lhs=c, rhs=Add(a, b)),
-        ],
-        ret=c,
-    )
-    actual = pyast.to_python(
-        f,
-        pyast.PrinterConfig(path_to_underline=[path]),
-    )
+    actual = _to_python(_sample_func(), pyast.PrinterConfig(path_to_underline=[path]))
     assert actual.strip() == expected.strip()

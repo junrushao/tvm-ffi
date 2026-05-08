@@ -26,9 +26,12 @@ import ast
 import math
 import sys
 import textwrap
-from typing import Callable
+from typing import Any, Callable, cast
 
 from tvm_ffi import pyast
+
+_AST_INDEX: Any = getattr(ast, "Index", None)
+_AST_EXTSLICE: Any = getattr(ast, "ExtSlice", None)
 
 # ---------------------------------------------------------------------------
 # Operator mapping tables
@@ -114,6 +117,10 @@ class _Converter:
             ast.NamedExpr: self._convert_namedexpr,
             ast.Await: self._convert_await,
         }
+        if _AST_INDEX is not None:
+            self._expr_dispatch[_AST_INDEX] = self._convert_index
+        if _AST_EXTSLICE is not None:
+            self._expr_dispatch[_AST_EXTSLICE] = self._convert_extslice
         self._stmt_dispatch: dict[type, Callable[..., pyast.Stmt | list[pyast.Stmt]]] = {
             ast.Module: self._convert_module,
             ast.Assign: self._convert_assign,
@@ -224,9 +231,21 @@ class _Converter:
     def _convert_attribute(self, node: ast.Attribute) -> pyast.Expr:
         return pyast.Attr(self.convert_expr(node.value), node.attr)
 
+    @staticmethod
+    def _unwrap_index(node: Any) -> Any:
+        """Unwrap Python 3.8 ``ast.Index`` compatibility nodes."""
+        if _AST_INDEX is not None and isinstance(node, _AST_INDEX):
+            return node.value
+        return node
+
     def _convert_subscript(self, node: ast.Subscript) -> pyast.Expr:
         obj = self.convert_expr(node.value)
-        slc = node.slice
+        slc = self._unwrap_index(node.slice)
+        if _AST_EXTSLICE is not None and isinstance(slc, _AST_EXTSLICE):
+            indices = [
+                self.convert_expr(cast(ast.expr, self._unwrap_index(dim))) for dim in slc.dims
+            ]
+            return pyast.Index(obj, indices)
         has_starred = isinstance(slc, ast.Tuple) and any(
             isinstance(e, ast.Starred) for e in slc.elts
         )
@@ -239,8 +258,16 @@ class _Converter:
             # x[(*a, b)] which is valid on Python 3.9+, unlike x[*a, b] (3.11+).
             # For x[1,] (single-element tuple), this becomes Index(obj, [Tuple([1])])
             # which renders as x[(1,)] — semantically equivalent, roundtrips correctly.
-            indices = [self.convert_expr(slc)]
+            indices = [self.convert_expr(cast(ast.expr, slc))]
         return pyast.Index(obj, indices)
+
+    def _convert_index(self, node: Any) -> pyast.Expr:
+        return self.convert_expr(cast(ast.expr, node.value))
+
+    def _convert_extslice(self, node: Any) -> pyast.Expr:
+        return pyast.Tuple(
+            [self.convert_expr(cast(ast.expr, self._unwrap_index(dim))) for dim in node.dims]
+        )
 
     def _convert_call(self, node: ast.Call) -> pyast.Expr:
         callee = self.convert_expr(node.func)

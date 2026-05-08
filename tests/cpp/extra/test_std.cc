@@ -63,7 +63,7 @@ TEST(StdDialect, TextPrintFunction) {
   text::NodeAST ast = printer->operator()(mod, refl::AccessPath::Root()).cast<text::NodeAST>();
   std::string rendered = ast->ToPython(text::PrinterConfig());
 
-  EXPECT_NE(rendered.find("@std.Func"), std::string::npos);
+  EXPECT_NE(rendered.find("@std.func"), std::string::npos);
   EXPECT_NE(rendered.find("def main"), std::string::npos);
   EXPECT_NE(rendered.find("x + 1"), std::string::npos);
   EXPECT_NE(rendered.find("return y"), std::string::npos);
@@ -90,6 +90,16 @@ TEST(StdDialect, TextPrintAssert) {
       printer->operator()(assert_stmt, refl::AccessPath::Root()).cast<text::NodeAST>();
 
   EXPECT_EQ(ast->ToPython(text::PrinterConfig()), "assert x < 2");
+}
+
+TEST(StdDialect, TextPrintCallIncludesResultType) {
+  stdir::PrimTy i32(ffi::StringToDLDataType("int32"));
+  stdir::Call call(i32, ffi::String("callee"), {stdir::IntImm(i32, 1)});
+
+  text::IRPrinter printer{text::PrinterConfig()};
+  text::NodeAST ast = printer->operator()(call, refl::AccessPath::Root()).cast<text::NodeAST>();
+
+  EXPECT_EQ(ast->ToPython(text::PrinterConfig()), "std.Call(std.i32, callee, std.i32(1))");
 }
 
 TEST(StdDialect, DialectPrintMap) {
@@ -204,7 +214,7 @@ TEST(StdDialect, TextGenericSugarUsesDialectStackForLiteralOnlyOperands) {
   tirx_printer->dialects.push_back("tirx");
   text::NodeAST explicit_ast =
       tirx_printer->operator()(add, refl::AccessPath::Root()).cast<text::NodeAST>();
-  EXPECT_EQ(explicit_ast->ToPython(text::PrinterConfig()), "std.Add(1, 2)");
+  EXPECT_EQ(explicit_ast->ToPython(text::PrinterConfig()), "std.Add(std.i32, 1, 2)");
 }
 
 TEST(StdDialect, TextGenericSugarUsesDialectStackForNoOperands) {
@@ -251,7 +261,7 @@ TEST(StdDialect, TextGenericFallbackPreservesBindAttrs) {
                                                              stdir::IntImm(i32, 1)),
                                              refl::AccessPath::Root())
                                 .cast<text::NodeAST>();
-  EXPECT_EQ(bind_expr->ToPython(text::PrinterConfig()), "std.BindExpr(1, tag=\"demo\")");
+  EXPECT_EQ(bind_expr->ToPython(text::PrinterConfig()), "std.BindExpr(std.i32(1), tag=\"demo\")");
 
   text::NodeAST bind_var_def =
       printer
