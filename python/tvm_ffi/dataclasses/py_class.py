@@ -130,7 +130,17 @@ def _rollback_registration(cls: type, type_info: Any) -> None:
     core._rollback_py_class(type_info)  # ty: ignore[unresolved-attribute]
     # Remove from our own module-level resolution namespace.
     _PY_CLASS_BY_MODULE.get(cls.__module__, {}).pop(cls.__name__, None)
-    for attr in ("__tvm_ffi_type_info__", "__tvm_ffi_is_dataclass__"):
+    if cls.__dict__.get("__tvm_ffi_repr_c_installed__", False):
+        try:
+            delattr(cls, "repr_c")
+        except AttributeError:
+            pass
+    for attr in (
+        "__tvm_ffi_type_info__",
+        "__tvm_ffi_is_dataclass__",
+        "__tvm_ffi_is_py_class__",
+        "__tvm_ffi_repr_c_installed__",
+    ):
         try:
             delattr(cls, attr)
         except AttributeError:
@@ -821,6 +831,11 @@ def py_class(  # noqa: PLR0913
         globalns = getattr(sys.modules.get(cls.__module__, None), "__dict__", {})
 
         info = _register_type_without_fields(cls, effective_type_key)
+        setattr(cls, "__tvm_ffi_is_py_class__", True)
+
+        from .repr_c import _install_repr_c  # noqa: PLC0415
+
+        _install_repr_c(cls)
 
         try:
             if _register_fields_into_type(cls, info, globalns, params):

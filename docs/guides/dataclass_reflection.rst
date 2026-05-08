@@ -406,6 +406,35 @@ The decorator:
    ``c_class`` internally for objects with reflected fields.
 
 
+Python ``py_class`` C++ Layout Mirrors
+--------------------------------------
+
+Python-defined FFI classes created with ``tvm_ffi.dataclasses.py_class`` can
+emit a C++ object/ref declaration that mirrors their reflected storage layout.
+This is useful when a type starts in Python but later needs to be incorporated
+into a TVM-FFI C++ interface.
+
+.. code-block:: python
+
+   from tvm_ffi import Object
+   from tvm_ffi.dataclasses import is_repr_c_layout, py_class
+
+   @py_class("my_ext.Point")
+   class Point(Object):
+       x: int
+       y: int
+       label: str
+
+   assert is_repr_c_layout(Point.__tvm_ffi_type_info__)
+   print(Point.repr_c())
+
+The generated C++ class uses TVM-FFI storage types for each reflected field and
+includes a ``static_assert`` that checks the resulting C++ ``sizeof`` against
+``TypeInfo.total_size``. The ``is_repr_c_layout`` helper is derived from
+reflection metadata: it checks field offsets, field alignment, and total size
+rather than relying on a registered type marker.
+
+
 Inheritance
 -----------
 

@@ -23,6 +23,7 @@ from .common import asdict, astuple, fields, is_dataclass, replace
 from .enum import Enum, EnumAttrMap, IntEnum, StrEnum, auto, entry
 from .field import KW_ONLY, Field, field
 from .py_class import py_class
+from .repr_c import is_repr_c_layout, repr_c
 
 __all__ = [
     "KW_ONLY",
@@ -41,6 +42,8 @@ __all__ = [
     "field",
     "fields",
     "is_dataclass",
+    "is_repr_c_layout",
     "py_class",
     "replace",
+    "repr_c",
 ]

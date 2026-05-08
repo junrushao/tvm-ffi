@@ -553,6 +553,7 @@ cdef _type_info_create_from_type_key(object type_cls, str type_key):
                 name=bytearray_to_str(&field.name),
                 doc=bytearray_to_str(&field.doc) if field.doc.size != 0 else None,
                 size=field.size,
+                alignment=field.alignment,
                 offset=field.offset,
                 frozen=(field.flags & kTVMFFIFieldFlagBitMaskWritable) == 0,
                 metadata=metadata_obj,

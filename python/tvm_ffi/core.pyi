@@ -278,6 +278,7 @@ class TypeField:
     name: str
     doc: str | None
     size: int
+    alignment: int
     offset: int
     frozen: bool
     metadata: dict[str, Any]

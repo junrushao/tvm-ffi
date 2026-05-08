@@ -24,6 +24,7 @@ import gc
 import inspect
 import itertools
 import math
+from types import SimpleNamespace
 from typing import Any, ClassVar, Dict, List, Optional, Tuple
 
 import pytest
@@ -40,9 +41,12 @@ from tvm_ffi.dataclasses import (
     entry,
     field,
     fields,
+    is_repr_c_layout,
     py_class,
+    repr_c,
 )
 from tvm_ffi.registry import _add_class_attrs
+from tvm_ffi.testing import TestIntPair
 from tvm_ffi.testing import TestObjectBase as _TestObjectBase
 from tvm_ffi.testing.testing import requires_py310
 
@@ -162,6 +166,98 @@ class TestBasicRegistration:
         obj = InstCheck(x=42)
         assert isinstance(obj, InstCheck)
         assert isinstance(obj, Object)
+
+
+# ###########################################################################
+#  1b. C++ layout representation
+# ###########################################################################
+class TestReprC:
+    """C++ layout mirror generation for @py_class types."""
+
+    def test_basic_repr_c(self) -> None:
+        @py_class(_unique_key("ReprCBasic"))
+        class Point(Object):
+            x: int
+            flag: bool
+            label: str
+
+        assert is_repr_c_layout(_get_type_info(Point))
+        point_repr_c = getattr(Point, "repr_c")
+        assert callable(point_repr_c)
+        cxx = point_repr_c()
+        assert "class PointObj : public ::tvm::ffi::Object" in cxx
+        assert "int64_t x;  // offset=24, size=8, schema=int" in cxx
+        assert "bool flag;  // offset=32, size=1, schema=bool" in cxx
+        assert "::tvm::ffi::Any label;  // offset=40, size=16, schema=str" in cxx
+        assert 'TVM_FFI_DECLARE_OBJECT_INFO("' in cxx
+        assert "static_assert(sizeof(PointObj) == 56" in cxx
+        assert "class Point : public ::tvm::ffi::ObjectRef" in cxx
+        assert (
+            "TVM_FFI_DEFINE_OBJECT_REF_METHODS_NULLABLE(Point, ::tvm::ffi::ObjectRef, PointObj);"
+        ) in cxx
+
+    def test_repr_c_module_helper_accepts_instance(self) -> None:
+        @py_class(_unique_key("ReprCHelper"))
+        class Holder(Object):
+            value: Optional[int]
+
+        obj = Holder(value=1)
+        holder_repr = repr_c(Holder)
+        assert repr_c(obj) == holder_repr
+        assert "::tvm::ffi::Any value;" in holder_repr
+
+    def test_repr_c_object_like_field_uses_object_ref_storage(self) -> None:
+        @py_class(_unique_key("ReprCObjectField"))
+        class Holder(Object):
+            items: tvm_ffi.Array[int]
+
+        cxx = repr_c(Holder)
+        assert "::tvm::ffi::ObjectRef items;  // offset=24, size=8, schema=Array[int]" in cxx
+
+    def test_repr_c_inheritance(self) -> None:
+        @py_class(_unique_key("ReprCParent"))
+        class Parent(Object):
+            x: int
+
+        @py_class(_unique_key("ReprCChild"))
+        class Child(Parent):
+            y: float
+
+        cxx = repr_c(Child)
+        assert "class ChildObj : public ParentObj" in cxx
+        assert "double y;  // offset=32, size=8, schema=float" in cxx
+        assert "class Child : public Parent" in cxx
+
+    def test_repr_c_name_overrides_and_namespace(self) -> None:
+        @py_class(_unique_key("ReprCOverride"))
+        class Point(Object):
+            x: int
+
+        cxx = repr_c(Point, object_name="MyPointObj", ref_name="MyPoint", namespace="demo")
+        assert cxx.startswith("namespace demo {")
+        assert "class MyPointObj : public ::tvm::ffi::Object" in cxx
+        assert "class MyPoint : public ::tvm::ffi::ObjectRef" in cxx
+        assert cxx.endswith("}  // namespace demo")
+
+    def test_is_repr_c_layout_uses_metadata_not_py_class_marker(self) -> None:
+        assert is_repr_c_layout(getattr(TestIntPair, "__tvm_ffi_type_info__"))
+
+    def test_is_repr_c_layout_rejects_unexplained_storage(self) -> None:
+        fields_with_gap = [
+            SimpleNamespace(size=8, alignment=8, offset=24),
+            SimpleNamespace(size=8, alignment=8, offset=40),
+        ]
+        assert not is_repr_c_layout(
+            SimpleNamespace(total_size=48, fields=fields_with_gap, parent_type_info=None)
+        )
+
+        contiguous_fields = [
+            SimpleNamespace(size=8, alignment=8, offset=24),
+            SimpleNamespace(size=8, alignment=8, offset=32),
+        ]
+        assert not is_repr_c_layout(
+            SimpleNamespace(total_size=48, fields=contiguous_fields, parent_type_info=None)
+        )
 
 
 # ###########################################################################
