@@ -536,27 +536,27 @@ struct TypeTraits<std_::Not> : public ObjectRefTypeTraitsBase<std_::Not> {
 
 namespace std_ {
 
-/*! \brief Data object for loading from a variable with indices. */
+/*! \brief Data object for loading from an expression with indices. */
 struct LoadObj : public ExprObj {
-  /*! \brief Variable being loaded. */
-  Var var;
+  /*! \brief Expression being loaded. */
+  Expr lhs;
   /*! \brief Load indices or slices. */
   List<Range> indices;
 
   /// \cond Doxygen_Suppress
   LoadObj() = default;
-  LoadObj(Ty ty, Var var, List<Range> indices)
-      : ExprObj(std::move(ty)), var(std::move(var)), indices(std::move(indices)) {}
+  LoadObj(Ty ty, Expr lhs, List<Range> indices)
+      : ExprObj(std::move(ty)), lhs(std::move(lhs)), indices(std::move(indices)) {}
 
   TVM_FFI_DECLARE_OBJECT_INFO("ffi.std.Load", LoadObj, ExprObj);
   /// \endcond
 };
 
-/*! \brief Reference wrapper for loading from a variable with indices. */
+/*! \brief Reference wrapper for loading from an expression with indices. */
 struct Load : public Expr {
   /*! \brief Construct a load expression. */
-  Load(Ty ty, Var var, List<Range> indices)
-      : Load(make_object<LoadObj>(std::move(ty), std::move(var), std::move(indices))) {}
+  Load(Ty ty, Expr lhs, List<Range> indices)
+      : Load(make_object<LoadObj>(std::move(ty), std::move(lhs), std::move(indices))) {}
   /// \cond Doxygen_Suppress
   TVM_FFI_DEFINE_OBJECT_REF_METHODS_NULLABLE(Load, Expr, LoadObj);
   /// \endcond
@@ -716,14 +716,14 @@ struct BindVarDef : public Bind {
 /*! \brief Data object for a lexical scope with carried bindings. */
 struct ScopeObj : public StmtObj {
   /*! \brief Bindings introduced by the scope. */
-  List<Bind> vars;
+  List<Bind> binds;
   /*! \brief Scope body statements. */
   List<Stmt> body;
 
   /// \cond Doxygen_Suppress
   ScopeObj() = default;
-  ScopeObj(Optional<Attrs> attrs, List<Bind> vars, List<Stmt> body)
-      : StmtObj(std::move(attrs)), vars(std::move(vars)), body(std::move(body)) {}
+  ScopeObj(Optional<Attrs> attrs, List<Bind> binds, List<Stmt> body)
+      : StmtObj(std::move(attrs)), binds(std::move(binds)), body(std::move(body)) {}
 
   TVM_FFI_DECLARE_OBJECT_INFO("ffi.std.Scope", ScopeObj, StmtObj);
   /// \endcond
@@ -732,8 +732,8 @@ struct ScopeObj : public StmtObj {
 /*! \brief Reference wrapper for a lexical scope with carried bindings. */
 struct Scope : public Stmt {
   /*! \brief Construct a lexical scope. */
-  Scope(Optional<Attrs> attrs, List<Bind> vars, List<Stmt> body)
-      : Scope(make_object<ScopeObj>(std::move(attrs), std::move(vars), std::move(body))) {}
+  Scope(Optional<Attrs> attrs, List<Bind> binds, List<Stmt> body)
+      : Scope(make_object<ScopeObj>(std::move(attrs), std::move(binds), std::move(body))) {}
   /// \cond Doxygen_Suppress
   TVM_FFI_DEFINE_OBJECT_REF_METHODS_NULLABLE(Scope, Stmt, ScopeObj);
   /// \endcond
@@ -746,8 +746,8 @@ struct ForObj : public ScopeObj {
 
   /// \cond Doxygen_Suppress
   ForObj() = default;
-  ForObj(Range range_, Optional<Attrs> attrs, List<Bind> vars, List<Stmt> body)
-      : ScopeObj(std::move(attrs), std::move(vars), std::move(body)), range_(std::move(range_)) {}
+  ForObj(Range range_, Optional<Attrs> attrs, List<Bind> binds, List<Stmt> body)
+      : ScopeObj(std::move(attrs), std::move(binds), std::move(body)), range_(std::move(range_)) {}
 
   TVM_FFI_DECLARE_OBJECT_INFO("ffi.std.For", ForObj, ScopeObj);
   /// \endcond
@@ -756,8 +756,8 @@ struct ForObj : public ScopeObj {
 /*! \brief Reference wrapper for a for loop. */
 struct For : public Scope {
   /*! \brief Construct a for loop. */
-  For(Range range_, Optional<Attrs> attrs, List<Bind> vars, List<Stmt> body)
-      : For(make_object<ForObj>(std::move(range_), std::move(attrs), std::move(vars),
+  For(Range range_, Optional<Attrs> attrs, List<Bind> binds, List<Stmt> body)
+      : For(make_object<ForObj>(std::move(range_), std::move(attrs), std::move(binds),
                                 std::move(body))) {}
   /// \cond Doxygen_Suppress
   TVM_FFI_DEFINE_OBJECT_REF_METHODS_NULLABLE(For, Scope, ForObj);
@@ -771,8 +771,8 @@ struct WhileObj : public ScopeObj {
 
   /// \cond Doxygen_Suppress
   WhileObj() = default;
-  WhileObj(Expr cond, Optional<Attrs> attrs, List<Bind> vars, List<Stmt> body)
-      : ScopeObj(std::move(attrs), std::move(vars), std::move(body)), cond(std::move(cond)) {}
+  WhileObj(Expr cond, Optional<Attrs> attrs, List<Bind> binds, List<Stmt> body)
+      : ScopeObj(std::move(attrs), std::move(binds), std::move(body)), cond(std::move(cond)) {}
 
   TVM_FFI_DECLARE_OBJECT_INFO("ffi.std.While", WhileObj, ScopeObj);
   /// \endcond
@@ -781,18 +781,18 @@ struct WhileObj : public ScopeObj {
 /*! \brief Reference wrapper for a while loop. */
 struct While : public Scope {
   /*! \brief Construct a while loop. */
-  While(Expr cond, Optional<Attrs> attrs, List<Bind> vars, List<Stmt> body)
-      : While(make_object<WhileObj>(std::move(cond), std::move(attrs), std::move(vars),
+  While(Expr cond, Optional<Attrs> attrs, List<Bind> binds, List<Stmt> body)
+      : While(make_object<WhileObj>(std::move(cond), std::move(attrs), std::move(binds),
                                     std::move(body))) {}
   /// \cond Doxygen_Suppress
   TVM_FFI_DEFINE_OBJECT_REF_METHODS_NULLABLE(While, Scope, WhileObj);
   /// \endcond
 };
 
-/*! \brief Data object for storing into a variable with indices. */
+/*! \brief Data object for storing into an expression with indices. */
 struct StoreObj : public StmtObj {
-  /*! \brief Variable being stored into. */
-  Var var;
+  /*! \brief Expression being stored into. */
+  Expr lhs;
   /*! \brief Store indices or slices. */
   List<Range> indices;
   /*! \brief Right-hand side value to store. */
@@ -800,18 +800,18 @@ struct StoreObj : public StmtObj {
 
   /// \cond Doxygen_Suppress
   StoreObj() = default;
-  StoreObj(Var var, List<Range> indices, Expr rhs)
-      : var(std::move(var)), indices(std::move(indices)), rhs(std::move(rhs)) {}
+  StoreObj(Expr lhs, List<Range> indices, Expr rhs)
+      : lhs(std::move(lhs)), indices(std::move(indices)), rhs(std::move(rhs)) {}
 
   TVM_FFI_DECLARE_OBJECT_INFO("ffi.std.Store", StoreObj, StmtObj);
   /// \endcond
 };
 
-/*! \brief Reference wrapper for storing into a variable with indices. */
+/*! \brief Reference wrapper for storing into an expression with indices. */
 struct Store : public Stmt {
   /*! \brief Construct a store statement. */
-  Store(Var var, List<Range> indices, Expr rhs)
-      : Store(make_object<StoreObj>(std::move(var), std::move(indices), std::move(rhs))) {}
+  Store(Expr lhs, List<Range> indices, Expr rhs)
+      : Store(make_object<StoreObj>(std::move(lhs), std::move(indices), std::move(rhs))) {}
   /// \cond Doxygen_Suppress
   TVM_FFI_DEFINE_OBJECT_REF_METHODS_NULLABLE(Store, Stmt, StoreObj);
   /// \endcond
@@ -839,45 +839,45 @@ struct Assert : public Stmt {
   /// \endcond
 };
 
-/*! \brief Data object for returning variables from a function. */
+/*! \brief Data object for returning expressions from a function. */
 struct ReturnObj : public StmtObj {
-  /*! \brief Returned variables. */
-  List<Var> vars;
+  /*! \brief Returned expressions. */
+  List<Expr> exprs;
 
   /// \cond Doxygen_Suppress
   ReturnObj() = default;
-  explicit ReturnObj(List<Var> vars) : vars(std::move(vars)) {}
+  explicit ReturnObj(List<Expr> exprs) : exprs(std::move(exprs)) {}
 
   TVM_FFI_DECLARE_OBJECT_INFO("ffi.std.Return", ReturnObj, StmtObj);
   /// \endcond
 };
 
-/*! \brief Reference wrapper for returning variables from a function. */
+/*! \brief Reference wrapper for returning expressions from a function. */
 struct Return : public Stmt {
   /*! \brief Construct a return statement. */
-  explicit Return(List<Var> vars) : Return(make_object<ReturnObj>(std::move(vars))) {}
+  explicit Return(List<Expr> exprs) : Return(make_object<ReturnObj>(std::move(exprs))) {}
   /// \cond Doxygen_Suppress
   TVM_FFI_DEFINE_OBJECT_REF_METHODS_NULLABLE(Return, Stmt, ReturnObj);
   /// \endcond
 };
 
-/*! \brief Data object for yielding variables from a resumable scope. */
+/*! \brief Data object for yielding expressions from a resumable scope. */
 struct YieldObj : public StmtObj {
-  /*! \brief Yielded variables. */
-  List<Var> vars;
+  /*! \brief Yielded expressions. */
+  List<Expr> exprs;
 
   /// \cond Doxygen_Suppress
   YieldObj() = default;
-  explicit YieldObj(List<Var> vars) : vars(std::move(vars)) {}
+  explicit YieldObj(List<Expr> exprs) : exprs(std::move(exprs)) {}
 
   TVM_FFI_DECLARE_OBJECT_INFO("ffi.std.Yield", YieldObj, StmtObj);
   /// \endcond
 };
 
-/*! \brief Reference wrapper for yielding variables from a resumable scope. */
+/*! \brief Reference wrapper for yielding expressions from a resumable scope. */
 struct Yield_ : public Stmt {
   /*! \brief Construct a yield statement. */
-  explicit Yield_(List<Var> vars) : Yield_(make_object<YieldObj>(std::move(vars))) {}
+  explicit Yield_(List<Expr> exprs) : Yield_(make_object<YieldObj>(std::move(exprs))) {}
   /// \cond Doxygen_Suppress
   TVM_FFI_DEFINE_OBJECT_REF_METHODS_NULLABLE(Yield_, Stmt, YieldObj);
   /// \endcond
