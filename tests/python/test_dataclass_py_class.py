@@ -5070,7 +5070,7 @@ class TestPyMethodAllowlist:
 
         collected = _collect_py_methods(Allow)
         assert collected is not None
-        names = {name for name, _, _ in collected}
+        names = {name for name, _, _, _ in collected}
         assert "__ffi_repr__" in names
         assert "__ffi_init__" not in names
         assert "__ffi_shallow_copy__" not in names

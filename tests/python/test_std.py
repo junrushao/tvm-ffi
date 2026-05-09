@@ -2783,14 +2783,16 @@ class TestDialectMnemonic:
                 assert "__ffi_mnemonic__" not in cls.__dict__
                 assert "__ffi_text_generics__" not in cls.__dict__
 
-    def test_text_print_hooks_and_dialect_mnemonics_are_independent_type_attrs(self) -> None:
+    def test_std_nodes_use_print_builders_and_dialect_mnemonics_are_type_attrs(self) -> None:
         for cls in [std.Node, std.Expr, std.AnyTy, std.Var, std.Add, std.Func, std.DictAttrs]:
             cls_any = cast(Any, cls)
             info = cls_any.__tvm_ffi_type_info__
             text_print = core._lookup_type_attr(info.type_index, "__ffi_text_print__")
+            std_schema = core._lookup_type_attr(info.type_index, "__ffi_std_schema__")
             dialect_mnemonic = core._lookup_type_attr(info.type_index, "__ffi_dialect_mnemonic__")
 
-            assert callable(text_print)
+            assert text_print is None
+            assert std_schema == info.type_index
             if cls in [std.Node, std.Expr]:
                 assert dialect_mnemonic is None
             else:

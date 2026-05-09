@@ -19,7 +19,7 @@
 from __future__ import annotations
 
 import sys
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from typing import Any, ClassVar
 
 from ..core import MISSING, TypeSchema
@@ -92,6 +92,11 @@ class Field:
           field are mapped by position, enabling alpha-equivalence.
     doc : str | None
         Optional docstring for the field.
+    std_field : str | None
+        Name of the std-kind field that this field resolves when a foreign
+        dialect reuses a std print builder.
+    print : PrintRole | Sequence[PrintRole] | None
+        Print role declaration consumed by std-kind print builders.
 
     """
 
@@ -106,7 +111,9 @@ class Field:
         "init",
         "kw_only",
         "name",
+        "print",
         "repr",
+        "std_field",
         "structural_eq",
         "type",
     )
@@ -123,11 +130,17 @@ class Field:
     kw_only: bool | None
     structural_eq: str | None
     doc: str | None
+    std_field: str | None
+    print: tuple[PrintRole, ...] | None
 
     #: Valid values for the *structural_eq* parameter.
     _VALID_STRUCTURAL_EQ_VALUES: ClassVar[frozenset[str | None]] = frozenset(
         {None, "ignore", "def"}
     )
+    #: Metadata key used to lower ``field(std_field=...)`` into reflection.
+    _STD_FIELD_METADATA_KEY: ClassVar[str] = "std_field"
+    #: Metadata key used to lower ``field(print=...)`` into reflection.
+    _PRINT_METADATA_KEY: ClassVar[str] = "print"
 
     def __init__(  # noqa: PLR0913
         self,
@@ -144,6 +157,8 @@ class Field:
         kw_only: bool | None = False,
         structural_eq: str | None = None,
         doc: str | None = None,
+        std_field: str | None = None,
+        print: PrintRole | Sequence[PrintRole] | None = None,
     ) -> None:
         # MISSING means "parameter not provided".
         # An explicit None from the user fails the callable() check,
@@ -161,6 +176,8 @@ class Field:
                 f"{sorted(Field._VALID_STRUCTURAL_EQ_VALUES, key=str)}, "
                 f"got {structural_eq!r}"
             )
+        if std_field is not None and (not isinstance(std_field, str) or not std_field):
+            raise ValueError(f"std_field must be a non-empty string or None, got {std_field!r}")
         self.name = name
         self._ty_schema = _ty_schema
         self.type = None
@@ -174,9 +191,138 @@ class Field:
         self.kw_only = kw_only
         self.structural_eq = structural_eq
         self.doc = doc
+        self.std_field = std_field
+        self.print = _normalize_print_roles(print)
+
+    def dialect_metadata(self) -> dict[str, Any]:
+        """Return field-local dialect metadata for reflection."""
+        metadata: dict[str, Any] = {}
+        if self.std_field is not None:
+            metadata[self._STD_FIELD_METADATA_KEY] = self.std_field
+        if self.print is not None:
+            roles = [role.to_json() for role in self.print]
+            metadata[self._PRINT_METADATA_KEY] = roles[0] if len(roles) == 1 else roles
+        return metadata
 
 
-def field(
+class PrintRole:
+    """A field contribution consumed by a std-kind print builder."""
+
+    __slots__ = ("attrs", "kind", "render", "target")
+
+    kind: str
+    target: str | None
+    render: str | None
+    attrs: dict[str, object]
+
+    def __init__(
+        self,
+        kind: str,
+        *,
+        target: str | None = None,
+        render: str | None = None,
+        extra_attrs: dict[str, object] | None = None,
+    ) -> None:
+        if not isinstance(kind, str) or not kind:
+            raise ValueError(f"print role kind must be a non-empty string, got {kind!r}")
+        if target is not None and (not isinstance(target, str) or not target):
+            raise ValueError(f"print role target must be a non-empty string, got {target!r}")
+        if render is not None and (not isinstance(render, str) or not render):
+            raise ValueError(f"print role render must be a non-empty string, got {render!r}")
+        self.kind = kind
+        self.target = target
+        self.render = render
+        self.attrs = {} if extra_attrs is None else dict(extra_attrs)
+
+    def to_json(self) -> dict[str, object]:
+        """Return the JSON-serializable representation stored in reflection."""
+        result: dict[str, object] = {"kind": self.kind}
+        if self.target is not None:
+            result["target"] = self.target
+        if self.render is not None:
+            result["render"] = self.render
+        result.update(self.attrs)
+        return result
+
+
+def _normalize_print_roles(
+    value: PrintRole | Sequence[PrintRole] | None,
+) -> tuple[PrintRole, ...] | None:
+    if value is None:
+        return None
+    if isinstance(value, PrintRole):
+        return (value,)
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+        roles = tuple(value)
+        if not roles:
+            raise ValueError("print role sequence must not be empty")
+        if all(isinstance(role, PrintRole) for role in roles):
+            return roles
+    raise TypeError("print must be a PrintRole, a non-empty sequence of PrintRole, or None")
+
+
+def _body_role(kind: str, body: str, *, order: int = 0, render: str | None = None) -> PrintRole:
+    if not isinstance(order, int):
+        raise TypeError(f"order must be an int, got {type(order).__name__}")
+    return PrintRole(kind, target=body, render=render, extra_attrs={"order": order})
+
+
+def ignore() -> PrintRole:
+    """Mark a field as intentionally consumed without printed syntax."""
+    return PrintRole("ignore")
+
+
+def body_prepend(body: str, *, order: int = 0, render: str | None = None) -> PrintRole:
+    """Print this field before the named body field."""
+    return _body_role("body_prepend", body, order=order, render=render)
+
+
+def body_append(body: str, *, order: int = 0, render: str | None = None) -> PrintRole:
+    """Print this field after the named body field."""
+    return _body_role("body_append", body, order=order, render=render)
+
+
+def body_wrap(body: str, *, order: int = 0, render: str | None = None) -> PrintRole:
+    """Wrap the named body field with syntax produced from this field."""
+    return _body_role("body_wrap", body, order=order, render=render)
+
+
+def slot(slot_name: str, *, render: str | None = None, **attrs: object) -> PrintRole:
+    """Declare a contribution to a named print-builder slot."""
+    if not isinstance(slot_name, str) or not slot_name:
+        raise ValueError(f"slot name must be a non-empty string, got {slot_name!r}")
+    role_attrs = dict(attrs)
+    role_attrs["slot"] = slot_name
+    return PrintRole("slot", render=render, extra_attrs=role_attrs)
+
+
+def call_arg(index: int, *, render: str | None = None) -> PrintRole:
+    """Declare that a field contributes to a positional call argument."""
+    if not isinstance(index, int) or index < 0:
+        raise ValueError(f"call_arg index must be a non-negative int, got {index!r}")
+    return slot("call.args", index=index, render=render)
+
+
+def call_kwarg(name: str, *, render: str | None = None) -> PrintRole:
+    """Declare that a field contributes to a named call keyword argument."""
+    if not isinstance(name, str) or not name:
+        raise ValueError(f"call_kwarg name must be a non-empty string, got {name!r}")
+    return slot("call.kwargs", name=name, render=render)
+
+
+def attrs(*, render: str | None = None) -> PrintRole:
+    """Declare that a field contributes an attrs bundle."""
+    return slot("attrs", render=render)
+
+
+def annotation_of(target: str, *, render: str | None = None) -> PrintRole:
+    """Declare that a field contributes an annotation to another slot."""
+    if target not in {"args", "return"}:
+        raise ValueError(f"annotation target must be 'args' or 'return', got {target!r}")
+    return slot(f"{target}.annotation", render=render)
+
+
+def field(  # noqa: PLR0913
     *,
     default: object = MISSING,
     default_factory: Callable[[], object] | None = MISSING,  # type: ignore[assignment]
@@ -188,6 +334,8 @@ def field(
     kw_only: bool | None = None,
     structural_eq: str | None = None,
     doc: str | None = None,
+    std_field: str | None = None,
+    print: PrintRole | Sequence[PrintRole] | None = None,
 ) -> Any:
     """Customize a field in a ``@py_class``-decorated class.
 
@@ -230,6 +378,11 @@ def field(
         as a definition region for variable binding.
     doc
         Optional docstring for the field.
+    std_field
+        Name of the std-kind field that this field resolves when a foreign
+        dialect reuses a std print builder.
+    print
+        Print role declaration consumed by std-kind print builders.
 
     Returns
     -------
@@ -264,4 +417,6 @@ def field(
         kw_only=kw_only,
         structural_eq=structural_eq,
         doc=doc,
+        std_field=std_field,
+        print=print,
     )

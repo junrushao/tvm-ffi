@@ -2866,7 +2866,8 @@ struct VarInfo : public ObjectRef {
  * \brief Data object for the IR-to-document-AST printer.
  *
  * IRPrinterObj converts IR objects into the text format AST by dispatching
- * through __ffi_text_print__ methods registered on each IR type. It maintains:
+ * through exact __ffi_text_print__ methods, std-schema declarations, or
+ * registered std print builders. It maintains:
  * - A variable table (obj2info / defined_names) for name deduplication.
  * - A frame stack for scoped statement collection.
  *
@@ -3027,13 +3028,12 @@ struct IRPrinterObj : public Object {
   Optional<ExprAST> VarGet(const ObjectRef& obj);
 
   /*!
-   * \brief Convert a source value to a text format AST node using registered
-   *        __ffi_text_print__ dispatch.
+   * \brief Convert a source value to a text format AST node using IR print dispatch.
    *
    * For primitive types (None, bool, int, float, string), returns the
-   * corresponding LiteralAST directly. For Object types, dispatches to
-   * the __ffi_text_print__ method registered for that type, which should return
-   * a NodeAST.
+   * corresponding LiteralAST directly. For Object types, dispatches to an
+   * exact __ffi_text_print__ method, a std-schema print builder, an
+   * inherited std builder, or the default reflection printer.
    *
    * \param source The IR value to print (may be a primitive or an Object).
    * \param path The access path identifying \p source within the IR tree.
@@ -3043,7 +3043,7 @@ struct IRPrinterObj : public Object {
    * IRPrinter printer(PrinterConfig());
    * DefaultFrame frame;
    * printer->FramePush(frame);
-   * // Print an IR object; dispatches to its __ffi_text_print__ method
+   * // Print an IR object through IR print dispatch.
    * Any doc = printer->operator()(Any(some_ir_obj), AccessPath::Root());
    * // Print a primitive value; returns a LiteralAST directly
    * Any lit = printer->operator()(Any(42), AccessPath::Root().Attr("value"));
@@ -3185,6 +3185,13 @@ struct IRPrinter : public ObjectRef {
 };
 
 namespace details {
+/*! \brief Internal std-kind print builder signature. */
+using IRPrintBuilder = NodeAST (*)(const ObjectRef& obj, const IRPrinter& printer,
+                                   const AccessPath& path, int32_t std_kind_type_index);
+/*! \brief Register a std-kind print builder by runtime type index. */
+TVM_FFI_EXTRA_CXX_API void RegisterIRPrintBuilder(int32_t type_index, IRPrintBuilder builder);
+/*! \brief Lookup a registered std-kind print builder by runtime type index. */
+TVM_FFI_EXTRA_CXX_API IRPrintBuilder LookupIRPrintBuilder(int32_t type_index);
 /*! \brief Internal dispatch for __ffi_text_print__. Used by IRPrinterObj::operator(). */
 TVM_FFI_EXTRA_CXX_API NodeAST IRPrintDispatch(AnyView obj, AnyView printer, AnyView path);
 /*! \brief Convert a text format AST node to a Python-style source string. */

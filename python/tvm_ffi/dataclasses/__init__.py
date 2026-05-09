@@ -21,7 +21,21 @@ from tvm_ffi.core import MISSING, Object
 from .c_class import c_class
 from .common import asdict, astuple, fields, is_dataclass, replace
 from .enum import Enum, EnumAttrMap, IntEnum, StrEnum, auto, entry
-from .field import KW_ONLY, Field, field
+from .field import (
+    KW_ONLY,
+    Field,
+    PrintRole,
+    annotation_of,
+    attrs,
+    body_append,
+    body_prepend,
+    body_wrap,
+    call_arg,
+    call_kwarg,
+    field,
+    ignore,
+    slot,
+)
 from .py_class import py_class
 
 __all__ = [
@@ -32,15 +46,25 @@ __all__ = [
     "Field",
     "IntEnum",
     "Object",
+    "PrintRole",
     "StrEnum",
+    "annotation_of",
     "asdict",
     "astuple",
+    "attrs",
     "auto",
+    "body_append",
+    "body_prepend",
+    "body_wrap",
     "c_class",
+    "call_arg",
+    "call_kwarg",
     "entry",
     "field",
     "fields",
+    "ignore",
     "is_dataclass",
     "py_class",
     "replace",
+    "slot",
 ]

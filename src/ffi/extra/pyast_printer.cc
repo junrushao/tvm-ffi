@@ -34,6 +34,7 @@
 #include <cmath>
 #include <iomanip>
 #include <map>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -1805,28 +1806,94 @@ String PyAST2Str(NodeAST node, PrinterConfig cfg) {  // NOLINT(*-value-param)
 }
 
 // ============================================================================
-// IRPrintDispatch — look up __ffi_text_print__ type attribute and call it
+// IRPrintDispatch
 // ============================================================================
+
+std::unordered_map<int32_t, IRPrintBuilder>& IRPrintBuilderRegistry() {
+  static std::unordered_map<int32_t, IRPrintBuilder> registry;
+  return registry;
+}
+
+void RegisterIRPrintBuilder(int32_t type_index, IRPrintBuilder builder) {
+  if (builder == nullptr) {
+    TVM_FFI_THROW(ValueError) << "Cannot register a null IR print builder for type index "
+                              << type_index;
+  }
+  IRPrintBuilderRegistry()[type_index] = builder;
+}
+
+IRPrintBuilder LookupIRPrintBuilder(int32_t type_index) {
+  auto it = IRPrintBuilderRegistry().find(type_index);
+  return it == IRPrintBuilderRegistry().end() ? nullptr : it->second;
+}
+
+NodeAST CallTextPrint(AnyView obj, AnyView printer_view, AnyView path, AnyView func_view,
+                      int32_t owner_type_index) {
+  Function func = func_view.cast<Function>();
+  Any ret;
+  AnyView args[3] = {obj, printer_view, path};
+  func.CallPacked(args, 3, &ret);
+  if (ret == nullptr) {
+    TVM_FFI_THROW(ValueError) << "__ffi_text_print__ of type '"
+                              << TypeIndexToTypeKey(owner_type_index)
+                              << "' returned None; it must return a NodeAST";
+  }
+  return ret.cast<NodeAST>();
+}
 
 NodeAST IRPrintDispatch(AnyView obj, AnyView printer_view, AnyView path) {
   int32_t type_index = obj.type_index();
+  ObjectRef obj_ref = obj.cast<ObjectRef>();
+  IRPrinter printer = printer_view.cast<IRPrinter>();
+  AccessPath access_path = path.cast<AccessPath>();
 
   static reflection::TypeAttrColumn text_print_col(reflection::type_attr::kTextPrint);
-  AnyView func_view = text_print_col[type_index];
-  if (func_view != nullptr) {
-    Function func = func_view.cast<Function>();
-    Any ret;
-    AnyView args[3] = {obj, printer_view, path};
-    func.CallPacked(args, 3, &ret);
-    if (ret == nullptr) {
-      TVM_FFI_THROW(ValueError) << "__ffi_text_print__ of type '" << TypeIndexToTypeKey(type_index)
-                                << "' returned None; it must return a NodeAST";
+  static reflection::TypeAttrColumn std_schema_col(reflection::type_attr::kStdSchema);
+  const TVMFFITypeInfo* type_info = TVMFFIGetTypeInfo(type_index);
+
+  auto try_dispatch_type = [&](int32_t candidate_type_index) -> std::optional<NodeAST> {
+    AnyView func_view = text_print_col[candidate_type_index];
+    if (func_view != nullptr) {
+      return CallTextPrint(obj, printer_view, path, func_view, candidate_type_index);
     }
-    return ret.cast<NodeAST>();
+
+    AnyView std_schema_view = std_schema_col[candidate_type_index];
+    if (std_schema_view != nullptr) {
+      std::optional<int64_t> std_schema = std_schema_view.as<int64_t>();
+      if (!std_schema.has_value()) {
+        TVM_FFI_THROW(ValueError) << "Type `" << TypeIndexToTypeKey(candidate_type_index)
+                                  << "` declares " << reflection::type_attr::kStdSchema
+                                  << ", but the value is not an integer type index";
+      }
+      int32_t std_schema_type_index = static_cast<int32_t>(std_schema.value());
+      IRPrintBuilder builder = LookupIRPrintBuilder(std_schema_type_index);
+      if (builder == nullptr) {
+        TVM_FFI_THROW(ValueError) << "Type `" << TypeIndexToTypeKey(candidate_type_index)
+                                  << "` declares " << reflection::type_attr::kStdSchema << " `"
+                                  << TypeIndexToTypeKey(std_schema_type_index)
+                                  << "`, but no std-kind print builder is registered";
+      }
+      return builder(obj_ref, printer, access_path, std_schema_type_index);
+    }
+
+    if (IRPrintBuilder builder = LookupIRPrintBuilder(candidate_type_index)) {
+      return builder(obj_ref, printer, access_path, candidate_type_index);
+    }
+
+    return std::nullopt;
+  };
+
+  if (std::optional<NodeAST> result = try_dispatch_type(type_index)) {
+    return result.value();
+  }
+  for (int32_t i = type_info->type_depth - 1; i >= 0; --i) {
+    if (std::optional<NodeAST> result =
+            try_dispatch_type(type_info->type_ancestors[i]->type_index)) {
+      return result.value();
+    }
   }
 
-  return DefaultPrint(obj.cast<ObjectRef>(), printer_view.cast<IRPrinter>(),
-                      path.cast<AccessPath>());
+  return DefaultPrint(std::move(obj_ref), std::move(printer), std::move(access_path));
 }
 
 }  // namespace details
@@ -1848,6 +1915,7 @@ TVM_FFI_STATIC_INIT_BLOCK() {
   // Ensure __ffi_text_print__ type attribute column exists
   refl::EnsureTypeAttrColumn(refl::type_attr::kTextPrint);
   refl::EnsureTypeAttrColumn(refl::type_attr::kDialectMnemonic);
+  refl::EnsureTypeAttrColumn(refl::type_attr::kStdSchema);
   // PrinterConfig
   refl::ObjectDef<text::PrinterConfigObj>()
       .def_rw("def_free_var", &text::PrinterConfigObj::def_free_var)

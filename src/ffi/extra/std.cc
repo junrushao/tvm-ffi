@@ -20,6 +20,7 @@
  * \file src/ffi/extra/std.cc
  * \brief Standard core dialect registration and text printing.
  */
+#include <tvm/ffi/extra/json.h>
 #include <tvm/ffi/extra/pyast.h>
 #include <tvm/ffi/extra/std.h>
 #include <tvm/ffi/function.h>
@@ -28,9 +29,12 @@
 #include <tvm/ffi/reflection/registry.h>
 
 #include <algorithm>
+#include <optional>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
+#include <vector>
 
 namespace tvm {
 namespace ffi {
@@ -101,13 +105,6 @@ TVM_FFI_STD_TEXT_PRINT_DECL(Continue)
 TVM_FFI_STD_TEXT_PRINT_DECL(DictAttrs)
 
 #undef TVM_FFI_STD_TEXT_PRINT_DECL
-
-template <typename T>
-auto TextPrintHook() {
-  return
-      [](const T& obj, const text::IRPrinter& printer,
-         const refl::AccessPath& path) -> text::NodeAST { return TextPrint(obj, printer, path); };
-}
 
 Array<String> DialectMnemonic(int32_t type_index) {
   static refl::TypeAttrColumn dialect_mnemonic_col(refl::type_attr::kDialectMnemonic);
@@ -188,9 +185,288 @@ text::ExprAST CallCustomMnemonic(const text::PrinterConfig& cfg, const ObjectRef
   return text::IdAST(std::move(printed_name));
 }
 
+class ResolvedPrintInfo {
+ public:
+  ResolvedPrintInfo(ObjectRef source_obj, int32_t std_kind_type_index)
+      : source_obj_(std::move(source_obj)), std_kind_type_index_(std_kind_type_index) {
+    this->Collect();
+  }
+
+  Any ReadStdField(const String& std_field_name) const {
+    const TVMFFIFieldInfo* source_field = this->ResolveStdField(std_field_name);
+    return refl::FieldGetter(source_field)(this->source_obj_);
+  }
+
+  ObjectRef ReadStdFieldObject(const String& std_field_name) const {
+    return this->ReadStdField(std_field_name).cast<ObjectRef>();
+  }
+
+  Optional<Any> TryReadStdField(const String& std_field_name) const {
+    const TVMFFIFieldInfo* source_field = this->TryResolveStdField(std_field_name);
+    if (source_field == nullptr) {
+      return {};
+    }
+    return refl::FieldGetter(source_field)(this->source_obj_);
+  }
+
+  refl::AccessPath PathForStdField(const refl::AccessPath& object_path,
+                                   const String& std_field_name) const {
+    const TVMFFIFieldInfo* source_field = this->ResolveStdField(std_field_name);
+    return object_path->Attr(String(source_field->name));
+  }
+
+  refl::AccessPath PathForField(const refl::AccessPath& object_path,
+                                const TVMFFIFieldInfo* field) const {
+    return object_path->Attr(String(field->name));
+  }
+
+  struct PrintPart {
+    String kind;
+    String target;
+    int64_t order = 0;
+    String render;
+    const TVMFFIFieldInfo* field = nullptr;
+    int64_t ordinal = 0;
+  };
+
+  std::vector<PrintPart> Parts(const String& kind, const String& target) const {
+    std::vector<PrintPart> result;
+    for (const PrintPart& part : this->print_parts_) {
+      if (part.kind == kind && part.target == target) {
+        result.push_back(part);
+      }
+    }
+    std::stable_sort(result.begin(), result.end(), [](const PrintPart& lhs, const PrintPart& rhs) {
+      if (lhs.order != rhs.order) {
+        return lhs.order < rhs.order;
+      }
+      return lhs.ordinal < rhs.ordinal;
+    });
+    return result;
+  }
+
+  Any ReadField(const String& field_name) const {
+    auto it = this->source_fields_by_name_.find(field_name);
+    if (it == this->source_fields_by_name_.end()) {
+      TVM_FFI_THROW(ValueError) << "Type `" << this->source_obj_->GetTypeKey()
+                                << "` has no reflected field `" << field_name << "`";
+    }
+    return refl::FieldGetter(it->second)(this->source_obj_);
+  }
+
+  Function FindMethod(const String& method_name) const {
+    auto it = this->methods_by_name_.find(method_name);
+    if (it == this->methods_by_name_.end()) {
+      TVM_FFI_THROW(ValueError) << "Type `" << this->source_obj_->GetTypeKey()
+                                << "` has no reflected method `" << method_name << "`";
+    }
+    return it->second;
+  }
+
+  const ObjectRef& source_obj() const { return source_obj_; }
+
+  bool HasAnyPrintPart() const { return !this->print_parts_.empty(); }
+
+ private:
+  static std::optional<json::Object> ParseMetadata(const TVMFFIByteArray& metadata,
+                                                   const String& context) {
+    if (metadata.size == 0) {
+      return {};
+    }
+    String parse_error;
+    String metadata_json(metadata.data, metadata.size);
+    Any parsed = json::Parse(metadata_json, &parse_error);
+    if (!parse_error.empty()) {
+      TVM_FFI_THROW(ValueError) << "Invalid metadata JSON for " << context << ": " << parse_error;
+    }
+    std::optional<json::Object> obj = parsed.as<json::Object>();
+    if (!obj.has_value()) {
+      TVM_FFI_THROW(ValueError) << "Metadata for " << context << " must be a JSON object";
+    }
+    return obj;
+  }
+
+  static bool HasKey(const json::Object& obj, const String& key) { return obj.count(key) != 0; }
+
+  static std::optional<String> GetString(const json::Object& obj, const String& key) {
+    if (!HasKey(obj, key)) {
+      return {};
+    }
+    std::optional<String> value = obj[key].as<String>();
+    if (!value.has_value()) {
+      TVM_FFI_THROW(ValueError) << "Metadata key `" << key << "` must be a string";
+    }
+    return value;
+  }
+
+  static int64_t GetIntOrDefault(const json::Object& obj, const String& key,
+                                 int64_t default_value) {
+    if (!HasKey(obj, key)) {
+      return default_value;
+    }
+    std::optional<int64_t> value = obj[key].as<int64_t>();
+    if (!value.has_value()) {
+      TVM_FFI_THROW(ValueError) << "Metadata key `" << key << "` must be an integer";
+    }
+    return value.value();
+  }
+
+  void AddRole(const json::Object& role, const TVMFFIFieldInfo* field) {
+    std::optional<String> kind = GetString(role, "kind");
+    if (!kind.has_value()) {
+      TVM_FFI_THROW(ValueError) << "Print role metadata must define string key `kind`";
+    }
+    if (kind.value() == "ignore") {
+      if (field != nullptr) {
+        this->consumed_fields_.insert(String(field->name));
+      }
+      return;
+    }
+
+    std::optional<String> target = GetString(role, "target");
+    if (!target.has_value()) {
+      std::optional<String> slot = GetString(role, "slot");
+      target = slot.has_value() ? slot : String("");
+    }
+
+    PrintPart part;
+    part.kind = kind.value();
+    part.target = target.value();
+    part.order = GetIntOrDefault(role, "order", 0);
+    if (std::optional<String> render = GetString(role, "render")) {
+      part.render = render.value();
+    }
+    part.field = field;
+    part.ordinal = static_cast<int64_t>(this->print_parts_.size());
+    if (field != nullptr) {
+      this->consumed_fields_.insert(String(field->name));
+    }
+    this->print_parts_.push_back(std::move(part));
+  }
+
+  void AddRolesFromValue(const Any& value, const TVMFFIFieldInfo* field) {
+    if (std::optional<json::Object> role = value.as<json::Object>()) {
+      this->AddRole(role.value(), field);
+      return;
+    }
+    if (std::optional<json::Array> roles = value.as<json::Array>()) {
+      for (const Any& item : roles.value()) {
+        std::optional<json::Object> role = item.as<json::Object>();
+        if (!role.has_value()) {
+          TVM_FFI_THROW(ValueError) << "Print role arrays must contain JSON objects";
+        }
+        this->AddRole(role.value(), field);
+      }
+      return;
+    }
+    TVM_FFI_THROW(ValueError) << "Print metadata must be a JSON object or array of objects";
+  }
+
+  void CollectField(const TVMFFIFieldInfo* field) {
+    String field_name(field->name);
+    this->source_fields_by_name_[field_name] = field;
+
+    std::optional<json::Object> metadata =
+        ParseMetadata(field->metadata, String("field `") + field_name + "`");
+    if (!metadata.has_value()) {
+      return;
+    }
+
+    if (std::optional<String> std_field = GetString(metadata.value(), "std_field")) {
+      this->std_field_bindings_[std_field.value()].push_back(field);
+      this->consumed_fields_.insert(field_name);
+    }
+    String print_key("print");
+    if (HasKey(metadata.value(), print_key)) {
+      this->AddRolesFromValue(metadata.value()[print_key], field);
+    }
+  }
+
+  void CollectMethod(const TVMFFIMethodInfo* method) {
+    String method_name(method->name);
+    Function method_fn = AnyView::CopyFromTVMFFIAny(method->method).cast<Function>();
+    this->methods_by_name_[method_name] = method_fn;
+  }
+
+  void ValidateConsumedFields() const {
+    for (const auto& kv : this->source_fields_by_name_) {
+      const String& field_name = kv.first;
+      if (this->consumed_fields_.count(field_name) != 0) {
+        continue;
+      }
+      if (this->std_kind_field_names_.count(field_name) != 0) {
+        continue;
+      }
+      TVM_FFI_THROW(ValueError) << "Field `" << field_name << "` in `"
+                                << this->source_obj_->GetTypeKey()
+                                << "` is not consumed by std field resolution or print roles";
+    }
+  }
+
+  void Collect() {
+    const TVMFFITypeInfo* std_kind_info = TVMFFIGetTypeInfo(this->std_kind_type_index_);
+    refl::ForEachFieldInfo(std_kind_info, [&](const TVMFFIFieldInfo* field) {
+      this->std_kind_field_names_.insert(String(field->name));
+    });
+
+    const TVMFFITypeInfo* source_info = TVMFFIGetTypeInfo(this->source_obj_->type_index());
+    refl::ForEachFieldInfo(source_info,
+                           [&](const TVMFFIFieldInfo* field) { this->CollectField(field); });
+    for (int32_t i = 1; i < source_info->type_depth; ++i) {
+      const TVMFFITypeInfo* ancestor_info = source_info->type_ancestors[i];
+      for (int32_t j = 0; j < ancestor_info->num_methods; ++j) {
+        this->CollectMethod(ancestor_info->methods + j);
+      }
+    }
+    for (int32_t i = 0; i < source_info->num_methods; ++i) {
+      this->CollectMethod(source_info->methods + i);
+    }
+
+    this->ValidateConsumedFields();
+  }
+
+  const TVMFFIFieldInfo* TryResolveStdField(const String& std_field_name) const {
+    auto projected = this->std_field_bindings_.find(std_field_name);
+    if (projected != this->std_field_bindings_.end()) {
+      const std::vector<const TVMFFIFieldInfo*>& fields = projected->second;
+      if (fields.size() != 1) {
+        TVM_FFI_THROW(ValueError) << "Multiple fields in `" << this->source_obj_->GetTypeKey()
+                                  << "` resolve std field `" << std_field_name << "`";
+      }
+      return fields[0];
+    }
+
+    auto same_name = this->source_fields_by_name_.find(std_field_name);
+    if (same_name != this->source_fields_by_name_.end() &&
+        this->std_kind_field_names_.count(std_field_name) != 0) {
+      return same_name->second;
+    }
+    return nullptr;
+  }
+
+  const TVMFFIFieldInfo* ResolveStdField(const String& std_field_name) const {
+    const TVMFFIFieldInfo* field = this->TryResolveStdField(std_field_name);
+    if (field == nullptr) {
+      TVM_FFI_THROW(ValueError) << "No field in `" << this->source_obj_->GetTypeKey()
+                                << "` resolves std field `" << std_field_name << "` for std kind `"
+                                << TypeIndexToTypeKey(this->std_kind_type_index_) << "`";
+    }
+    return field;
+  }
+
+  ObjectRef source_obj_;
+  int32_t std_kind_type_index_;
+  std::unordered_map<String, const TVMFFIFieldInfo*> source_fields_by_name_;
+  std::unordered_map<String, Function> methods_by_name_;
+  std::unordered_map<String, std::vector<const TVMFFIFieldInfo*>> std_field_bindings_;
+  std::unordered_set<String> std_kind_field_names_;
+  std::unordered_set<String> consumed_fields_;
+  std::vector<PrintPart> print_parts_;
+};
+
 class DialectFrame {
  public:
-  DialectFrame(const text::IRPrinter& printer, const Node& obj) : printer_(printer.get()) {
+  DialectFrame(const text::IRPrinter& printer, const ObjectRef& obj) : printer_(printer.get()) {
     printer_->dialects.push_back(Dialect(obj.type_index()));
   }
 
@@ -632,6 +908,1324 @@ text::NodeAST ApplyTextGenericOrFallback(const NodeType& obj, const refl::Access
     }
   }
   return fallback();
+}
+
+Any InvokePrintPartMethod(const ResolvedPrintInfo& info, const Function& method,
+                          const text::IRPrinter& printer, const refl::AccessPath& path,
+                          const std::vector<Any>& values) {
+  std::vector<Any> owned_args;
+  owned_args.reserve(values.size() + 3);
+  owned_args.push_back(info.source_obj());
+  owned_args.push_back(printer);
+  owned_args.push_back(path);
+  for (const Any& value : values) {
+    owned_args.push_back(value);
+  }
+
+  std::vector<AnyView> arg_views;
+  arg_views.reserve(owned_args.size());
+  for (const Any& arg : owned_args) {
+    arg_views.push_back(arg);
+  }
+
+  Any result;
+  method.CallPacked(arg_views.data(), static_cast<int32_t>(arg_views.size()), &result);
+  return result;
+}
+
+class PrintBuilderBase {
+ protected:
+  // Shared operational layer for std-kind builders.  ResolvedPrintInfo owns the
+  // reflection facts; this base class turns those facts into the read/path/render
+  // helpers that concrete builders need while keeping the original object intact.
+  PrintBuilderBase(ObjectRef obj, text::IRPrinter printer, refl::AccessPath path,
+                   int32_t std_kind_type_index)
+      : obj_(std::move(obj)),
+        printer_(std::move(printer)),
+        path_(std::move(path)),
+        std_kind_type_index_(std_kind_type_index),
+        info_(obj_, std_kind_type_index_) {}
+
+  Any ReadStdField(const String& std_field_name) const {
+    return this->info_.ReadStdField(std_field_name);
+  }
+
+  ObjectRef ReadStdFieldObject(const String& std_field_name) const {
+    return this->info_.ReadStdFieldObject(std_field_name);
+  }
+
+  Optional<Any> TryReadStdField(const String& std_field_name) const {
+    return this->info_.TryReadStdField(std_field_name);
+  }
+
+  Optional<Any> TryReadOptionalStdField(const String& std_field_name) const {
+    Optional<Any> value = this->TryReadStdField(std_field_name);
+    if (!value.has_value() || value.value() == nullptr) {
+      return {};
+    }
+    return value;
+  }
+
+  List<Any> ReadStdFieldList(const String& std_field_name) const {
+    return this->ReadStdField(std_field_name).cast<List<Any>>();
+  }
+
+  refl::AccessPath PathForStdField(const String& std_field_name) const {
+    return this->info_.PathForStdField(this->path_, std_field_name);
+  }
+
+  bool HasAnyPrintPart() const { return this->info_.HasAnyPrintPart(); }
+
+  void CheckNoCustomPrintParts(const char* builder_name) const {
+    if (!this->HasAnyPrintPart()) {
+      return;
+    }
+    TVM_FFI_THROW(ValueError) << builder_name << " for `" << this->obj_->GetTypeKey()
+                              << "` does not consume custom print roles";
+  }
+
+  bool AppendOptionalAttrsFieldAsKwargs(const String& std_field_name, List<String>* kwargs_keys,
+                                        List<text::ExprAST>* kwargs_values) const {
+    Optional<Any> attrs = this->TryReadOptionalStdField(std_field_name);
+    return attrs.has_value() &&
+           AppendAttrsAsKwargs(
+               this->printer_->operator()(attrs.value(), this->PathForStdField(std_field_name))
+                   .cast<text::ExprAST>(),
+               kwargs_keys, kwargs_values);
+  }
+
+  List<Any> ReadOptionalBindList() const {
+    Optional<Any> value = this->TryReadOptionalStdField("binds");
+    if (!value.has_value()) {
+      return {};
+    }
+    return value.value().cast<List<Any>>();
+  }
+
+  text::ExprAST PrintExprField(const String& std_field_name) const {
+    return this->printer_
+        ->operator()(this->ReadStdField(std_field_name), this->PathForStdField(std_field_name))
+        .cast<text::ExprAST>();
+  }
+
+  Optional<text::ExprAST> PrintOptionalExprField(const String& std_field_name) const {
+    Optional<Any> value = this->TryReadOptionalStdField(std_field_name);
+    if (!value.has_value()) {
+      return {};
+    }
+    return this->printer_->operator()(value.value(), this->PathForStdField(std_field_name))
+        .cast<text::ExprAST>();
+  }
+
+  List<text::ExprAST> PrintExprListField(const String& std_field_name) const {
+    List<Any> values = this->ReadStdFieldList(std_field_name);
+    return this->PrintExprList(values, this->PathForStdField(std_field_name));
+  }
+
+  List<text::StmtAST> PrintStmtListField(const String& std_field_name) const {
+    List<Any> values = this->ReadStdFieldList(std_field_name);
+    return this->PrintStmtList(values, this->PathForStdField(std_field_name));
+  }
+
+  List<text::ExprAST> PrintExprList(const List<Any>& values,
+                                    const refl::AccessPath& values_path) const {
+    List<text::ExprAST> result;
+    int64_t n = static_cast<int64_t>(values.size());
+    result.reserve(n);
+    for (int64_t i = 0; i < n; ++i) {
+      result.push_back(
+          this->printer_->operator()(values[i], values_path->ArrayItem(i)).cast<text::ExprAST>());
+    }
+    return result;
+  }
+
+  List<text::StmtAST> PrintStmtList(const List<Any>& values,
+                                    const refl::AccessPath& values_path) const {
+    List<text::StmtAST> result;
+    int64_t n = static_cast<int64_t>(values.size());
+    result.reserve(n);
+    for (int64_t i = 0; i < n; ++i) {
+      result.push_back(
+          this->printer_->operator()(values[i], values_path->ArrayItem(i)).cast<text::StmtAST>());
+    }
+    return result;
+  }
+
+  Optional<String> GenericMnemonic() const {
+    Array<String> dialect_mnemonic = DialectMnemonic(this->obj_->type_index());
+    if (dialect_mnemonic.size() != 3) {
+      return {};
+    }
+    return dialect_mnemonic[2];
+  }
+
+  bool CanUseStdGeneric(const CachedPrinter& cache, const String& generic) const {
+    Optional<String> obj_generic = this->GenericMnemonic();
+    Optional<String> common_dialect = cache.CommonDialect();
+    return obj_generic.has_value() && obj_generic.value() == generic &&
+           common_dialect.has_value() && common_dialect.value() == "std";
+  }
+
+  List<text::StmtAST> PrintBody(const String& body_field_name) const {
+    List<text::StmtAST> body;
+    // Prefix hooks run before the body so render methods can update printer
+    // state, such as declaring names that the body may reference.
+    for (const ResolvedPrintInfo::PrintPart& part :
+         this->info_.Parts("body_prepend", body_field_name)) {
+      this->AppendAnyAsStatements(this->RenderPrintPart(part), this->PathForPrintPart(part), &body);
+    }
+
+    body.reserve(static_cast<int64_t>(body.size()) + 1);
+    this->AppendAnyAsStatements(this->ReadStdField(body_field_name),
+                                this->PathForStdField(body_field_name), &body);
+
+    for (const ResolvedPrintInfo::PrintPart& part :
+         this->info_.Parts("body_append", body_field_name)) {
+      this->AppendAnyAsStatements(this->RenderPrintPart(part), this->PathForPrintPart(part), &body);
+    }
+
+    std::vector<ResolvedPrintInfo::PrintPart> wrappers =
+        this->info_.Parts("body_wrap", body_field_name);
+    for (auto it = wrappers.rbegin(); it != wrappers.rend(); ++it) {
+      Any wrapped_body = text::StmtBlockAST(body);
+      List<text::StmtAST> next_body;
+      this->AppendAnyAsStatements(this->RenderPrintPart(*it, {std::move(wrapped_body)}),
+                                  this->PathForPrintPart(*it), &next_body);
+      body = std::move(next_body);
+    }
+    return body;
+  }
+
+  refl::AccessPath PathForPrintPart(const ResolvedPrintInfo::PrintPart& part) const {
+    this->CheckPrintPartHasField(part);
+    return this->info_.PathForField(this->path_, part.field);
+  }
+
+  Any RenderPrintPart(const ResolvedPrintInfo::PrintPart& part,
+                      std::vector<Any> extra_args = {}) const {
+    this->CheckPrintPartHasField(part);
+
+    std::vector<Any> values;
+    values.reserve(1 + extra_args.size());
+    values.push_back(this->info_.ReadField(String(part.field->name)));
+    if (part.render.empty()) {
+      if (!extra_args.empty()) {
+        TVM_FFI_THROW(ValueError)
+            << "Print role `" << part.kind << "` on field `" << String(part.field->name) << "` of `"
+            << this->obj_->GetTypeKey()
+            << "` requires a render method because the builder passes extra state";
+      }
+      return values[0];
+    }
+
+    values.insert(values.end(), extra_args.begin(), extra_args.end());
+    return InvokePrintPartMethod(this->info_, this->info_.FindMethod(part.render), this->printer_,
+                                 this->PathForPrintPart(part), values);
+  }
+
+  void AppendAnyAsStatements(Any value, const refl::AccessPath& value_path,
+                             List<text::StmtAST>* out) const {
+    if (value == nullptr) {
+      return;
+    }
+    if (std::optional<List<Any>> values = value.as<List<Any>>()) {
+      int64_t n = static_cast<int64_t>(values.value().size());
+      out->reserve(static_cast<int64_t>(out->size()) + n);
+      for (int64_t i = 0; i < n; ++i) {
+        this->AppendAnyAsStatements(values.value()[i], value_path->ArrayItem(i), out);
+      }
+      return;
+    }
+    if (std::optional<text::StmtBlockAST> block = value.as<text::StmtBlockAST>()) {
+      for (const text::StmtAST& stmt : block.value()->stmts) {
+        out->push_back(stmt);
+      }
+      return;
+    }
+    if (std::optional<text::StmtAST> stmt = value.as<text::StmtAST>()) {
+      out->push_back(stmt.value());
+      return;
+    }
+    if (std::optional<text::ExprAST> expr = value.as<text::ExprAST>()) {
+      out->push_back(text::ExprStmtAST(expr.value()));
+      return;
+    }
+
+    Any printed = this->printer_->operator()(value, value_path);
+    if (std::optional<text::StmtBlockAST> block = printed.as<text::StmtBlockAST>()) {
+      for (const text::StmtAST& stmt : block.value()->stmts) {
+        out->push_back(stmt);
+      }
+      return;
+    }
+    if (std::optional<text::StmtAST> stmt = printed.as<text::StmtAST>()) {
+      out->push_back(stmt.value());
+      return;
+    }
+    if (std::optional<text::ExprAST> expr = printed.as<text::ExprAST>()) {
+      out->push_back(text::ExprStmtAST(expr.value()));
+      return;
+    }
+    TVM_FFI_THROW(ValueError)
+        << "Print contribution did not produce an expression or statement AST";
+  }
+
+  const ObjectRef obj_;
+  const text::IRPrinter printer_;
+  const refl::AccessPath path_;
+  const int32_t std_kind_type_index_;
+  const ResolvedPrintInfo info_;
+
+ private:
+  void CheckPrintPartHasField(const ResolvedPrintInfo::PrintPart& part) const {
+    if (part.field != nullptr) {
+      return;
+    }
+    TVM_FFI_THROW(ValueError) << "Print role `" << part.kind << "` in `" << this->obj_->GetTypeKey()
+                              << "` is not associated with a reflected field";
+  }
+};
+
+text::ExprAST DefineForeignVar(const text::IRPrinter& printer, const ObjectRef& obj,
+                               const String& name) {
+  if (!printer->VarIsDefined(obj)) {
+    return printer->VarDef(name, obj, {});
+  }
+  Optional<text::ExprAST> ret = printer->VarGet(obj);
+  if (!ret.has_value()) {
+    TVM_FFI_THROW(ValueError) << "ffi.std.Var printer failed to fetch variable " << name;
+  }
+  return ret.value();
+}
+
+std::optional<int32_t> ResolveStdSchemaTypeIndex(const ObjectRef& obj) {
+  static refl::TypeAttrColumn std_schema_col(refl::type_attr::kStdSchema);
+  auto try_lookup = [&](int32_t type_index) -> std::optional<int32_t> {
+    AnyView std_schema_view = std_schema_col[type_index];
+    if (std_schema_view == nullptr) {
+      return {};
+    }
+    std::optional<int64_t> std_schema = std_schema_view.as<int64_t>();
+    if (!std_schema.has_value()) {
+      TVM_FFI_THROW(ValueError) << "Type `" << TypeIndexToTypeKey(type_index) << "` declares "
+                                << refl::type_attr::kStdSchema
+                                << ", but the value is not an integer type index";
+    }
+    return static_cast<int32_t>(std_schema.value());
+  };
+
+  if (std::optional<int32_t> result = try_lookup(obj->type_index())) {
+    return result;
+  }
+  const TVMFFITypeInfo* info = TVMFFIGetTypeInfo(obj->type_index());
+  for (int32_t i = info->type_depth - 1; i >= 0; --i) {
+    if (std::optional<int32_t> result = try_lookup(info->type_ancestors[i]->type_index)) {
+      return result;
+    }
+  }
+  return {};
+}
+
+int32_t RequiredStdSchemaTypeIndex(const ObjectRef& obj) {
+  if (std::optional<int32_t> schema = ResolveStdSchemaTypeIndex(obj)) {
+    return schema.value();
+  }
+  TVM_FFI_THROW(ValueError) << "Object `" << obj->GetTypeKey() << "` has no "
+                            << refl::type_attr::kStdSchema << " declaration";
+  TVM_FFI_UNREACHABLE();
+}
+
+bool HasStdSchema(const ObjectRef& obj, int32_t std_kind_type_index) {
+  std::optional<int32_t> schema = ResolveStdSchemaTypeIndex(obj);
+  return schema.has_value() && schema.value() == std_kind_type_index;
+}
+
+Any ReadObjectStdField(const ObjectRef& obj, int32_t std_kind_type_index,
+                       const String& std_field_name) {
+  return ResolvedPrintInfo(obj, std_kind_type_index).ReadStdField(std_field_name);
+}
+
+Optional<Any> TryReadOptionalObjectStdField(const ObjectRef& obj, int32_t std_kind_type_index,
+                                            const String& std_field_name) {
+  Optional<Any> value = ResolvedPrintInfo(obj, std_kind_type_index).TryReadStdField(std_field_name);
+  if (!value.has_value() || value.value() == nullptr) {
+    return {};
+  }
+  return value;
+}
+
+refl::AccessPath PathForObjectStdField(const ObjectRef& obj, int32_t std_kind_type_index,
+                                       const refl::AccessPath& object_path,
+                                       const String& std_field_name) {
+  return ResolvedPrintInfo(obj, std_kind_type_index).PathForStdField(object_path, std_field_name);
+}
+
+List<Any> ReadObjectStdFieldList(const ObjectRef& obj, int32_t std_kind_type_index,
+                                 const String& std_field_name) {
+  return ReadObjectStdField(obj, std_kind_type_index, std_field_name).cast<List<Any>>();
+}
+
+text::ExprAST DefineVarLike(const text::IRPrinter& printer, const ObjectRef& var) {
+  String name =
+      ReadObjectStdField(var, Var::ContainerType::RuntimeTypeIndex(), "name").cast<String>();
+  return DefineForeignVar(printer, var, name);
+}
+
+text::ExprAST DefineVarTupleLike(const text::IRPrinter& printer, const List<Any>& vars) {
+  if (vars.size() == 1) {
+    return DefineVarLike(printer, vars[0].cast<ObjectRef>());
+  }
+  List<text::ExprAST> lhs_vars;
+  lhs_vars.reserve(static_cast<int64_t>(vars.size()));
+  for (const Any& var : vars) {
+    lhs_vars.push_back(DefineVarLike(printer, var.cast<ObjectRef>()));
+  }
+  return text::TupleAST(std::move(lhs_vars));
+}
+
+Optional<text::ExprAST> DefineScopeVarsAsWithTargetsLike(const text::IRPrinter& printer,
+                                                         const List<Any>& binds) {
+  List<text::ExprAST> targets;
+  for (const Any& bind_value : binds) {
+    ObjectRef bind = bind_value.cast<ObjectRef>();
+    int32_t bind_schema = RequiredStdSchemaTypeIndex(bind);
+    List<Any> vars = ReadObjectStdFieldList(bind, bind_schema, "vars");
+    for (const Any& var : vars) {
+      targets.push_back(DefineVarLike(printer, var.cast<ObjectRef>()));
+    }
+  }
+  if (targets.empty()) return {};
+  if (targets.size() == 1) return targets[0];
+  return text::TupleAST(std::move(targets));
+}
+
+text::ExprAST BindInitializerCallLike(const ObjectRef& bind, const text::IRPrinter& printer,
+                                      const refl::AccessPath& path) {
+  int32_t bind_schema = RequiredStdSchemaTypeIndex(bind);
+  List<text::ExprAST> args;
+  if (bind_schema == BindExpr::ContainerType::RuntimeTypeIndex()) {
+    args.push_back(printer
+                       ->operator()(ReadObjectStdField(bind, bind_schema, "expr"),
+                                    PathForObjectStdField(bind, bind_schema, path, "expr"))
+                       .cast<text::ExprAST>());
+  } else if (bind_schema == BindVarDef::ContainerType::RuntimeTypeIndex()) {
+    List<Any> vars = ReadObjectStdFieldList(bind, bind_schema, "vars");
+    args.reserve(static_cast<int64_t>(vars.size()));
+    refl::AccessPath vars_path = PathForObjectStdField(bind, bind_schema, path, "vars");
+    int64_t n = static_cast<int64_t>(vars.size());
+    for (int64_t i = 0; i < n; ++i) {
+      ObjectRef var = vars[i].cast<ObjectRef>();
+      args.push_back(
+          printer
+              ->operator()(ReadObjectStdField(var, Var::ContainerType::RuntimeTypeIndex(), "ty"),
+                           PathForObjectStdField(var, Var::ContainerType::RuntimeTypeIndex(),
+                                                 vars_path->ArrayItem(i), "ty"))
+              .cast<text::ExprAST>());
+    }
+  } else {
+    TVM_FFI_THROW(ValueError) << "ffi.std.Scope expected BindExpr or BindVarDef-like object, got `"
+                              << bind->GetTypeKey() << "`";
+  }
+
+  List<String> kwargs_keys;
+  List<text::ExprAST> kwargs_values;
+  bool has_attrs = false;
+  if (Optional<Any> attrs = TryReadOptionalObjectStdField(bind, bind_schema, "attrs")) {
+    has_attrs = AppendAttrsAsKwargs(
+        printer->operator()(attrs.value(), PathForObjectStdField(bind, bind_schema, path, "attrs"))
+            .cast<text::ExprAST>(),
+        &kwargs_keys, &kwargs_values);
+  }
+  return has_attrs ? text::ExprCallKw(CallMnemonic(printer->cfg, bind), std::move(args),
+                                      std::move(kwargs_keys), std::move(kwargs_values))
+                   : text::ExprCall(CallMnemonic(printer->cfg, bind), std::move(args));
+}
+
+std::optional<int64_t> BinaryOperationKind(const String& generic) {
+  if (generic == "__add__") return text::OperationASTObj::kAdd;
+  if (generic == "__sub__") return text::OperationASTObj::kSub;
+  if (generic == "__mul__") return text::OperationASTObj::kMult;
+  if (generic == "__floordiv__") return text::OperationASTObj::kFloorDiv;
+  if (generic == "__mod__") return text::OperationASTObj::kMod;
+  if (generic == "__eq__") return text::OperationASTObj::kEq;
+  if (generic == "__ne__") return text::OperationASTObj::kNotEq;
+  if (generic == "__le__") return text::OperationASTObj::kLtE;
+  if (generic == "__ge__") return text::OperationASTObj::kGtE;
+  if (generic == "__gt__") return text::OperationASTObj::kGt;
+  if (generic == "__lt__") return text::OperationASTObj::kLt;
+  if (generic == "__and__") return text::OperationASTObj::kAnd;
+  if (generic == "__or__") return text::OperationASTObj::kOr;
+  return {};
+}
+
+template <typename RefType>
+class CastCompatiblePrintBuilder : public PrintBuilderBase {
+ public:
+  CastCompatiblePrintBuilder(ObjectRef obj, text::IRPrinter printer, refl::AccessPath path,
+                             int32_t std_kind_type_index)
+      : PrintBuilderBase(std::move(obj), std::move(printer), std::move(path), std_kind_type_index) {
+  }
+
+  text::NodeAST Build() const {
+    this->CheckNoCustomPrintParts("Std-kind print builder");
+    if (std::optional<RefType> typed = this->obj_.as<RefType>()) {
+      return TextPrint(typed.value(), this->printer_, this->path_);
+    }
+    TVM_FFI_THROW(ValueError) << "Std-kind print builder `"
+                              << TypeIndexToTypeKey(this->std_kind_type_index_)
+                              << "` cannot print non-inheriting foreign type `"
+                              << this->obj_->GetTypeKey() << "` yet";
+    TVM_FFI_UNREACHABLE();
+  }
+};
+
+class ModulePrintBuilder : public PrintBuilderBase {
+ public:
+  ModulePrintBuilder(ObjectRef obj, text::IRPrinter printer, refl::AccessPath path,
+                     int32_t std_kind_type_index)
+      : PrintBuilderBase(std::move(obj), std::move(printer), std::move(path), std_kind_type_index) {
+  }
+
+  text::NodeAST Build() const {
+    this->CheckNoCustomPrintParts("Module std-kind printer");
+    List<text::StmtAST> stmts = this->PrintStmtListField("funcs");
+    List<text::ExprAST> decorators{CallMnemonic(this->printer_->cfg, this->obj_)};
+    return text::ClassAST(text::IdAST("MyModule"), {}, std::move(decorators), std::move(stmts));
+  }
+};
+
+class FuncPrintBuilder : public PrintBuilderBase {
+ public:
+  FuncPrintBuilder(ObjectRef obj, text::IRPrinter printer, refl::AccessPath path,
+                   int32_t std_kind_type_index)
+      : PrintBuilderBase(std::move(obj), std::move(printer), std::move(path), std_kind_type_index) {
+  }
+
+  text::NodeAST Build() const {
+    this->CheckNoCustomPrintParts("Func std-kind printer");
+    List<Any> arg_values = this->ReadStdFieldList("args");
+    List<text::AssignAST> args;
+    int64_t n = static_cast<int64_t>(arg_values.size());
+    args.reserve(n);
+    refl::AccessPath args_path = this->PathForStdField("args");
+    for (int64_t i = 0; i < n; ++i) {
+      ObjectRef arg = arg_values[i].cast<ObjectRef>();
+      text::ExprAST lhs = DefineVarLike(this->printer_, arg);
+      Optional<text::ExprAST> annotation;
+      Optional<Any> ty =
+          TryReadOptionalObjectStdField(arg, Var::ContainerType::RuntimeTypeIndex(), "ty");
+      if (ty.has_value()) {
+        annotation = this->printer_
+                         ->operator()(ty.value(), PathForObjectStdField(
+                                                      arg, Var::ContainerType::RuntimeTypeIndex(),
+                                                      args_path->ArrayItem(i), "ty"))
+                         .cast<text::ExprAST>();
+      }
+      args.push_back(text::AssignAST(std::move(lhs), {}, std::move(annotation)));
+    }
+
+    List<text::StmtAST> body = this->PrintStmtListField("body");
+    Optional<text::ExprAST> ret_type = this->PrintOptionalExprField("ret_type");
+    List<String> decorator_keys;
+    List<text::ExprAST> decorator_values;
+    bool has_attrs =
+        this->AppendOptionalAttrsFieldAsKwargs("attrs", &decorator_keys, &decorator_values);
+
+    List<text::ExprAST> decorators;
+    if (!has_attrs) {
+      decorators.push_back(CallMnemonic(this->printer_->cfg, this->obj_));
+    } else {
+      decorators.push_back(text::ExprCallKw(CallMnemonic(this->printer_->cfg, this->obj_), {},
+                                            std::move(decorator_keys),
+                                            std::move(decorator_values)));
+    }
+    return text::FunctionAST(text::IdAST(this->ReadStdField("symbol").cast<String>()),
+                             std::move(args), std::move(decorators), std::move(ret_type),
+                             std::move(body));
+  }
+};
+
+class RangePrintBuilder : public PrintBuilderBase {
+ public:
+  RangePrintBuilder(ObjectRef obj, text::IRPrinter printer, refl::AccessPath path,
+                    int32_t std_kind_type_index)
+      : PrintBuilderBase(std::move(obj), std::move(printer), std::move(path), std_kind_type_index) {
+  }
+
+  text::NodeAST Build() const {
+    this->CheckNoCustomPrintParts("Range std-kind printer");
+    Optional<text::ExprAST> start = this->PrintOptionalExprField("start");
+    Optional<text::ExprAST> stop = this->PrintOptionalExprField("stop");
+    Optional<text::ExprAST> step = this->PrintOptionalExprField("step");
+    if (start.has_value() && !stop.has_value() && !step.has_value()) {
+      return start.value();
+    }
+    return text::SliceAST(std::move(start), std::move(stop), std::move(step));
+  }
+};
+
+class AnyTyPrintBuilder : public PrintBuilderBase {
+ public:
+  AnyTyPrintBuilder(ObjectRef obj, text::IRPrinter printer, refl::AccessPath path,
+                    int32_t std_kind_type_index)
+      : PrintBuilderBase(std::move(obj), std::move(printer), std::move(path), std_kind_type_index) {
+  }
+
+  text::NodeAST Build() const {
+    this->CheckNoCustomPrintParts("AnyTy std-kind printer");
+    return CallMnemonic(this->printer_->cfg, this->obj_);
+  }
+};
+
+class PrimTyPrintBuilder : public PrintBuilderBase {
+ public:
+  PrimTyPrintBuilder(ObjectRef obj, text::IRPrinter printer, refl::AccessPath path,
+                     int32_t std_kind_type_index)
+      : PrintBuilderBase(std::move(obj), std::move(printer), std::move(path), std_kind_type_index) {
+  }
+
+  text::NodeAST Build() const {
+    this->CheckNoCustomPrintParts("PrimTy std-kind printer");
+    Any dtype = this->ReadStdField("dtype");
+    String printed_name = DTypeAbbrev(dtype.cast<DLDataType>());
+    Array<String> dialect_mnemonic = DialectMnemonic(this->obj_->type_index());
+    String dialect = dialect_mnemonic[0];
+    String mnemonic = dialect_mnemonic[1];
+    String full_mnemonic(std::string(dialect.data(), dialect.size()) + "$" +
+                         std::string(mnemonic.data(), mnemonic.size()));
+    if (this->printer_->cfg->dialect_print_map.count(full_mnemonic)) {
+      String mapped = this->printer_->cfg->dialect_print_map[full_mnemonic];
+      if (mapped == "*") {
+        return text::IdAST(std::move(printed_name));
+      }
+      return text::DottedName(std::move(mapped));
+    }
+    if (this->printer_->cfg->dialect_print_map.count(dialect)) {
+      String mapped = this->printer_->cfg->dialect_print_map[dialect];
+      if (mapped == "*") {
+        return text::IdAST(std::move(printed_name));
+      }
+      return text::ExprAttr(text::DottedName(std::move(mapped)), printed_name);
+    }
+    return text::ExprAttr(text::DottedName(std::move(dialect)), printed_name);
+  }
+};
+
+class TupleTypePrintBuilder : public PrintBuilderBase {
+ public:
+  TupleTypePrintBuilder(ObjectRef obj, text::IRPrinter printer, refl::AccessPath path,
+                        int32_t std_kind_type_index)
+      : PrintBuilderBase(std::move(obj), std::move(printer), std::move(path), std_kind_type_index) {
+  }
+
+  text::NodeAST Build() const {
+    this->CheckNoCustomPrintParts("TupleType std-kind printer");
+    return text::IndexAST(CallMnemonic(this->printer_->cfg, this->obj_),
+                          this->PrintExprListField("fields"));
+  }
+};
+
+class TensorTyPrintBuilder : public PrintBuilderBase {
+ public:
+  TensorTyPrintBuilder(ObjectRef obj, text::IRPrinter printer, refl::AccessPath path,
+                       int32_t std_kind_type_index)
+      : PrintBuilderBase(std::move(obj), std::move(printer), std::move(path), std_kind_type_index) {
+  }
+
+  text::NodeAST Build() const {
+    this->CheckNoCustomPrintParts("TensorTy std-kind printer");
+    Any dtype_value = this->ReadStdField("dtype");
+    PrimTy dtype(dtype_value.cast<DLDataType>());
+    return text::IndexAST(
+        this->printer_->operator()(dtype, this->PathForStdField("dtype")).cast<text::ExprAST>(),
+        this->PrintExprListField("shape"));
+  }
+};
+
+class IntImmPrintBuilder : public PrintBuilderBase {
+ public:
+  IntImmPrintBuilder(ObjectRef obj, text::IRPrinter printer, refl::AccessPath path,
+                     int32_t std_kind_type_index)
+      : PrintBuilderBase(std::move(obj), std::move(printer), std::move(path), std_kind_type_index) {
+  }
+
+  text::NodeAST Build() const {
+    this->CheckNoCustomPrintParts("IntImm std-kind printer");
+    return text::LiteralAST::Int(this->ReadStdField("value").cast<int64_t>());
+  }
+};
+
+class FloatImmPrintBuilder : public PrintBuilderBase {
+ public:
+  FloatImmPrintBuilder(ObjectRef obj, text::IRPrinter printer, refl::AccessPath path,
+                       int32_t std_kind_type_index)
+      : PrintBuilderBase(std::move(obj), std::move(printer), std::move(path), std_kind_type_index) {
+  }
+
+  text::NodeAST Build() const {
+    this->CheckNoCustomPrintParts("FloatImm std-kind printer");
+    return text::LiteralAST::Float(this->ReadStdField("value").cast<double>());
+  }
+};
+
+class StringImmPrintBuilder : public PrintBuilderBase {
+ public:
+  StringImmPrintBuilder(ObjectRef obj, text::IRPrinter printer, refl::AccessPath path,
+                        int32_t std_kind_type_index)
+      : PrintBuilderBase(std::move(obj), std::move(printer), std::move(path), std_kind_type_index) {
+  }
+
+  text::NodeAST Build() const {
+    this->CheckNoCustomPrintParts("StringImm std-kind printer");
+    return text::LiteralAST::Str(this->ReadStdField("value").cast<String>());
+  }
+};
+
+class BinaryPrintBuilder : public PrintBuilderBase {
+ public:
+  BinaryPrintBuilder(ObjectRef obj, text::IRPrinter printer, refl::AccessPath path,
+                     int32_t std_kind_type_index)
+      : PrintBuilderBase(std::move(obj), std::move(printer), std::move(path), std_kind_type_index) {
+  }
+
+  text::NodeAST Build() const {
+    this->CheckNoCustomPrintParts("Binary std-kind printer");
+
+    Array<String> dialect_mnemonic = DialectMnemonic(this->obj_->type_index());
+    ObjectRef lhs = this->ReadStdFieldObject("a");
+    ObjectRef rhs = this->ReadStdFieldObject("b");
+    CachedPrinter cache(this->printer_);
+    cache.RunCache(lhs, this->PathForStdField("a"));
+    cache.RunCache(rhs, this->PathForStdField("b"));
+    List<text::ExprAST> operands{cache.ExprFromCache(lhs), cache.ExprFromCache(rhs)};
+
+    Optional<String> common_dialect = cache.CommonDialect();
+    if (dialect_mnemonic.size() == 3 && common_dialect.has_value() &&
+        common_dialect.value() == "std") {
+      String generic = dialect_mnemonic[2];
+      if (std::optional<int64_t> op = BinaryOperationKind(generic)) {
+        return text::OperationAST(op.value(), std::move(operands));
+      }
+      if (generic == "min") {
+        return text::ExprCall(text::IdAST("min"), std::move(operands));
+      }
+      if (generic == "max") {
+        return text::ExprCall(text::IdAST("max"), std::move(operands));
+      }
+    }
+    return text::ExprCall(CallMnemonic(this->printer_->cfg, this->obj_), std::move(operands));
+  }
+};
+
+class NotPrintBuilder : public PrintBuilderBase {
+ public:
+  NotPrintBuilder(ObjectRef obj, text::IRPrinter printer, refl::AccessPath path,
+                  int32_t std_kind_type_index)
+      : PrintBuilderBase(std::move(obj), std::move(printer), std::move(path), std_kind_type_index) {
+  }
+
+  text::NodeAST Build() const {
+    this->CheckNoCustomPrintParts("Not std-kind printer");
+    ObjectRef operand = this->ReadStdFieldObject("operand");
+    CachedPrinter cache(this->printer_);
+    cache.RunCache(operand, this->PathForStdField("operand"));
+    if (this->CanUseStdGeneric(cache, "__invert__")) {
+      return text::OperationAST(text::OperationASTObj::kNot, {cache.ExprFromCache(operand)});
+    }
+    return text::ExprCall(CallMnemonic(this->printer_->cfg, this->obj_),
+                          {cache.ExprFromCache(operand)});
+  }
+};
+
+class LoadPrintBuilder : public PrintBuilderBase {
+ public:
+  LoadPrintBuilder(ObjectRef obj, text::IRPrinter printer, refl::AccessPath path,
+                   int32_t std_kind_type_index)
+      : PrintBuilderBase(std::move(obj), std::move(printer), std::move(path), std_kind_type_index) {
+  }
+
+  text::NodeAST Build() const {
+    this->CheckNoCustomPrintParts("Load std-kind printer");
+    ObjectRef lhs = this->ReadStdFieldObject("lhs");
+    List<Any> indices = this->ReadStdFieldList("indices");
+    CachedPrinter cache(this->printer_);
+    cache.RunCache(lhs, this->PathForStdField("lhs"));
+    refl::AccessPath indices_path = this->PathForStdField("indices");
+    int64_t n = static_cast<int64_t>(indices.size());
+    for (int64_t i = 0; i < n; ++i) {
+      cache.RunCache(indices[i].cast<ObjectRef>(), indices_path->ArrayItem(i));
+    }
+
+    List<text::ExprAST> operands{cache.ExprFromCache(lhs)};
+    operands.reserve(n + 1);
+    for (const Any& index : indices) {
+      operands.push_back(cache.ExprFromCache(index.cast<ObjectRef>()));
+    }
+    if (this->CanUseStdGeneric(cache, "__load__")) {
+      return LoadStore(operands, /*end_index_offset=*/0);
+    }
+    return text::ExprCall(CallMnemonic(this->printer_->cfg, this->obj_), std::move(operands));
+  }
+};
+
+class CastPrintBuilder : public PrintBuilderBase {
+ public:
+  CastPrintBuilder(ObjectRef obj, text::IRPrinter printer, refl::AccessPath path,
+                   int32_t std_kind_type_index)
+      : PrintBuilderBase(std::move(obj), std::move(printer), std::move(path), std_kind_type_index) {
+  }
+
+  text::NodeAST Build() const {
+    this->CheckNoCustomPrintParts("Cast std-kind printer");
+    ObjectRef ty = this->ReadStdFieldObject("ty");
+    ObjectRef value = this->ReadStdFieldObject("value");
+    CachedPrinter cache(this->printer_);
+    cache.RunCache(ty, this->PathForStdField("ty"));
+    cache.RunCache(value, this->PathForStdField("value"));
+    text::ExprAST ty_ast = cache.ExprFromCache(ty);
+    text::ExprAST value_ast = cache.ExprFromCache(value);
+    if (this->CanUseStdGeneric(cache, "__cast__") &&
+        HasStdSchema(ty, PrimTy::ContainerType::RuntimeTypeIndex())) {
+      return text::ExprCall(std::move(ty_ast), {std::move(value_ast)});
+    }
+    return text::ExprCall(CallMnemonic(this->printer_->cfg, this->obj_),
+                          {std::move(ty_ast), std::move(value_ast)});
+  }
+};
+
+class CallPrintBuilder : public PrintBuilderBase {
+ public:
+  CallPrintBuilder(ObjectRef obj, text::IRPrinter printer, refl::AccessPath path,
+                   int32_t std_kind_type_index)
+      : PrintBuilderBase(std::move(obj), std::move(printer), std::move(path), std_kind_type_index) {
+  }
+
+  text::NodeAST Build() const {
+    this->CheckNoCustomPrintParts("Call std-kind printer");
+    Any callee_value = this->ReadStdField("callee");
+    Optional<String> callee_name;
+    if (std::optional<String> symbol = callee_value.as<String>()) {
+      callee_name = symbol.value();
+    } else if (std::optional<ObjectRef> callee_obj = callee_value.as<ObjectRef>()) {
+      if (HasStdSchema(callee_obj.value(), Func::ContainerType::RuntimeTypeIndex())) {
+        callee_name = ReadObjectStdField(callee_obj.value(),
+                                         Func::ContainerType::RuntimeTypeIndex(), "symbol")
+                          .cast<String>();
+      }
+    }
+
+    text::ExprAST callee =
+        callee_name.has_value()
+            ? text::ExprAST(text::IdAST(callee_name.value()))
+            : this->printer_->operator()(callee_value, this->PathForStdField("callee"))
+                  .cast<text::ExprAST>();
+    List<text::ExprAST> args = this->PrintExprListField("args");
+    List<text::ExprAST> call_args{std::move(callee)};
+    call_args.reserve(static_cast<int64_t>(args.size() + 1));
+    for (text::ExprAST arg : args) {
+      call_args.push_back(arg);
+    }
+
+    List<String> kwargs_keys;
+    List<text::ExprAST> kwargs_values;
+    if (!this->AppendOptionalAttrsFieldAsKwargs("attr", &kwargs_keys, &kwargs_values)) {
+      return text::ExprCall(CallMnemonic(this->printer_->cfg, this->obj_), std::move(call_args));
+    }
+    return text::ExprCallKw(CallMnemonic(this->printer_->cfg, this->obj_), std::move(call_args),
+                            std::move(kwargs_keys), std::move(kwargs_values));
+  }
+};
+
+class VarPrintBuilder : public PrintBuilderBase {
+ public:
+  VarPrintBuilder(ObjectRef obj, text::IRPrinter printer, refl::AccessPath path,
+                  int32_t std_kind_type_index)
+      : PrintBuilderBase(std::move(obj), std::move(printer), std::move(path), std_kind_type_index) {
+  }
+
+  text::NodeAST Build() const {
+    this->CheckNoCustomPrintParts("Var std-kind printer");
+    return DefineForeignVar(this->printer_, this->obj_, this->ReadStdField("name").cast<String>());
+  }
+};
+
+class IfStmtPrintBuilder : public PrintBuilderBase {
+ public:
+  IfStmtPrintBuilder(ObjectRef obj, text::IRPrinter printer, refl::AccessPath path,
+                     int32_t std_kind_type_index)
+      : PrintBuilderBase(std::move(obj), std::move(printer), std::move(path), std_kind_type_index) {
+  }
+
+  text::NodeAST Build() const {
+    this->CheckNoCustomPrintParts("IfStmt std-kind printer");
+    return text::IfAST(this->PrintExprField("cond"), this->PrintStmtListField("then_body"),
+                       this->PrintStmtListField("else_body"));
+  }
+};
+
+class BindExprPrintBuilder : public PrintBuilderBase {
+ public:
+  BindExprPrintBuilder(ObjectRef obj, text::IRPrinter printer, refl::AccessPath path,
+                       int32_t std_kind_type_index)
+      : PrintBuilderBase(std::move(obj), std::move(printer), std::move(path), std_kind_type_index) {
+  }
+
+  text::NodeAST Build() const {
+    this->CheckNoCustomPrintParts("BindExpr std-kind printer");
+    List<Any> vars = this->ReadStdFieldList("vars");
+    ObjectRef expr = this->ReadStdFieldObject("expr");
+    CachedPrinter cache(this->printer_);
+    refl::AccessPath vars_path = this->PathForStdField("vars");
+    int64_t n = static_cast<int64_t>(vars.size());
+    for (int64_t i = 0; i < n; ++i) {
+      cache.RunCache(vars[i].cast<ObjectRef>(), vars_path->ArrayItem(i));
+    }
+    cache.RunCache(expr, this->PathForStdField("expr"));
+
+    if (this->CanUseStdGeneric(cache, "__bind_expr__")) {
+      text::ExprAST rhs = cache.ExprFromCache(expr);
+      List<String> kwargs_keys;
+      List<text::ExprAST> kwargs_values;
+      if (this->AppendOptionalAttrsFieldAsKwargs("attrs", &kwargs_keys, &kwargs_values)) {
+        rhs = text::ExprCallKw(CallMnemonic(this->printer_->cfg, this->obj_), {rhs},
+                               std::move(kwargs_keys), std::move(kwargs_values));
+      }
+      if (vars.empty()) {
+        return text::ExprStmtAST(std::move(rhs));
+      }
+      return text::AssignAST(DefineVarTupleLike(this->printer_, vars), std::move(rhs));
+    }
+
+    List<text::ExprAST> args;
+    args.reserve(n + 1);
+    for (const Any& var : vars) {
+      args.push_back(cache.ExprFromCache(var.cast<ObjectRef>()));
+    }
+    args.push_back(cache.ExprFromCache(expr));
+    List<String> kwargs_keys;
+    List<text::ExprAST> kwargs_values;
+    text::ExprAST call =
+        this->AppendOptionalAttrsFieldAsKwargs("attrs", &kwargs_keys, &kwargs_values)
+            ? text::ExprCallKw(CallMnemonic(this->printer_->cfg, this->obj_), std::move(args),
+                               std::move(kwargs_keys), std::move(kwargs_values))
+            : text::ExprCall(CallMnemonic(this->printer_->cfg, this->obj_), std::move(args));
+    return text::ExprStmtAST(std::move(call));
+  }
+};
+
+class BindVarDefPrintBuilder : public PrintBuilderBase {
+ public:
+  BindVarDefPrintBuilder(ObjectRef obj, text::IRPrinter printer, refl::AccessPath path,
+                         int32_t std_kind_type_index)
+      : PrintBuilderBase(std::move(obj), std::move(printer), std::move(path), std_kind_type_index) {
+  }
+
+  text::NodeAST Build() const {
+    this->CheckNoCustomPrintParts("BindVarDef std-kind printer");
+    List<Any> vars = this->ReadStdFieldList("vars");
+    CachedPrinter cache(this->printer_);
+    refl::AccessPath vars_path = this->PathForStdField("vars");
+    int64_t n = static_cast<int64_t>(vars.size());
+    for (int64_t i = 0; i < n; ++i) {
+      cache.RunCache(vars[i].cast<ObjectRef>(), vars_path->ArrayItem(i));
+    }
+
+    List<String> kwargs_keys;
+    List<text::ExprAST> kwargs_values;
+    bool has_attrs = this->AppendOptionalAttrsFieldAsKwargs("attrs", &kwargs_keys, &kwargs_values);
+    if (this->CanUseStdGeneric(cache, "__bind_var_def__")) {
+      if (vars.empty()) {
+        if (!has_attrs) {
+          return text::ExprStmtAST(text::IdAST("pass"));
+        }
+        return text::ExprStmtAST(text::ExprCallKw(CallMnemonic(this->printer_->cfg, this->obj_), {},
+                                                  std::move(kwargs_keys),
+                                                  std::move(kwargs_values)));
+      }
+      List<text::ExprAST> types;
+      types.reserve(n);
+      for (int64_t i = 0; i < n; ++i) {
+        ObjectRef var = vars[i].cast<ObjectRef>();
+        types.push_back(
+            this->printer_
+                ->operator()(ReadObjectStdField(var, Var::ContainerType::RuntimeTypeIndex(), "ty"),
+                             PathForObjectStdField(var, Var::ContainerType::RuntimeTypeIndex(),
+                                                   vars_path->ArrayItem(i), "ty"))
+                .cast<text::ExprAST>());
+      }
+      text::ExprAST rhs =
+          has_attrs
+              ? text::ExprCallKw(CallMnemonic(this->printer_->cfg, this->obj_), std::move(types),
+                                 std::move(kwargs_keys), std::move(kwargs_values))
+              : text::ExprCall(CallMnemonic(this->printer_->cfg, this->obj_), std::move(types));
+      return text::AssignAST(DefineVarTupleLike(this->printer_, vars), std::move(rhs));
+    }
+
+    List<text::ExprAST> args;
+    args.reserve(n);
+    for (const Any& var : vars) {
+      args.push_back(cache.ExprFromCache(var.cast<ObjectRef>()));
+    }
+    text::ExprAST call =
+        has_attrs ? text::ExprCallKw(CallMnemonic(this->printer_->cfg, this->obj_), std::move(args),
+                                     std::move(kwargs_keys), std::move(kwargs_values))
+                  : text::ExprCall(CallMnemonic(this->printer_->cfg, this->obj_), std::move(args));
+    return text::ExprStmtAST(std::move(call));
+  }
+};
+
+class ScopePrintBuilder : public PrintBuilderBase {
+ public:
+  ScopePrintBuilder(ObjectRef obj, text::IRPrinter printer, refl::AccessPath path,
+                    int32_t std_kind_type_index)
+      : PrintBuilderBase(std::move(obj), std::move(printer), std::move(path), std_kind_type_index) {
+  }
+
+  text::NodeAST Build() const {
+    DialectFrame dialect_frame(this->printer_, this->obj_);
+
+    List<String> scope_kwarg_keys;
+    List<text::ExprAST> scope_kwarg_values;
+    bool has_attrs =
+        this->AppendOptionalAttrsFieldAsKwargs("attrs", &scope_kwarg_keys, &scope_kwarg_values);
+    List<text::StmtAST> body = this->PrintBody("body");
+    List<Any> binds = this->ReadOptionalBindList();
+    if (binds.empty() && !has_attrs) {
+      return text::StmtBlockAST(std::move(body));
+    }
+
+    List<text::ExprAST> scope_args;
+    int64_t n = static_cast<int64_t>(binds.size());
+    scope_args.reserve(n);
+    refl::AccessPath binds_path = this->PathForStdField("binds");
+    for (int64_t i = 0; i < n; ++i) {
+      scope_args.push_back(BindInitializerCallLike(binds[i].cast<ObjectRef>(), this->printer_,
+                                                   binds_path->ArrayItem(i)));
+    }
+    text::ExprAST rhs =
+        scope_kwarg_keys.empty()
+            ? text::ExprCall(CallMnemonic(this->printer_->cfg, this->obj_), std::move(scope_args))
+            : text::ExprCallKw(CallMnemonic(this->printer_->cfg, this->obj_), std::move(scope_args),
+                               std::move(scope_kwarg_keys), std::move(scope_kwarg_values));
+    Optional<text::ExprAST> lhs = DefineScopeVarsAsWithTargetsLike(this->printer_, binds);
+    return text::WithAST(std::move(lhs), std::move(rhs), std::move(body));
+  }
+};
+
+class ForPrintBuilder : public PrintBuilderBase {
+ public:
+  ForPrintBuilder(ObjectRef obj, text::IRPrinter printer, refl::AccessPath path,
+                  int32_t std_kind_type_index)
+      : PrintBuilderBase(std::move(obj), std::move(printer), std::move(path), std_kind_type_index) {
+  }
+
+  text::NodeAST Build() const {
+    DialectFrame dialect_frame(this->printer_, this->obj_);
+    List<Any> binds = this->ReadOptionalBindList();
+    List<text::ExprAST> targets;
+    for (const Any& bind_value : binds) {
+      ObjectRef bind = bind_value.cast<ObjectRef>();
+      int32_t bind_schema = RequiredStdSchemaTypeIndex(bind);
+      List<Any> vars = ReadObjectStdFieldList(bind, bind_schema, "vars");
+      for (const Any& var : vars) {
+        targets.push_back(DefineVarLike(this->printer_, var.cast<ObjectRef>()));
+      }
+    }
+    text::ExprAST lhs = text::IdAST("_");
+    if (targets.size() == 1) {
+      lhs = targets[0];
+    } else if (!targets.empty()) {
+      lhs = text::TupleAST(std::move(targets));
+    }
+
+    ObjectRef range = this->ReadStdFieldObject("range_");
+    int32_t range_schema = Range::ContainerType::RuntimeTypeIndex();
+    refl::AccessPath range_path = this->PathForStdField("range_");
+    List<text::ExprAST> range_args;
+    Optional<Any> start = TryReadOptionalObjectStdField(range, range_schema, "start");
+    Optional<Any> stop = TryReadOptionalObjectStdField(range, range_schema, "stop");
+    Optional<Any> step = TryReadOptionalObjectStdField(range, range_schema, "step");
+    if (start.has_value()) {
+      range_args.push_back(
+          this->printer_
+              ->operator()(start.value(),
+                           PathForObjectStdField(range, range_schema, range_path, "start"))
+              .cast<text::ExprAST>());
+    }
+    if (stop.has_value()) {
+      if (!start.has_value()) {
+        range_args.push_back(text::LiteralAST::Null());
+      }
+      range_args.push_back(this->printer_
+                               ->operator()(stop.value(), PathForObjectStdField(range, range_schema,
+                                                                                range_path, "stop"))
+                               .cast<text::ExprAST>());
+    }
+    if (step.has_value()) {
+      if (!stop.has_value()) {
+        range_args.push_back(text::LiteralAST::Null());
+      }
+      range_args.push_back(this->printer_
+                               ->operator()(step.value(), PathForObjectStdField(range, range_schema,
+                                                                                range_path, "step"))
+                               .cast<text::ExprAST>());
+    }
+
+    List<String> range_kwarg_keys;
+    List<text::ExprAST> range_kwarg_values;
+    this->AppendOptionalAttrsFieldAsKwargs("attrs", &range_kwarg_keys, &range_kwarg_values);
+    text::ExprAST rhs =
+        range_kwarg_keys.empty()
+            ? text::ExprCall(CallCustomMnemonic(this->printer_->cfg, this->obj_, "range"),
+                             std::move(range_args))
+            : text::ExprCallKw(CallCustomMnemonic(this->printer_->cfg, this->obj_, "range"),
+                               std::move(range_args), std::move(range_kwarg_keys),
+                               std::move(range_kwarg_values));
+    return text::ForAST(std::move(lhs), std::move(rhs), this->PrintBody("body"));
+  }
+};
+
+class WhilePrintBuilder : public PrintBuilderBase {
+ public:
+  WhilePrintBuilder(ObjectRef obj, text::IRPrinter printer, refl::AccessPath path,
+                    int32_t std_kind_type_index)
+      : PrintBuilderBase(std::move(obj), std::move(printer), std::move(path), std_kind_type_index) {
+  }
+
+  text::NodeAST Build() const {
+    DialectFrame dialect_frame(this->printer_, this->obj_);
+    List<String> while_kwarg_keys;
+    List<text::ExprAST> while_kwarg_values;
+    bool has_attrs =
+        this->AppendOptionalAttrsFieldAsKwargs("attrs", &while_kwarg_keys, &while_kwarg_values);
+    List<Any> binds = this->ReadOptionalBindList();
+    text::ExprAST cond = this->PrintExprField("cond");
+    List<text::StmtAST> body = this->PrintBody("body");
+    if (binds.empty() && !has_attrs) {
+      return text::WhileAST(std::move(cond), std::move(body));
+    }
+
+    List<text::ExprAST> while_args{std::move(cond)};
+    refl::AccessPath binds_path = this->PathForStdField("binds");
+    int64_t n = static_cast<int64_t>(binds.size());
+    for (int64_t i = 0; i < n; ++i) {
+      while_args.push_back(BindInitializerCallLike(binds[i].cast<ObjectRef>(), this->printer_,
+                                                   binds_path->ArrayItem(i)));
+    }
+    text::ExprAST rhs =
+        while_kwarg_keys.empty()
+            ? text::ExprCall(CallMnemonic(this->printer_->cfg, this->obj_), std::move(while_args))
+            : text::ExprCallKw(CallMnemonic(this->printer_->cfg, this->obj_), std::move(while_args),
+                               std::move(while_kwarg_keys), std::move(while_kwarg_values));
+    Optional<text::ExprAST> lhs = DefineScopeVarsAsWithTargetsLike(this->printer_, binds);
+    return text::WithAST(std::move(lhs), std::move(rhs), std::move(body));
+  }
+};
+
+class StorePrintBuilder : public PrintBuilderBase {
+ public:
+  StorePrintBuilder(ObjectRef obj, text::IRPrinter printer, refl::AccessPath path,
+                    int32_t std_kind_type_index)
+      : PrintBuilderBase(std::move(obj), std::move(printer), std::move(path), std_kind_type_index) {
+  }
+
+  text::NodeAST Build() const {
+    this->CheckNoCustomPrintParts("Store std-kind printer");
+    ObjectRef lhs = this->ReadStdFieldObject("lhs");
+    List<Any> indices = this->ReadStdFieldList("indices");
+    ObjectRef rhs = this->ReadStdFieldObject("rhs");
+    CachedPrinter cache(this->printer_);
+    cache.RunCache(lhs, this->PathForStdField("lhs"));
+    refl::AccessPath indices_path = this->PathForStdField("indices");
+    int64_t n = static_cast<int64_t>(indices.size());
+    for (int64_t i = 0; i < n; ++i) {
+      cache.RunCache(indices[i].cast<ObjectRef>(), indices_path->ArrayItem(i));
+    }
+    cache.RunCache(rhs, this->PathForStdField("rhs"));
+
+    List<text::ExprAST> args{cache.ExprFromCache(lhs)};
+    args.reserve(n + 2);
+    for (const Any& index : indices) {
+      args.push_back(cache.ExprFromCache(index.cast<ObjectRef>()));
+    }
+    args.push_back(cache.ExprFromCache(rhs));
+    if (this->CanUseStdGeneric(cache, "__store__")) {
+      return text::AssignAST(LoadStore(args, /*end_index_offset=*/1), args[args.size() - 1]);
+    }
+    return text::ExprStmtAST(
+        text::ExprCall(CallMnemonic(this->printer_->cfg, this->obj_), std::move(args)));
+  }
+};
+
+class AssertPrintBuilder : public PrintBuilderBase {
+ public:
+  AssertPrintBuilder(ObjectRef obj, text::IRPrinter printer, refl::AccessPath path,
+                     int32_t std_kind_type_index)
+      : PrintBuilderBase(std::move(obj), std::move(printer), std::move(path), std_kind_type_index) {
+  }
+
+  text::NodeAST Build() const {
+    this->CheckNoCustomPrintParts("Assert std-kind printer");
+    ObjectRef cond = this->ReadStdFieldObject("cond");
+    CachedPrinter cache(this->printer_);
+    cache.RunCache(cond, this->PathForStdField("cond"));
+    List<String> kwargs_keys;
+    List<text::ExprAST> kwargs_values;
+    if (this->AppendOptionalAttrsFieldAsKwargs("attrs", &kwargs_keys, &kwargs_values)) {
+      return text::ExprStmtAST(text::ExprCallKw(CallMnemonic(this->printer_->cfg, this->obj_),
+                                                {cache.ExprFromCache(cond)}, std::move(kwargs_keys),
+                                                std::move(kwargs_values)));
+    }
+    if (this->CanUseStdGeneric(cache, "__assert__")) {
+      return text::AssertAST(cache.ExprFromCache(cond));
+    }
+    return text::ExprStmtAST(
+        text::ExprCall(CallMnemonic(this->printer_->cfg, this->obj_), {cache.ExprFromCache(cond)}));
+  }
+};
+
+class ReturnPrintBuilder : public PrintBuilderBase {
+ public:
+  ReturnPrintBuilder(ObjectRef obj, text::IRPrinter printer, refl::AccessPath path,
+                     int32_t std_kind_type_index)
+      : PrintBuilderBase(std::move(obj), std::move(printer), std::move(path), std_kind_type_index) {
+  }
+
+  text::NodeAST Build() const {
+    this->CheckNoCustomPrintParts("Return std-kind printer");
+    List<Any> exprs = this->ReadStdFieldList("exprs");
+    CachedPrinter cache(this->printer_);
+    refl::AccessPath exprs_path = this->PathForStdField("exprs");
+    int64_t n = static_cast<int64_t>(exprs.size());
+    for (int64_t i = 0; i < n; ++i) {
+      cache.RunCache(exprs[i].cast<ObjectRef>(), exprs_path->ArrayItem(i));
+    }
+    List<text::ExprAST> args;
+    args.reserve(n);
+    for (const Any& expr : exprs) {
+      args.push_back(cache.ExprFromCache(expr.cast<ObjectRef>()));
+    }
+    if (this->CanUseStdGeneric(cache, "__return__")) {
+      return text::ReturnAST(PackOptionalValue(std::move(args)));
+    }
+    return text::ExprStmtAST(
+        text::ExprCall(CallMnemonic(this->printer_->cfg, this->obj_), std::move(args)));
+  }
+};
+
+class YieldPrintBuilder : public PrintBuilderBase {
+ public:
+  YieldPrintBuilder(ObjectRef obj, text::IRPrinter printer, refl::AccessPath path,
+                    int32_t std_kind_type_index)
+      : PrintBuilderBase(std::move(obj), std::move(printer), std::move(path), std_kind_type_index) {
+  }
+
+  text::NodeAST Build() const {
+    this->CheckNoCustomPrintParts("Yield std-kind printer");
+    List<Any> exprs = this->ReadStdFieldList("exprs");
+    CachedPrinter cache(this->printer_);
+    refl::AccessPath exprs_path = this->PathForStdField("exprs");
+    int64_t n = static_cast<int64_t>(exprs.size());
+    for (int64_t i = 0; i < n; ++i) {
+      cache.RunCache(exprs[i].cast<ObjectRef>(), exprs_path->ArrayItem(i));
+    }
+    List<text::ExprAST> args;
+    args.reserve(n);
+    for (const Any& expr : exprs) {
+      args.push_back(cache.ExprFromCache(expr.cast<ObjectRef>()));
+    }
+    if (this->CanUseStdGeneric(cache, "__yield__")) {
+      return text::ExprStmtAST(text::YieldAST(PackOptionalValue(std::move(args))));
+    }
+    return text::ExprStmtAST(
+        text::ExprCall(CallMnemonic(this->printer_->cfg, this->obj_), std::move(args)));
+  }
+};
+
+class BreakPrintBuilder : public PrintBuilderBase {
+ public:
+  BreakPrintBuilder(ObjectRef obj, text::IRPrinter printer, refl::AccessPath path,
+                    int32_t std_kind_type_index)
+      : PrintBuilderBase(std::move(obj), std::move(printer), std::move(path), std_kind_type_index) {
+  }
+
+  text::NodeAST Build() const {
+    this->CheckNoCustomPrintParts("Break std-kind printer");
+    CachedPrinter cache(this->printer_);
+    List<String> kwargs_keys;
+    List<text::ExprAST> kwargs_values;
+    if (this->AppendOptionalAttrsFieldAsKwargs("attrs", &kwargs_keys, &kwargs_values)) {
+      return text::ExprStmtAST(text::ExprCallKw(CallMnemonic(this->printer_->cfg, this->obj_), {},
+                                                std::move(kwargs_keys), std::move(kwargs_values)));
+    }
+    if (this->CanUseStdGeneric(cache, "__break__")) {
+      return text::ExprStmtAST(text::IdAST("break"));
+    }
+    return text::ExprStmtAST(text::ExprCall(CallMnemonic(this->printer_->cfg, this->obj_), {}));
+  }
+};
+
+class ContinuePrintBuilder : public PrintBuilderBase {
+ public:
+  ContinuePrintBuilder(ObjectRef obj, text::IRPrinter printer, refl::AccessPath path,
+                       int32_t std_kind_type_index)
+      : PrintBuilderBase(std::move(obj), std::move(printer), std::move(path), std_kind_type_index) {
+  }
+
+  text::NodeAST Build() const {
+    this->CheckNoCustomPrintParts("Continue std-kind printer");
+    CachedPrinter cache(this->printer_);
+    List<String> kwargs_keys;
+    List<text::ExprAST> kwargs_values;
+    if (this->AppendOptionalAttrsFieldAsKwargs("attrs", &kwargs_keys, &kwargs_values)) {
+      return text::ExprStmtAST(text::ExprCallKw(CallMnemonic(this->printer_->cfg, this->obj_), {},
+                                                std::move(kwargs_keys), std::move(kwargs_values)));
+    }
+    if (this->CanUseStdGeneric(cache, "__continue__")) {
+      return text::ExprStmtAST(text::IdAST("continue"));
+    }
+    return text::ExprStmtAST(text::ExprCall(CallMnemonic(this->printer_->cfg, this->obj_), {}));
+  }
+};
+
+class DictAttrsPrintBuilder : public PrintBuilderBase {
+ public:
+  DictAttrsPrintBuilder(ObjectRef obj, text::IRPrinter printer, refl::AccessPath path,
+                        int32_t std_kind_type_index)
+      : PrintBuilderBase(std::move(obj), std::move(printer), std::move(path), std_kind_type_index) {
+  }
+
+  text::NodeAST Build() const {
+    this->CheckNoCustomPrintParts("DictAttrs std-kind printer");
+    Dict<String, Any> values = this->ReadStdField("values").cast<Dict<String, Any>>();
+    List<String> kwargs_keys;
+    List<text::ExprAST> kwargs_values;
+    std::vector<String> sorted_keys;
+    sorted_keys.reserve(values.size());
+    for (const auto& kv : values) {
+      sorted_keys.push_back(kv.first);
+    }
+    std::sort(sorted_keys.begin(), sorted_keys.end());
+
+    kwargs_keys.reserve(static_cast<int64_t>(sorted_keys.size()));
+    kwargs_values.reserve(static_cast<int64_t>(sorted_keys.size()));
+    refl::AccessPath values_path = this->PathForStdField("values");
+    int64_t n = static_cast<int64_t>(sorted_keys.size());
+    for (int64_t i = 0; i < n; ++i) {
+      const String& key = sorted_keys[i];
+      kwargs_keys.push_back(key);
+      kwargs_values.push_back(
+          this->printer_->operator()(values[key], values_path->MapItem(key)).cast<text::ExprAST>());
+    }
+    return text::CallAST(CallMnemonic(this->printer_->cfg, this->obj_), {}, std::move(kwargs_keys),
+                         std::move(kwargs_values));
+  }
+};
+
+template <typename Builder>
+text::NodeAST RunPrintBuilder(const ObjectRef& obj, const text::IRPrinter& printer,
+                              const refl::AccessPath& path, int32_t std_kind_type_index) {
+  return Builder(obj, printer, path, std_kind_type_index).Build();
 }
 
 #define TVM_FFI_STD_GENERIC_TEXT_PRINT(TypeName)                                                  \
@@ -1229,22 +2823,23 @@ TVM_FFI_STATIC_INIT_BLOCK() {
   registry->Register("std", "__continue__", ApplyContinueGeneric);
 
 #define TVM_FFI_STD_OBJECT_DEF_BASE(ObjType, RefType) \
-  refl::ObjectDef<ObjType>().def_type_attr(refl::type_attr::kTextPrint, TextPrintHook<RefType>())
+  refl::ObjectDef<ObjType>().def_type_attr(           \
+      refl::type_attr::kStdSchema,                    \
+      static_cast<int64_t>(RefType::ContainerType::RuntimeTypeIndex()))
 
 #define TVM_FFI_STD_OBJECT_DEF_BASE_INIT(ObjType, RefType, ...) \
   refl::ObjectDef<ObjType>(__VA_ARGS__)                         \
-      .def_type_attr(refl::type_attr::kTextPrint, TextPrintHook<RefType>())
+      .def_type_attr(refl::type_attr::kStdSchema,               \
+                     static_cast<int64_t>(RefType::ContainerType::RuntimeTypeIndex()))
 
-#define TVM_FFI_STD_OBJECT_DEF(ObjType, RefType, Name)                      \
-  refl::ObjectDef<ObjType>()                                                \
-      .def_type_attr(refl::type_attr::kTextPrint, TextPrintHook<RefType>()) \
-      .def_type_attr(refl::type_attr::kDialectMnemonic,                     \
+#define TVM_FFI_STD_OBJECT_DEF(ObjType, RefType, Name)  \
+  TVM_FFI_STD_OBJECT_DEF_BASE(ObjType, RefType)         \
+      .def_type_attr(refl::type_attr::kDialectMnemonic, \
                      Array<String>{String("std"), String(Name)})
 
-#define TVM_FFI_STD_OBJECT_DEF_GENERIC(ObjType, RefType, Name, Generic)     \
-  refl::ObjectDef<ObjType>()                                                \
-      .def_type_attr(refl::type_attr::kTextPrint, TextPrintHook<RefType>()) \
-      .def_type_attr(refl::type_attr::kDialectMnemonic,                     \
+#define TVM_FFI_STD_OBJECT_DEF_GENERIC(ObjType, RefType, Name, Generic) \
+  TVM_FFI_STD_OBJECT_DEF_BASE(ObjType, RefType)                         \
+      .def_type_attr(refl::type_attr::kDialectMnemonic,                 \
                      Array<String>{String("std"), String(Name), String(Generic)})
 
   TVM_FFI_STD_OBJECT_DEF_BASE_INIT(NodeObj, Node, refl::init(false));
@@ -1345,10 +2940,76 @@ TVM_FFI_STATIC_INIT_BLOCK() {
   TVM_FFI_STD_OBJECT_DEF(DictAttrsObj, DictAttrs, "DictAttrs")
       .def_rw("values", &DictAttrsObj::values);
 
+#define TVM_FFI_REGISTER_CAST_COMPATIBLE_BUILDER(RefType)                           \
+  text::details::RegisterIRPrintBuilder(RefType::ContainerType::RuntimeTypeIndex(), \
+                                        RunPrintBuilder<CastCompatiblePrintBuilder<RefType>>)
+
+#define TVM_FFI_REGISTER_BINARY_BUILDER(RefType)                                    \
+  text::details::RegisterIRPrintBuilder(RefType::ContainerType::RuntimeTypeIndex(), \
+                                        RunPrintBuilder<BinaryPrintBuilder>)
+
+#define TVM_FFI_REGISTER_BUILDER(RefType, Builder)                                  \
+  text::details::RegisterIRPrintBuilder(RefType::ContainerType::RuntimeTypeIndex(), \
+                                        RunPrintBuilder<Builder>)
+
+  TVM_FFI_REGISTER_CAST_COMPATIBLE_BUILDER(Node);
+  TVM_FFI_REGISTER_CAST_COMPATIBLE_BUILDER(Ty);
+  TVM_FFI_REGISTER_CAST_COMPATIBLE_BUILDER(Stmt);
+  TVM_FFI_REGISTER_CAST_COMPATIBLE_BUILDER(Attrs);
+  TVM_FFI_REGISTER_CAST_COMPATIBLE_BUILDER(Aggregate);
+  TVM_FFI_REGISTER_CAST_COMPATIBLE_BUILDER(Expr);
+  TVM_FFI_REGISTER_BUILDER(Var, VarPrintBuilder);
+  TVM_FFI_REGISTER_BUILDER(Func, FuncPrintBuilder);
+  TVM_FFI_REGISTER_BUILDER(Module, ModulePrintBuilder);
+  TVM_FFI_REGISTER_BUILDER(Range, RangePrintBuilder);
+  TVM_FFI_REGISTER_BUILDER(AnyTy, AnyTyPrintBuilder);
+  TVM_FFI_REGISTER_BUILDER(PrimTy, PrimTyPrintBuilder);
+  TVM_FFI_REGISTER_BUILDER(TupleType, TupleTypePrintBuilder);
+  TVM_FFI_REGISTER_BUILDER(TensorTy, TensorTyPrintBuilder);
+  TVM_FFI_REGISTER_BUILDER(IntImm, IntImmPrintBuilder);
+  TVM_FFI_REGISTER_BUILDER(FloatImm, FloatImmPrintBuilder);
+  TVM_FFI_REGISTER_BUILDER(StringImm, StringImmPrintBuilder);
+  TVM_FFI_REGISTER_BINARY_BUILDER(Add);
+  TVM_FFI_REGISTER_BINARY_BUILDER(Sub);
+  TVM_FFI_REGISTER_BINARY_BUILDER(Mul);
+  TVM_FFI_REGISTER_BINARY_BUILDER(FloorDiv);
+  TVM_FFI_REGISTER_BINARY_BUILDER(FloorMod);
+  TVM_FFI_REGISTER_BINARY_BUILDER(Min);
+  TVM_FFI_REGISTER_BINARY_BUILDER(Max);
+  TVM_FFI_REGISTER_BINARY_BUILDER(Eq);
+  TVM_FFI_REGISTER_BINARY_BUILDER(Ne);
+  TVM_FFI_REGISTER_BINARY_BUILDER(Le);
+  TVM_FFI_REGISTER_BINARY_BUILDER(Ge);
+  TVM_FFI_REGISTER_BINARY_BUILDER(Gt);
+  TVM_FFI_REGISTER_BINARY_BUILDER(Lt);
+  TVM_FFI_REGISTER_BINARY_BUILDER(And);
+  TVM_FFI_REGISTER_BINARY_BUILDER(Or);
+  TVM_FFI_REGISTER_BUILDER(Not, NotPrintBuilder);
+  TVM_FFI_REGISTER_BUILDER(Load, LoadPrintBuilder);
+  TVM_FFI_REGISTER_BUILDER(Cast, CastPrintBuilder);
+  TVM_FFI_REGISTER_BUILDER(Call, CallPrintBuilder);
+  TVM_FFI_REGISTER_BUILDER(IfStmt, IfStmtPrintBuilder);
+  TVM_FFI_REGISTER_CAST_COMPATIBLE_BUILDER(Bind);
+  TVM_FFI_REGISTER_BUILDER(BindExpr, BindExprPrintBuilder);
+  TVM_FFI_REGISTER_BUILDER(BindVarDef, BindVarDefPrintBuilder);
+  TVM_FFI_REGISTER_BUILDER(Scope, ScopePrintBuilder);
+  TVM_FFI_REGISTER_BUILDER(For, ForPrintBuilder);
+  TVM_FFI_REGISTER_BUILDER(While, WhilePrintBuilder);
+  TVM_FFI_REGISTER_BUILDER(Store, StorePrintBuilder);
+  TVM_FFI_REGISTER_BUILDER(Assert, AssertPrintBuilder);
+  TVM_FFI_REGISTER_BUILDER(Return, ReturnPrintBuilder);
+  TVM_FFI_REGISTER_BUILDER(Yield_, YieldPrintBuilder);
+  TVM_FFI_REGISTER_BUILDER(Break, BreakPrintBuilder);
+  TVM_FFI_REGISTER_BUILDER(Continue, ContinuePrintBuilder);
+  TVM_FFI_REGISTER_BUILDER(DictAttrs, DictAttrsPrintBuilder);
+
 #undef TVM_FFI_STD_OBJECT_DEF
 #undef TVM_FFI_STD_OBJECT_DEF_GENERIC
 #undef TVM_FFI_STD_OBJECT_DEF_BASE
 #undef TVM_FFI_STD_OBJECT_DEF_BASE_INIT
+#undef TVM_FFI_REGISTER_CAST_COMPATIBLE_BUILDER
+#undef TVM_FFI_REGISTER_BINARY_BUILDER
+#undef TVM_FFI_REGISTER_BUILDER
 }
 
 }  // namespace std_

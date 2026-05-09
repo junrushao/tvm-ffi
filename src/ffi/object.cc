@@ -642,6 +642,7 @@ TVM_FFI_STATIC_INIT_BLOCK() {
   refl::EnsureTypeAttrColumn(refl::type_attr::kEnumAttrs);
   refl::EnsureTypeAttrColumn(refl::type_attr::kEnumValueEntries);
   refl::EnsureTypeAttrColumn(refl::type_attr::kDialectMnemonic);
+  refl::EnsureTypeAttrColumn(refl::type_attr::kStdSchema);
   refl::GlobalDef()
       .def_method("ffi.GetRegisteredTypeKeys",
                   []() -> ffi::Array<ffi::String> {

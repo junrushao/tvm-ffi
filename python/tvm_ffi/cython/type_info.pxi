@@ -803,8 +803,8 @@ class TypeInfo:
 
         Parameters
         ----------
-        py_methods : list[tuple[str, Any, bool]] | None
-            Each entry is ``(name, value, is_static)``.
+        py_methods : list[tuple[str, Any, bool, dict[str, Any]]] | None
+            Each entry is ``(name, value, is_static, metadata)``.
         type_attr_names : frozenset[str]
             Names to register as TypeAttrColumn instead of TypeMethod.
         """
@@ -882,8 +882,10 @@ cdef _register_one_field(
         info.doc.data = NULL
         info.doc.size = 0
 
-    # --- metadata (JSON with type_schema) ---
-    metadata_str = json.dumps({"type_schema": py_field._ty_schema.to_json()})
+    # --- metadata (JSON with type_schema and field-local dialect annotations) ---
+    metadata_obj = {"type_schema": py_field._ty_schema.to_json()}
+    metadata_obj.update(py_field.dialect_metadata())
+    metadata_str = json.dumps(metadata_obj)
     metadata_bytes = c_str(metadata_str)
     cdef ByteArrayArg metadata_arg = ByteArrayArg(metadata_bytes)
     info.metadata = metadata_arg.cdata
@@ -1011,7 +1013,6 @@ def _register_fields(type_info, fields, structure_kind=None):
     structure_kind : int | None
         The structural equality/hashing kind (``TVMFFISEqHashKind`` integer).
         ``None`` or ``0`` means unsupported (no metadata registered).
-
     Returns
     -------
     list[TypeField]
@@ -1062,6 +1063,8 @@ def _register_fields(type_info, fields, structure_kind=None):
         fsetter.setter = <void*>setter_fn.chandle
         fsetter.offset = field_offset
         fsetter.flags = <int64_t>(kTVMFFIFieldFlagBitMaskWritable | kTVMFFIFieldFlagBitSetterIsFunctionObj)
+        field_metadata = {"type_schema": py_field._ty_schema.to_json()}
+        field_metadata.update(py_field.dialect_metadata())
         type_fields.append(
             TypeField(
                 name=py_field.name,
@@ -1069,7 +1072,7 @@ def _register_fields(type_info, fields, structure_kind=None):
                 size=size,
                 offset=field_offset,
                 frozen=py_field.frozen,
-                metadata={"type_schema": py_field._ty_schema.to_json()},
+                metadata=field_metadata,
                 getter=fgetter,
                 setter=fsetter,
                 ty=py_field._ty_schema,
@@ -1093,14 +1096,20 @@ def _register_fields(type_info, fields, structure_kind=None):
     # 7. Register __ffi_new__, __ffi_shallow_copy__, __ffi_init__ TypeAttrColumns
     _PYCLS_REGISTER(type_index, total_size)
 
-    # 8. Register type metadata (structural_eq_hash_kind) if specified.
-    if structure_kind is not None and structure_kind != 0:
+    # 8. Register type metadata when structural eq/hash is enabled.
+    if structure_kind is None:
+        structure_kind = 0
+    if structure_kind != 0:
         _register_type_metadata(type_index, total_size, structure_kind)
 
     return type_fields
 
 
-cdef _register_type_metadata(int32_t type_index, int32_t total_size, int structure_kind):
+cdef _register_type_metadata(
+    int32_t type_index,
+    int32_t total_size,
+    int structure_kind,
+):
     """Register TVMFFITypeMetadata for the given type with structural eq/hash kind."""
     cdef TVMFFITypeMetadata metadata
     metadata.doc.data = NULL
@@ -1126,8 +1135,8 @@ cdef _register_py_methods(int32_t type_index, list py_methods, frozenset type_at
     ----------
     type_index : int
         The runtime type index of the type.
-    py_methods : list[tuple[str, Any, bool]]
-        Each entry is ``(name, value, is_static)``.
+    py_methods : list[tuple[str, Any, bool, dict[str, Any]]]
+        Each entry is ``(name, value, is_static, metadata)``.
     type_attr_names : frozenset[str]
         Names to register as TypeAttrColumn instead of TypeMethod.
     """
@@ -1136,16 +1145,19 @@ cdef _register_py_methods(int32_t type_index, list py_methods, frozenset type_at
     cdef TVMFFIAny sentinel_any
     cdef int c_api_ret_code
     cdef ByteArrayArg name_arg
+    cdef ByteArrayArg metadata_arg
 
     sentinel_any.type_index = kTVMFFINone
     sentinel_any.v_int64 = 0
 
-    for name, func, is_static in py_methods:
+    for name, func, is_static, metadata in py_methods:
         func_any.type_index = kTVMFFINone
         func_any.v_int64 = 0
         try:
             name_bytes = c_str(name)
             name_arg = ByteArrayArg(name_bytes)
+            metadata_bytes = c_str(json.dumps(metadata))
+            metadata_arg = ByteArrayArg(metadata_bytes)
 
             # Convert Python object -> TVMFFIAny
             TVMFFIPyPyObjectToFFIAny(
@@ -1166,8 +1178,7 @@ cdef _register_py_methods(int32_t type_index, list py_methods, frozenset type_at
                 method_info.doc.size = 0
                 method_info.flags = kTVMFFIFieldFlagBitMaskIsStaticMethod if is_static else 0
                 method_info.method = func_any
-                method_info.metadata.data = NULL
-                method_info.metadata.size = 0
+                method_info.metadata = metadata_arg.cdata
                 CHECK_CALL(TVMFFITypeRegisterMethod(type_index, &method_info))
         finally:
             if func_any.type_index >= kTVMFFIStaticObjectBegin and func_any.v_obj != NULL:

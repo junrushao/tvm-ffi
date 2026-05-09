@@ -393,6 +393,14 @@ inline constexpr const char* kTextPrint = "__ffi_text_print__";
  */
 inline constexpr const char* kDialectMnemonic = "__ffi_dialect_mnemonic__";
 /*!
+ * \brief Canonical std schema selected by a foreign IR node type.
+ *
+ * The value is an ``int64_t`` runtime type index of a std node, for example
+ * ``std.Add``.  It is exact per type; dispatch may explicitly walk ancestors
+ * when it wants inheritance semantics.
+ */
+inline constexpr const char* kStdSchema = "__ffi_std_schema__";
+/*!
  * \brief Custom recursive hash hook.
  *
  * If registered, ``RecursiveHash`` (Python ``hash()``) calls this instead

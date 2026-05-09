@@ -346,9 +346,36 @@ def _validate_type_attr_value(cls: type, name: str, value: Any) -> None:
                 "tuple[str, str] or tuple[str, str, str], "
                 f"got {type(value).__name__}.",
             )
+    if name == "__ffi_std_schema__":
+        raise NameError(
+            f"@py_class({cls.__name__!r}): {name!r} is managed by "
+            "the std_schema=... decorator argument and should not be "
+            "defined directly in the class body.",
+        )
 
 
-def _collect_py_methods(cls: type) -> list[tuple[str, Any, bool]] | None:
+def _validate_field_render_methods(cls: type, fields: list[Field]) -> None:
+    for f in fields:
+        if f.print is None:
+            continue
+        for role in f.print:
+            if role.render is None:
+                continue
+            value = getattr(cls, role.render, None)
+            if value is None or not callable(value):
+                raise NameError(
+                    f"@py_class({cls.__name__!r}): field {f.name!r} references "
+                    f"missing print render method {role.render!r}"
+                )
+            if not _is_method_marked(value):
+                raise NameError(
+                    f"@py_class({cls.__name__!r}): field {f.name!r} references "
+                    f"print render method {role.render!r}, which must be decorated "
+                    "with @method"
+                )
+
+
+def _collect_py_methods(cls: type) -> list[tuple[str, Any, bool, dict[str, Any]]] | None:
     """Extract FFI-registered entries from a ``@py_class`` body.
 
     Two sources are collected:
@@ -369,10 +396,10 @@ def _collect_py_methods(cls: type) -> list[tuple[str, Any, bool]] | None:
     and Python protocol dunders cannot be ``@method``-decorated; those
     are reserved by the TypeAttrColumn and Python semantics respectively.
 
-    Returns the ``(name, value, is_static)`` list, or :data:`None` when
-    no entries were found.
+    Returns the ``(name, value, is_static, metadata)`` list, or :data:`None`
+    when no entries were found.
     """
-    methods: list[tuple[str, Any, bool]] = []
+    methods: list[tuple[str, Any, bool, dict[str, Any]]] = []
     for name, value in cls.__dict__.items():
         marked = _is_method_marked(value)
         if name not in _FFI_RECOGNIZED_METHODS and not marked:
@@ -396,8 +423,42 @@ def _collect_py_methods(cls: type) -> list[tuple[str, Any, bool]] | None:
             _validate_type_attr_value(cls, name, value)
         is_static = isinstance(value, staticmethod)
         func = value.__func__ if is_static else value
-        methods.append((name, func, is_static))
+        metadata: dict[str, Any] = {}
+        methods.append((name, func, is_static, metadata))
     return methods if methods else None
+
+
+def _type_attrs_from_params(
+    cls: type,
+    params: dict[str, Any],
+) -> list[tuple[str, Any, bool, dict[str, Any]]]:
+    type_attrs: list[tuple[str, Any, bool, dict[str, Any]]] = []
+    std_schema = params.get("std_schema")
+    if std_schema is None:
+        return type_attrs
+    if not isinstance(std_schema, type):
+        raise TypeError(
+            f"@py_class({cls.__name__!r}): std_schema must be a registered "
+            f"std FFI class, got {type(std_schema).__name__}"
+        )
+    schema_info = _registered_type_info(std_schema)
+    if schema_info is None:
+        raise TypeError(
+            f"@py_class({cls.__name__!r}): std_schema={std_schema!r} is not a registered FFI type"
+        )
+    schema_type_index = core._lookup_type_attr(schema_info.type_index, "__ffi_std_schema__")
+    if schema_type_index is None:
+        raise TypeError(
+            f"@py_class({cls.__name__!r}): std_schema={std_schema!r} does not "
+            "declare __ffi_std_schema__; use a registered std node with a print builder"
+        )
+    if not isinstance(schema_type_index, int):
+        raise TypeError(
+            f"@py_class({cls.__name__!r}): std_schema={std_schema!r} has invalid "
+            f"__ffi_std_schema__ value {schema_type_index!r}"
+        )
+    type_attrs.append(("__ffi_std_schema__", schema_type_index, False, {}))
+    return type_attrs
 
 
 def _build_localns(cls: type, *, cross_module: bool = False) -> dict[str, Any]:
@@ -512,7 +573,13 @@ def _register_fields_into_type(
             assert f.name is not None
             fields_map[f.name] = f
     own_fields = list(fields_map.values())
+    _validate_field_render_methods(cls, own_fields)
     py_methods = _collect_py_methods(cls)
+
+    type_attr_entries = _type_attrs_from_params(cls, params)
+    if type_attr_entries:
+        py_methods = list(py_methods or [])
+        py_methods.extend(type_attr_entries)
 
     # Register fields and type-level structural eq/hash kind with the C layer.
     structure_kind = _STRUCTURE_KIND_MAP.get(params.get("structural_eq"))
@@ -678,6 +745,7 @@ _FFI_TYPE_ATTR_NAMES: frozenset[str] = frozenset(
         "__ffi_text_print__",
         # IR dialect metadata
         "__ffi_dialect_mnemonic__",
+        "__ffi_std_schema__",
     }
 )
 
@@ -710,6 +778,7 @@ def py_class(  # noqa: PLR0913
     match_args: bool = True,
     kw_only: bool = False,
     structural_eq: str | None = None,
+    std_schema: type | None = None,
     slots: bool = True,
 ) -> Callable[[_T], _T] | _T:
     """Register a Python-defined FFI class with dataclass-style semantics.
@@ -801,6 +870,9 @@ def py_class(  # noqa: PLR0913
         it only configures how ``structural_equal`` / ``structural_hash``
         walk the object in C++ and never installs or alters Python-level
         ``__eq__`` / ``__hash__``.  See Notes below.
+    std_schema
+        Registered std node class whose schema and print builder should be used
+        for this class without requiring storage inheritance.
     slots
         Accepted for ``dataclass_transform`` compatibility.  Object
         subclasses always use ``__slots__ = ()`` via the metaclass.
@@ -857,6 +929,7 @@ def py_class(  # noqa: PLR0913
         "match_args": match_args,
         "kw_only": kw_only,
         "structural_eq": structural_eq,
+        "std_schema": std_schema,
     }
 
     def decorator(cls: _T) -> _T:
