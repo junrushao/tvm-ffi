@@ -45,6 +45,9 @@ namespace {
 namespace refl = ::tvm::ffi::reflection;
 namespace text = ::tvm::ffi::pyast;
 
+constexpr DLDataType kDefaultIntLiteralType{static_cast<uint8_t>(kDLInt), 64, 1};
+constexpr DLDataType kDefaultFloatLiteralType{static_cast<uint8_t>(kDLFloat), 32, 1};
+
 #define TVM_FFI_STD_TEXT_PRINT_DECL(TypeName)                                  \
   text::NodeAST TextPrint(const TypeName& obj, const text::IRPrinter& printer, \
                           const refl::AccessPath& path);
@@ -164,7 +167,7 @@ text::ExprAST CallMnemonic(const text::PrinterConfig& cfg, const ObjectRef& obj)
 }
 
 text::ExprAST CallCustomMnemonic(const text::PrinterConfig& cfg, const ObjectRef& obj,
-                                 String printed_name) {
+                                 String printed_name, bool prefix_dialect = false) {
   Array<String> dialect_mnemonic = DialectMnemonic(obj->type_index());
   String dialect = dialect_mnemonic[0];
   String full_mnemonic =
@@ -185,6 +188,9 @@ text::ExprAST CallCustomMnemonic(const text::PrinterConfig& cfg, const ObjectRef
     }
     return text::ExprAttr(text::DottedName(std::move(mapped)), std::move(printed_name));
   }
+  if (prefix_dialect) {
+    return text::ExprAttr(text::DottedName(std::move(dialect)), std::move(printed_name));
+  }
   return text::IdAST(std::move(printed_name));
 }
 
@@ -200,12 +206,30 @@ class DialectFrame {
   text::IRPrinterObj* printer_;
 };
 
+Optional<text::ExprAST> LiteralValueAST(const ObjectRef& obj) {
+  if (const IntImmObj* int_imm = obj.as<IntImmObj>()) {
+    return text::LiteralAST::Int(int_imm->value);
+  }
+  if (const FloatImmObj* float_imm = obj.as<FloatImmObj>()) {
+    return text::LiteralAST::Float(float_imm->value);
+  }
+  if (const StringImmObj* string_imm = obj.as<StringImmObj>()) {
+    return text::LiteralAST::Str(string_imm->value);
+  }
+  return {};
+}
+
 class CachedPrinter {
  public:
   explicit CachedPrinter(text::IRPrinter printer) : printer_(std::move(printer)) {}
 
   Any RunCache(const ObjectRef& obj, const refl::AccessPath& path) {
-    Any ast = printer_->operator()(obj, path);
+    Any ast;
+    if (Optional<text::ExprAST> literal = LiteralValueAST(obj)) {
+      ast = *literal;
+    } else {
+      ast = printer_->operator()(obj, path);
+    }
     text::NodeAST ast_node = ast.cast<text::NodeAST>();
     if (!ast_node->IsInstance<text::LiteralASTObj>()) {
       this->dialects_.insert(Dialect(obj.type_index()));
@@ -323,9 +347,9 @@ text::ExprAST DefineVarTuple(const text::IRPrinter& printer, const List<Var>& va
 Optional<text::ExprAST> DefineScopeVarsAsWithTargets(const text::IRPrinter& printer,
                                                      const List<Bind>& binds) {
   // A with-statement target is optional.  No bindings print as
-  // "with std.Scope(...):", one binding prints as "with std.Scope(...) as x:",
+  // "with std.scope(...):", one binding prints as "with std.scope(...) as x:",
   // and multiple bindings print as tuple target syntax:
-  // "with std.Scope(...) as (x, state):".
+  // "with std.scope(...) as (x, state):".
   List<text::ExprAST> targets;
   for (const Bind& bind : binds) {
     for (const Var& var : bind->vars) {
@@ -339,25 +363,49 @@ Optional<text::ExprAST> DefineScopeVarsAsWithTargets(const text::IRPrinter& prin
 
 bool AppendAttrsAsKwargs(const text::ExprAST& attrs_ast, List<String>* kwargs_keys,
                          List<text::ExprAST>* kwargs_values) {
-  // Attrs subclasses must print as CallAST with keyword-only arguments:
-  // DictAttrs({"tag": "demo"}) -> std.DictAttrs(tag="demo").
-  // This helper strips the callee and appends only "tag=..." so enclosing
-  // syntax can print as std.Call(callee, tag="demo") or range(..., tag="demo").
+  // Attrs subclasses print as constructor calls.  This helper strips the
+  // constructor and appends only "tag=..." so enclosing syntax can use compact
+  // forms such as @std.func(tag="demo") or range(..., tag="demo").
   const text::CallASTObj* call = attrs_ast.as<text::CallASTObj>();
   if (call == nullptr) {
     TVM_FFI_THROW(ValueError) << "ffi.std.Attrs text printer must return CallAST";
   }
-  if (!call->args.empty()) {
-    TVM_FFI_THROW(ValueError) << "ffi.std.Attrs text printer must use keyword arguments only";
+  if (call->args.empty()) {
+    kwargs_keys->reserve(static_cast<int64_t>(kwargs_keys->size() + call->kwargs_keys.size()));
+    kwargs_values->reserve(
+        static_cast<int64_t>(kwargs_values->size() + call->kwargs_values.size()));
+    int64_t n = static_cast<int64_t>(call->kwargs_keys.size());
+    for (int64_t i = 0; i < n; ++i) {
+      kwargs_keys->push_back(call->kwargs_keys[i]);
+      kwargs_values->push_back(call->kwargs_values[i]);
+    }
+    return n != 0;
   }
-  kwargs_keys->reserve(static_cast<int64_t>(kwargs_keys->size() + call->kwargs_keys.size()));
-  kwargs_values->reserve(static_cast<int64_t>(kwargs_values->size() + call->kwargs_values.size()));
-  int64_t n = static_cast<int64_t>(call->kwargs_keys.size());
-  for (int64_t i = 0; i < n; ++i) {
-    kwargs_keys->push_back(call->kwargs_keys[i]);
-    kwargs_values->push_back(call->kwargs_values[i]);
+
+  // Some attrs may not be representable as Python keyword arguments, for
+  // example non-identifier DictAttrs keys.  Let callers fall back to attrs=...
+  // instead of emitting invalid Python.
+  return false;
+}
+
+void AppendAttrsKeyword(const text::IRPrinter& printer, const Optional<Attrs>& attrs,
+                        const refl::AccessPath& path, List<String>* kwargs_keys,
+                        List<text::ExprAST>* kwargs_values) {
+  if (!attrs.has_value()) return;
+  kwargs_keys->push_back("attrs");
+  kwargs_values->push_back(printer->operator()(*attrs, path).cast<text::ExprAST>());
+}
+
+bool AppendAttrsAsKwargsOrKeyword(const text::IRPrinter& printer, const Optional<Attrs>& attrs,
+                                  const refl::AccessPath& path, List<String>* kwargs_keys,
+                                  List<text::ExprAST>* kwargs_values) {
+  if (!attrs.has_value()) return false;
+  text::ExprAST attrs_ast = printer->operator()(*attrs, path).cast<text::ExprAST>();
+  if (AppendAttrsAsKwargs(attrs_ast, kwargs_keys, kwargs_values)) {
+    return true;
   }
-  return n != 0;
+  AppendAttrsKeyword(printer, attrs, path, kwargs_keys, kwargs_values);
+  return true;
 }
 
 text::ExprAST BindInitializerCall(const Bind& bind, const text::IRPrinter& printer,
@@ -369,7 +417,7 @@ text::ExprAST BindInitializerCall(const Bind& bind, const text::IRPrinter& print
   //
   // prints as:
   //
-  //   with std.Scope(std.BindVarDef(std.i32)) as x:
+  //   with std.scope(std.BindVarDef(std.i32)) as x:
   //
   // This helper builds only the `std.BindVarDef(std.i32)` part.  The `as x`
   // target is produced separately by DefineScopeVarsAsWithTargets after the
@@ -468,6 +516,20 @@ List<text::ExprAST> BinaryOperands(const NodeType& obj, const Function& get_cach
   return OperandList(get_cached, obj->a, obj->b);
 }
 
+template <typename NodeType>
+List<text::ExprAST> ExplicitBinaryOperands(const text::IRPrinter& printer, const NodeType& obj,
+                                           const refl::AccessPath& path,
+                                           const Function& get_cached) {
+  List<text::ExprAST> result;
+  result.reserve(3);
+  result.push_back(printer->operator()(obj->ty, path->Attr("ty")).template cast<text::ExprAST>());
+  List<text::ExprAST> operands = BinaryOperands(obj, get_cached);
+  for (text::ExprAST operand : operands) {
+    result.push_back(operand);
+  }
+  return result;
+}
+
 List<text::ExprAST> LoadOperands(const Load& load, const Function& get_cached) {
   return OperandList(get_cached, load->lhs, load->indices);
 }
@@ -502,12 +564,18 @@ text::NodeAST ApplyLoadGeneric(const text::IRPrinter&, const Load& obj, const re
 }
 
 text::NodeAST ApplyCastGeneric(const text::IRPrinter& printer, const Cast& obj,
-                               const refl::AccessPath&, const Function& get_cached) {
+                               const refl::AccessPath& path, const Function& get_cached) {
   // PrimTy casts prefer dtype-call syntax, e.g. std.Cast(std.i32, x) prints as
-  // std.i32(x).  Non-primitive casts stay explicit as std.Cast(ty, x).
+  // std.i32(x).  Literal operands stay explicit so dtype-call syntax remains
+  // available for typed immediate literals.
   text::ExprAST ty = get_cached(obj->ty).cast<text::ExprAST>();
-  text::ExprAST value = get_cached(obj->value).cast<text::ExprAST>();
-  if (obj->ty.as<PrimTyObj>() != nullptr) {
+  bool is_literal = obj->value.as<IntImmObj>() != nullptr ||
+                    obj->value.as<FloatImmObj>() != nullptr ||
+                    obj->value.as<StringImmObj>() != nullptr;
+  text::ExprAST value =
+      is_literal ? printer->operator()(obj->value, path->Attr("value")).cast<text::ExprAST>()
+                 : get_cached(obj->value).cast<text::ExprAST>();
+  if (obj->ty.as<PrimTyObj>() != nullptr && !is_literal) {
     return text::ExprCall(std::move(ty), {std::move(value)});
   }
   return text::ExprCall(CallMnemonic(printer->cfg, obj), {std::move(ty), std::move(value)});
@@ -519,6 +587,11 @@ text::NodeAST ApplyBindExprGeneric(const text::IRPrinter& printer, const BindExp
   // "x, y = rhs"; without vars it degrades to expression-statement "rhs".
   // Attrs wrap the RHS as std.BindExpr(rhs, key=value) before assignment.
   text::ExprAST rhs = get_cached(obj->expr).cast<text::ExprAST>();
+  // Literal RHS nodes need their normal printer so non-default immediate types
+  // stay explicit, e.g. std.i32(1), while default int64 still prints as 1.
+  if (LiteralValueAST(obj->expr).has_value()) {
+    rhs = printer->operator()(obj->expr, path->Attr("expr")).cast<text::ExprAST>();
+  }
   List<String> kwargs_keys;
   List<text::ExprAST> kwargs_values;
   if (obj->attrs.has_value() &&
@@ -666,7 +739,7 @@ text::NodeAST TextPrint(const Module& obj, const text::IRPrinter& printer,
     stmts.push_back(
         printer->operator()(obj->funcs[i], funcs_path->ArrayItem(i)).cast<text::StmtAST>());
   }
-  List<text::ExprAST> decorators{CallMnemonic(printer->cfg, obj)};
+  List<text::ExprAST> decorators{CallCustomMnemonic(printer->cfg, obj, "module", true)};
   return text::ClassAST(text::IdAST("MyModule"), {}, std::move(decorators), std::move(stmts));
 }
 
@@ -699,9 +772,9 @@ text::NodeAST TextPrint(const Func& obj, const text::IRPrinter& printer,
                        &decorator_keys, &decorator_values);
   List<text::ExprAST> decorators;
   if (!has_attrs) {
-    decorators.push_back(CallMnemonic(printer->cfg, obj));
+    decorators.push_back(CallCustomMnemonic(printer->cfg, obj, "func", true));
   } else {
-    decorators.push_back(text::ExprCallKw(CallMnemonic(printer->cfg, obj), {},
+    decorators.push_back(text::ExprCallKw(CallCustomMnemonic(printer->cfg, obj, "func", true), {},
                                           std::move(decorator_keys), std::move(decorator_values)));
   }
   return text::FunctionAST(text::IdAST(obj->symbol), std::move(args), std::move(decorators),
@@ -778,30 +851,51 @@ text::NodeAST TextPrint(const TensorTy& obj, const text::IRPrinter& printer,
                         PrintExprList(printer, obj->shape, path->Attr("shape")));
 }
 
-#define TVM_FFI_STD_LITERAL_TEXT_PRINT(TypeName, LiteralFactory)               \
-  text::NodeAST TextPrint(const TypeName& obj, const text::IRPrinter& printer, \
-                          const refl::AccessPath& path) {                      \
-    /* TODO(junrushao( If literal immediates are not treated as text generics, \
-     * print the explicit mnemonic form instead of a raw Python literal. */    \
-    return text::LiteralAST::LiteralFactory(obj->value);                       \
+bool IsDefaultIntLiteralType(const Ty& ty) {
+  const PrimTyObj* prim_ty = ty.as<PrimTyObj>();
+  return prim_ty != nullptr && prim_ty->dtype == kDefaultIntLiteralType;
+}
+
+bool IsDefaultFloatLiteralType(const Ty& ty) {
+  const PrimTyObj* prim_ty = ty.as<PrimTyObj>();
+  return prim_ty != nullptr && prim_ty->dtype == kDefaultFloatLiteralType;
+}
+
+text::NodeAST TextPrint(const IntImm& obj, const text::IRPrinter& printer,
+                        const refl::AccessPath& path) {
+  text::ExprAST value = text::LiteralAST::Int(obj->value);
+  if (obj->ty.as<PrimTyObj>() != nullptr && !IsDefaultIntLiteralType(obj->ty)) {
+    text::ExprAST ty = printer->operator()(obj->ty, path->Attr("ty")).cast<text::ExprAST>();
+    return text::ExprCall(std::move(ty), {std::move(value)});
   }
+  return value;
+}
 
-TVM_FFI_STD_LITERAL_TEXT_PRINT(IntImm, Int)
-TVM_FFI_STD_LITERAL_TEXT_PRINT(FloatImm, Float)
-TVM_FFI_STD_LITERAL_TEXT_PRINT(StringImm, Str)
+text::NodeAST TextPrint(const FloatImm& obj, const text::IRPrinter& printer,
+                        const refl::AccessPath& path) {
+  text::ExprAST value = text::LiteralAST::Float(obj->value);
+  if (obj->ty.as<PrimTyObj>() != nullptr && !IsDefaultFloatLiteralType(obj->ty)) {
+    text::ExprAST ty = printer->operator()(obj->ty, path->Attr("ty")).cast<text::ExprAST>();
+    return text::ExprCall(std::move(ty), {std::move(value)});
+  }
+  return value;
+}
 
-#undef TVM_FFI_STD_LITERAL_TEXT_PRINT
+text::NodeAST TextPrint(const StringImm& obj, const text::IRPrinter&, const refl::AccessPath&) {
+  return text::LiteralAST::Str(obj->value);
+}
 
-#define TVM_FFI_STD_BINARY_TEXT_PRINT(TypeName)                                  \
-  text::NodeAST TextPrint(const TypeName& obj, const text::IRPrinter& printer,   \
-                          const refl::AccessPath& path) {                        \
-    CachedPrinter cache(printer);                                                \
-    cache.RunCache(obj->a, path->Attr("a"));                                     \
-    cache.RunCache(obj->b, path->Attr("b"));                                     \
-    return ApplyTextGenericOrFallback(obj, path, cache, [&]() -> text::NodeAST { \
-      return text::ExprCall(CallMnemonic(printer->cfg, obj),                     \
-                            BinaryOperands(obj, cache.GetCachedFunction()));     \
-    });                                                                          \
+#define TVM_FFI_STD_BINARY_TEXT_PRINT(TypeName)                                   \
+  text::NodeAST TextPrint(const TypeName& obj, const text::IRPrinter& printer,    \
+                          const refl::AccessPath& path) {                         \
+    CachedPrinter cache(printer);                                                 \
+    cache.RunCache(obj->a, path->Attr("a"));                                      \
+    cache.RunCache(obj->b, path->Attr("b"));                                      \
+    return ApplyTextGenericOrFallback(obj, path, cache, [&]() -> text::NodeAST {  \
+      return text::ExprCall(                                                      \
+          CallMnemonic(printer->cfg, obj),                                        \
+          ExplicitBinaryOperands(printer, obj, path, cache.GetCachedFunction())); \
+    });                                                                           \
   }
 
 TVM_FFI_STD_BINARY_TEXT_PRINT(Add)
@@ -827,7 +921,9 @@ text::NodeAST TextPrint(const Not& obj, const text::IRPrinter& printer,
   CachedPrinter cache(printer);
   cache.RunCache(obj->operand, path->Attr("operand"));
   return ApplyTextGenericOrFallback(obj, path, cache, [&]() -> text::NodeAST {
-    return text::ExprCall(CallMnemonic(printer->cfg, obj), {cache.ExprFromCache(obj->operand)});
+    return text::ExprCall(CallMnemonic(printer->cfg, obj),
+                          {printer->operator()(obj->ty, path->Attr("ty")).cast<text::ExprAST>(),
+                           cache.ExprFromCache(obj->operand)});
   });
 }
 
@@ -842,7 +938,15 @@ text::NodeAST TextPrint(const Load& obj, const text::IRPrinter& printer,
   }
   Function get_cached = cache.GetCachedFunction();
   return ApplyTextGenericOrFallback(obj, path, cache, [&]() -> text::NodeAST {
-    return text::ExprCall(CallMnemonic(printer->cfg, obj), LoadOperands(obj, get_cached));
+    List<text::ExprAST> indices;
+    indices.reserve(n);
+    for (int64_t i = 0; i < n; ++i) {
+      indices.push_back(get_cached(obj->indices[i]).cast<text::ExprAST>());
+    }
+    return text::ExprCall(
+        CallMnemonic(printer->cfg, obj),
+        {printer->operator()(obj->ty, path->Attr("ty")).cast<text::ExprAST>(),
+         get_cached(obj->lhs).cast<text::ExprAST>(), text::ListAST(std::move(indices))});
   });
 }
 
@@ -871,22 +975,22 @@ text::NodeAST TextPrint(const Call& obj, const text::IRPrinter& printer,
       callee_name.has_value()
           ? text::ExprAST(text::IdAST(callee_name.value()))
           : printer->operator()(obj->callee, path->Attr("callee")).cast<text::ExprAST>();
+  text::ExprAST ty = printer->operator()(obj->ty, path->Attr("ty")).cast<text::ExprAST>();
   List<text::ExprAST> args = PrintExprList(printer, obj->args, path->Attr("args"));
-  List<text::ExprAST> call_args{std::move(callee)};
-  call_args.reserve(static_cast<int64_t>(obj->args.size() + 1));
+  List<text::ExprAST> call_args{std::move(ty), std::move(callee)};
+  call_args.reserve(args.size() + 2);
   for (text::ExprAST arg : args) {
     call_args.push_back(arg);
   }
   List<String> kwargs_keys;
   List<text::ExprAST> kwargs_values;
-  if (!obj->attr.has_value() ||
-      !AppendAttrsAsKwargs(
-          printer->operator()(*obj->attr, path->Attr("attr")).cast<text::ExprAST>(), &kwargs_keys,
-          &kwargs_values)) {
-    return text::ExprCall(CallMnemonic(printer->cfg, obj), std::move(call_args));
+  if (obj->attr.has_value() &&
+      AppendAttrsAsKwargs(printer->operator()(*obj->attr, path->Attr("attr")).cast<text::ExprAST>(),
+                          &kwargs_keys, &kwargs_values)) {
+    return text::ExprCallKw(CallMnemonic(printer->cfg, obj), std::move(call_args),
+                            std::move(kwargs_keys), std::move(kwargs_values));
   }
-  return text::ExprCallKw(CallMnemonic(printer->cfg, obj), std::move(call_args),
-                          std::move(kwargs_keys), std::move(kwargs_values));
+  return text::ExprCall(CallMnemonic(printer->cfg, obj), std::move(call_args));
 }
 
 text::NodeAST TextPrint(const IfStmt& obj, const text::IRPrinter& printer,
@@ -971,11 +1075,12 @@ text::NodeAST TextPrint(const While& obj, const text::IRPrinter& printer,
   for (int64_t i = 0; i < n; ++i) {
     while_args.push_back(BindInitializerCall(obj->binds[i], printer, binds_path->ArrayItem(i)));
   }
-  text::ExprAST rhs =
-      while_kwarg_keys.empty()
-          ? text::ExprCall(CallMnemonic(printer->cfg, obj), std::move(while_args))
-          : text::ExprCallKw(CallMnemonic(printer->cfg, obj), std::move(while_args),
-                             std::move(while_kwarg_keys), std::move(while_kwarg_values));
+  text::ExprAST rhs = while_kwarg_keys.empty()
+                          ? text::ExprCall(CallCustomMnemonic(printer->cfg, obj, "while_", true),
+                                           std::move(while_args))
+                          : text::ExprCallKw(CallCustomMnemonic(printer->cfg, obj, "while_", true),
+                                             std::move(while_args), std::move(while_kwarg_keys),
+                                             std::move(while_kwarg_values));
   Optional<text::ExprAST> lhs = DefineScopeVarsAsWithTargets(printer, obj->binds);
   return text::WithAST(std::move(lhs), std::move(rhs),
                        PrintStmtList(printer, obj->body, path->Attr("body")));
@@ -1000,11 +1105,12 @@ text::NodeAST TextPrint(const Scope& obj, const text::IRPrinter& printer,
   for (int64_t i = 0; i < n; ++i) {
     scope_args.push_back(BindInitializerCall(obj->binds[i], printer, binds_path->ArrayItem(i)));
   }
-  text::ExprAST rhs =
-      scope_kwarg_keys.empty()
-          ? text::ExprCall(CallMnemonic(printer->cfg, obj), std::move(scope_args))
-          : text::ExprCallKw(CallMnemonic(printer->cfg, obj), std::move(scope_args),
-                             std::move(scope_kwarg_keys), std::move(scope_kwarg_values));
+  text::ExprAST rhs = scope_kwarg_keys.empty()
+                          ? text::ExprCall(CallCustomMnemonic(printer->cfg, obj, "scope", true),
+                                           std::move(scope_args))
+                          : text::ExprCallKw(CallCustomMnemonic(printer->cfg, obj, "scope", true),
+                                             std::move(scope_args), std::move(scope_kwarg_keys),
+                                             std::move(scope_kwarg_values));
   Optional<text::ExprAST> lhs = DefineScopeVarsAsWithTargets(printer, obj->binds);
   return text::WithAST(std::move(lhs), std::move(rhs),
                        PrintStmtList(printer, obj->body, path->Attr("body")));
@@ -1021,7 +1127,12 @@ text::NodeAST TextPrint(const BindExpr& obj, const text::IRPrinter& printer,
   cache.RunCache(obj->expr, path->Attr("expr"));
   Function get_cached = cache.GetCachedFunction();
   return ApplyTextGenericOrFallback(obj, path, cache, [&]() -> text::NodeAST {
-    List<text::ExprAST> args = OperandList(get_cached, obj->vars, obj->expr);
+    List<text::ExprAST> args = OperandList(get_cached, obj->vars);
+    text::ExprAST expr =
+        LiteralValueAST(obj->expr).has_value()
+            ? printer->operator()(obj->expr, path->Attr("expr")).cast<text::ExprAST>()
+            : get_cached(obj->expr).cast<text::ExprAST>();
+    args.push_back(expr);
     List<String> kwargs_keys;
     List<text::ExprAST> kwargs_values;
     text::ExprAST call =
@@ -1073,9 +1184,20 @@ text::NodeAST TextPrint(const Store& obj, const text::IRPrinter& printer,
   cache.RunCache(obj->rhs, path->Attr("rhs"));
   Function get_cached = cache.GetCachedFunction();
   return ApplyTextGenericOrFallback(obj, path, cache, [&]() -> text::NodeAST {
-    return text::ExprStmtAST(
-        text::ExprCall(CallMnemonic(printer->cfg, obj),
-                       OperandList(get_cached, obj->lhs, obj->indices, obj->rhs)));
+    List<text::ExprAST> indices;
+    indices.reserve(n);
+    for (int64_t i = 0; i < n; ++i) {
+      indices.push_back(get_cached(obj->indices[i]).cast<text::ExprAST>());
+    }
+    List<String> kwargs_keys;
+    List<text::ExprAST> kwargs_values;
+    AppendAttrsAsKwargsOrKeyword(printer, obj->attrs, path->Attr("attrs"), &kwargs_keys,
+                                 &kwargs_values);
+    return text::ExprStmtAST(text::ExprCallKw(
+        CallMnemonic(printer->cfg, obj),
+        {get_cached(obj->lhs).cast<text::ExprAST>(), text::ListAST(std::move(indices)),
+         get_cached(obj->rhs).cast<text::ExprAST>()},
+        std::move(kwargs_keys), std::move(kwargs_values)));
   });
 }
 
@@ -1086,13 +1208,15 @@ text::NodeAST TextPrint(const Assert& obj, const text::IRPrinter& printer,
   Function get_cached = cache.GetCachedFunction();
   List<String> kwargs_keys;
   List<text::ExprAST> kwargs_values;
-  if (obj->attrs.has_value() &&
-      AppendAttrsAsKwargs(
-          printer->operator()(*obj->attrs, path->Attr("attrs")).cast<text::ExprAST>(), &kwargs_keys,
-          &kwargs_values)) {
-    return text::ExprStmtAST(text::ExprCallKw(CallMnemonic(printer->cfg, obj),
-                                              {get_cached(obj->cond).cast<text::ExprAST>()},
-                                              std::move(kwargs_keys), std::move(kwargs_values)));
+  if (obj->attrs.has_value()) {
+    bool has_attrs = AppendAttrsAsKwargs(
+        printer->operator()(*obj->attrs, path->Attr("attrs")).cast<text::ExprAST>(), &kwargs_keys,
+        &kwargs_values);
+    if (has_attrs) {
+      return text::ExprStmtAST(text::ExprCallKw(CallMnemonic(printer->cfg, obj),
+                                                {get_cached(obj->cond).cast<text::ExprAST>()},
+                                                std::move(kwargs_keys), std::move(kwargs_values)));
+    }
   }
   return ApplyTextGenericOrFallback(obj, path, cache, [&]() -> text::NodeAST {
     return text::ExprStmtAST(text::ExprCall(CallMnemonic(printer->cfg, obj),
@@ -1170,8 +1294,6 @@ text::NodeAST TextPrint(const Continue& obj, const text::IRPrinter& printer,
 
 text::NodeAST TextPrint(const DictAttrs& obj, const text::IRPrinter& printer,
                         const refl::AccessPath& path) {
-  List<String> kwargs_keys;
-  List<text::ExprAST> kwargs_values;
   std::vector<String> sorted_keys;
   sorted_keys.reserve(obj->values.size());
   for (const auto& kv : obj->values) {
@@ -1179,18 +1301,42 @@ text::NodeAST TextPrint(const DictAttrs& obj, const text::IRPrinter& printer,
   }
   std::sort(sorted_keys.begin(), sorted_keys.end());
 
-  kwargs_keys.reserve(static_cast<int64_t>(sorted_keys.size()));
-  kwargs_values.reserve(static_cast<int64_t>(sorted_keys.size()));
+  bool can_print_as_kwargs = true;
+  for (const String& key : sorted_keys) {
+    if (!text::IsPythonIdentifier(key.data(), key.size()) ||
+        text::IsPythonKeyword(key.data(), key.size())) {
+      can_print_as_kwargs = false;
+      break;
+    }
+  }
+
+  List<text::ExprAST> values;
+  values.reserve(static_cast<int64_t>(sorted_keys.size()));
   refl::AccessPath values_path = path->Attr("values");
   int64_t n = static_cast<int64_t>(sorted_keys.size());
+  if (can_print_as_kwargs) {
+    List<String> kwargs_keys;
+    kwargs_keys.reserve(n);
+    for (int64_t i = 0; i < n; ++i) {
+      const String& key = sorted_keys[i];
+      kwargs_keys.push_back(key);
+      values.push_back(
+          printer->operator()(obj->values[key], values_path->MapItem(key)).cast<text::ExprAST>());
+    }
+    return text::CallAST(CallMnemonic(printer->cfg, obj), {}, std::move(kwargs_keys),
+                         std::move(values));
+  }
+
+  List<text::ExprAST> keys;
+  keys.reserve(n);
   for (int64_t i = 0; i < n; ++i) {
     const String& key = sorted_keys[i];
-    kwargs_keys.push_back(key);
-    kwargs_values.push_back(
+    keys.push_back(text::LiteralAST::Str(key));
+    values.push_back(
         printer->operator()(obj->values[key], values_path->MapItem(key)).cast<text::ExprAST>());
   }
-  return text::CallAST(CallMnemonic(printer->cfg, obj), {}, std::move(kwargs_keys),
-                       std::move(kwargs_values));
+  return text::CallAST(CallMnemonic(printer->cfg, obj),
+                       {text::DictAST(std::move(keys), std::move(values))}, {}, {});
 }
 
 // NOLINTEND(bugprone-misplaced-widening-cast,bugprone-narrowing-conversions)
@@ -1260,7 +1406,7 @@ TVM_FFI_STATIC_INIT_BLOCK() {
       .def_rw("name", &VarObj::name, refl::AttachFieldFlag::SEqHashIgnore());
   TVM_FFI_STD_OBJECT_DEF(FuncObj, Func, "Func")
       .def_rw("symbol", &FuncObj::symbol)
-      .def_rw("args", &FuncObj::args, refl::AttachFieldFlag::SEqHashDef())
+      .def_rw("args", &FuncObj::args, refl::AttachFieldFlag::SEqHashDefRecursive())
       .def_rw("ret_type", &FuncObj::ret_type)
       .def_rw("body", &FuncObj::body);
   TVM_FFI_STD_OBJECT_DEF(ModuleObj, Module, "Module").def_rw("funcs", &ModuleObj::funcs);
@@ -1320,12 +1466,12 @@ TVM_FFI_STATIC_INIT_BLOCK() {
       .def_rw("then_body", &IfStmtObj::then_body)
       .def_rw("else_body", &IfStmtObj::else_body);
   TVM_FFI_STD_OBJECT_DEF_BASE_INIT(BindObj, Bind, refl::init(false))
-      .def_rw("vars", &BindObj::vars, refl::AttachFieldFlag::SEqHashDef());
+      .def_rw("vars", &BindObj::vars, refl::AttachFieldFlag::SEqHashDefRecursive());
   TVM_FFI_STD_OBJECT_DEF_GENERIC(BindExprObj, BindExpr, "BindExpr", "__bind_expr__")
       .def_rw("expr", &BindExprObj::expr);
   TVM_FFI_STD_OBJECT_DEF_GENERIC(BindVarDefObj, BindVarDef, "BindVarDef", "__bind_var_def__");
   TVM_FFI_STD_OBJECT_DEF(ScopeObj, Scope, "Scope")
-      .def_rw("binds", &ScopeObj::binds, refl::AttachFieldFlag::SEqHashDef())
+      .def_rw("binds", &ScopeObj::binds, refl::AttachFieldFlag::SEqHashDefRecursive())
       .def_rw("body", &ScopeObj::body);
   TVM_FFI_STD_OBJECT_DEF_GENERIC(ForObj, For, "For", "__for__").def_rw("range_", &ForObj::range_);
   TVM_FFI_STD_OBJECT_DEF_GENERIC(WhileObj, While, "While", "__while__")

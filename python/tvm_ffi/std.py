@@ -18,28 +18,45 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, ClassVar
+from collections.abc import (
+    ItemsView,
+    Iterator,
+    KeysView,
+    Mapping,
+    MutableMapping,
+    MutableSequence,
+    Sequence,
+)
+from typing import TYPE_CHECKING, Any, ClassVar, cast
+
+from typing_extensions import Never, Protocol, TypeAlias
 
 from tvm_ffi import dtype
 from tvm_ffi.core import Object
 from tvm_ffi.dataclasses import c_class, field
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping, MutableMapping, MutableSequence, Sequence
-
-    from typing_extensions import Never, TypeAlias
-
-    from tvm_ffi.pyast import PrinterConfig
-
-    DialectMnemonic: TypeAlias = "tuple[str, str] | tuple[str, str, str]"
-else:
-    DialectMnemonic = tuple
+from tvm_ffi.pyast import PrinterConfig
 
 
-if TYPE_CHECKING:
-    AttrsLike: TypeAlias = "Attrs | Mapping[str, Any] | None"
-    ExprLike: TypeAlias = "Expr | int | float | str"
-    RangeLike: TypeAlias = "Range | ExprLike"
+class _FactoryLike(Protocol):
+    def to_dialect(self) -> Ty: ...
+
+
+DialectMnemonic: TypeAlias = "tuple[str, str] | tuple[str, str, str]"
+TyLike: TypeAlias = "Ty | str | _FactoryLike"
+AttrsLike: TypeAlias = "Attrs | Mapping[str, Any] | None"
+ExprLike: TypeAlias = "Expr | int | float | str"
+RangeLike: TypeAlias = "Range | ExprLike"
+
+
+def _normalize_ty(value: TyLike) -> Ty:
+    """Normalize parser-side type factories and dtype strings to ``std.Ty``."""
+    if isinstance(value, Ty):
+        return value
+    if hasattr(value, "to_dialect"):
+        return cast(Any, value).to_dialect()
+    if isinstance(value, str):
+        return PrimTy(value)
+    raise TypeError(f"expected std type, got {type(value).__name__}")
 
 
 @c_class("ffi.std.Node", init=False)
@@ -51,6 +68,8 @@ class Node(Object):
     if TYPE_CHECKING:
 
         def __init__(self, _no_direct_init: Never) -> None: ...
+
+        def __ffi_init__(self, *args: Any, **kwargs: Any) -> None: ...
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
         super().__init_subclass__(**kwargs)
@@ -123,6 +142,9 @@ class Var(Expr):
     __ffi_dialect_mnemonic__: ClassVar[DialectMnemonic] = ("std", "Var")
 
     name: str
+
+    def __init__(self, ty: TyLike, name: str) -> None:
+        self.__ffi_init__(_normalize_ty(ty), name)
 
 
 @c_class("ffi.std.Func")
@@ -225,6 +247,9 @@ class IntImm(Expr):
 
     value: int
 
+    def __init__(self, ty: TyLike, value: int) -> None:
+        self.__ffi_init__(_normalize_ty(ty), value)
+
 
 @c_class("ffi.std.FloatImm")
 class FloatImm(Expr):
@@ -233,6 +258,9 @@ class FloatImm(Expr):
     __ffi_dialect_mnemonic__: ClassVar[DialectMnemonic] = ("std", "FloatImm")
 
     value: float
+
+    def __init__(self, ty: TyLike, value: float) -> None:
+        self.__ffi_init__(_normalize_ty(ty), value)
 
 
 @c_class("ffi.std.StringImm")
@@ -243,6 +271,9 @@ class StringImm(Expr):
 
     value: str
 
+    def __init__(self, ty: TyLike, value: str) -> None:
+        self.__ffi_init__(_normalize_ty(ty), value)
+
 
 @c_class("ffi.std.Add")
 class Add(Expr):
@@ -252,9 +283,9 @@ class Add(Expr):
 
     a: Expr
     b: Expr
-    if TYPE_CHECKING:
 
-        def __init__(self, ty: Ty, a: ExprLike, b: ExprLike) -> None: ...
+    def __init__(self, ty: TyLike, a: ExprLike, b: ExprLike) -> None:
+        self.__ffi_init__(_normalize_ty(ty), a, b)
 
 
 @c_class("ffi.std.Sub")
@@ -265,9 +296,9 @@ class Sub(Expr):
 
     a: Expr
     b: Expr
-    if TYPE_CHECKING:
 
-        def __init__(self, ty: Ty, a: ExprLike, b: ExprLike) -> None: ...
+    def __init__(self, ty: TyLike, a: ExprLike, b: ExprLike) -> None:
+        self.__ffi_init__(_normalize_ty(ty), a, b)
 
 
 @c_class("ffi.std.Mul")
@@ -278,9 +309,9 @@ class Mul(Expr):
 
     a: Expr
     b: Expr
-    if TYPE_CHECKING:
 
-        def __init__(self, ty: Ty, a: ExprLike, b: ExprLike) -> None: ...
+    def __init__(self, ty: TyLike, a: ExprLike, b: ExprLike) -> None:
+        self.__ffi_init__(_normalize_ty(ty), a, b)
 
 
 @c_class("ffi.std.FloorDiv")
@@ -291,9 +322,9 @@ class FloorDiv(Expr):
 
     a: Expr
     b: Expr
-    if TYPE_CHECKING:
 
-        def __init__(self, ty: Ty, a: ExprLike, b: ExprLike) -> None: ...
+    def __init__(self, ty: TyLike, a: ExprLike, b: ExprLike) -> None:
+        self.__ffi_init__(_normalize_ty(ty), a, b)
 
 
 @c_class("ffi.std.FloorMod")
@@ -304,9 +335,9 @@ class FloorMod(Expr):
 
     a: Expr
     b: Expr
-    if TYPE_CHECKING:
 
-        def __init__(self, ty: Ty, a: ExprLike, b: ExprLike) -> None: ...
+    def __init__(self, ty: TyLike, a: ExprLike, b: ExprLike) -> None:
+        self.__ffi_init__(_normalize_ty(ty), a, b)
 
 
 @c_class("ffi.std.Min")
@@ -317,9 +348,9 @@ class Min(Expr):
 
     a: Expr
     b: Expr
-    if TYPE_CHECKING:
 
-        def __init__(self, ty: Ty, a: ExprLike, b: ExprLike) -> None: ...
+    def __init__(self, ty: TyLike, a: ExprLike, b: ExprLike) -> None:
+        self.__ffi_init__(_normalize_ty(ty), a, b)
 
 
 @c_class("ffi.std.Max")
@@ -330,9 +361,9 @@ class Max(Expr):
 
     a: Expr
     b: Expr
-    if TYPE_CHECKING:
 
-        def __init__(self, ty: Ty, a: ExprLike, b: ExprLike) -> None: ...
+    def __init__(self, ty: TyLike, a: ExprLike, b: ExprLike) -> None:
+        self.__ffi_init__(_normalize_ty(ty), a, b)
 
 
 @c_class("ffi.std.Eq")
@@ -343,9 +374,9 @@ class Eq(Expr):
 
     a: Expr
     b: Expr
-    if TYPE_CHECKING:
 
-        def __init__(self, ty: Ty, a: ExprLike, b: ExprLike) -> None: ...
+    def __init__(self, ty: TyLike, a: ExprLike, b: ExprLike) -> None:
+        self.__ffi_init__(_normalize_ty(ty), a, b)
 
 
 @c_class("ffi.std.Ne")
@@ -356,9 +387,9 @@ class Ne(Expr):
 
     a: Expr
     b: Expr
-    if TYPE_CHECKING:
 
-        def __init__(self, ty: Ty, a: ExprLike, b: ExprLike) -> None: ...
+    def __init__(self, ty: TyLike, a: ExprLike, b: ExprLike) -> None:
+        self.__ffi_init__(_normalize_ty(ty), a, b)
 
 
 @c_class("ffi.std.Le")
@@ -369,9 +400,9 @@ class Le(Expr):
 
     a: Expr
     b: Expr
-    if TYPE_CHECKING:
 
-        def __init__(self, ty: Ty, a: ExprLike, b: ExprLike) -> None: ...
+    def __init__(self, ty: TyLike, a: ExprLike, b: ExprLike) -> None:
+        self.__ffi_init__(_normalize_ty(ty), a, b)
 
 
 @c_class("ffi.std.Ge")
@@ -382,9 +413,9 @@ class Ge(Expr):
 
     a: Expr
     b: Expr
-    if TYPE_CHECKING:
 
-        def __init__(self, ty: Ty, a: ExprLike, b: ExprLike) -> None: ...
+    def __init__(self, ty: TyLike, a: ExprLike, b: ExprLike) -> None:
+        self.__ffi_init__(_normalize_ty(ty), a, b)
 
 
 @c_class("ffi.std.Gt")
@@ -395,9 +426,9 @@ class Gt(Expr):
 
     a: Expr
     b: Expr
-    if TYPE_CHECKING:
 
-        def __init__(self, ty: Ty, a: ExprLike, b: ExprLike) -> None: ...
+    def __init__(self, ty: TyLike, a: ExprLike, b: ExprLike) -> None:
+        self.__ffi_init__(_normalize_ty(ty), a, b)
 
 
 @c_class("ffi.std.Lt")
@@ -408,9 +439,9 @@ class Lt(Expr):
 
     a: Expr
     b: Expr
-    if TYPE_CHECKING:
 
-        def __init__(self, ty: Ty, a: ExprLike, b: ExprLike) -> None: ...
+    def __init__(self, ty: TyLike, a: ExprLike, b: ExprLike) -> None:
+        self.__ffi_init__(_normalize_ty(ty), a, b)
 
 
 @c_class("ffi.std.And")
@@ -421,9 +452,9 @@ class And(Expr):
 
     a: Expr
     b: Expr
-    if TYPE_CHECKING:
 
-        def __init__(self, ty: Ty, a: ExprLike, b: ExprLike) -> None: ...
+    def __init__(self, ty: TyLike, a: ExprLike, b: ExprLike) -> None:
+        self.__ffi_init__(_normalize_ty(ty), a, b)
 
 
 @c_class("ffi.std.Or")
@@ -434,9 +465,9 @@ class Or(Expr):
 
     a: Expr
     b: Expr
-    if TYPE_CHECKING:
 
-        def __init__(self, ty: Ty, a: ExprLike, b: ExprLike) -> None: ...
+    def __init__(self, ty: TyLike, a: ExprLike, b: ExprLike) -> None:
+        self.__ffi_init__(_normalize_ty(ty), a, b)
 
 
 @c_class("ffi.std.Not")
@@ -446,9 +477,9 @@ class Not(Expr):
     __ffi_dialect_mnemonic__: ClassVar[DialectMnemonic] = ("std", "Not", "__invert__")
 
     operand: Expr
-    if TYPE_CHECKING:
 
-        def __init__(self, ty: Ty, operand: ExprLike) -> None: ...
+    def __init__(self, ty: TyLike, operand: ExprLike) -> None:
+        self.__ffi_init__(_normalize_ty(ty), operand)
 
 
 @c_class("ffi.std.Load")
@@ -459,9 +490,14 @@ class Load(Expr):
 
     lhs: Expr
     indices: MutableSequence[Range]
-    if TYPE_CHECKING:
 
-        def __init__(self, ty: Ty, lhs: ExprLike, indices: Sequence[RangeLike]) -> None: ...
+    def __init__(
+        self,
+        ty: TyLike,
+        lhs: ExprLike,
+        *indices: RangeLike,
+    ) -> None:
+        self.__ffi_init__(_normalize_ty(ty), lhs, list(indices))
 
 
 @c_class("ffi.std.Cast")
@@ -471,9 +507,9 @@ class Cast(Expr):
     __ffi_dialect_mnemonic__: ClassVar[DialectMnemonic] = ("std", "Cast", "__cast__")
 
     value: Expr
-    if TYPE_CHECKING:
 
-        def __init__(self, ty: Ty, value: ExprLike) -> None: ...
+    def __init__(self, ty: TyLike, value: ExprLike) -> None:
+        self.__ffi_init__(_normalize_ty(ty), value)
 
 
 @c_class("ffi.std.Call")
@@ -485,15 +521,21 @@ class Call(Expr):
     callee: Any
     args: MutableSequence[Expr]
     attr: Attrs | None = field(default=None)
-    if TYPE_CHECKING:
 
-        def __init__(
-            self,
-            ty: Ty,
-            callee: Any,
-            args: Sequence[ExprLike],
-            attr: AttrsLike = ...,
-        ) -> None: ...
+    def __init__(
+        self,
+        ty: TyLike,
+        callee: Any,
+        *args: ExprLike,
+        **kwargs: Any,
+    ) -> None:
+        if isinstance(callee, Var):
+            callee = callee.name
+        elif not isinstance(callee, (str, Expr, Func)):
+            raise TypeError(
+                f"std.Call callee must be a name, expression, or function, got {type(callee).__name__}"
+            )
+        self.__ffi_init__(_normalize_ty(ty), callee, list(args), kwargs or None)
 
 
 @c_class("ffi.std.IfStmt")
@@ -505,16 +547,20 @@ class IfStmt(Stmt):
     cond: Expr
     then_body: MutableSequence[Stmt]
     else_body: MutableSequence[Stmt]
-    if TYPE_CHECKING:
 
-        def __init__(
-            self,
-            cond: ExprLike,
-            then_body: MutableSequence[Stmt],
-            else_body: MutableSequence[Stmt],
-            *,
-            attrs: AttrsLike = ...,
-        ) -> None: ...
+    def __init__(
+        self,
+        cond: ExprLike,
+        then_body: Sequence[Stmt],
+        else_body: Sequence[Stmt],
+        **kwargs: Any,
+    ) -> None:
+        self.__ffi_init__(
+            cond,
+            list(then_body),
+            list(else_body),
+            attrs=kwargs or None,
+        )
 
 
 @c_class("ffi.std.Scope")
@@ -593,15 +639,14 @@ class BindExpr(Bind):
     __ffi_dialect_mnemonic__: ClassVar[DialectMnemonic] = ("std", "BindExpr", "__bind_expr__")
 
     expr: Expr
-    if TYPE_CHECKING:
 
-        def __init__(
-            self,
-            vars: MutableSequence[Var],
-            expr: ExprLike,
-            *,
-            attrs: AttrsLike = ...,
-        ) -> None: ...
+    def __init__(
+        self,
+        expr: Expr,
+        *args: Var,
+        **kwargs: Any,
+    ) -> None:
+        self.__ffi_init__(list(args), expr, attrs=kwargs or None)
 
 
 @c_class("ffi.std.BindVarDef")
@@ -614,14 +659,8 @@ class BindVarDef(Bind):
         "__bind_var_def__",
     )
 
-    if TYPE_CHECKING:
-
-        def __init__(
-            self,
-            vars: MutableSequence[Var],
-            *,
-            attrs: AttrsLike = ...,
-        ) -> None: ...
+    def __init__(self, *args: Var, **kwargs: Any) -> None:
+        self.__ffi_init__(list(args), attrs=kwargs or None)
 
 
 @c_class("ffi.std.Store")
@@ -633,16 +672,11 @@ class Store(Stmt):
     lhs: Expr
     indices: MutableSequence[Range]
     rhs: Expr
-    if TYPE_CHECKING:
 
-        def __init__(
-            self,
-            lhs: ExprLike,
-            indices: Sequence[RangeLike],
-            rhs: ExprLike,
-            *,
-            attrs: AttrsLike = ...,
-        ) -> None: ...
+    def __init__(
+        self, lhs: ExprLike, indices: Sequence[RangeLike], rhs: ExprLike, **kwargs: Any
+    ) -> None:
+        self.__ffi_init__(lhs, list(indices), rhs, attrs=kwargs or None)
 
 
 @c_class("ffi.std.Assert")
@@ -652,14 +686,9 @@ class Assert(Stmt):
     __ffi_dialect_mnemonic__: ClassVar[DialectMnemonic] = ("std", "Assert", "__assert__")
 
     cond: Expr
-    if TYPE_CHECKING:
 
-        def __init__(
-            self,
-            cond: ExprLike,
-            *,
-            attrs: AttrsLike = ...,
-        ) -> None: ...
+    def __init__(self, cond: ExprLike, **kwargs: Any) -> None:
+        self.__ffi_init__(cond, attrs=kwargs or None)
 
 
 @c_class("ffi.std.Return")
@@ -669,14 +698,9 @@ class Return(Stmt):
     __ffi_dialect_mnemonic__: ClassVar[DialectMnemonic] = ("std", "Return", "__return__")
 
     exprs: MutableSequence[Expr]
-    if TYPE_CHECKING:
 
-        def __init__(
-            self,
-            exprs: MutableSequence[ExprLike],
-            *,
-            attrs: AttrsLike = ...,
-        ) -> None: ...
+    def __init__(self, exprs: Sequence[ExprLike] = (), **kwargs: Any) -> None:
+        self.__ffi_init__(list(exprs), attrs=kwargs or None)
 
 
 @c_class("ffi.std.Yield")
@@ -686,14 +710,9 @@ class Yield(Stmt):
     __ffi_dialect_mnemonic__: ClassVar[DialectMnemonic] = ("std", "Yield", "__yield__")
 
     exprs: MutableSequence[Expr]
-    if TYPE_CHECKING:
 
-        def __init__(
-            self,
-            exprs: MutableSequence[ExprLike],
-            *,
-            attrs: AttrsLike = ...,
-        ) -> None: ...
+    def __init__(self, exprs: Sequence[ExprLike] = (), **kwargs: Any) -> None:
+        self.__ffi_init__(list(exprs), attrs=kwargs or None)
 
 
 @c_class("ffi.std.Break")
@@ -701,13 +720,9 @@ class Break(Stmt):
     """Break statement."""
 
     __ffi_dialect_mnemonic__: ClassVar[DialectMnemonic] = ("std", "Break", "__break__")
-    if TYPE_CHECKING:
 
-        def __init__(
-            self,
-            *,
-            attrs: AttrsLike = ...,
-        ) -> None: ...
+    def __init__(self, **kwargs: Any) -> None:
+        self.__ffi_init__(attrs=kwargs or None)
 
 
 @c_class("ffi.std.Continue")
@@ -715,13 +730,9 @@ class Continue(Stmt):
     """Continue statement."""
 
     __ffi_dialect_mnemonic__: ClassVar[DialectMnemonic] = ("std", "Continue", "__continue__")
-    if TYPE_CHECKING:
 
-        def __init__(
-            self,
-            *,
-            attrs: AttrsLike = ...,
-        ) -> None: ...
+    def __init__(self, **kwargs: Any) -> None:
+        self.__ffi_init__(attrs=kwargs or None)
 
 
 @c_class("ffi.std.DictAttrs")
@@ -731,6 +742,33 @@ class DictAttrs(Attrs):
     __ffi_dialect_mnemonic__: ClassVar[DialectMnemonic] = ("std", "DictAttrs")
 
     values: MutableMapping[str, Any]
+
+    def __init__(self, **kwargs: Any) -> None:
+        self.__ffi_init__(kwargs)
+
+    def __len__(self) -> int:
+        return len(self.values)
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(self.values)
+
+    def __contains__(self, key: object) -> bool:
+        return key in self.values
+
+    def __getitem__(self, key: str) -> Any:
+        return self.values[key]
+
+    def get(self, key: str, default: Any = None) -> Any:
+        """Return ``key`` if present, otherwise ``default``."""
+        return self.values.get(key, default)
+
+    def keys(self) -> KeysView[str]:
+        """Return a dynamic view over attribute keys."""
+        return self.values.keys()
+
+    def items(self) -> ItemsView[str, Any]:
+        """Return a dynamic view over attribute items."""
+        return self.values.items()
 
 
 __all__ = [

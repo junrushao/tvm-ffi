@@ -1934,6 +1934,13 @@ def from_py(source: Any) -> Node:
     return ast_translate(source)
 
 
+def parse(source: Any, **kwargs: Any) -> Any:
+    """Parse TVM-FFI text format into an IR node."""
+    from ._pyast_parser import parse as parse_text  # noqa: PLC0415
+
+    return parse_text(source, **kwargs)
+
+
 @c_class("ffi.pyast.VarInfo")
 class VarInfo(Object):
     """Metadata for a variable tracked by ``IRPrinter``.
