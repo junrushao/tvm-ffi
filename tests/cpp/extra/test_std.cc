@@ -152,8 +152,14 @@ TEST(StdDialect, DialectMnemonics) {
       {stdir::AddObj::RuntimeTypeIndex(), {"std", "Add", "__add__"}},
       {stdir::SubObj::RuntimeTypeIndex(), {"std", "Sub", "__sub__"}},
       {stdir::MulObj::RuntimeTypeIndex(), {"std", "Mul", "__mul__"}},
+      {stdir::CDivObj::RuntimeTypeIndex(), {"std", "CDiv", "__truediv__"}},
       {stdir::FloorDivObj::RuntimeTypeIndex(), {"std", "FloorDiv", "__floordiv__"}},
       {stdir::FloorModObj::RuntimeTypeIndex(), {"std", "FloorMod", "__mod__"}},
+      {stdir::CModObj::RuntimeTypeIndex(), {"std", "CMod"}},
+      {stdir::PowObj::RuntimeTypeIndex(), {"std", "Pow", "__pow__"}},
+      {stdir::LShiftObj::RuntimeTypeIndex(), {"std", "LShift", "__lshift__"}},
+      {stdir::RShiftObj::RuntimeTypeIndex(), {"std", "RShift", "__rshift__"}},
+      {stdir::XorObj::RuntimeTypeIndex(), {"std", "Xor", "__xor__"}},
       {stdir::MinObj::RuntimeTypeIndex(), {"std", "Min", "min"}},
       {stdir::MaxObj::RuntimeTypeIndex(), {"std", "Max", "max"}},
       {stdir::EqObj::RuntimeTypeIndex(), {"std", "Eq", "__eq__"}},
@@ -184,7 +190,7 @@ TEST(StdDialect, DialectMnemonics) {
   std::set<std::string> seen_mnemonics;
   std::set<std::string> seen_generics;
 
-  EXPECT_EQ(cases.size(), 43);
+  EXPECT_EQ(cases.size(), 49);
   for (const auto& [type_index, expected] : cases) {
     ffi::AnyView value = dialect_mnemonic_col[type_index];
 

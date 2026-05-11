@@ -44,8 +44,10 @@ class _FactoryLike(Protocol):
 DialectMnemonic: TypeAlias = "tuple[str, str] | tuple[str, str, str]"
 TyLike: TypeAlias = "Ty | str | _FactoryLike"
 AttrsLike: TypeAlias = "Attrs | Mapping[str, Any] | None"
-ExprLike: TypeAlias = "Expr | int | float | str"
+ExprLike: TypeAlias = "Expr | bool | int | float | str"
 RangeLike: TypeAlias = "Range | ExprLike"
+DefaultIntegerType: str = "int64"
+DefaultFloatType: str = "float32"
 
 
 def _normalize_ty(value: TyLike) -> Ty:
@@ -57,6 +59,13 @@ def _normalize_ty(value: TyLike) -> Ty:
     if isinstance(value, str):
         return PrimTy(value)
     raise TypeError(f"expected std type, got {type(value).__name__}")
+
+
+def _normalize_expr(value: ExprLike) -> Expr:
+    """Normalize Python literals to standard dialect immediate expressions."""
+    if isinstance(value, Expr):
+        return value
+    return Expr.literal(value)
 
 
 @c_class("ffi.std.Node", init=False)
@@ -133,6 +142,21 @@ class Expr(Node):
     __ffi_dialect_mnemonic__: ClassVar[DialectMnemonic] = ("std", "Expr")
 
     ty: Ty
+
+    @staticmethod
+    def literal(value: ExprLike) -> Expr:
+        """Convert a Python literal to a standard dialect expression."""
+        if isinstance(value, Expr):
+            return value
+        if isinstance(value, bool):
+            return BoolImm.from_py(value)
+        if isinstance(value, int):
+            return IntImm.from_py(value)
+        if isinstance(value, float):
+            return FloatImm.from_py(value)
+        if isinstance(value, str):
+            return StringImm.from_py(value)
+        raise TypeError(f"Unsupported type: {type(value).__name__}")
 
 
 @c_class("ffi.std.Var")
@@ -216,6 +240,19 @@ class PrimTy(Ty):
 
         def __init__(self, dtype: dtype | str) -> None: ...
 
+    def coerce_literal(self, value: ExprLike) -> Expr | None:
+        """Coerce a Python literal to this primitive type."""
+        if not isinstance(value, (bool, int, float)):
+            return None
+        dtype = self.dtype
+        if dtype.is_bool:
+            return BoolImm(self, bool(value))
+        if dtype.is_integer:
+            return IntImm(self, int(value))
+        if dtype.is_float:
+            return FloatImm(self, float(value))
+        return None
+
 
 @c_class("ffi.std.TupleType")
 class TupleType(Ty):
@@ -239,6 +276,23 @@ class TensorTy(Ty):
         def __init__(self, shape: Sequence[ExprLike], dtype: dtype | str) -> None: ...
 
 
+@c_class("ffi.std.BoolImm")
+class BoolImm(Expr):
+    """A boolean immediate."""
+
+    __ffi_dialect_mnemonic__: ClassVar[DialectMnemonic] = ("std", "BoolImm")
+
+    value: bool
+
+    def __init__(self, ty: TyLike, value: bool) -> None:
+        self.__ffi_init__(_normalize_ty(ty), value)
+
+    @staticmethod
+    def from_py(value: bool) -> BoolImm:
+        """Create a boolean immediate from a Python bool literal."""
+        return BoolImm(PrimTy("bool"), value)
+
+
 @c_class("ffi.std.IntImm")
 class IntImm(Expr):
     """An integer immediate."""
@@ -249,6 +303,11 @@ class IntImm(Expr):
 
     def __init__(self, ty: TyLike, value: int) -> None:
         self.__ffi_init__(_normalize_ty(ty), value)
+
+    @staticmethod
+    def from_py(value: int) -> IntImm:
+        """Create an integer immediate from a Python integer literal."""
+        return IntImm(PrimTy(DefaultIntegerType), value)
 
 
 @c_class("ffi.std.FloatImm")
@@ -262,6 +321,11 @@ class FloatImm(Expr):
     def __init__(self, ty: TyLike, value: float) -> None:
         self.__ffi_init__(_normalize_ty(ty), value)
 
+    @staticmethod
+    def from_py(value: float) -> FloatImm:
+        """Create a floating-point immediate from a Python float literal."""
+        return FloatImm(PrimTy(DefaultFloatType), value)
+
 
 @c_class("ffi.std.StringImm")
 class StringImm(Expr):
@@ -273,6 +337,11 @@ class StringImm(Expr):
 
     def __init__(self, ty: TyLike, value: str) -> None:
         self.__ffi_init__(_normalize_ty(ty), value)
+
+    @staticmethod
+    def from_py(value: str) -> StringImm:
+        """Create a string immediate from a Python string literal."""
+        return StringImm(AnyTy(), value)
 
 
 @c_class("ffi.std.Add")
@@ -314,9 +383,32 @@ class Mul(Expr):
         self.__ffi_init__(_normalize_ty(ty), a, b)
 
 
+@c_class("ffi.std.CDiv")
+class CDiv(Expr):
+    """C-style division.
+
+    For integer operands, ``CDiv`` means ``truncdiv``: the quotient is
+    truncated toward zero.  For floating-point operands, ``CDiv`` means
+    C-style division.  Use ``FloorDiv`` only for integer floor division.
+    """
+
+    __ffi_dialect_mnemonic__: ClassVar[DialectMnemonic] = ("std", "CDiv", "__truediv__")
+
+    a: Expr
+    b: Expr
+
+    def __init__(self, ty: TyLike, a: ExprLike, b: ExprLike) -> None:
+        self.__ffi_init__(_normalize_ty(ty), a, b)
+
+
 @c_class("ffi.std.FloorDiv")
 class FloorDiv(Expr):
-    """Floor division."""
+    """Integer floor division.
+
+    ``FloorDiv`` only works for integer operands.  It always computes
+    ``floor(a / b)``, unlike ``CDiv`` which means ``truncdiv`` for integer
+    operands and C-style division for floating-point operands.
+    """
 
     __ffi_dialect_mnemonic__: ClassVar[DialectMnemonic] = ("std", "FloorDiv", "__floordiv__")
 
@@ -329,9 +421,84 @@ class FloorDiv(Expr):
 
 @c_class("ffi.std.FloorMod")
 class FloorMod(Expr):
-    """Floor modulo."""
+    """Integer floor modulo.
+
+    ``FloorMod`` only works for integer operands.  It is paired with
+    ``FloorDiv`` and always uses ``floor(a / b)``.  Use ``CMod`` for
+    integer ``truncmod`` behavior or floating-point C-style modulo.
+    """
 
     __ffi_dialect_mnemonic__: ClassVar[DialectMnemonic] = ("std", "FloorMod", "__mod__")
+
+    a: Expr
+    b: Expr
+
+    def __init__(self, ty: TyLike, a: ExprLike, b: ExprLike) -> None:
+        self.__ffi_init__(_normalize_ty(ty), a, b)
+
+
+@c_class("ffi.std.CMod")
+class CMod(Expr):
+    """C-style modulo.
+
+    For integer operands, ``CMod`` means ``truncmod`` and is paired with
+    ``CDiv``.  For floating-point operands, ``CMod`` means C-style modulo.
+    Use ``FloorMod`` only for integer floor modulo.
+    """
+
+    __ffi_dialect_mnemonic__: ClassVar[DialectMnemonic] = ("std", "CMod")
+
+    a: Expr
+    b: Expr
+
+    def __init__(self, ty: TyLike, a: ExprLike, b: ExprLike) -> None:
+        self.__ffi_init__(_normalize_ty(ty), a, b)
+
+
+@c_class("ffi.std.Pow")
+class Pow(Expr):
+    """Exponentiation."""
+
+    __ffi_dialect_mnemonic__: ClassVar[DialectMnemonic] = ("std", "Pow", "__pow__")
+
+    a: Expr
+    b: Expr
+
+    def __init__(self, ty: TyLike, a: ExprLike, b: ExprLike) -> None:
+        self.__ffi_init__(_normalize_ty(ty), a, b)
+
+
+@c_class("ffi.std.LShift")
+class LShift(Expr):
+    """Left shift."""
+
+    __ffi_dialect_mnemonic__: ClassVar[DialectMnemonic] = ("std", "LShift", "__lshift__")
+
+    a: Expr
+    b: Expr
+
+    def __init__(self, ty: TyLike, a: ExprLike, b: ExprLike) -> None:
+        self.__ffi_init__(_normalize_ty(ty), a, b)
+
+
+@c_class("ffi.std.RShift")
+class RShift(Expr):
+    """Right shift."""
+
+    __ffi_dialect_mnemonic__: ClassVar[DialectMnemonic] = ("std", "RShift", "__rshift__")
+
+    a: Expr
+    b: Expr
+
+    def __init__(self, ty: TyLike, a: ExprLike, b: ExprLike) -> None:
+        self.__ffi_init__(_normalize_ty(ty), a, b)
+
+
+@c_class("ffi.std.Xor")
+class Xor(Expr):
+    """Bitwise exclusive OR."""
+
+    __ffi_dialect_mnemonic__: ClassVar[DialectMnemonic] = ("std", "Xor", "__xor__")
 
     a: Expr
     b: Expr
@@ -640,13 +807,8 @@ class BindExpr(Bind):
 
     expr: Expr
 
-    def __init__(
-        self,
-        expr: Expr,
-        *args: Var,
-        **kwargs: Any,
-    ) -> None:
-        self.__ffi_init__(list(args), expr, attrs=kwargs or None)
+    def __init__(self, expr: ExprLike, *args: Var, **kwargs: Any) -> None:
+        self.__ffi_init__(list(args), _normalize_expr(expr), attrs=kwargs or None)
 
 
 @c_class("ffi.std.BindVarDef")
@@ -659,8 +821,9 @@ class BindVarDef(Bind):
         "__bind_var_def__",
     )
 
-    def __init__(self, *args: Var, **kwargs: Any) -> None:
-        self.__ffi_init__(list(args), attrs=kwargs or None)
+    def __init__(self, *args: Var | TyLike, **kwargs: Any) -> None:
+        vars = [arg if isinstance(arg, Var) else Var(_normalize_ty(arg), "") for arg in args]
+        self.__ffi_init__(vars, attrs=kwargs or None)
 
 
 @c_class("ffi.std.Store")
@@ -673,9 +836,7 @@ class Store(Stmt):
     indices: MutableSequence[Range]
     rhs: Expr
 
-    def __init__(
-        self, lhs: ExprLike, indices: Sequence[RangeLike], rhs: ExprLike, **kwargs: Any
-    ) -> None:
+    def __init__(self, lhs: ExprLike, *indices: RangeLike, rhs: ExprLike, **kwargs: Any) -> None:
         self.__ffi_init__(lhs, list(indices), rhs, attrs=kwargs or None)
 
 
@@ -699,7 +860,7 @@ class Return(Stmt):
 
     exprs: MutableSequence[Expr]
 
-    def __init__(self, exprs: Sequence[ExprLike] = (), **kwargs: Any) -> None:
+    def __init__(self, *exprs: ExprLike, **kwargs: Any) -> None:
         self.__ffi_init__(list(exprs), attrs=kwargs or None)
 
 
@@ -711,7 +872,7 @@ class Yield(Stmt):
 
     exprs: MutableSequence[Expr]
 
-    def __init__(self, exprs: Sequence[ExprLike] = (), **kwargs: Any) -> None:
+    def __init__(self, *exprs: ExprLike, **kwargs: Any) -> None:
         self.__ffi_init__(list(exprs), attrs=kwargs or None)
 
 
@@ -781,7 +942,10 @@ __all__ = [
     "Bind",
     "BindExpr",
     "BindVarDef",
+    "BoolImm",
     "Break",
+    "CDiv",
+    "CMod",
     "Call",
     "Cast",
     "Continue",
@@ -797,6 +961,7 @@ __all__ = [
     "Gt",
     "IfStmt",
     "IntImm",
+    "LShift",
     "Le",
     "Load",
     "Lt",
@@ -808,7 +973,9 @@ __all__ = [
     "Node",
     "Not",
     "Or",
+    "Pow",
     "PrimTy",
+    "RShift",
     "Range",
     "Return",
     "Scope",
@@ -821,5 +988,6 @@ __all__ = [
     "Ty",
     "Var",
     "While",
+    "Xor",
     "Yield",
 ]

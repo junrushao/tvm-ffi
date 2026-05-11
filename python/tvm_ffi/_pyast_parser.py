@@ -21,7 +21,7 @@ from __future__ import annotations
 import operator
 import sys
 from collections import defaultdict
-from collections.abc import Iterable, Iterator, Mapping, Sequence
+from collections.abc import Iterable, Iterator, Sequence
 from contextlib import contextmanager
 from typing import Any, Callable, cast
 
@@ -32,7 +32,6 @@ from . import pyast, std
 from ._pyast_source import DiagnosticLevel, Source
 
 _NATIVE_LITERAL_TYPES = (bool, int, float, str, type(None))
-_STD_LITERAL_TYPES = (std.IntImm, std.FloatImm, std.StringImm)
 _TOP_LITERAL_GENERICS: tuple[tuple[type[Any], str], ...] = (
     (bool, "__literal_bool__"),
     (int, "__literal_int__"),
@@ -77,7 +76,7 @@ _NATIVE_GENERICS: dict[str, Callable[..., Any]] = {
     "__logical_or__": lambda lhs, rhs: lhs or rhs,
 }
 
-
+_DIALECT_REGISTRY: dict[str, Any] = {}
 _OP_GENERICS: dict[int, str] = {
     OperationKind.USub: "__neg__",
     OperationKind.UAdd: "__pos__",
@@ -247,7 +246,7 @@ class Parser:
     """Visitor that maps translated Python syntax into IR nodes.
 
     The parser uses concrete ``std`` classes for node classification and
-    delegates dialect behavior to methods on the selected language module, such
+    delegates dialect behavior to methods on registered language modules, such
     as ``__ffi_generics__``.
     """
 
@@ -255,57 +254,42 @@ class Parser:
         self,
         source: Source,
         extra_vars: dict[str, Any] | None = None,
-        *,
-        language: Any | None = None,
-        dialects: Mapping[str, str] | None = None,
     ) -> None:
-        """Prepare parser state for a source object and a dialect language.
+        """Prepare parser state for a source object and registered dialects.
 
         Used by ``parse`` and its typed wrappers.  ``extra_vars`` seeds names
-        visible to expressions, and ``dialects`` controls aliases like ``std``
-        or wildcard imports.
+        visible to expressions.
         """
-        if language is None:
-            language = _default_language()
         self.source = source
-        self.language = language
         self.var_table = VarTable()
         self.dialect_stack: list[str] = []
         self.generics: dict[tuple[str, Any], Callable[..., Any]] = {}
         self.scope_stack: list[Frame] = []
 
         extra_vars = extra_vars or {}
-        dialects = dialects or {language.__name__: language.__name__}
+        registered_dialects = dict(_DIALECT_REGISTRY)
+        self.dialects: dict[str, Any] = registered_dialects
 
         self.var_table.push_frame()
-        self._install_language(language, dialects)
+        for dialect, language in registered_dialects.items():
+            self._install_dialect(dialect, language)
+        if "std" in registered_dialects:
+            self.dialect_stack.append("std")
         for name, value in extra_vars.items():
             self.var_table.add(name, value)
 
-    def _install_language(self, language: Any, dialects: Mapping[str, str]) -> None:
-        """Expose a language module's names, globals, and generic hooks.
+    def _install_dialect(self, dialect: str, language: Any) -> None:
+        """Expose a registered language module's names, globals, and generic hooks.
 
-        This is exercised once at parser construction.  It installs aliases
-        such as ``std``, expands ``*`` imports into direct names, and registers
-        generic handlers used later by operators, calls, loads, stores, and
-        statements.
+        This is exercised once at parser construction.  It installs dialect
+        namespaces such as ``std`` and registers generic handlers used later by
+        operators, calls, loads, stores, and statements.
         """
-        self.dialect_stack.append(language.__name__)
-        aliases = [
-            alias for dialect, alias in dialects.items() if dialect == language.__name__
-        ] or [language.__name__]
-        for alias in aliases:
-            if alias == "*":
-                for name in dir(language):
-                    if name.startswith("_"):
-                        continue
-                    self.var_table.add(name, getattr(language, name), allow_shadowing=True)
-            else:
-                self.var_table.add(alias, language, allow_shadowing=True)
-        for name, value in language.__ffi_globals__.items():
+        self.var_table.add(dialect, language, allow_shadowing=True)
+        for name, value in getattr(language, "__ffi_globals__", {}).items():
             self.var_table.add(name, value, allow_shadowing=True)
-        for key, handler in language.__ffi_generics__.items():
-            generic_name, dispatch_key = key if isinstance(key, tuple) else (key, language.__name__)
+        for key, handler in getattr(language, "__ffi_generics__", {}).items():
+            generic_name, dispatch_key = key if isinstance(key, tuple) else (key, dialect)
             self.generics[(generic_name, dispatch_key)] = handler
 
     def visit(self, node: Any) -> Any:
@@ -371,46 +355,73 @@ class Parser:
         """Run a dialect or native generic operation for parsed syntax.
 
         Operators such as ``+`` and statement forms such as assignment route
-        here.  Dispatch first tries operand types, then operand dialects, then
-        the active dialect stack, and finally Python-native behavior for values
-        that are not dialect nodes.
+        here.  Dispatch first tries operand dialects, then the active dialect
+        stack, and finally Python-native behavior for values that are not
+        dialect nodes.
+
+        Dispatch cases are ordered from most specific to most general:
+
+        1. A unique non-literal operand dialect, keyed by its dialect mnemonic.
+        2. The innermost active dialect when operands are literal-only or have
+           no dialect-bearing operands, such as parser metadata.
+        3. Ambiguous mixed dialect operands.
+        4. Native Python operator behavior when every operand is dialect-free.
+        5. A missing-handler error when no rule applies.
         """
-        for op in operands:
-            if not isinstance(op, std.Expr):
-                continue
-            for ty_cls in type(op.ty).__mro__:
-                if (handler := self.generics.get((generic_name, ty_cls))) is not None:
-                    return handler(*operands)
 
-        operand_dialects = {
-            dialect
-            for dialect in (
-                _dialect_of(op)
-                for op in operands
-                if not isinstance(op, (*_NATIVE_LITERAL_TYPES, *_STD_LITERAL_TYPES))
-            )
-            if dialect is not None
-        }
-        if len(operand_dialects) == 1:
-            dialect = next(iter(operand_dialects))
-            handler = self.generics.get((generic_name, dialect))
-            if handler is not None:
-                return handler(*operands)
-        else:
-            for dialect in reversed(self.dialect_stack):
-                handler = self.generics.get((generic_name, dialect))
-                if handler is not None:
-                    return handler(*operands)
-            if len(operand_dialects) > 1:
-                raise TypeError(
-                    f"ambiguous generic {generic_name}: operands come from dialects "
-                    f"{sorted(operand_dialects)}"
+        def _dialect_of(value: Any) -> str | None:
+            """Return the dialect mnemonic advertised by a parsed value, if any."""
+            dialect_mnemonic = getattr(type(value), "__ffi_dialect_mnemonic__", (None,))
+            return dialect_mnemonic[0]
+
+        def _is_python_literal(value: Any) -> bool:
+            """Return whether ``value`` came from Python literal syntax."""
+            if isinstance(value, _NATIVE_LITERAL_TYPES):
+                return True
+            if isinstance(value, (tuple, list, set)):
+                return all(_is_python_literal(item) for item in value)
+            if isinstance(value, dict):
+                return all(
+                    _is_python_literal(key) and _is_python_literal(item)
+                    for key, item in value.items()
                 )
+            return False
 
-        if all(_dialect_of(op) is None for op in operands):
-            handler = _NATIVE_GENERICS.get(generic_name)
-            if handler is not None:
+        # Cases 1-3 only consider dialect-bearing, non-literal operands.
+        # Parser metadata that does not advertise a dialect is ignored here, so
+        # syntax like annotated binds and if-statements can use the active dialect.
+        operand_dialects = [
+            dialect
+            for dialect in (_dialect_of(op) for op in operands if not _is_python_literal(op))
+            if dialect is not None
+        ]
+        if len(set(operand_dialects)) == 1:
+            # Case 1: Exactly one non-literal operand dialect is present, so
+            # dispatch to that dialect's generic if it defines one.
+            dialect: str = operand_dialects[0]
+            if (handler := self.generics.get((generic_name, dialect))) is not None:
                 return handler(*operands)
+        elif not operand_dialects:
+            # Case 2: Literal-only and parser-metadata-only operands have no
+            # operand dialect, so use the innermost active parser dialect.
+            for dialect in reversed(self.dialect_stack):
+                if (handler := self.generics.get((generic_name, dialect))) is not None:
+                    return handler(*operands)
+        else:
+            # Case 3: Multiple operand dialects remain, so any implicit choice
+            # would be ambiguous.
+            raise TypeError(
+                f"ambiguous generic {generic_name}: operands come from dialects "
+                f"{sorted(operand_dialects)}"
+            )
+
+        # Case 4: Native fallback is only valid when no operand advertises a
+        # dialect mnemonic at all.
+        if all(_dialect_of(op) is None for op in operands):
+            if (handler := _NATIVE_GENERICS.get(generic_name)) is not None:
+                return handler(*operands)
+        # Case 5: No operand dialect, active dialect, or native rule was able
+        # to handle this generic operation.
         raise KeyError(f"No handler found for operation: {generic_name}. Operands: {operands}")
 
     def _emit_stmt(self, stmt: Any) -> None:
@@ -516,26 +527,26 @@ class Parser:
         # Case 3. Regular assignment with or without annotation
         #       x = expr
         #       x: std.i32 = expr
-        if node.annotation is not None:
-            self._emit_bound_stmt(
-                self._run_generics("__bind_expr__", (names, self.visit(node.annotation), rhs))
-            )
-            return
+        ty = self.visit(node.annotation) if node.annotation is not None else None
 
-        if isinstance(rhs, tuple):
+        if ty is None and isinstance(rhs, tuple):
             # multiple binding targets, e.g.
             #      x, y = expr1, expr2
             if len(rhs) != len(names):
                 raise TypeError(f"expected {len(rhs)} binding target(s), got {len(names)}")
             for name, value in zip(names, rhs):
-                self._emit_bound_stmt(self._run_generics("__bind_expr__", ([name], value)))
+                self._emit_bound_stmt(
+                    self._run_generics(
+                        "__bind_expr__",
+                        ([name], None, value),
+                    )
+                )
             return
 
-        generic_name = "__bind_expr__"
-        operands = (names, rhs)
-        if isinstance(rhs, std.BindVarDef):
-            generic_name = "__bind_var_def__"
-        self._emit_bound_stmt(self._run_generics(generic_name, operands))
+        if ty is None and isinstance(rhs, std.BindVarDef):
+            self._emit_bound_stmt(self._run_generics("__bind_var_def__", (names, rhs)))
+            return
+        self._emit_bound_stmt(self._run_generics("__bind_expr__", (names, ty, rhs)))
 
     def visit_ExprStmt(self, node: pyast.ExprStmt) -> None:
         """Handle expression statements as standalone IR statements or implicit binds.
@@ -562,7 +573,7 @@ class Parser:
         if len(self.scope_stack) == 1:
             self._emit_stmt(_materialize_top_value(self._run_generics, value))
         else:
-            self._emit_bound_stmt(self._run_generics("__bind_expr__", ([], value)))
+            self._emit_bound_stmt(self._run_generics("__bind_expr__", ([], None, value)))
 
     ######### Scopes #########
 
@@ -598,10 +609,10 @@ class Parser:
                 raise TypeError("function arguments must be identifiers")
             if arg_node.rhs is not None:
                 raise TypeError("default argument values are not supported")
+            language = self.dialects.get(frame.dialect) or self.dialects["std"]
+            default_ty = getattr(language, "Any", self.dialects["std"].Any)
             ty = normalize_ty(
-                self.language.Any
-                if arg_node.annotation is None
-                else self.visit(arg_node.annotation)
+                default_ty if arg_node.annotation is None else self.visit(arg_node.annotation)
             )
             arg = frame.make_arg(arg_node.lhs.name, ty)
             self.var_table.add(arg.name, arg)
@@ -848,8 +859,6 @@ class Parser:
 def parse(
     program: Any,
     *,
-    language: Any | None = None,
-    dialects: Mapping[str, str] | None = None,
     extra_vars: dict[str, Any] | None = None,
     feature_version: tuple[int, int] = sys.version_info[:2],
 ) -> Any:
@@ -861,8 +870,8 @@ def parse(
     ``Source``.  If a plain string is not valid Python but can be interpreted as
     a slice, the parser returns the corresponding range value.
     """
-    if language is None:
-        language = _default_language()
+    from . import _std_lang as _  # noqa: PLC0415, F401
+
     if isinstance(program, str):
         try:
             source = Source(program, feature_version=feature_version)
@@ -871,8 +880,6 @@ def parse(
             parser = Parser(
                 wrapped,
                 extra_vars=extra_vars,
-                language=language,
-                dialects=dialects,
             )
             if not isinstance(wrapped.ast_root, pyast.StmtBlock):
                 raise
@@ -897,16 +904,14 @@ def parse(
     return Parser(
         source,
         extra_vars=extra_vars,
-        language=language,
-        dialects=dialects,
     ).run()
 
 
-def _default_language() -> Any:
-    """Return the default parser language without a module-level dependency."""
-    from ._pyast_language import Std  # noqa: PLC0415
-
-    return Std
+def register_dialect(name: str, lang_mod: Any) -> None:
+    """Register or replace a parser language module for a dialect mnemonic."""
+    if not isinstance(name, str) or not name:
+        raise ValueError("dialect name must be a non-empty string")
+    _DIALECT_REGISTRY[name] = lang_mod
 
 
 def _materialize_top_value(run_generics: Callable[[str, tuple[Any, ...]], Any], value: Any) -> Any:
@@ -933,14 +938,6 @@ def _unpack_lhs_names(target: pyast.Expr) -> list[str]:
     if isinstance(target, (pyast.Tuple, pyast.List)):
         return [name for value in target.values for name in _unpack_lhs_names(value)]
     raise TypeError(f"unsupported binding target: {type(target).__name__}")
-
-
-def _dialect_of(value: Any) -> str | None:
-    """Return the dialect mnemonic advertised by a parsed value, if any."""
-    dialect_mnemonic = getattr(type(value), "__ffi_dialect_mnemonic__", None)
-    if dialect_mnemonic is not None:
-        return dialect_mnemonic[0]
-    return getattr(value, "dialect", None)
 
 
 def _normalize_to_list(target: Any) -> list[Any]:

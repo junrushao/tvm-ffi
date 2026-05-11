@@ -47,6 +47,7 @@ namespace text = ::tvm::ffi::pyast;
 
 constexpr DLDataType kDefaultIntLiteralType{static_cast<uint8_t>(kDLInt), 64, 1};
 constexpr DLDataType kDefaultFloatLiteralType{static_cast<uint8_t>(kDLFloat), 32, 1};
+constexpr DLDataType kDefaultBoolLiteralType{static_cast<uint8_t>(kDLBool), 8, 1};
 
 #define TVM_FFI_STD_TEXT_PRINT_DECL(TypeName)                                  \
   text::NodeAST TextPrint(const TypeName& obj, const text::IRPrinter& printer, \
@@ -66,14 +67,21 @@ TVM_FFI_STD_TEXT_PRINT_DECL(AnyTy)
 TVM_FFI_STD_TEXT_PRINT_DECL(PrimTy)
 TVM_FFI_STD_TEXT_PRINT_DECL(TupleType)
 TVM_FFI_STD_TEXT_PRINT_DECL(TensorTy)
+TVM_FFI_STD_TEXT_PRINT_DECL(BoolImm)
 TVM_FFI_STD_TEXT_PRINT_DECL(IntImm)
 TVM_FFI_STD_TEXT_PRINT_DECL(FloatImm)
 TVM_FFI_STD_TEXT_PRINT_DECL(StringImm)
 TVM_FFI_STD_TEXT_PRINT_DECL(Add)
 TVM_FFI_STD_TEXT_PRINT_DECL(Sub)
 TVM_FFI_STD_TEXT_PRINT_DECL(Mul)
+TVM_FFI_STD_TEXT_PRINT_DECL(CDiv)
 TVM_FFI_STD_TEXT_PRINT_DECL(FloorDiv)
 TVM_FFI_STD_TEXT_PRINT_DECL(FloorMod)
+TVM_FFI_STD_TEXT_PRINT_DECL(CMod)
+TVM_FFI_STD_TEXT_PRINT_DECL(Pow)
+TVM_FFI_STD_TEXT_PRINT_DECL(LShift)
+TVM_FFI_STD_TEXT_PRINT_DECL(RShift)
+TVM_FFI_STD_TEXT_PRINT_DECL(Xor)
 TVM_FFI_STD_TEXT_PRINT_DECL(Min)
 TVM_FFI_STD_TEXT_PRINT_DECL(Max)
 TVM_FFI_STD_TEXT_PRINT_DECL(Eq)
@@ -207,6 +215,9 @@ class DialectFrame {
 };
 
 Optional<text::ExprAST> LiteralValueAST(const ObjectRef& obj) {
+  if (const BoolImmObj* bool_imm = obj.as<BoolImmObj>()) {
+    return text::LiteralAST::Bool(bool_imm->value);
+  }
   if (const IntImmObj* int_imm = obj.as<IntImmObj>()) {
     return text::LiteralAST::Int(int_imm->value);
   }
@@ -569,9 +580,9 @@ text::NodeAST ApplyCastGeneric(const text::IRPrinter& printer, const Cast& obj,
   // std.i32(x).  Literal operands stay explicit so dtype-call syntax remains
   // available for typed immediate literals.
   text::ExprAST ty = get_cached(obj->ty).cast<text::ExprAST>();
-  bool is_literal = obj->value.as<IntImmObj>() != nullptr ||
-                    obj->value.as<FloatImmObj>() != nullptr ||
-                    obj->value.as<StringImmObj>() != nullptr;
+  bool is_literal =
+      obj->value.as<IntImmObj>() != nullptr || obj->value.as<BoolImmObj>() != nullptr ||
+      obj->value.as<FloatImmObj>() != nullptr || obj->value.as<StringImmObj>() != nullptr;
   text::ExprAST value =
       is_literal ? printer->operator()(obj->value, path->Attr("value")).cast<text::ExprAST>()
                  : get_cached(obj->value).cast<text::ExprAST>();
@@ -861,6 +872,21 @@ bool IsDefaultFloatLiteralType(const Ty& ty) {
   return prim_ty != nullptr && prim_ty->dtype == kDefaultFloatLiteralType;
 }
 
+bool IsDefaultBoolLiteralType(const Ty& ty) {
+  const PrimTyObj* prim_ty = ty.as<PrimTyObj>();
+  return prim_ty != nullptr && prim_ty->dtype == kDefaultBoolLiteralType;
+}
+
+text::NodeAST TextPrint(const BoolImm& obj, const text::IRPrinter& printer,
+                        const refl::AccessPath& path) {
+  text::ExprAST value = text::LiteralAST::Bool(obj->value);
+  if (obj->ty.as<PrimTyObj>() != nullptr && !IsDefaultBoolLiteralType(obj->ty)) {
+    text::ExprAST ty = printer->operator()(obj->ty, path->Attr("ty")).cast<text::ExprAST>();
+    return text::ExprCall(std::move(ty), {std::move(value)});
+  }
+  return value;
+}
+
 text::NodeAST TextPrint(const IntImm& obj, const text::IRPrinter& printer,
                         const refl::AccessPath& path) {
   text::ExprAST value = text::LiteralAST::Int(obj->value);
@@ -901,8 +927,14 @@ text::NodeAST TextPrint(const StringImm& obj, const text::IRPrinter&, const refl
 TVM_FFI_STD_BINARY_TEXT_PRINT(Add)
 TVM_FFI_STD_BINARY_TEXT_PRINT(Sub)
 TVM_FFI_STD_BINARY_TEXT_PRINT(Mul)
+TVM_FFI_STD_BINARY_TEXT_PRINT(CDiv)
 TVM_FFI_STD_BINARY_TEXT_PRINT(FloorDiv)
 TVM_FFI_STD_BINARY_TEXT_PRINT(FloorMod)
+TVM_FFI_STD_BINARY_TEXT_PRINT(CMod)
+TVM_FFI_STD_BINARY_TEXT_PRINT(Pow)
+TVM_FFI_STD_BINARY_TEXT_PRINT(LShift)
+TVM_FFI_STD_BINARY_TEXT_PRINT(RShift)
+TVM_FFI_STD_BINARY_TEXT_PRINT(Xor)
 TVM_FFI_STD_BINARY_TEXT_PRINT(Min)
 TVM_FFI_STD_BINARY_TEXT_PRINT(Max)
 TVM_FFI_STD_BINARY_TEXT_PRINT(Eq)
@@ -1184,20 +1216,20 @@ text::NodeAST TextPrint(const Store& obj, const text::IRPrinter& printer,
   cache.RunCache(obj->rhs, path->Attr("rhs"));
   Function get_cached = cache.GetCachedFunction();
   return ApplyTextGenericOrFallback(obj, path, cache, [&]() -> text::NodeAST {
-    List<text::ExprAST> indices;
-    indices.reserve(n);
+    List<text::ExprAST> args;
+    args.reserve(n + 1);
+    args.push_back(get_cached(obj->lhs).cast<text::ExprAST>());
     for (int64_t i = 0; i < n; ++i) {
-      indices.push_back(get_cached(obj->indices[i]).cast<text::ExprAST>());
+      args.push_back(get_cached(obj->indices[i]).cast<text::ExprAST>());
     }
     List<String> kwargs_keys;
     List<text::ExprAST> kwargs_values;
+    kwargs_keys.push_back("rhs");
+    kwargs_values.push_back(get_cached(obj->rhs).cast<text::ExprAST>());
     AppendAttrsAsKwargsOrKeyword(printer, obj->attrs, path->Attr("attrs"), &kwargs_keys,
                                  &kwargs_values);
-    return text::ExprStmtAST(text::ExprCallKw(
-        CallMnemonic(printer->cfg, obj),
-        {get_cached(obj->lhs).cast<text::ExprAST>(), text::ListAST(std::move(indices)),
-         get_cached(obj->rhs).cast<text::ExprAST>()},
-        std::move(kwargs_keys), std::move(kwargs_values)));
+    return text::ExprStmtAST(text::ExprCallKw(CallMnemonic(printer->cfg, obj), std::move(args),
+                                              std::move(kwargs_keys), std::move(kwargs_values)));
   });
 }
 
@@ -1348,10 +1380,18 @@ TVM_FFI_STATIC_INIT_BLOCK() {
   registry->Register("std", "__add__", ApplyOperationGeneric<Add, text::OperationASTObj::kAdd>);
   registry->Register("std", "__sub__", ApplyOperationGeneric<Sub, text::OperationASTObj::kSub>);
   registry->Register("std", "__mul__", ApplyOperationGeneric<Mul, text::OperationASTObj::kMult>);
+  registry->Register("std", "__truediv__",
+                     ApplyOperationGeneric<CDiv, text::OperationASTObj::kDiv>);
   registry->Register("std", "__floordiv__",
                      ApplyOperationGeneric<FloorDiv, text::OperationASTObj::kFloorDiv>);
   registry->Register("std", "__mod__",
                      ApplyOperationGeneric<FloorMod, text::OperationASTObj::kMod>);
+  registry->Register("std", "__pow__", ApplyOperationGeneric<Pow, text::OperationASTObj::kPow>);
+  registry->Register("std", "__lshift__",
+                     ApplyOperationGeneric<LShift, text::OperationASTObj::kLShift>);
+  registry->Register("std", "__rshift__",
+                     ApplyOperationGeneric<RShift, text::OperationASTObj::kRShift>);
+  registry->Register("std", "__xor__", ApplyOperationGeneric<Xor, text::OperationASTObj::kBitXor>);
   registry->Register("std", "min", ApplyMinGeneric<Min>);
   registry->Register("std", "max", ApplyMaxGeneric<Max>);
   registry->Register("std", "__eq__", ApplyOperationGeneric<Eq, text::OperationASTObj::kEq>);
@@ -1421,6 +1461,7 @@ TVM_FFI_STATIC_INIT_BLOCK() {
   TVM_FFI_STD_OBJECT_DEF(TensorTyObj, TensorTy, "Tensor")
       .def_rw("shape", &TensorTyObj::shape)
       .def_rw("dtype", &TensorTyObj::dtype);
+  TVM_FFI_STD_OBJECT_DEF(BoolImmObj, BoolImm, "BoolImm").def_rw("value", &BoolImmObj::value);
   TVM_FFI_STD_OBJECT_DEF(IntImmObj, IntImm, "IntImm").def_rw("value", &IntImmObj::value);
   TVM_FFI_STD_OBJECT_DEF(FloatImmObj, FloatImm, "FloatImm").def_rw("value", &FloatImmObj::value);
   TVM_FFI_STD_OBJECT_DEF(StringImmObj, StringImm, "StringImm")
@@ -1434,8 +1475,14 @@ TVM_FFI_STATIC_INIT_BLOCK() {
   TVM_FFI_STD_DEF_BINARY(Add, "__add__");
   TVM_FFI_STD_DEF_BINARY(Sub, "__sub__");
   TVM_FFI_STD_DEF_BINARY(Mul, "__mul__");
+  TVM_FFI_STD_DEF_BINARY(CDiv, "__truediv__");
   TVM_FFI_STD_DEF_BINARY(FloorDiv, "__floordiv__");
   TVM_FFI_STD_DEF_BINARY(FloorMod, "__mod__");
+  TVM_FFI_STD_OBJECT_DEF(CModObj, CMod, "CMod").def_rw("a", &CModObj::a).def_rw("b", &CModObj::b);
+  TVM_FFI_STD_DEF_BINARY(Pow, "__pow__");
+  TVM_FFI_STD_DEF_BINARY(LShift, "__lshift__");
+  TVM_FFI_STD_DEF_BINARY(RShift, "__rshift__");
+  TVM_FFI_STD_DEF_BINARY(Xor, "__xor__");
   TVM_FFI_STD_DEF_BINARY(Min, "min");
   TVM_FFI_STD_DEF_BINARY(Max, "max");
   TVM_FFI_STD_DEF_BINARY(Eq, "__eq__");

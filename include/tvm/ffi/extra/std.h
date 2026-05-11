@@ -384,6 +384,28 @@ struct TensorTy : public Ty {
   /// \endcond
 };
 
+/*! \brief Data object for a boolean literal. */
+struct BoolImmObj : public ExprObj {
+  /*! \brief Boolean literal value. */
+  bool value = false;
+
+  /// \cond Doxygen_Suppress
+  BoolImmObj() = default;
+  BoolImmObj(Ty ty, bool value) : ExprObj(std::move(ty)), value(value) {}
+
+  TVM_FFI_DECLARE_OBJECT_INFO("ffi.std.BoolImm", BoolImmObj, ExprObj);
+  /// \endcond
+};
+
+/*! \brief Reference wrapper for a boolean literal. */
+struct BoolImm : public Expr {
+  /*! \brief Construct a boolean literal. */
+  BoolImm(Ty ty, bool value) : BoolImm(make_object<BoolImmObj>(std::move(ty), value)) {}
+  /// \cond Doxygen_Suppress
+  TVM_FFI_DEFINE_OBJECT_REF_METHODS_NULLABLE(BoolImm, Expr, BoolImmObj);
+  /// \endcond
+};
+
 /*! \brief Data object for an integer literal. */
 struct IntImmObj : public ExprObj {
   /*! \brief Integer literal value. */
@@ -482,8 +504,147 @@ struct StringImm : public Expr {
 TVM_FFI_STD_BINARY_EXPR(Add);
 TVM_FFI_STD_BINARY_EXPR(Sub);
 TVM_FFI_STD_BINARY_EXPR(Mul);
-TVM_FFI_STD_BINARY_EXPR(FloorDiv);
-TVM_FFI_STD_BINARY_EXPR(FloorMod);
+
+/*!
+ * \brief Data object for C-style division.
+ * \details For integer operands, CDiv means truncating division (truncdiv):
+ * the quotient is truncated toward zero.  For floating-point operands, CDiv
+ * means C-style division.  Use FloorDiv only for integer floor division.
+ */
+struct CDivObj : public ExprObj {
+  /*! \brief Left operand. */
+  Expr a;
+  /*! \brief Right operand. */
+  Expr b;
+
+  /** \cond Doxygen_Suppress */
+  CDivObj() = default;
+  CDivObj(Ty ty, Expr a, Expr b) : ExprObj(std::move(ty)), a(std::move(a)), b(std::move(b)) {}
+
+  TVM_FFI_DECLARE_OBJECT_INFO("ffi.std.CDiv", CDivObj, ExprObj);
+  /** \endcond */
+};
+
+/*!
+ * \brief Reference wrapper for C-style division.
+ * \details For integer operands, CDiv means truncdiv.  For floating-point
+ * operands, CDiv means C-style division.
+ */
+struct CDiv : public Expr {
+  /*! \brief Construct a C-style division expression. */
+  CDiv(Ty ty, Expr a, Expr b)
+      : CDiv(make_object<CDivObj>(std::move(ty), std::move(a), std::move(b))) {}
+  /** \cond Doxygen_Suppress */
+  TVM_FFI_DEFINE_OBJECT_REF_METHODS_NULLABLE(CDiv, Expr, CDivObj);
+  /** \endcond */
+};
+
+/*!
+ * \brief Data object for integer floor division.
+ * \details FloorDiv only works for integer operands.  It always computes
+ * floor(a / b), unlike CDiv which means truncdiv for integer operands and
+ * C-style division for floating-point operands.
+ */
+struct FloorDivObj : public ExprObj {
+  /*! \brief Left operand. */
+  Expr a;
+  /*! \brief Right operand. */
+  Expr b;
+
+  /** \cond Doxygen_Suppress */
+  FloorDivObj() = default;
+  FloorDivObj(Ty ty, Expr a, Expr b) : ExprObj(std::move(ty)), a(std::move(a)), b(std::move(b)) {}
+
+  TVM_FFI_DECLARE_OBJECT_INFO("ffi.std.FloorDiv", FloorDivObj, ExprObj);
+  /** \endcond */
+};
+
+/*!
+ * \brief Reference wrapper for integer floor division.
+ * \details FloorDiv only works for integer operands and always computes
+ * floor(a / b).
+ */
+struct FloorDiv : public Expr {
+  /*! \brief Construct an integer floor division expression. */
+  FloorDiv(Ty ty, Expr a, Expr b)
+      : FloorDiv(make_object<FloorDivObj>(std::move(ty), std::move(a), std::move(b))) {}
+  /** \cond Doxygen_Suppress */
+  TVM_FFI_DEFINE_OBJECT_REF_METHODS_NULLABLE(FloorDiv, Expr, FloorDivObj);
+  /** \endcond */
+};
+
+/*!
+ * \brief Data object for integer floor modulo.
+ * \details FloorMod only works for integer operands.  It is paired with
+ * FloorDiv and always uses floor(a / b).  Use CMod for integer truncmod
+ * behavior or floating-point C-style modulo.
+ */
+struct FloorModObj : public ExprObj {
+  /*! \brief Left operand. */
+  Expr a;
+  /*! \brief Right operand. */
+  Expr b;
+
+  /** \cond Doxygen_Suppress */
+  FloorModObj() = default;
+  FloorModObj(Ty ty, Expr a, Expr b) : ExprObj(std::move(ty)), a(std::move(a)), b(std::move(b)) {}
+
+  TVM_FFI_DECLARE_OBJECT_INFO("ffi.std.FloorMod", FloorModObj, ExprObj);
+  /** \endcond */
+};
+
+/*!
+ * \brief Reference wrapper for integer floor modulo.
+ * \details FloorMod only works for integer operands and is paired with
+ * FloorDiv's floor(a / b) semantics.
+ */
+struct FloorMod : public Expr {
+  /*! \brief Construct an integer floor modulo expression. */
+  FloorMod(Ty ty, Expr a, Expr b)
+      : FloorMod(make_object<FloorModObj>(std::move(ty), std::move(a), std::move(b))) {}
+  /** \cond Doxygen_Suppress */
+  TVM_FFI_DEFINE_OBJECT_REF_METHODS_NULLABLE(FloorMod, Expr, FloorModObj);
+  /** \endcond */
+};
+
+/*!
+ * \brief Data object for C-style modulo.
+ * \details For integer operands, CMod means truncating modulo (truncmod) and
+ * is paired with CDiv.  For floating-point operands, CMod means C-style
+ * modulo.  Use FloorMod only for integer floor modulo.
+ */
+struct CModObj : public ExprObj {
+  /*! \brief Left operand. */
+  Expr a;
+  /*! \brief Right operand. */
+  Expr b;
+
+  /** \cond Doxygen_Suppress */
+  CModObj() = default;
+  CModObj(Ty ty, Expr a, Expr b) : ExprObj(std::move(ty)), a(std::move(a)), b(std::move(b)) {}
+
+  TVM_FFI_DECLARE_OBJECT_INFO("ffi.std.CMod", CModObj, ExprObj);
+  /** \endcond */
+};
+
+/*!
+ * \brief Reference wrapper for C-style modulo.
+ * \details For integer operands, CMod means truncmod.  For floating-point
+ * operands, CMod means C-style modulo.
+ */
+struct CMod : public Expr {
+  /*! \brief Construct a C-style modulo expression. */
+  CMod(Ty ty, Expr a, Expr b)
+      : CMod(make_object<CModObj>(std::move(ty), std::move(a), std::move(b))) {}
+  /** \cond Doxygen_Suppress */
+  TVM_FFI_DEFINE_OBJECT_REF_METHODS_NULLABLE(CMod, Expr, CModObj);
+  /** \endcond */
+};
+
+TVM_FFI_STD_BINARY_EXPR(Pow);
+TVM_FFI_STD_BINARY_EXPR(LShift);
+TVM_FFI_STD_BINARY_EXPR(RShift);
+TVM_FFI_STD_BINARY_EXPR(Xor);
 TVM_FFI_STD_BINARY_EXPR(Min);
 TVM_FFI_STD_BINARY_EXPR(Max);
 TVM_FFI_STD_BINARY_EXPR(Eq);
@@ -967,6 +1128,9 @@ inline std::optional<std_::Expr> TypeTraits<std_::Expr>::TryCastFromAnyView(cons
   }
   if (std::optional<std_::Expr> expr = Base::TryCastFromAnyView(src)) {
     return expr;
+  }
+  if (src->type_index == TypeIndex::kTVMFFIBool) {
+    return std_::BoolImm(std_::AnyTy(), TypeTraits<bool>::CopyFromAnyViewAfterCheck(src));
   }
   if (std::optional<int64_t> value = TypeTraits<int64_t>::TryCastFromAnyView(src)) {
     return std_::IntImm(std_::AnyTy(), *value);
