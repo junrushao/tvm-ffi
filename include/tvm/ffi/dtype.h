@@ -139,6 +139,56 @@ inline String DLDataTypeToString(DLDataType dtype) {
 }
 
 /*!
+ * \brief Check whether a DLDataType is a floating-point type.
+ * \param dtype The DLDataType to check.
+ * \return True if dtype is a floating-point type, false otherwise.
+ */
+inline bool DTypeIsFloat(DLDataType dtype) {
+  switch (static_cast<int>(dtype.code)) {
+    case kDLFloat:
+    case kDLBfloat:
+    case kDLFloat8_e3m4:
+    case kDLFloat8_e4m3:
+    case kDLFloat8_e4m3b11fnuz:
+    case kDLFloat8_e4m3fn:
+    case kDLFloat8_e4m3fnuz:
+    case kDLFloat8_e5m2:
+    case kDLFloat8_e5m2fnuz:
+    case kDLFloat8_e8m0fnu:
+    case kDLFloat6_e2m3fn:
+    case kDLFloat6_e3m2fn:
+    case kDLFloat4_e2m1fn:
+      return true;
+    default:
+      return false;
+  }
+  return false;
+}
+
+/*!
+ * \brief Check whether a DLDataType is an integer type.
+ * \param dtype The DLDataType to check.
+ * \return True if dtype is a signed or unsigned integer type, false otherwise.
+ */
+inline bool DTypeIsInt(DLDataType dtype) {
+  switch (static_cast<int>(dtype.code)) {
+    case kDLInt:
+    case kDLUInt:
+      return true;
+    default:
+      return false;
+  }
+  return false;
+}
+
+/*!
+ * \brief Check whether a DLDataType is a boolean type.
+ * \param dtype The DLDataType to check.
+ * \return True if dtype is a boolean type, false otherwise.
+ */
+inline bool DTypeIsBool(DLDataType dtype) { return dtype.code == kDLBool; }
+
+/*!
  * \brief Convert a DLDataType to a compact abbreviation for text formats.
  * \param dtype The DLDataType to convert.
  * \return The compact string, such as ``i32``, ``f16``, or ``bf16``.

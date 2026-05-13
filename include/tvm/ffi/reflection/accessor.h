@@ -383,13 +383,13 @@ inline constexpr const char* kRepr = "__ffi_repr__";
  */
 inline constexpr const char* kTextPrint = "__ffi_text_print__";
 /*!
- * \brief Dialect, mnemonic, and optional generic syntax metadata for an IR node type.
+ * \brief Dialect and mnemonic metadata for an IR node type.
  *
- * The value is an ``Array<String>`` with either two elements
- * ``{dialect, mnemonic}``, such as ``{"std", "Call"}``, or three elements
- * ``{dialect, mnemonic, generics}``, such as ``{"std", "Add", "__add__"}``.
- * It is metadata for IR printers, parsers, and dialect-aware tooling, and is not a
- * reflected field.
+ * The C++ value is an ``Array<String>`` with exactly two elements
+ * ``{dialect, mnemonic}``, such as ``{"std", "Call"}``. Python class
+ * declarations expose the same contract as ``tuple[str, str]``. It is metadata
+ * for IR printers, parsers, and dialect-aware tooling, and is not a reflected
+ * field.
  */
 inline constexpr const char* kDialectMnemonic = "__ffi_dialect_mnemonic__";
 /*!

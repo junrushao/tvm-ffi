@@ -89,6 +89,8 @@ class DocPrinter {
   virtual void PrintTypedDoc(const ExprStmtAST& doc) = 0;
   virtual void PrintTypedDoc(const AssertAST& doc) = 0;
   virtual void PrintTypedDoc(const ReturnAST& doc) = 0;
+  virtual void PrintTypedDoc(const BreakAST& doc) = 0;
+  virtual void PrintTypedDoc(const ContinueAST& doc) = 0;
   virtual void PrintTypedDoc(const FunctionAST& doc) = 0;
   virtual void PrintTypedDoc(const ClassAST& doc) = 0;
   virtual void PrintTypedDoc(const CommentAST& doc) = 0;
@@ -140,6 +142,8 @@ class DocPrinter {
         TVM_FFI_PRINTER_VTABLE_ENTRY_(ExprStmtAST),
         TVM_FFI_PRINTER_VTABLE_ENTRY_(AssertAST),
         TVM_FFI_PRINTER_VTABLE_ENTRY_(ReturnAST),
+        TVM_FFI_PRINTER_VTABLE_ENTRY_(BreakAST),
+        TVM_FFI_PRINTER_VTABLE_ENTRY_(ContinueAST),
         TVM_FFI_PRINTER_VTABLE_ENTRY_(FunctionAST),
         TVM_FFI_PRINTER_VTABLE_ENTRY_(ClassAST),
         TVM_FFI_PRINTER_VTABLE_ENTRY_(CommentAST),
@@ -257,6 +261,10 @@ inline const char* OpKindToString(OperationASTObj::Kind kind) {
       return "in";
     case OperationASTObj::Kind::kNotIn:
       return "not in";
+    case OperationASTObj::Kind::kMin:
+      return "min";
+    case OperationASTObj::Kind::kMax:
+      return "max";
     default:
       TVM_FFI_THROW(ValueError) << "Unknown operation kind: " << static_cast<int>(kind);
   }
@@ -365,6 +373,8 @@ inline ExprPrecedence GetExprPrecedence(const ExprAST& doc) {
         {OpKind::kIsNot, ExprPrecedence::kComparison},
         {OpKind::kIn, ExprPrecedence::kComparison},
         {OpKind::kNotIn, ExprPrecedence::kComparison},
+        {OpKind::kMin, ExprPrecedence::kIdentity},
+        {OpKind::kMax, ExprPrecedence::kIdentity},
         {OpKind::kIfThenElse, ExprPrecedence::kIfThenElse},
         {OpKind::kChainedCompare, ExprPrecedence::kComparison},
         {OpKind::kParens, ExprPrecedence::kIdentity},
@@ -702,6 +712,8 @@ class PythonDocPrinter : public DocPrinter {
   void PrintTypedDoc(const ExprStmtAST& doc) final;
   void PrintTypedDoc(const AssertAST& doc) final;
   void PrintTypedDoc(const ReturnAST& doc) final;
+  void PrintTypedDoc(const BreakAST& doc) final;
+  void PrintTypedDoc(const ContinueAST& doc) final;
   void PrintTypedDoc(const WithAST& doc) final;
   void PrintTypedDoc(const FunctionAST& doc) final;
   void PrintTypedDoc(const ClassAST& doc) final;
@@ -933,6 +945,14 @@ inline void PythonDocPrinter::PrintTypedDoc(const OperationAST& doc) {
     PrintChildExprConservatively(doc->operands[0], doc);
     output_ << " ** ";
     PrintChildExpr(doc->operands[1], ExprPrecedence::kUnary);
+  } else if (doc->op == OpKind::kMin || doc->op == OpKind::kMax) {
+    if (doc->operands.size() != 2) {
+      TVM_FFI_THROW(ValueError) << "Operator '" << OpKindToString(doc->op)
+                                << "' requires 2 operands, but got " << doc->operands.size();
+    }
+    output_ << OpKindToString(doc->op) << "(";
+    PrintJoinedDocs(doc->operands, ", ");
+    output_ << ")";
   } else if (doc->op < OpKind::kBinaryEnd) {
     if (doc->operands.size() < 2) {
       TVM_FFI_THROW(ValueError) << "Binary operator requires at least 2 operands, but got "
@@ -1532,6 +1552,16 @@ inline void PythonDocPrinter::PrintTypedDoc(const ReturnAST& doc) {
   MaybePrintCommentInline(doc);
 }
 
+inline void PythonDocPrinter::PrintTypedDoc(const BreakAST& doc) {
+  output_ << "break";
+  MaybePrintCommentInline(doc);
+}
+
+inline void PythonDocPrinter::PrintTypedDoc(const ContinueAST& doc) {
+  output_ << "continue";
+  MaybePrintCommentInline(doc);
+}
+
 inline void PythonDocPrinter::PrintTypedDoc(const FunctionAST& doc) {
   // Validate: `/` separator must not appear without leading positional parameters
   if (!doc->args.empty()) {
@@ -2000,6 +2030,9 @@ TVM_FFI_STATIC_INIT_BLOCK() {
   // ReturnText
   refl::ObjectDef<text::ReturnASTObj>().def_ro("value", &text::ReturnASTObj::value,
                                                refl::default_value(Optional<text::ExprAST>{}));
+  // BreakText / ContinueText
+  (void)refl::ObjectDef<text::BreakASTObj>();
+  (void)refl::ObjectDef<text::ContinueASTObj>();
   // FunctionText
   refl::ObjectDef<text::FunctionASTObj>()
       .def_ro("name", &text::FunctionASTObj::name)
@@ -2075,12 +2108,13 @@ TVM_FFI_STATIC_INIT_BLOCK() {
       .def_rw("obj2info", &text::IRPrinterObj::obj2info)
       .def_rw("defined_names", &text::IRPrinterObj::defined_names)
       .def_rw("frames", &text::IRPrinterObj::frames)
-      .def_rw("dialects", &text::IRPrinterObj::dialects)
       .def_rw("frame_vars", &text::IRPrinterObj::frame_vars)
+      .def_rw("dialect_stack", &text::IRPrinterObj::dialect_stack)
       .def(refl::init<text::PrinterConfig, ::tvm::ffi::Dict<::tvm::ffi::Any, text::VarInfo>,
                       ::tvm::ffi::Dict<::tvm::ffi::String, int64_t>,
                       ::tvm::ffi::List<::tvm::ffi::Any>,
-                      ::tvm::ffi::Dict<::tvm::ffi::Any, ::tvm::ffi::Any>>())
+                      ::tvm::ffi::Dict<::tvm::ffi::Any, ::tvm::ffi::Any>,
+                      ::tvm::ffi::List<::tvm::ffi::String>>())
       .def("var_is_defined", &text::IRPrinterObj::VarIsDefined)
       .def("var_def", &text::IRPrinterObj::VarDef)
       .def("var_def_no_name", &text::IRPrinterObj::VarDefNoName)

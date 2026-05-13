@@ -433,7 +433,7 @@ class Parser:
     def _emit_bound_stmt(self, stmt: Any) -> None:
         """Emit a statement and expose any variables it binds to later syntax."""
         self._emit_stmt(stmt)
-        if isinstance(stmt, std.Bind):
+        if isinstance(stmt, (std.BindExpr, std.VarDef)):
             for var in stmt.vars:
                 self.var_table.add(var.name, var, allow_shadowing=True)
 
@@ -496,7 +496,7 @@ class Parser:
         """Handle Python assignment forms as dialect binds, declarations, or stores.
 
         Used for ``x = expr``, ``x: std.i32``, ``x: std.i32 = expr``, tuple/list
-        destructuring, explicit ``std.BindExpr`` or ``std.BindVarDef`` RHS
+        destructuring, explicit ``std.BindExpr`` or ``std.VarDef`` RHS
         forms, and indexed assignment such as ``buf[i] = value``.
         """
         if node.aug_op != OperationKind.Undefined:
@@ -543,7 +543,7 @@ class Parser:
                 )
             return
 
-        if ty is None and isinstance(rhs, std.BindVarDef):
+        if ty is None and isinstance(rhs, std.VarDef):
             self._emit_bound_stmt(self._run_generics("__bind_var_def__", (names, rhs)))
             return
         self._emit_bound_stmt(self._run_generics("__bind_expr__", (names, ty, rhs)))
@@ -709,6 +709,14 @@ class Parser:
             raise NotImplementedError("assert messages are not supported")
         self._emit_stmt(self._run_generics("__assert__", (self.visit(node.cond),)))
 
+    def visit_Break(self, node: pyast.Break) -> None:
+        """Parse Python ``break`` into a dialect break statement."""
+        self._emit_stmt(self._run_generics("__break__", ()))
+
+    def visit_Continue(self, node: pyast.Continue) -> None:
+        """Parse Python ``continue`` into a dialect continue statement."""
+        self._emit_stmt(self._run_generics("__continue__", ()))
+
     ################################################################################
 
     def visit_Id(self, node: pyast.Id) -> Any:
@@ -773,12 +781,17 @@ class Parser:
         call nodes when the callee is a dialect expression rather than a Python
         callable.
         """
+
+        def _to_dialect(value: Any) -> Any:
+            return value.to_dialect() if hasattr(value, "to_dialect") else value
+
         callee = self.visit(node.callee)
         positional = list(self._visit_container(node.args))
         if "" in node.kwargs_keys:
             raise TypeError("** keyword expansion is not supported")
         kwargs = {
-            key: self.visit(value) for key, value in zip(node.kwargs_keys, node.kwargs_values)
+            key: _to_dialect(self.visit(value))
+            for key, value in zip(node.kwargs_keys, node.kwargs_values)
         }
         if callable(callee):
             return callee(*positional, **kwargs)

@@ -274,6 +274,16 @@ def test_print_binary_operation(op_kind: int, expected_token: str) -> None:
     assert doc.to_python() == f"x {expected_token} y"
 
 
+@pytest.mark.parametrize(
+    "op_kind, expected_name",
+    [(pyast.OperationKind.Min, "min"), (pyast.OperationKind.Max, "max")],
+    ids=["min", "max"],
+)
+def test_print_min_max_operation(op_kind: int, expected_name: str) -> None:
+    doc = pyast.Operation(op_kind, [pyast.Id("x"), pyast.Id("y")])
+    assert doc.to_python() == f"{expected_name}(x, y)"
+
+
 def test_binary_comparison_rejects_three_operands() -> None:
     """Binary comparison ops like Lt must reject 3+ operands."""
     expr = pyast.Operation(pyast.OperationKind.Lt, [pyast.Id("a"), pyast.Id("b"), pyast.Id("c")])

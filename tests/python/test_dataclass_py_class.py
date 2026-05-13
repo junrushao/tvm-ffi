@@ -415,10 +415,9 @@ class TestClassVar:
     def test_ffi_dialect_mnemonic_is_not_registered_as_type_method(self) -> None:
         @py_class(_unique_key("CVDialectMnemonicNoMethod"))
         class CVDialectMnemonicNoMethod(Object):
-            __ffi_dialect_mnemonic__: ClassVar[Tuple[str, str, str]] = (
+            __ffi_dialect_mnemonic__: ClassVar[Tuple[str, str]] = (
                 "test",
                 "CVDialectMnemonicNoMethod",
-                "__demo__",
             )
             x: int
 
@@ -428,7 +427,6 @@ class TestClassVar:
         assert tuple(core._lookup_type_attr(info.type_index, "__ffi_dialect_mnemonic__")) == (
             "test",
             "CVDialectMnemonicNoMethod",
-            "__demo__",
         )
 
     def test_ffi_dialect_mnemonic_rejects_non_tuple_value(self) -> None:

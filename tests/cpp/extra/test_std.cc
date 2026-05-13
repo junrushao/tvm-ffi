@@ -65,19 +65,19 @@ TEST(StdDialect, TextPrintFunction) {
 
   EXPECT_NE(rendered.find("@std.func"), std::string::npos);
   EXPECT_NE(rendered.find("def main"), std::string::npos);
-  EXPECT_NE(rendered.find("x + 1"), std::string::npos);
+  EXPECT_NE(rendered.find("x + std.i32(1)"), std::string::npos);
   EXPECT_NE(rendered.find("return y"), std::string::npos);
 }
 
-TEST(StdDialect, TextPrintBindVarDef) {
+TEST(StdDialect, TextPrintVarDef) {
   stdir::PrimTy i32(ffi::StringToDLDataType("int32"));
   stdir::Var y(i32, "y");
-  stdir::BindVarDef def({y}, ffi::Optional<stdir::Attrs>());
+  stdir::VarDef def({y}, ffi::Optional<stdir::Attrs>());
 
   text::IRPrinter printer{text::PrinterConfig()};
   text::NodeAST ast = printer->operator()(def, refl::AccessPath::Root()).cast<text::NodeAST>();
 
-  EXPECT_EQ(ast->ToPython(text::PrinterConfig()), "y = std.BindVarDef(std.i32)");
+  EXPECT_EQ(ast->ToPython(text::PrinterConfig()), "y = std.VarDef(std.i32)");
 }
 
 TEST(StdDialect, TextPrintAssert) {
@@ -89,7 +89,7 @@ TEST(StdDialect, TextPrintAssert) {
   text::NodeAST ast =
       printer->operator()(assert_stmt, refl::AccessPath::Root()).cast<text::NodeAST>();
 
-  EXPECT_EQ(ast->ToPython(text::PrinterConfig()), "assert x < 2");
+  EXPECT_EQ(ast->ToPython(text::PrinterConfig()), "assert x < std.i32(2)");
 }
 
 TEST(StdDialect, TextPrintCallIncludesResultType) {
@@ -99,7 +99,7 @@ TEST(StdDialect, TextPrintCallIncludesResultType) {
   text::IRPrinter printer{text::PrinterConfig()};
   text::NodeAST ast = printer->operator()(call, refl::AccessPath::Root()).cast<text::NodeAST>();
 
-  EXPECT_EQ(ast->ToPython(text::PrinterConfig()), "std.Call(std.i32, callee, std.i32(1))");
+  EXPECT_EQ(ast->ToPython(text::PrinterConfig()), "std.Call(callee, std.i32(1), ty=std.i32)");
 }
 
 TEST(StdDialect, DialectPrintMap) {
@@ -139,7 +139,7 @@ TEST(StdDialect, DialectMnemonics) {
   std::vector<std::pair<int32_t, std::vector<std::string>>> cases = {
       {stdir::AnyTyObj::RuntimeTypeIndex(), {"std", "Any"}},
       {stdir::PrimTyObj::RuntimeTypeIndex(), {"std", "Prim"}},
-      {stdir::TupleTypeObj::RuntimeTypeIndex(), {"std", "Tuple"}},
+      {stdir::TupleTyObj::RuntimeTypeIndex(), {"std", "Tuple"}},
       {stdir::TensorTyObj::RuntimeTypeIndex(), {"std", "Tensor"}},
       {stdir::RangeObj::RuntimeTypeIndex(), {"std", "Range"}},
       {stdir::DictAttrsObj::RuntimeTypeIndex(), {"std", "DictAttrs"}},
@@ -149,46 +149,45 @@ TEST(StdDialect, DialectMnemonics) {
       {stdir::IntImmObj::RuntimeTypeIndex(), {"std", "IntImm"}},
       {stdir::FloatImmObj::RuntimeTypeIndex(), {"std", "FloatImm"}},
       {stdir::StringImmObj::RuntimeTypeIndex(), {"std", "StringImm"}},
-      {stdir::AddObj::RuntimeTypeIndex(), {"std", "Add", "__add__"}},
-      {stdir::SubObj::RuntimeTypeIndex(), {"std", "Sub", "__sub__"}},
-      {stdir::MulObj::RuntimeTypeIndex(), {"std", "Mul", "__mul__"}},
-      {stdir::CDivObj::RuntimeTypeIndex(), {"std", "CDiv", "__truediv__"}},
-      {stdir::FloorDivObj::RuntimeTypeIndex(), {"std", "FloorDiv", "__floordiv__"}},
-      {stdir::FloorModObj::RuntimeTypeIndex(), {"std", "FloorMod", "__mod__"}},
+      {stdir::AddObj::RuntimeTypeIndex(), {"std", "Add"}},
+      {stdir::SubObj::RuntimeTypeIndex(), {"std", "Sub"}},
+      {stdir::MulObj::RuntimeTypeIndex(), {"std", "Mul"}},
+      {stdir::CDivObj::RuntimeTypeIndex(), {"std", "CDiv"}},
+      {stdir::FloorDivObj::RuntimeTypeIndex(), {"std", "FloorDiv"}},
+      {stdir::FloorModObj::RuntimeTypeIndex(), {"std", "FloorMod"}},
       {stdir::CModObj::RuntimeTypeIndex(), {"std", "CMod"}},
-      {stdir::PowObj::RuntimeTypeIndex(), {"std", "Pow", "__pow__"}},
-      {stdir::LShiftObj::RuntimeTypeIndex(), {"std", "LShift", "__lshift__"}},
-      {stdir::RShiftObj::RuntimeTypeIndex(), {"std", "RShift", "__rshift__"}},
-      {stdir::XorObj::RuntimeTypeIndex(), {"std", "Xor", "__xor__"}},
-      {stdir::MinObj::RuntimeTypeIndex(), {"std", "Min", "min"}},
-      {stdir::MaxObj::RuntimeTypeIndex(), {"std", "Max", "max"}},
-      {stdir::EqObj::RuntimeTypeIndex(), {"std", "Eq", "__eq__"}},
-      {stdir::NeObj::RuntimeTypeIndex(), {"std", "Ne", "__ne__"}},
-      {stdir::LeObj::RuntimeTypeIndex(), {"std", "Le", "__le__"}},
-      {stdir::GeObj::RuntimeTypeIndex(), {"std", "Ge", "__ge__"}},
-      {stdir::GtObj::RuntimeTypeIndex(), {"std", "Gt", "__gt__"}},
-      {stdir::LtObj::RuntimeTypeIndex(), {"std", "Lt", "__lt__"}},
-      {stdir::AndObj::RuntimeTypeIndex(), {"std", "And", "__and__"}},
-      {stdir::OrObj::RuntimeTypeIndex(), {"std", "Or", "__or__"}},
-      {stdir::NotObj::RuntimeTypeIndex(), {"std", "Not", "__invert__"}},
-      {stdir::LoadObj::RuntimeTypeIndex(), {"std", "Load", "__load__"}},
-      {stdir::CastObj::RuntimeTypeIndex(), {"std", "Cast", "__cast__"}},
+      {stdir::PowObj::RuntimeTypeIndex(), {"std", "Pow"}},
+      {stdir::LShiftObj::RuntimeTypeIndex(), {"std", "LShift"}},
+      {stdir::RShiftObj::RuntimeTypeIndex(), {"std", "RShift"}},
+      {stdir::XorObj::RuntimeTypeIndex(), {"std", "Xor"}},
+      {stdir::MinObj::RuntimeTypeIndex(), {"std", "Min"}},
+      {stdir::MaxObj::RuntimeTypeIndex(), {"std", "Max"}},
+      {stdir::EqObj::RuntimeTypeIndex(), {"std", "Eq"}},
+      {stdir::NeObj::RuntimeTypeIndex(), {"std", "Ne"}},
+      {stdir::LeObj::RuntimeTypeIndex(), {"std", "Le"}},
+      {stdir::GeObj::RuntimeTypeIndex(), {"std", "Ge"}},
+      {stdir::GtObj::RuntimeTypeIndex(), {"std", "Gt"}},
+      {stdir::LtObj::RuntimeTypeIndex(), {"std", "Lt"}},
+      {stdir::AndObj::RuntimeTypeIndex(), {"std", "And"}},
+      {stdir::OrObj::RuntimeTypeIndex(), {"std", "Or"}},
+      {stdir::NotObj::RuntimeTypeIndex(), {"std", "Not"}},
+      {stdir::LoadObj::RuntimeTypeIndex(), {"std", "Load"}},
+      {stdir::CastObj::RuntimeTypeIndex(), {"std", "Cast"}},
       {stdir::CallObj::RuntimeTypeIndex(), {"std", "Call"}},
-      {stdir::IfStmtObj::RuntimeTypeIndex(), {"std", "IfStmt", "__if__"}},
+      {stdir::IfStmtObj::RuntimeTypeIndex(), {"std", "IfStmt"}},
       {stdir::ScopeObj::RuntimeTypeIndex(), {"std", "Scope"}},
-      {stdir::ForObj::RuntimeTypeIndex(), {"std", "For", "__for__"}},
-      {stdir::WhileObj::RuntimeTypeIndex(), {"std", "While", "__while__"}},
-      {stdir::BindExprObj::RuntimeTypeIndex(), {"std", "BindExpr", "__bind_expr__"}},
-      {stdir::BindVarDefObj::RuntimeTypeIndex(), {"std", "BindVarDef", "__bind_var_def__"}},
-      {stdir::StoreObj::RuntimeTypeIndex(), {"std", "Store", "__store__"}},
-      {stdir::AssertObj::RuntimeTypeIndex(), {"std", "Assert", "__assert__"}},
-      {stdir::ReturnObj::RuntimeTypeIndex(), {"std", "Return", "__return__"}},
-      {stdir::YieldObj::RuntimeTypeIndex(), {"std", "Yield", "__yield__"}},
-      {stdir::BreakObj::RuntimeTypeIndex(), {"std", "Break", "__break__"}},
-      {stdir::ContinueObj::RuntimeTypeIndex(), {"std", "Continue", "__continue__"}},
+      {stdir::ForObj::RuntimeTypeIndex(), {"std", "For"}},
+      {stdir::WhileObj::RuntimeTypeIndex(), {"std", "While"}},
+      {stdir::BindExprObj::RuntimeTypeIndex(), {"std", "BindExpr"}},
+      {stdir::VarDefObj::RuntimeTypeIndex(), {"std", "VarDef"}},
+      {stdir::StoreObj::RuntimeTypeIndex(), {"std", "Store"}},
+      {stdir::AssertObj::RuntimeTypeIndex(), {"std", "Assert"}},
+      {stdir::ReturnObj::RuntimeTypeIndex(), {"std", "Return"}},
+      {stdir::YieldObj::RuntimeTypeIndex(), {"std", "Yield"}},
+      {stdir::BreakObj::RuntimeTypeIndex(), {"std", "Break"}},
+      {stdir::ContinueObj::RuntimeTypeIndex(), {"std", "Continue"}},
   };
   std::set<std::string> seen_mnemonics;
-  std::set<std::string> seen_generics;
 
   EXPECT_EQ(cases.size(), 49);
   for (const auto& [type_index, expected] : cases) {
@@ -201,66 +200,48 @@ TEST(StdDialect, DialectMnemonics) {
       EXPECT_EQ(static_cast<std::string>(actual[i]), expected[i]);
     }
     EXPECT_TRUE(seen_mnemonics.insert(expected[0] + "$" + expected[1]).second);
-    if (expected.size() == 3) {
-      EXPECT_TRUE(seen_generics.insert(expected[0] + "$" + expected[2]).second);
-    }
   }
 }
 
-TEST(StdDialect, TextGenericSugarUsesDialectStackForLiteralOnlyOperands) {
+TEST(StdDialect, TextSugarPreservesTypedImmediateOperands) {
   stdir::PrimTy i32(ffi::StringToDLDataType("int32"));
   stdir::Add add(i32, stdir::IntImm(i32, 1), stdir::IntImm(i32, 2));
 
-  text::IRPrinter std_printer{text::PrinterConfig()};
-  text::NodeAST std_ast =
-      std_printer->operator()(add, refl::AccessPath::Root()).cast<text::NodeAST>();
-  EXPECT_EQ(std_ast->ToPython(text::PrinterConfig()), "1 + 2");
-
-  text::IRPrinter tirx_printer{text::PrinterConfig()};
-  tirx_printer->dialects.push_back("tirx");
-  text::NodeAST explicit_ast =
-      tirx_printer->operator()(add, refl::AccessPath::Root()).cast<text::NodeAST>();
-  EXPECT_EQ(explicit_ast->ToPython(text::PrinterConfig()), "std.Add(std.i32, 1, 2)");
+  text::IRPrinter printer{text::PrinterConfig()};
+  text::NodeAST ast = printer->operator()(add, refl::AccessPath::Root()).cast<text::NodeAST>();
+  EXPECT_EQ(ast->ToPython(text::PrinterConfig()), "std.i32(1) + std.i32(2)");
 }
 
-TEST(StdDialect, TextGenericSugarUsesDialectStackForNoOperands) {
+TEST(StdDialect, TextSugarUsesNoOperandStatements) {
   stdir::Break break_stmt;
 
-  text::IRPrinter std_printer{text::PrinterConfig()};
-  text::NodeAST std_ast =
-      std_printer->operator()(break_stmt, refl::AccessPath::Root()).cast<text::NodeAST>();
-  EXPECT_EQ(std_ast->ToPython(text::PrinterConfig()), "break");
-
-  text::IRPrinter tirx_printer{text::PrinterConfig()};
-  tirx_printer->dialects.push_back("tirx");
-  text::NodeAST explicit_ast =
-      tirx_printer->operator()(break_stmt, refl::AccessPath::Root()).cast<text::NodeAST>();
-  EXPECT_EQ(explicit_ast->ToPython(text::PrinterConfig()), "std.Break()");
+  text::IRPrinter printer{text::PrinterConfig()};
+  text::NodeAST ast =
+      printer->operator()(break_stmt, refl::AccessPath::Root()).cast<text::NodeAST>();
+  EXPECT_EQ(ast->ToPython(text::PrinterConfig()), "break");
 }
 
-TEST(StdDialect, TextGenericFallbackUsesPositionalMnemonicCall) {
+TEST(StdDialect, TextSugarUsesNativeReturnAndYield) {
   text::IRPrinter printer{text::PrinterConfig()};
-  printer->dialects.push_back("tirx");
 
   text::NodeAST ret =
       printer->operator()(stdir::Return(ffi::List<stdir::Var>{}), refl::AccessPath::Root())
           .cast<text::NodeAST>();
-  EXPECT_EQ(ret->ToPython(text::PrinterConfig()), "std.Return()");
+  EXPECT_EQ(ret->ToPython(text::PrinterConfig()), "return");
 
   text::NodeAST yield =
       printer->operator()(stdir::Yield_(ffi::List<stdir::Var>{}), refl::AccessPath::Root())
           .cast<text::NodeAST>();
-  EXPECT_EQ(yield->ToPython(text::PrinterConfig()), "std.Yield()");
+  EXPECT_EQ(yield->ToPython(text::PrinterConfig()), "yield");
 }
 
-TEST(StdDialect, TextGenericFallbackPreservesBindAttrs) {
+TEST(StdDialect, TextSugarPreservesBindAttrs) {
   ffi::Dict<ffi::String, ffi::Any> values;
   values.Set("tag", ffi::String("demo"));
   stdir::DictAttrs attrs(values);
   stdir::PrimTy i32(ffi::StringToDLDataType("int32"));
 
   text::IRPrinter printer{text::PrinterConfig()};
-  printer->dialects.push_back("tirx");
 
   text::NodeAST bind_expr = printer
                                 ->operator()(stdir::BindExpr({}, ffi::Optional<stdir::Attrs>(attrs),
@@ -271,27 +252,49 @@ TEST(StdDialect, TextGenericFallbackPreservesBindAttrs) {
 
   text::NodeAST bind_var_def =
       printer
-          ->operator()(stdir::BindVarDef({}, ffi::Optional<stdir::Attrs>(attrs)),
+          ->operator()(stdir::VarDef({}, ffi::Optional<stdir::Attrs>(attrs)),
                        refl::AccessPath::Root())
           .cast<text::NodeAST>();
-  EXPECT_EQ(bind_var_def->ToPython(text::PrinterConfig()), "std.BindVarDef(tag=\"demo\")");
+  EXPECT_EQ(bind_var_def->ToPython(text::PrinterConfig()), "std.VarDef(tag=\"demo\")");
 }
 
-TEST(StdDialect, TextGenericSugarUsesNonLiteralOperandDialect) {
+TEST(StdDialect, TextSugarUsesNamedOperands) {
   stdir::PrimTy i32(ffi::StringToDLDataType("int32"));
   stdir::Var x(i32, "x");
   stdir::Add add(i32, x, stdir::IntImm(i32, 1));
 
-  text::IRPrinter std_printer{text::PrinterConfig()};
-  text::NodeAST std_ast =
-      std_printer->operator()(add, refl::AccessPath::Root()).cast<text::NodeAST>();
-  EXPECT_EQ(std_ast->ToPython(text::PrinterConfig()), "x + 1");
+  text::IRPrinter printer{text::PrinterConfig()};
+  text::NodeAST ast = printer->operator()(add, refl::AccessPath::Root()).cast<text::NodeAST>();
+  EXPECT_EQ(ast->ToPython(text::PrinterConfig()), "x + std.i32(1)");
+}
 
-  text::IRPrinter tirx_printer{text::PrinterConfig()};
-  tirx_printer->dialects.push_back("tirx");
-  text::NodeAST explicit_ast =
-      tirx_printer->operator()(add, refl::AccessPath::Root()).cast<text::NodeAST>();
-  EXPECT_EQ(explicit_ast->ToPython(text::PrinterConfig()), "x + 1");
+TEST(StdDialect, BinaryConstructorsRejectTypePromotionAndErasure) {
+  stdir::AnyTy any;
+  stdir::PrimTy i32(ffi::StringToDLDataType("int32"));
+  stdir::PrimTy i64(ffi::StringToDLDataType("int64"));
+  stdir::Var x_i32(i32, "x");
+  stdir::Var y_i64(i64, "y");
+  stdir::IntImm any_one(any, 1);
+  stdir::IntImm one_i32(i32, 1);
+  stdir::Var x_any(any, "x");
+
+  EXPECT_NO_THROW({ stdir::Add(any, x_any, any_one); });
+  EXPECT_NO_THROW({ stdir::Add(any, x_any, one_i32); });
+  EXPECT_THROW({ stdir::Add(i32, x_i32, y_i64); }, ffi::Error);
+  EXPECT_THROW({ stdir::Add(i32, x_i32, any_one); }, ffi::Error);
+  EXPECT_THROW({ stdir::Add(any, x_i32, x_i32); }, ffi::Error);
+}
+
+TEST(StdDialect, UnaryConstructorsRejectTypePromotionAndErasure) {
+  stdir::AnyTy any;
+  stdir::PrimTy i32(ffi::StringToDLDataType("int32"));
+  stdir::Var x_i32(i32, "x");
+  stdir::IntImm any_one(any, 1);
+  stdir::Var x_any(any, "x");
+
+  EXPECT_NO_THROW({ stdir::Not(any, x_any); });
+  EXPECT_THROW({ stdir::Not(i32, any_one); }, ffi::Error);
+  EXPECT_THROW({ stdir::Not(any, x_i32); }, ffi::Error);
 }
 
 TEST(StdDialect, AbstractBasesDoNotHaveDialectMnemonics) {
@@ -308,8 +311,6 @@ TEST(StdDialect, AbstractBasesDoNotHaveDialectMnemonics) {
   EXPECT_EQ(dialect_mnemonic_col[stdir::AggregateObj::RuntimeTypeIndex()].type_index(),
             ffi::TypeIndex::kTVMFFINone);
   EXPECT_EQ(dialect_mnemonic_col[stdir::ExprObj::RuntimeTypeIndex()].type_index(),
-            ffi::TypeIndex::kTVMFFINone);
-  EXPECT_EQ(dialect_mnemonic_col[stdir::BindObj::RuntimeTypeIndex()].type_index(),
             ffi::TypeIndex::kTVMFFINone);
 }
 
