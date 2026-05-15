@@ -27,6 +27,8 @@
 #include <tvm/ffi/container/dict.h>
 #include <tvm/ffi/container/list.h>
 #include <tvm/ffi/dtype.h>
+#include <tvm/ffi/extra/dataclass.h>
+#include <tvm/ffi/extra/structural_equal.h>
 #include <tvm/ffi/object.h>
 #include <tvm/ffi/optional.h>
 #include <tvm/ffi/string.h>
@@ -36,6 +38,19 @@
 namespace tvm {
 namespace ffi {
 namespace std_ {
+struct Ty;
+struct Expr;
+namespace details {
+inline void CheckDerivedOperandTy(const char* node_name, const char* operand_name,
+                                  const Ty& result_ty, const Expr& operand);
+inline void CheckBinaryDerivedOperandTys(const char* node_name, const Ty& result_ty, const Expr& a,
+                                         const Expr& b);
+inline Expr CoerceInitArgToExpr(AnyView value, const Ty& result_ty);
+template <typename Obj>
+inline ObjectPtr<Obj> MakeBinaryObj(const char* node_name, Ty ty, Expr a, Expr b);
+template <typename Obj>
+inline ObjectPtr<Obj> MakeUnaryObj(const char* node_name, Ty ty, Expr operand);
+}  // namespace details
 
 /*! \brief Base object for all standard dialect nodes. */
 struct NodeObj : public Object {
@@ -338,24 +353,24 @@ struct PrimTy : public Ty {
 };
 
 /*! \brief Data object for a tuple type. */
-struct TupleTypeObj : public TyObj {
+struct TupleTyObj : public TyObj {
   /*! \brief Tuple field types. */
   List<Ty> fields;
 
   /// \cond Doxygen_Suppress
-  TupleTypeObj() = default;
-  explicit TupleTypeObj(List<Ty> fields) : fields(std::move(fields)) {}
+  TupleTyObj() = default;
+  explicit TupleTyObj(List<Ty> fields) : fields(std::move(fields)) {}
 
-  TVM_FFI_DECLARE_OBJECT_INFO("ffi.std.TupleType", TupleTypeObj, TyObj);
+  TVM_FFI_DECLARE_OBJECT_INFO("ffi.std.TupleTy", TupleTyObj, TyObj);
   /// \endcond
 };
 
 /*! \brief Reference wrapper for a tuple type. */
-struct TupleType : public Ty {
+struct TupleTy : public Ty {
   /*! \brief Construct a tuple type from field types. */
-  explicit TupleType(List<Ty> fields) : TupleType(make_object<TupleTypeObj>(std::move(fields))) {}
+  explicit TupleTy(List<Ty> fields) : TupleTy(make_object<TupleTyObj>(std::move(fields))) {}
   /// \cond Doxygen_Suppress
-  TVM_FFI_DEFINE_OBJECT_REF_METHODS_NULLABLE(TupleType, Ty, TupleTypeObj);
+  TVM_FFI_DEFINE_OBJECT_REF_METHODS_NULLABLE(TupleTy, Ty, TupleTyObj);
   /// \endcond
 };
 
@@ -474,173 +489,48 @@ struct StringImm : public Expr {
 };
 
 /*! \brief Define the object and reference wrapper for a standard binary expression node. */
-#define TVM_FFI_STD_BINARY_EXPR(TypeName)                                                    \
-  /*! \brief Data object for a binary expression. */                                         \
-  struct TypeName##Obj : public ExprObj {                                                    \
-    /*! \brief Left operand. */                                                              \
-    Expr a;                                                                                  \
-    /*! \brief Right operand. */                                                             \
-    Expr b;                                                                                  \
-                                                                                             \
-    /** \cond Doxygen_Suppress */                                                            \
-    TypeName##Obj() = default;                                                               \
-    TypeName##Obj(Ty ty, Expr a, Expr b)                                                     \
-        : ExprObj(std::move(ty)), a(std::move(a)), b(std::move(b)) {}                        \
-                                                                                             \
-    TVM_FFI_DECLARE_OBJECT_INFO("ffi.std." #TypeName, TypeName##Obj, ExprObj);               \
-    /** \endcond */                                                                          \
-  };                                                                                         \
-                                                                                             \
-  /*! \brief Reference wrapper for a binary expression. */                                   \
-  struct TypeName : public Expr {                                                            \
-    /*! \brief Construct a binary expression. */                                             \
-    TypeName(Ty ty, Expr a, Expr b)                                                          \
-        : TypeName(make_object<TypeName##Obj>(std::move(ty), std::move(a), std::move(b))) {} \
-    /** \cond Doxygen_Suppress */                                                            \
-    TVM_FFI_DEFINE_OBJECT_REF_METHODS_NULLABLE(TypeName, Expr, TypeName##Obj);               \
-    /** \endcond */                                                                          \
+#define TVM_FFI_STD_BINARY_EXPR(TypeName)                                                        \
+  /*! \brief Data object for a binary expression. */                                             \
+  struct TypeName##Obj : public ExprObj {                                                        \
+    /*! \brief Left operand. */                                                                  \
+    Expr a;                                                                                      \
+    /*! \brief Right operand. */                                                                 \
+    Expr b;                                                                                      \
+                                                                                                 \
+    /** \cond Doxygen_Suppress */                                                                \
+    TypeName##Obj() = default;                                                                   \
+    TypeName##Obj(Ty ty, Expr a, Expr b)                                                         \
+        : ExprObj(std::move(ty)), a(std::move(a)), b(std::move(b)) {                             \
+      details::CheckBinaryDerivedOperandTys(#TypeName, this->ty, this->a, this->b);              \
+    }                                                                                            \
+    TypeName##Obj(Expr a, Expr b, Ty ty)                                                         \
+        : TypeName##Obj(std::move(ty), std::move(a), std::move(b)) {}                            \
+    TypeName##Obj(AnyView a, AnyView b, const Ty& ty)                                            \
+        : TypeName##Obj(ty, details::CoerceInitArgToExpr(a, ty),                                 \
+                        details::CoerceInitArgToExpr(b, ty)) {}                                  \
+                                                                                                 \
+    TVM_FFI_DECLARE_OBJECT_INFO("ffi.std." #TypeName, TypeName##Obj, ExprObj);                   \
+    /** \endcond */                                                                              \
+  };                                                                                             \
+                                                                                                 \
+  /*! \brief Reference wrapper for a binary expression. */                                       \
+  struct TypeName : public Expr {                                                                \
+    /*! \brief Construct a binary expression. */                                                 \
+    TypeName(Ty ty, Expr a, Expr b)                                                              \
+        : TypeName(details::MakeBinaryObj<TypeName##Obj>(#TypeName, std::move(ty), std::move(a), \
+                                                         std::move(b))) {}                       \
+    /** \cond Doxygen_Suppress */                                                                \
+    TVM_FFI_DEFINE_OBJECT_REF_METHODS_NULLABLE(TypeName, Expr, TypeName##Obj);                   \
+    /** \endcond */                                                                              \
   }
 
 TVM_FFI_STD_BINARY_EXPR(Add);
 TVM_FFI_STD_BINARY_EXPR(Sub);
 TVM_FFI_STD_BINARY_EXPR(Mul);
-
-/*!
- * \brief Data object for C-style division.
- * \details For integer operands, CDiv means truncating division (truncdiv):
- * the quotient is truncated toward zero.  For floating-point operands, CDiv
- * means C-style division.  Use FloorDiv only for integer floor division.
- */
-struct CDivObj : public ExprObj {
-  /*! \brief Left operand. */
-  Expr a;
-  /*! \brief Right operand. */
-  Expr b;
-
-  /** \cond Doxygen_Suppress */
-  CDivObj() = default;
-  CDivObj(Ty ty, Expr a, Expr b) : ExprObj(std::move(ty)), a(std::move(a)), b(std::move(b)) {}
-
-  TVM_FFI_DECLARE_OBJECT_INFO("ffi.std.CDiv", CDivObj, ExprObj);
-  /** \endcond */
-};
-
-/*!
- * \brief Reference wrapper for C-style division.
- * \details For integer operands, CDiv means truncdiv.  For floating-point
- * operands, CDiv means C-style division.
- */
-struct CDiv : public Expr {
-  /*! \brief Construct a C-style division expression. */
-  CDiv(Ty ty, Expr a, Expr b)
-      : CDiv(make_object<CDivObj>(std::move(ty), std::move(a), std::move(b))) {}
-  /** \cond Doxygen_Suppress */
-  TVM_FFI_DEFINE_OBJECT_REF_METHODS_NULLABLE(CDiv, Expr, CDivObj);
-  /** \endcond */
-};
-
-/*!
- * \brief Data object for integer floor division.
- * \details FloorDiv only works for integer operands.  It always computes
- * floor(a / b), unlike CDiv which means truncdiv for integer operands and
- * C-style division for floating-point operands.
- */
-struct FloorDivObj : public ExprObj {
-  /*! \brief Left operand. */
-  Expr a;
-  /*! \brief Right operand. */
-  Expr b;
-
-  /** \cond Doxygen_Suppress */
-  FloorDivObj() = default;
-  FloorDivObj(Ty ty, Expr a, Expr b) : ExprObj(std::move(ty)), a(std::move(a)), b(std::move(b)) {}
-
-  TVM_FFI_DECLARE_OBJECT_INFO("ffi.std.FloorDiv", FloorDivObj, ExprObj);
-  /** \endcond */
-};
-
-/*!
- * \brief Reference wrapper for integer floor division.
- * \details FloorDiv only works for integer operands and always computes
- * floor(a / b).
- */
-struct FloorDiv : public Expr {
-  /*! \brief Construct an integer floor division expression. */
-  FloorDiv(Ty ty, Expr a, Expr b)
-      : FloorDiv(make_object<FloorDivObj>(std::move(ty), std::move(a), std::move(b))) {}
-  /** \cond Doxygen_Suppress */
-  TVM_FFI_DEFINE_OBJECT_REF_METHODS_NULLABLE(FloorDiv, Expr, FloorDivObj);
-  /** \endcond */
-};
-
-/*!
- * \brief Data object for integer floor modulo.
- * \details FloorMod only works for integer operands.  It is paired with
- * FloorDiv and always uses floor(a / b).  Use CMod for integer truncmod
- * behavior or floating-point C-style modulo.
- */
-struct FloorModObj : public ExprObj {
-  /*! \brief Left operand. */
-  Expr a;
-  /*! \brief Right operand. */
-  Expr b;
-
-  /** \cond Doxygen_Suppress */
-  FloorModObj() = default;
-  FloorModObj(Ty ty, Expr a, Expr b) : ExprObj(std::move(ty)), a(std::move(a)), b(std::move(b)) {}
-
-  TVM_FFI_DECLARE_OBJECT_INFO("ffi.std.FloorMod", FloorModObj, ExprObj);
-  /** \endcond */
-};
-
-/*!
- * \brief Reference wrapper for integer floor modulo.
- * \details FloorMod only works for integer operands and is paired with
- * FloorDiv's floor(a / b) semantics.
- */
-struct FloorMod : public Expr {
-  /*! \brief Construct an integer floor modulo expression. */
-  FloorMod(Ty ty, Expr a, Expr b)
-      : FloorMod(make_object<FloorModObj>(std::move(ty), std::move(a), std::move(b))) {}
-  /** \cond Doxygen_Suppress */
-  TVM_FFI_DEFINE_OBJECT_REF_METHODS_NULLABLE(FloorMod, Expr, FloorModObj);
-  /** \endcond */
-};
-
-/*!
- * \brief Data object for C-style modulo.
- * \details For integer operands, CMod means truncating modulo (truncmod) and
- * is paired with CDiv.  For floating-point operands, CMod means C-style
- * modulo.  Use FloorMod only for integer floor modulo.
- */
-struct CModObj : public ExprObj {
-  /*! \brief Left operand. */
-  Expr a;
-  /*! \brief Right operand. */
-  Expr b;
-
-  /** \cond Doxygen_Suppress */
-  CModObj() = default;
-  CModObj(Ty ty, Expr a, Expr b) : ExprObj(std::move(ty)), a(std::move(a)), b(std::move(b)) {}
-
-  TVM_FFI_DECLARE_OBJECT_INFO("ffi.std.CMod", CModObj, ExprObj);
-  /** \endcond */
-};
-
-/*!
- * \brief Reference wrapper for C-style modulo.
- * \details For integer operands, CMod means truncmod.  For floating-point
- * operands, CMod means C-style modulo.
- */
-struct CMod : public Expr {
-  /*! \brief Construct a C-style modulo expression. */
-  CMod(Ty ty, Expr a, Expr b)
-      : CMod(make_object<CModObj>(std::move(ty), std::move(a), std::move(b))) {}
-  /** \cond Doxygen_Suppress */
-  TVM_FFI_DEFINE_OBJECT_REF_METHODS_NULLABLE(CMod, Expr, CModObj);
-  /** \endcond */
-};
-
+TVM_FFI_STD_BINARY_EXPR(CDiv);
+TVM_FFI_STD_BINARY_EXPR(FloorDiv);
+TVM_FFI_STD_BINARY_EXPR(FloorMod);
+TVM_FFI_STD_BINARY_EXPR(CMod);
 TVM_FFI_STD_BINARY_EXPR(Pow);
 TVM_FFI_STD_BINARY_EXPR(LShift);
 TVM_FFI_STD_BINARY_EXPR(RShift);
@@ -665,7 +555,11 @@ struct NotObj : public ExprObj {
 
   /// \cond Doxygen_Suppress
   NotObj() = default;
-  NotObj(Ty ty, Expr operand) : ExprObj(std::move(ty)), operand(std::move(operand)) {}
+  NotObj(Ty ty, Expr operand) : ExprObj(std::move(ty)), operand(std::move(operand)) {
+    details::CheckDerivedOperandTy("Not", "operand", this->ty, this->operand);
+  }
+  NotObj(Expr operand, Ty ty) : NotObj(std::move(ty), std::move(operand)) {}
+  NotObj(AnyView operand, const Ty& ty) : NotObj(ty, details::CoerceInitArgToExpr(operand, ty)) {}
 
   TVM_FFI_DECLARE_OBJECT_INFO("ffi.std.Not", NotObj, ExprObj);
   /// \endcond
@@ -674,7 +568,8 @@ struct NotObj : public ExprObj {
 /*! \brief Reference wrapper for logical negation. */
 struct Not : public Expr {
   /*! \brief Construct a logical negation expression. */
-  Not(Ty ty, Expr operand) : Not(make_object<NotObj>(std::move(ty), std::move(operand))) {}
+  Not(Ty ty, Expr operand)
+      : Not(details::MakeUnaryObj<NotObj>("Not", std::move(ty), std::move(operand))) {}
   /*! \brief Convert a general FFI value into a logical negation expression. */
   static Not FromAny(AnyView src);
 
@@ -806,84 +701,66 @@ struct IfStmt : public Stmt {
   /// \endcond
 };
 
-/*! \brief Base data object for variable binding statements. */
-struct BindObj : public StmtObj {
+/*! \brief Data object for binding an expression to variables. */
+struct BindExprObj : public StmtObj {
   /*! \brief Variables bound by this statement. */
   List<Var> vars;
-
- protected:
-  /// \cond Doxygen_Suppress
-  BindObj() = default;
-  BindObj(List<Var> vars, Optional<Attrs> attrs)
-      : StmtObj(std::move(attrs)), vars(std::move(vars)) {}
-
- public:
-  TVM_FFI_DECLARE_OBJECT_INFO("ffi.std.Bind", BindObj, StmtObj);
-  /// \endcond
-};
-
-/*! \brief Nullable reference wrapper for a variable binding statement. */
-struct Bind : public Stmt {
-  /// \cond Doxygen_Suppress
-  TVM_FFI_DEFINE_OBJECT_REF_METHODS_NULLABLE(Bind, Stmt, BindObj);
-  /// \endcond
-};
-
-/*! \brief Data object for binding an expression to variables. */
-struct BindExprObj : public BindObj {
   /*! \brief Expression being bound. */
   Expr expr;
 
   /// \cond Doxygen_Suppress
   BindExprObj() = default;
   BindExprObj(List<Var> vars, Optional<Attrs> attrs, Expr expr)
-      : BindObj(std::move(vars), std::move(attrs)), expr(std::move(expr)) {}
+      : StmtObj(std::move(attrs)), vars(std::move(vars)), expr(std::move(expr)) {}
 
-  TVM_FFI_DECLARE_OBJECT_INFO("ffi.std.BindExpr", BindExprObj, BindObj);
+  TVM_FFI_DECLARE_OBJECT_INFO("ffi.std.BindExpr", BindExprObj, StmtObj);
   /// \endcond
 };
 
 /*! \brief Reference wrapper for binding an expression to variables. */
-struct BindExpr : public Bind {
+struct BindExpr : public Stmt {
   /*! \brief Construct an expression binding. */
   BindExpr(List<Var> vars, Optional<Attrs> attrs, Expr expr)
       : BindExpr(make_object<BindExprObj>(std::move(vars), std::move(attrs), std::move(expr))) {}
   /// \cond Doxygen_Suppress
-  TVM_FFI_DEFINE_OBJECT_REF_METHODS_NULLABLE(BindExpr, Bind, BindExprObj);
+  TVM_FFI_DEFINE_OBJECT_REF_METHODS_NULLABLE(BindExpr, Stmt, BindExprObj);
   /// \endcond
 };
 
 /*! \brief Data object for defining variables without a source expression. */
-struct BindVarDefObj : public BindObj {
-  /// \cond Doxygen_Suppress
-  BindVarDefObj() = default;
-  BindVarDefObj(List<Var> vars, Optional<Attrs> attrs)
-      : BindObj(std::move(vars), std::move(attrs)) {}
+struct VarDefObj : public StmtObj {
+  /*! \brief Variables defined by this statement. */
+  List<Var> vars;
 
-  TVM_FFI_DECLARE_OBJECT_INFO("ffi.std.BindVarDef", BindVarDefObj, BindObj);
+  /// \cond Doxygen_Suppress
+  VarDefObj() = default;
+  VarDefObj(List<Var> vars, Optional<Attrs> attrs)
+      : StmtObj(std::move(attrs)), vars(std::move(vars)) {}
+
+  TVM_FFI_DECLARE_OBJECT_INFO("ffi.std.VarDef", VarDefObj, StmtObj);
   /// \endcond
 };
 
 /*! \brief Reference wrapper for defining variables without a source expression. */
-struct BindVarDef : public Bind {
+struct VarDef : public Stmt {
   /*! \brief Construct a variable definition. */
-  BindVarDef(List<Var> vars, Optional<Attrs> attrs)
-      : BindVarDef(make_object<BindVarDefObj>(std::move(vars), std::move(attrs))) {}
+  VarDef(List<Var> vars, Optional<Attrs> attrs)
+      : VarDef(make_object<VarDefObj>(std::move(vars), std::move(attrs))) {}
   /// \cond Doxygen_Suppress
-  TVM_FFI_DEFINE_OBJECT_REF_METHODS_NULLABLE(BindVarDef, Bind, BindVarDefObj);
+  TVM_FFI_DEFINE_OBJECT_REF_METHODS_NULLABLE(VarDef, Stmt, VarDefObj);
   /// \endcond
 };
 
 /*! \brief Data object for a lexical scope with carried bindings. */
 struct ScopeObj : public StmtObj {
   /*! \brief Bindings introduced by the scope. */
-  List<Bind> binds;
+  List<Stmt> binds;
   /*! \brief Scope body statements. */
   List<Stmt> body;
 
   /// \cond Doxygen_Suppress
   ScopeObj() = default;
-  ScopeObj(Optional<Attrs> attrs, List<Bind> binds, List<Stmt> body)
+  ScopeObj(Optional<Attrs> attrs, List<Stmt> binds, List<Stmt> body)
       : StmtObj(std::move(attrs)), binds(std::move(binds)), body(std::move(body)) {}
 
   TVM_FFI_DECLARE_OBJECT_INFO("ffi.std.Scope", ScopeObj, StmtObj);
@@ -893,7 +770,7 @@ struct ScopeObj : public StmtObj {
 /*! \brief Reference wrapper for a lexical scope with carried bindings. */
 struct Scope : public Stmt {
   /*! \brief Construct a lexical scope. */
-  Scope(Optional<Attrs> attrs, List<Bind> binds, List<Stmt> body)
+  Scope(Optional<Attrs> attrs, List<Stmt> binds, List<Stmt> body)
       : Scope(make_object<ScopeObj>(std::move(attrs), std::move(binds), std::move(body))) {}
   /// \cond Doxygen_Suppress
   TVM_FFI_DEFINE_OBJECT_REF_METHODS_NULLABLE(Scope, Stmt, ScopeObj);
@@ -907,7 +784,7 @@ struct ForObj : public ScopeObj {
 
   /// \cond Doxygen_Suppress
   ForObj() = default;
-  ForObj(Range range_, Optional<Attrs> attrs, List<Bind> binds, List<Stmt> body)
+  ForObj(Range range_, Optional<Attrs> attrs, List<Stmt> binds, List<Stmt> body)
       : ScopeObj(std::move(attrs), std::move(binds), std::move(body)), range_(std::move(range_)) {}
 
   TVM_FFI_DECLARE_OBJECT_INFO("ffi.std.For", ForObj, ScopeObj);
@@ -917,7 +794,7 @@ struct ForObj : public ScopeObj {
 /*! \brief Reference wrapper for a for loop. */
 struct For : public Scope {
   /*! \brief Construct a for loop. */
-  For(Range range_, Optional<Attrs> attrs, List<Bind> binds, List<Stmt> body)
+  For(Range range_, Optional<Attrs> attrs, List<Stmt> binds, List<Stmt> body)
       : For(make_object<ForObj>(std::move(range_), std::move(attrs), std::move(binds),
                                 std::move(body))) {}
   /// \cond Doxygen_Suppress
@@ -932,7 +809,7 @@ struct WhileObj : public ScopeObj {
 
   /// \cond Doxygen_Suppress
   WhileObj() = default;
-  WhileObj(Expr cond, Optional<Attrs> attrs, List<Bind> binds, List<Stmt> body)
+  WhileObj(Expr cond, Optional<Attrs> attrs, List<Stmt> binds, List<Stmt> body)
       : ScopeObj(std::move(attrs), std::move(binds), std::move(body)), cond(std::move(cond)) {}
 
   TVM_FFI_DECLARE_OBJECT_INFO("ffi.std.While", WhileObj, ScopeObj);
@@ -942,7 +819,7 @@ struct WhileObj : public ScopeObj {
 /*! \brief Reference wrapper for a while loop. */
 struct While : public Scope {
   /*! \brief Construct a while loop. */
-  While(Expr cond, Optional<Attrs> attrs, List<Bind> binds, List<Stmt> body)
+  While(Expr cond, Optional<Attrs> attrs, List<Stmt> binds, List<Stmt> body)
       : While(make_object<WhileObj>(std::move(cond), std::move(attrs), std::move(binds),
                                     std::move(body))) {}
   /// \cond Doxygen_Suppress
@@ -1217,8 +1094,145 @@ inline Not Not::FromAny(AnyView src) {
   TVM_FFI_UNREACHABLE();
 }
 
-}  // namespace std_
+namespace details {
+inline Expr CoerceInitArgToExpr(AnyView value, const Ty& result_ty) {
+  TVMFFIAny raw = value.CopyToTVMFFIAny();
+  if (std::optional<Expr> expr = ObjectRefTypeTraitsBase<Expr>::TryCastFromAnyView(&raw)) {
+    return *std::move(expr);
+  }
 
+  if (const PrimTyObj* prim_ty = result_ty.as<PrimTyObj>()) {
+    if (raw.type_index == TypeIndex::kTVMFFIBool) {
+      bool bool_value = TypeTraits<bool>::CopyFromAnyViewAfterCheck(&raw);
+      if (DTypeIsBool(prim_ty->dtype)) {
+        return BoolImm(result_ty, bool_value);
+      }
+      if (DTypeIsInt(prim_ty->dtype)) {
+        return IntImm(result_ty, static_cast<int64_t>(bool_value));
+      }
+      if (DTypeIsFloat(prim_ty->dtype)) {
+        return FloatImm(result_ty, static_cast<double>(bool_value));
+      }
+    }
+    if (std::optional<int64_t> int_value = TypeTraits<int64_t>::TryCastFromAnyView(&raw)) {
+      if (DTypeIsBool(prim_ty->dtype)) {
+        return BoolImm(result_ty, static_cast<bool>(*int_value));
+      }
+      if (DTypeIsInt(prim_ty->dtype)) {
+        return IntImm(result_ty, *int_value);
+      }
+      if (DTypeIsFloat(prim_ty->dtype)) {
+        return FloatImm(result_ty, static_cast<double>(*int_value));
+      }
+    }
+    if (raw.type_index == TypeIndex::kTVMFFIFloat) {
+      double float_value = TypeTraits<double>::CopyFromAnyViewAfterCheck(&raw);
+      if (DTypeIsBool(prim_ty->dtype)) {
+        return BoolImm(result_ty, static_cast<bool>(float_value));
+      }
+      if (DTypeIsInt(prim_ty->dtype)) {
+        return IntImm(result_ty, static_cast<int64_t>(float_value));
+      }
+      if (DTypeIsFloat(prim_ty->dtype)) {
+        return FloatImm(result_ty, float_value);
+      }
+    }
+  }
+
+  if (result_ty.as<AnyTyObj>() != nullptr) {
+    if (raw.type_index == TypeIndex::kTVMFFIBool) {
+      return BoolImm(result_ty, TypeTraits<bool>::CopyFromAnyViewAfterCheck(&raw));
+    }
+    if (std::optional<int64_t> int_value = TypeTraits<int64_t>::TryCastFromAnyView(&raw)) {
+      return IntImm(result_ty, *int_value);
+    }
+    if (raw.type_index == TypeIndex::kTVMFFIFloat) {
+      return FloatImm(result_ty, TypeTraits<double>::CopyFromAnyViewAfterCheck(&raw));
+    }
+    if (std::optional<String> str_value = TypeTraits<String>::TryCastFromAnyView(&raw)) {
+      return StringImm(result_ty, *std::move(str_value));
+    }
+  }
+
+  if (std::optional<Expr> expr = TypeTraits<Expr>::TryCastFromAnyView(&raw)) {
+    return *std::move(expr);
+  }
+  TVM_FFI_THROW(TypeError) << "Unsupported type for conversion to Expr: " << value.GetTypeKey();
+  TVM_FFI_UNREACHABLE();
+}
+
+inline void CheckDerivedOperandTy(const char* node_name, const char* operand_name,
+                                  const Ty& result_ty, const Expr& operand) {
+  TVM_FFI_CHECK(result_ty.defined(), TypeError) << node_name << " result type must be defined";
+  TVM_FFI_CHECK(operand.defined(), TypeError)
+      << node_name << " operand `" << operand_name << "` must be defined";
+  const Ty& operand_ty = operand->ty;
+  TVM_FFI_CHECK(operand_ty.defined(), TypeError)
+      << node_name << " operand `" << operand_name << "` type must be defined";
+
+  bool result_is_any = result_ty->IsInstance<AnyTyObj>();
+  bool operand_is_any = operand_ty->IsInstance<AnyTyObj>();
+  TVM_FFI_CHECK(result_is_any == operand_is_any, TypeError)
+      << node_name << " cannot derive result type " << ReprPrint(result_ty) << " from operand `"
+      << operand_name << "` with type " << ReprPrint(operand_ty)
+      << "; use an explicit Cast or construct operands with matching types";
+  if (!result_is_any) {
+    TVM_FFI_CHECK(StructuralEqual::Equal(result_ty, operand_ty), TypeError)
+        << node_name << " operand `" << operand_name << "` type " << ReprPrint(operand_ty)
+        << " does not match result type " << ReprPrint(result_ty);
+  }
+}
+
+inline void CheckBinaryDerivedOperandTys(const char* node_name, const Ty& result_ty, const Expr& a,
+                                         const Expr& b) {
+  TVM_FFI_CHECK(result_ty.defined(), TypeError) << node_name << " result type must be defined";
+  TVM_FFI_CHECK(a.defined(), TypeError) << node_name << " operand `a` must be defined";
+  TVM_FFI_CHECK(b.defined(), TypeError) << node_name << " operand `b` must be defined";
+  const Ty& a_ty = a->ty;
+  const Ty& b_ty = b->ty;
+  TVM_FFI_CHECK(a_ty.defined(), TypeError) << node_name << " operand `a` type must be defined";
+  TVM_FFI_CHECK(b_ty.defined(), TypeError) << node_name << " operand `b` type must be defined";
+
+  bool result_is_any = result_ty->IsInstance<AnyTyObj>();
+  bool a_is_any = a_ty->IsInstance<AnyTyObj>();
+  bool b_is_any = b_ty->IsInstance<AnyTyObj>();
+  if (result_is_any) {
+    TVM_FFI_CHECK(a_is_any || b_is_any, TypeError)
+        << node_name << " cannot derive result type " << ReprPrint(result_ty)
+        << " from operands with types " << ReprPrint(a_ty) << " and " << ReprPrint(b_ty)
+        << "; use an explicit Cast or construct operands with matching types";
+    return;
+  }
+
+  TVM_FFI_CHECK(!a_is_any, TypeError)
+      << node_name << " cannot derive result type " << ReprPrint(result_ty)
+      << " from operand `a` with type " << ReprPrint(a_ty)
+      << "; use an explicit Cast or construct operands with matching types";
+  TVM_FFI_CHECK(!b_is_any, TypeError)
+      << node_name << " cannot derive result type " << ReprPrint(result_ty)
+      << " from operand `b` with type " << ReprPrint(b_ty)
+      << "; use an explicit Cast or construct operands with matching types";
+  TVM_FFI_CHECK(StructuralEqual::Equal(result_ty, a_ty), TypeError)
+      << node_name << " operand `a` type " << ReprPrint(a_ty) << " does not match result type "
+      << ReprPrint(result_ty);
+  TVM_FFI_CHECK(StructuralEqual::Equal(result_ty, b_ty), TypeError)
+      << node_name << " operand `b` type " << ReprPrint(b_ty) << " does not match result type "
+      << ReprPrint(result_ty);
+}
+
+template <typename Obj>
+inline ObjectPtr<Obj> MakeBinaryObj(const char* node_name, Ty ty, Expr a, Expr b) {
+  CheckBinaryDerivedOperandTys(node_name, ty, a, b);
+  return make_object<Obj>(std::move(ty), std::move(a), std::move(b));
+}
+
+template <typename Obj>
+inline ObjectPtr<Obj> MakeUnaryObj(const char* node_name, Ty ty, Expr operand) {
+  CheckDerivedOperandTy(node_name, "operand", ty, operand);
+  return make_object<Obj>(std::move(ty), std::move(operand));
+}
+}  // namespace details
+}  // namespace std_
 }  // namespace ffi
 }  // namespace tvm
 

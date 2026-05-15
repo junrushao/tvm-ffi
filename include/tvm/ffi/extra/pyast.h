@@ -30,6 +30,7 @@
 #include <tvm/ffi/any.h>
 #include <tvm/ffi/container/dict.h>
 #include <tvm/ffi/container/list.h>
+#include <tvm/ffi/container/map.h>
 #include <tvm/ffi/dtype.h>
 #include <tvm/ffi/extra/base.h>
 #include <tvm/ffi/function.h>
@@ -42,6 +43,7 @@
 #include <iomanip>
 #include <sstream>
 #include <string>
+#include <type_traits>
 #include <unordered_set>
 
 namespace tvm {
@@ -168,6 +170,47 @@ struct ExprASTObj : public NodeASTObj {
   ExprASTObj() = default;
   explicit ExprASTObj(List<AccessPath> source_paths) : NodeASTObj(std::move(source_paths)) {}
   /// \endcond
+  /*!
+   * \brief Build an attribute access expression from this expression.
+   * \param name The attribute name.
+   * \return An expression representing ``this.name``.
+   */
+  ExprAST Attr(String name) const;
+
+  /*!
+   * \brief Build an index expression from this expression.
+   * \tparam T The expression node reference type used for indices.
+   * \param indices The index expressions.
+   * \return An expression representing ``this[indices...]``.
+   */
+  template <typename T = ExprAST>
+  ExprAST Index(List<T> indices) const;
+
+  /*!
+   * \brief Build a call expression from this expression with no arguments.
+   * \return An expression representing ``this()``.
+   */
+  ExprAST Call() const;
+
+  /*!
+   * \brief Build a call expression from this expression with positional arguments.
+   * \tparam T The expression node reference type used for arguments.
+   * \param args The positional argument expressions.
+   * \return An expression representing ``this(*args)``.
+   */
+  template <typename T = ExprAST>
+  ExprAST Call(List<T> args) const;
+
+  /*!
+   * \brief Build a call expression from this expression with positional and keyword arguments.
+   * \tparam T The expression node reference type used for arguments.
+   * \param args The positional argument expressions.
+   * \param kwargs_keys The keyword argument names.
+   * \param kwargs_values The keyword argument value expressions.
+   * \return An expression representing ``this(*args, **kwargs)``.
+   */
+  template <typename T = ExprAST>
+  ExprAST CallKw(List<T> args, List<String> kwargs_keys, List<T> kwargs_values) const;
   /// \cond Doxygen_Suppress
   TVM_FFI_DECLARE_OBJECT_INFO("ffi.pyast.Expr", ExprASTObj, NodeASTObj);
   /// \endcond
@@ -740,9 +783,9 @@ struct OperationASTObj : public ExprASTObj {
    * - **Unary** (kUnaryStart..kUnaryEnd): kUSub (`-x`), kInvert (`~x`), kNot (`not x`).
    *   Takes 1 operand.
    * - **Binary** (kBinaryStart..kBinaryEnd): arithmetic (kAdd, kSub, kMult, kDiv,
-   *   kFloorDiv, kMod, kPow), bitwise (kLShift, kRShift, kBitAnd, kBitOr, kBitXor),
-   *   comparison (kLt, kLtE, kEq, kNotEq, kGt, kGtE), and logical (kAnd, kOr).
-   *   Takes 2 operands.
+   *   kFloorDiv, kMod, kPow, kMin, kMax), bitwise (kLShift, kRShift, kBitAnd,
+   *   kBitOr, kBitXor), comparison (kLt, kLtE, kEq, kNotEq, kGt, kGtE), and logical
+   *   (kAnd, kOr). Takes 2 operands.
    * - **Special** (kSpecialStart..kSpecialEnd): kIfThenElse (`a if cond else b`).
    *   Takes 3 operands: [true_value, condition, false_value].
    */
@@ -780,12 +823,14 @@ struct OperationASTObj : public ExprASTObj {
     kIsNot = 28,          /*!< \brief Negated identity test: `x is not y`. */
     kIn = 29,             /*!< \brief Containment test: `x in y`. */
     kNotIn = 30,          /*!< \brief Negated containment test: `x not in y`. */
-    kBinaryEnd = 31,      /*!< \brief Sentinel: end of binary operators. */
-    kSpecialStart = 32,   /*!< \brief Sentinel: start of special operators. */
-    kIfThenElse = 33,     /*!< \brief Ternary: `a if cond else b`. */
-    kChainedCompare = 34, /*!< \brief Chained comparison: `a < b < c`. */
-    kParens = 35,         /*!< \brief Explicit parenthesization: `(expr)`. */
-    kSpecialEnd = 36,     /*!< \brief Sentinel: end of special operators. */
+    kMin = 31,            /*!< \brief Minimum: `min(x, y)`. */
+    kMax = 32,            /*!< \brief Maximum: `max(x, y)`. */
+    kBinaryEnd = 33,      /*!< \brief Sentinel: end of binary operators. */
+    kSpecialStart = 34,   /*!< \brief Sentinel: start of special operators. */
+    kIfThenElse = 35,     /*!< \brief Ternary: `a if cond else b`. */
+    kChainedCompare = 36, /*!< \brief Chained comparison: `a < b < c`. */
+    kParens = 37,         /*!< \brief Explicit parenthesization: `(expr)`. */
+    kSpecialEnd = 38,     /*!< \brief Sentinel: end of special operators. */
   };
 
   /*!
@@ -1849,6 +1894,65 @@ struct ReturnAST : public StmtAST {
   /// \endcond
 };
 
+/************** BreakAST **************/
+
+/*! \brief Data object for a break statement. */
+struct BreakASTObj : public StmtASTObj {
+  /// \cond Doxygen_Suppress
+  BreakASTObj() = default;
+  explicit BreakASTObj(List<AccessPath> source_paths, Optional<String> comment)
+      : StmtASTObj(std::move(source_paths), std::move(comment)) {}
+  /// \endcond
+  /// \cond Doxygen_Suppress
+  TVM_FFI_DECLARE_OBJECT_INFO_FINAL("ffi.pyast.Break", BreakASTObj, StmtASTObj);
+  /// \endcond
+};
+
+/*! \brief Reference wrapper for a break statement. */
+struct BreakAST : public StmtAST {
+  /// \cond Doxygen_Suppress
+  BreakAST() : BreakAST(List<AccessPath>{}, Optional<String>{}) {}
+  explicit BreakAST(List<AccessPath> source_paths, Optional<String> comment = {})
+      : BreakAST(make_object<BreakASTObj>(std::move(source_paths), std::move(comment))) {}
+  /// \endcond
+  /// \cond Doxygen_Suppress
+  TVM_FFI_DEFINE_OBJECT_REF_METHODS_NOTNULLABLE(BreakAST, StmtAST, BreakASTObj);
+  /// \endcond
+  /// \cond Doxygen_Suppress
+  explicit BreakAST(ObjectPtr<BreakASTObj> ptr) : StmtAST(ObjectPtr<StmtASTObj>(std::move(ptr))) {}
+  /// \endcond
+};
+
+/************** ContinueAST **************/
+
+/*! \brief Data object for a continue statement. */
+struct ContinueASTObj : public StmtASTObj {
+  /// \cond Doxygen_Suppress
+  ContinueASTObj() = default;
+  explicit ContinueASTObj(List<AccessPath> source_paths, Optional<String> comment)
+      : StmtASTObj(std::move(source_paths), std::move(comment)) {}
+  /// \endcond
+  /// \cond Doxygen_Suppress
+  TVM_FFI_DECLARE_OBJECT_INFO_FINAL("ffi.pyast.Continue", ContinueASTObj, StmtASTObj);
+  /// \endcond
+};
+
+/*! \brief Reference wrapper for a continue statement. */
+struct ContinueAST : public StmtAST {
+  /// \cond Doxygen_Suppress
+  ContinueAST() : ContinueAST(List<AccessPath>{}, Optional<String>{}) {}
+  explicit ContinueAST(List<AccessPath> source_paths, Optional<String> comment = {})
+      : ContinueAST(make_object<ContinueASTObj>(std::move(source_paths), std::move(comment))) {}
+  /// \endcond
+  /// \cond Doxygen_Suppress
+  TVM_FFI_DEFINE_OBJECT_REF_METHODS_NOTNULLABLE(ContinueAST, StmtAST, ContinueASTObj);
+  /// \endcond
+  /// \cond Doxygen_Suppress
+  explicit ContinueAST(ObjectPtr<ContinueASTObj> ptr)
+      : StmtAST(ObjectPtr<StmtASTObj>(std::move(ptr))) {}
+  /// \endcond
+};
+
 /************** FunctionAST **************/
 
 /*!
@@ -2555,6 +2659,32 @@ inline ExprAST ExprCallKw(ExprAST obj, List<ExprAST> args, List<String> kwargs_k
                  std::move(kwargs_values));
 }
 
+inline ExprAST ExprASTObj::Attr(String name) const {
+  return ExprAttr(GetRef<ExprAST>(this), std::move(name));
+}
+
+template <typename T>
+inline ExprAST ExprASTObj::Index(List<T> indices) const {
+  static_assert(std::is_same_v<T, ExprAST>, "ExprASTObj::Index expects List<ExprAST>");
+  return ExprIndex(GetRef<ExprAST>(this), std::move(indices));
+}
+
+inline ExprAST ExprASTObj::Call() const { return ExprCall(GetRef<ExprAST>(this), List<ExprAST>{}); }
+
+template <typename T>
+inline ExprAST ExprASTObj::Call(List<T> args) const {
+  static_assert(std::is_same_v<T, ExprAST>, "ExprASTObj::Call expects List<ExprAST>");
+  return ExprCall(GetRef<ExprAST>(this), std::move(args));
+}
+
+template <typename T>
+inline ExprAST ExprASTObj::CallKw(List<T> args, List<String> kwargs_keys,
+                                  List<T> kwargs_values) const {
+  static_assert(std::is_same_v<T, ExprAST>, "ExprASTObj::CallKw expects List<ExprAST>");
+  return ExprCallKw(GetRef<ExprAST>(this), std::move(args), std::move(kwargs_keys),
+                    std::move(kwargs_values));
+}
+
 /************** PrinterConfig **************/
 
 /*!
@@ -2869,6 +2999,7 @@ struct VarInfo : public ObjectRef {
  * through __ffi_text_print__ methods registered on each IR type. It maintains:
  * - A variable table (obj2info / defined_names) for name deduplication.
  * - A frame stack for scoped statement collection.
+ * - A dialect stack for dialect-sensitive generic syntax decisions.
  *
  * The call operator `operator()(source, path)` dispatches printing for
  * a single IR value, returning the resulting text format AST node.
@@ -2899,23 +3030,24 @@ struct IRPrinterObj : public Object {
   Dict<String, int64_t> defined_names;
   /*! \brief Stack of active scoping frames. */
   List<Any> frames;
-  /*! \brief Stack of active IR dialects used to resolve generic text sugar. */
-  List<String> dialects;
   /*! \brief Mapping from frames to variables defined in each. */
   Dict<Any, Any> frame_vars;
+  /*! \brief Active dialect stack used by dialect-sensitive parser and printer hooks. */
+  List<String> dialect_stack;
   /*! \brief Cycle guard: objects currently being printed (not reflected). */
   mutable std::unordered_set<const Object*> printing_stack_;
   /// \cond Doxygen_Suppress
-  explicit IRPrinterObj(PrinterConfig cfg) : cfg(std::move(cfg)), dialects({"std"}) {}
+  explicit IRPrinterObj(PrinterConfig cfg)
+      : cfg(std::move(cfg)), dialect_stack(List<String>{String("std")}) {}
   explicit IRPrinterObj(PrinterConfig cfg, Dict<Any, VarInfo> obj2info,
                         Dict<String, int64_t> defined_names, List<Any> frames,
-                        Dict<Any, Any> frame_vars)
+                        Dict<Any, Any> frame_vars, List<String> dialect_stack)
       : cfg(std::move(cfg)),
         obj2info(std::move(obj2info)),
         defined_names(std::move(defined_names)),
         frames(std::move(frames)),
-        dialects({"std"}),
-        frame_vars(std::move(frame_vars)) {}
+        frame_vars(std::move(frame_vars)),
+        dialect_stack(std::move(dialect_stack)) {}
   /// \endcond
 
   /*!
@@ -3050,7 +3182,30 @@ struct IRPrinterObj : public Object {
    * printer->FramePop();
    * \endcode
    */
-  Any operator()(Any source, AccessPath path) const;
+  Any operator()(AnyView source, AccessPath path) const;
+
+  /*!
+   * \brief Convert a source value to an expression AST.
+   *
+   * This is a typed convenience wrapper around operator().  Use it when the
+   * printed form is required to be an ExprAST, such as expression operands,
+   * type annotations, call arguments, keyword values, and subscript indices.
+   * If the registered printer returns a statement or another non-expression
+   * node, this method raises the same cast error as calling
+   * `operator()(source, path).cast<ExprAST>()` directly.
+   *
+   * \param source The IR value to print.
+   * \param path The access path identifying \p source within the IR tree.
+   * \return An ExprAST representing the printed value.
+   *
+   * \code{.cpp}
+   * ExprAST lhs = printer->ToExpr(expr->lhs, path->Attr("lhs"));
+   * ExprAST ty = printer->ToExpr(expr->ty, path->Attr("ty"));
+   * \endcode
+   */
+  inline ExprAST ToExpr(AnyView source, AccessPath path) const {
+    return this->operator()(std::move(source), std::move(path)).template cast<ExprAST>();
+  }
 
   /*!
    * \brief Apply this printer to each element of a list.
@@ -3394,7 +3549,8 @@ inline Optional<ExprAST> IRPrinterObj::VarGet(const ObjectRef& obj) {
   return (*it).second->creator().cast<ExprAST>();
 }
 
-inline Any IRPrinterObj::operator()(Any source, AccessPath path) const {  // NOLINT(*-value-param)
+inline Any IRPrinterObj::operator()(AnyView source,
+                                    AccessPath path) const {  // NOLINT(*-value-param)
   int32_t ti = source.type_index();
   if (ti == TypeIndex::kTVMFFINone) {
     return LiteralAST::Null({path});
@@ -3413,6 +3569,7 @@ inline Any IRPrinterObj::operator()(Any source, AccessPath path) const {  // NOL
     return LiteralAST::Float(source.cast<double>(), {path});
   }
   if (ti == TypeIndex::kTVMFFIDataType) {
+    // TODO(@junrushao): Consider the more compact form
     DLDataType dtype = source.cast<DLDataType>();
     std::string dtype_str =
         (dtype.bits == 0 && dtype.lanes == 0) ? "void" : DLDataTypeToString(dtype);

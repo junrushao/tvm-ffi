@@ -338,12 +338,12 @@ def _validate_type_attr_value(cls: type, name: str, value: Any) -> None:
     if name == "__ffi_dialect_mnemonic__":
         if (
             not isinstance(value, tuple)
-            or len(value) not in (2, 3)
+            or len(value) != 2
             or not all(isinstance(item, str) for item in value)
         ):
             raise TypeError(
                 f"@py_class({cls.__name__!r}): {name!r} must be "
-                "tuple[str, str] or tuple[str, str, str], "
+                "tuple[str, str], "
                 f"got {type(value).__name__}.",
             )
 

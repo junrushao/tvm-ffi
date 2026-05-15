@@ -32,7 +32,8 @@ Concrete node types correspond closely to the Python AST: ``Literal``, ``Id``,
 ``Attr``, ``Index``, ``Call``, ``Operation``, ``Lambda``, ``Tuple``, ``List``,
 ``Dict``, ``Slice`` (expressions) and ``StmtBlock``, ``Assign``, ``If``,
 ``While``, ``For``, ``With``, ``ExprStmt``, ``Assert``, ``Return``,
-``Function``, ``Class``, ``Comment``, ``DocString`` (statements).
+``Break``, ``Continue``, ``Function``, ``Class``, ``Comment``, ``DocString``
+(statements).
 """
 
 # ruff: noqa: D102
@@ -308,7 +309,6 @@ class Expr(Node):
 
     # tvm-ffi-stubgen(begin): object/ffi.pyast.Expr
     # fmt: off
-    source_paths: MutableSequence[AccessPath]
     # fmt: on
     # tvm-ffi-stubgen(end)
 
@@ -641,7 +641,6 @@ class Stmt(Node):
 
     # tvm-ffi-stubgen(begin): object/ffi.pyast.Stmt
     # fmt: off
-    source_paths: MutableSequence[AccessPath]
     comment: str | None
     # fmt: on
     # tvm-ffi-stubgen(end)
@@ -861,9 +860,9 @@ class OperationKind:
       ``Invert`` (``~x``), ``Not`` (``not x``).
     * **Binary** (``_BinaryStart`` .. ``_BinaryEnd``): arithmetic
       (``Add``, ``Sub``, ``Mult``, ``Div``, ``FloorDiv``, ``Mod``,
-      ``Pow``), bitwise (``LShift``, ``RShift``, ``BitAnd``, ``BitOr``,
-      ``BitXor``), comparison (``Lt``, ``LtE``, ``Eq``, ``NotEq``,
-      ``Gt``, ``GtE``), and logical (``And``, ``Or``).
+      ``Pow``, ``Min``, ``Max``), bitwise (``LShift``, ``RShift``,
+      ``BitAnd``, ``BitOr``, ``BitXor``), comparison (``Lt``, ``LtE``,
+      ``Eq``, ``NotEq``, ``Gt``, ``GtE``), and logical (``And``, ``Or``).
     * **Special** (``_SpecialStart`` .. ``SpecialEnd``): ``IfThenElse``
       (ternary conditional ``a if cond else b``).
 
@@ -915,12 +914,14 @@ class OperationKind:
     IsNot = 28
     In = 29
     NotIn = 30
-    _BinaryEnd = 31
-    _SpecialStart = 32
-    IfThenElse = 33
-    ChainedCompare = 34
-    Parens = 35
-    SpecialEnd = 36
+    Min = 31
+    Max = 32
+    _BinaryEnd = 33
+    _SpecialStart = 34
+    IfThenElse = 35
+    ChainedCompare = 36
+    Parens = 37
+    SpecialEnd = 38
 
 
 @c_class("ffi.pyast.Operation")
@@ -1428,6 +1429,32 @@ class Return(Stmt):
     if TYPE_CHECKING:
         def __init__(self, value: Expr | None = ..., *, comment: str | None = ...) -> None: ...
         def __ffi_init__(self, value: Expr | None = ..., *, comment: str | None = ...) -> None: ...  # ty: ignore[invalid-method-override]
+    # fmt: on
+    # tvm-ffi-stubgen(end)
+
+
+@c_class("ffi.pyast.Break")
+class Break(Stmt):
+    """A ``break`` statement."""
+
+    # tvm-ffi-stubgen(begin): object/ffi.pyast.Break
+    # fmt: off
+    if TYPE_CHECKING:
+        def __init__(self, *, comment: str | None = ...) -> None: ...
+        def __ffi_init__(self, *, comment: str | None = ...) -> None: ...  # ty: ignore[invalid-method-override]
+    # fmt: on
+    # tvm-ffi-stubgen(end)
+
+
+@c_class("ffi.pyast.Continue")
+class Continue(Stmt):
+    """A ``continue`` statement."""
+
+    # tvm-ffi-stubgen(begin): object/ffi.pyast.Continue
+    # fmt: off
+    if TYPE_CHECKING:
+        def __init__(self, *, comment: str | None = ...) -> None: ...
+        def __ffi_init__(self, *, comment: str | None = ...) -> None: ...  # ty: ignore[invalid-method-override]
     # fmt: on
     # tvm-ffi-stubgen(end)
 
@@ -2033,6 +2060,9 @@ class IRPrinter(Object):
     frame_vars
         Mapping from frame objects to the set of variables
         defined within that frame.
+    dialect_stack
+        Active dialect names used by dialect-sensitive parser and printer
+        hooks that need a dialect context.
 
     Examples
     --------
@@ -2054,11 +2084,11 @@ class IRPrinter(Object):
     obj2info: MutableMapping[Any, VarInfo]
     defined_names: MutableMapping[str, int]
     frames: MutableSequence[Any]
-    dialects: MutableSequence[str]
     frame_vars: MutableMapping[Any, Any]
+    dialect_stack: MutableSequence[str]
     if TYPE_CHECKING:
-        def __init__(self, cfg: PrinterConfig, obj2info: MutableMapping[Any, VarInfo], defined_names: MutableMapping[str, int], frames: MutableSequence[Any], frame_vars: MutableMapping[Any, Any]) -> None: ...
-        def __ffi_init__(self, _0: PrinterConfig, _1: MutableMapping[Any, VarInfo], _2: MutableMapping[str, int], _3: MutableSequence[Any], _4: MutableMapping[Any, Any], /) -> None: ...  # ty: ignore[invalid-method-override]
+        def __init__(self, cfg: PrinterConfig, obj2info: MutableMapping[Any, VarInfo], defined_names: MutableMapping[str, int], frames: MutableSequence[Any], frame_vars: MutableMapping[Any, Any], dialect_stack: MutableSequence[str]) -> None: ...
+        def __ffi_init__(self, _0: PrinterConfig, _1: MutableMapping[Any, VarInfo], _2: MutableMapping[str, int], _3: MutableSequence[Any], _4: MutableMapping[Any, Any], _5: MutableSequence[str], /) -> None: ...  # ty: ignore[invalid-method-override]
         def var_is_defined(self, _1: Object, /) -> bool: ...
         def var_def(self, _1: str, _2: Object, _3: Object | None, /) -> Id: ...
         def var_def_no_name(self, _1: Callable[..., Any], _2: Object, _3: Object | None, /) -> None: ...
@@ -2073,7 +2103,7 @@ class IRPrinter(Object):
     def __init__(self, cfg: PrinterConfig | None = None) -> None:
         if cfg is None:
             cfg = PrinterConfig()
-        self.__ffi_init__(cfg, {}, {}, [], {})
+        self.__ffi_init__(cfg, {}, {}, [], {}, ["std"])
 
     def __call__(self, obj: Any, path: AccessPath) -> Any:
         """Convert *obj* to a text format AST node using this printer's state.

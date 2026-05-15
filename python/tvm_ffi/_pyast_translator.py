@@ -670,10 +670,10 @@ class _Converter:
         return pyast.ExprStmt(pyast.Id("pass"))
 
     def _convert_break(self, node: ast.Break) -> pyast.Stmt:
-        return pyast.ExprStmt(pyast.Id("break"))
+        return pyast.Break()
 
     def _convert_continue(self, node: ast.Continue) -> pyast.Stmt:
-        return pyast.ExprStmt(pyast.Id("continue"))
+        return pyast.Continue()
 
     def _convert_import(self, node: ast.Import) -> pyast.Stmt:
         parts: list[str] = []

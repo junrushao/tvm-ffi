@@ -149,6 +149,11 @@ def test_assign_print() -> None:
     assert _to_python(Assign(lhs=a, rhs=b)) == "a = b"
 
 
+def test_break_continue_print() -> None:
+    assert pyast.Break().to_python() == "break"
+    assert pyast.Continue().to_python() == "continue"
+
+
 def test_func_print() -> None:
     a = Var(name="a")
     b = Var(name="b")

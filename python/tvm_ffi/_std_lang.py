@@ -86,11 +86,11 @@ class AnyTyFactory(TyFactory):
 class TupleTyFactory(TyFactory):
     """Factory for tuple type syntax."""
 
-    def __call__(self, *fields: TypingAny) -> std.TupleType:
-        """Build ``std.TupleType`` from call syntax such as ``std.Tuple(std.i32)``."""
-        return std.TupleType([normalize_ty(field) for field in fields])
+    def __call__(self, *fields: TypingAny) -> std.TupleTy:
+        """Build ``std.TupleTy`` from call syntax such as ``std.Tuple(std.i32)``."""
+        return std.TupleTy([normalize_ty(field) for field in fields])
 
-    def __getitem__(self, indices: Sequence[TypingAny]) -> std.TupleType:
+    def __getitem__(self, indices: Sequence[TypingAny]) -> std.TupleTy:
         """Build tuple types from printed syntax such as ``std.Tuple[std.i32]``."""
         if len(indices) == 1 and isinstance(indices[0], tuple):
             indices = indices[0]
@@ -172,37 +172,38 @@ class RegionFactory(Frame):
 
     node_cls: type[std.Scope] = std.Scope
 
-    def __init__(self, binds: Sequence[std.Bind] | None = None, **attrs: TypingAny) -> None:
+    def __init__(self, binds: Sequence[std.Stmt] | None = None, **attrs: TypingAny) -> None:
         """Create a region frame from placeholder binds and attributes."""
         self.attrs = dict(attrs)
-        self.binds: list[std.Bind] = list(binds or [])
+        self.binds: list[std.Stmt] = list(binds or [])
         self.body: list[TypingAny] = []
 
     def bind_names(self, names: Sequence[str]) -> None:
         """Rename placeholder bind variables to match ``for`` or ``with as`` targets."""
-        vars_in_order = [(bind, var) for bind in self.binds for var in bind.vars]
+        vars_in_order = [(bind, var) for bind in self.binds for var in _binding_vars(bind)]
         if len(names) != len(vars_in_order):
             raise TypeError(f"expected {len(vars_in_order)} binding target(s), got {len(names)}")
 
-        rebuilt: list[std.Bind] = []
+        rebuilt: list[std.Stmt] = []
         offset = 0
         for bind in self.binds:
-            count = len(bind.vars)
-            new_vars = [std.Var(bind.vars[i].ty, names[offset + i]) for i in range(count)]
+            bind_vars = _binding_vars(bind)
+            count = len(bind_vars)
+            new_vars = [std.Var(bind_vars[i].ty, names[offset + i]) for i in range(count)]
             offset += count
             if isinstance(bind, std.BindExpr):
                 attrs = cast(TypingAny, bind.attrs)
                 rebuilt.append(std.BindExpr(bind.expr, *new_vars, **(attrs or {})))
-            elif isinstance(bind, std.BindVarDef):
+            elif isinstance(bind, std.VarDef):
                 attrs = cast(TypingAny, bind.attrs)
-                rebuilt.append(std.BindVarDef(*new_vars, **(attrs or {})))
+                rebuilt.append(std.VarDef(*new_vars, **(attrs or {})))
             else:
                 raise TypeError(f"unsupported bind type: {type(bind).__name__}")
         self.binds = rebuilt
 
     def bound_vars(self) -> list[std.Var]:
         """Return variables introduced by the region header."""
-        return [var for bind in self.binds for var in bind.vars]
+        return [var for bind in self.binds for var in _binding_vars(bind)]
 
     def to_dialect(self) -> std.Scope:
         """Build the concrete region statement after its body has been parsed."""
@@ -241,7 +242,7 @@ class ForFactory(RegionFactory):
             if all(MISSING.is_(value) for value in range_values)
             else _find_common_ty(*range_values)
         )
-        super().__init__([std.BindVarDef(std.Var(loop_ty, ""))], **attrs)
+        super().__init__([std.VarDef(std.Var(loop_ty, ""))], **attrs)
 
     def to_dialect(self) -> std.For:
         """Build a ``std.For`` after the target name and body are known."""
@@ -259,7 +260,7 @@ class WhileFactory(RegionFactory):
     node_cls = std.While
 
     def __init__(
-        self, cond: TypingAny, binds: Sequence[std.Bind] | None = None, **attrs: TypingAny
+        self, cond: TypingAny, binds: Sequence[std.Stmt] | None = None, **attrs: TypingAny
     ) -> None:
         """Create a while frame with a condition and optional header bindings."""
         super().__init__(binds, **attrs)
@@ -292,9 +293,8 @@ class Std:
     Attrs = std.Attrs
     Aggregate = std.Aggregate
     Expr = std.Expr
-    Bind = std.Bind
     BindExpr = std.BindExpr
-    BindVarDef = std.BindVarDef
+    VarDef = std.VarDef
 
     bool = PrimTyFactory("bool")
     i8 = PrimTyFactory("int8")
@@ -328,7 +328,7 @@ class Std:
     Range = std.Range
     AnyTy = std.AnyTy
     PrimTy = std.PrimTy
-    TupleType = std.TupleType
+    TupleTy = std.TupleTy
     TensorTy = std.TensorTy
     IntImm = std.IntImm
     FloatImm = std.FloatImm
@@ -470,20 +470,20 @@ def _parse_value_ty(value: std.ExprLike) -> std.Ty:
     return std.AnyTy()
 
 
-def _normalize_binds(values: Sequence[TypingAny]) -> list[std.Bind]:
-    """Convert explicit region bind initializers into ``std.Bind`` nodes.
+def _normalize_binds(values: Sequence[TypingAny]) -> list[std.Stmt]:
+    """Convert explicit region bind initializers into binding statements.
 
     Used by ``std.scope(...)``, ``std.while_(...)``, and ``std.for_(...)`` factory
     syntax.  Existing binds are preserved, types become variable definitions,
     and expressions or literals become expression binds with placeholder names.
     """
-    binds: list[std.Bind] = []
+    binds: list[std.Stmt] = []
     for value in values:
-        if isinstance(value, std.Bind):
+        if isinstance(value, (std.BindExpr, std.VarDef)):
             binds.append(value)
         elif isinstance(value, std.Ty) or hasattr(value, "to_dialect"):
             ty = normalize_ty(value)
-            binds.append(std.BindVarDef(std.Var(ty, "")))
+            binds.append(std.VarDef(std.Var(ty, "")))
         elif isinstance(value, std.Expr) or isinstance(value, (bool, int, float, str)):
             literal = std.Expr.literal(value)
             binds.append(std.BindExpr(literal, std.Var(literal.ty, "")))
@@ -523,19 +523,26 @@ def _bind_expr_from_names(
     return std.BindExpr(expr, *vars, **(attrs or {}))
 
 
-def _bind_var_def_from_names(names: Sequence[str], tys: Sequence[TypingAny]) -> std.BindVarDef:
+def _bind_var_def_from_names(names: Sequence[str], tys: Sequence[TypingAny]) -> std.VarDef:
     """Build annotated variable definitions from left-hand names and types."""
-    if len(tys) == 1 and isinstance(tys[0], std.BindVarDef):
+    if len(tys) == 1 and isinstance(tys[0], std.VarDef):
         bind = tys[0]
         if len(bind.vars) != len(names):
             raise TypeError(f"expected {len(bind.vars)} binding target(s), got {len(names)}")
         vars = [std.Var(var.ty, name) for var, name in zip(bind.vars, names)]
         attrs = cast(TypingAny, bind.attrs)
-        return std.BindVarDef(*vars, **(attrs or {}))
+        return std.VarDef(*vars, **(attrs or {}))
     if len(names) != len(tys):
         raise TypeError(f"expected {len(tys)} binding target(s), got {len(names)}")
     vars = [std.Var(normalize_ty(ty), name) for name, ty in zip(names, tys)]
-    return std.BindVarDef(*vars)
+    return std.VarDef(*vars)
+
+
+def _binding_vars(bind: std.Stmt) -> Sequence[std.Var]:
+    """Return variables carried by supported binding statements."""
+    if isinstance(bind, (std.BindExpr, std.VarDef)):
+        return bind.vars
+    raise TypeError(f"unsupported bind type: {type(bind).__name__}")
 
 
 def _element_ty(base_ty: std.Ty, indices: Sequence[TypingAny]) -> std.Ty:
@@ -552,7 +559,7 @@ def _element_ty(base_ty: std.Ty, indices: Sequence[TypingAny]) -> std.Ty:
             result = std.PrimTy(base_ty.dtype)
         else:
             result = std.TensorTy(list(base_ty.shape)[num_indices:], base_ty.dtype)
-    elif isinstance(base_ty, std.TupleType):
+    elif isinstance(base_ty, std.TupleTy):
         index = indices[0]
         if isinstance(index, int):
             fields = list(base_ty.fields)
@@ -568,33 +575,24 @@ def _element_ty(base_ty: std.Ty, indices: Sequence[TypingAny]) -> std.Ty:
 
 
 def _make_load(args: Sequence[TypingAny]) -> std.Load:
-    """Build a load for explicit ``std.Load(...)`` constructor syntax."""
+    """Build a load from generic index syntax."""
     if len(args) < 1:
         raise TypeError("std.Load expects at least an expression")
-    if isinstance(args[0], std.Ty) or hasattr(args[0], "to_dialect"):
-        if len(args) < 2:
-            raise TypeError("std.Load with explicit type expects an expression")
-        ty = normalize_ty(args[0])
-        lhs = args[1]
-        indices = args[2:]
-        if not isinstance(lhs, std.Expr):
-            raise TypeError(f"std.Load base must be an expression, got {type(lhs).__name__}")
-    else:
-        lhs = args[0]
-        indices = args[1:]
-        if not isinstance(lhs, std.Expr):
-            raise TypeError(f"std.Load base must be an expression, got {type(lhs).__name__}")
-        ty = _element_ty(lhs.ty, indices)
-    return std.Load(ty, lhs, *indices)
+    lhs = args[0]
+    indices = args[1:]
+    if not isinstance(lhs, std.Expr):
+        raise TypeError(f"std.Load base must be an expression, got {type(lhs).__name__}")
+    ty = _element_ty(lhs.ty, indices)
+    return std.Load(lhs, *indices, ty=ty)
 
 
 def _find_common_ty(*args: TypingAny) -> std.Ty:
     """Choose a result type for binary-like expressions from parser values.
 
     Used by arithmetic, comparisons, logical ops, and range type inference.
-    ``MISSING`` values are skipped, matching types are kept, ``std.Any`` and
-    native literals adopt the other side, and remaining mismatches are reported
-    as parse errors.
+    ``MISSING`` values are skipped, matching types are kept, native literals may
+    adopt a non-literal primitive type, ``std.Any`` dominates typed operands, and
+    remaining mismatches are reported as parse errors.
     """
     ty: std.Ty | None = None
     ty_value: TypingAny = MISSING
@@ -628,12 +626,11 @@ def _find_common_ty(*args: TypingAny) -> std.Ty:
             if can_adopt:
                 continue
         if isinstance(ty, std.AnyTy):
+            continue
+        if isinstance(next_ty, std.AnyTy):
             ty = next_ty
             ty_value = value
             continue
-        if isinstance(next_ty, std.AnyTy):
-            continue
-
         hint = (
             f"; cast literal {ty_value!r} with {next_ty.text()}({ty_value!r})"
             if ty_value_is_literal and not value_is_literal
@@ -655,7 +652,7 @@ def _find_common_ty(*args: TypingAny) -> std.Ty:
 def _make_cdiv(lhs: TypingAny, rhs: TypingAny) -> std.CDiv:
     """Build C-style division from the parser ``/`` generic."""
     ty = _find_common_ty(lhs, rhs)
-    return std.CDiv(ty, lhs, rhs)
+    return std.CDiv(lhs, rhs, ty=ty)
 
 
 def _make_floordiv(lhs: TypingAny, rhs: TypingAny) -> std.FloorDiv:
@@ -664,7 +661,7 @@ def _make_floordiv(lhs: TypingAny, rhs: TypingAny) -> std.FloorDiv:
     dtype = ty.dtype if isinstance(ty, (std.PrimTy, std.TensorTy)) else None
     if dtype is None or not dtype.is_integer:
         raise TypeError(f"__floordiv__ only supports integer types, got {ty.text()}")
-    return std.FloorDiv(ty, lhs, rhs)
+    return std.FloorDiv(lhs, rhs, ty=ty)
 
 
 def _make_mod(lhs: TypingAny, rhs: TypingAny) -> std.FloorMod | std.CMod:
@@ -672,10 +669,10 @@ def _make_mod(lhs: TypingAny, rhs: TypingAny) -> std.FloorMod | std.CMod:
     ty = _find_common_ty(lhs, rhs)
     dtype = ty.dtype if isinstance(ty, (std.PrimTy, std.TensorTy)) else None
     if dtype is not None and dtype.is_float:
-        return std.CMod(ty, lhs, rhs)
+        return std.CMod(lhs, rhs, ty=ty)
     if dtype is None or not dtype.is_integer:
         raise TypeError(f"__mod__ only supports integer types, got {ty.text()}")
-    return std.FloorMod(ty, lhs, rhs)
+    return std.FloorMod(lhs, rhs, ty=ty)
 
 
 def _make_binary_generic(op_cls: type) -> Callable[..., std.Expr]:
@@ -683,7 +680,7 @@ def _make_binary_generic(op_cls: type) -> Callable[..., std.Expr]:
 
     def generic(lhs: TypingAny, rhs: TypingAny) -> std.Expr:
         ty = _find_common_ty(lhs, rhs)
-        return op_cls(ty, lhs, rhs)
+        return op_cls(lhs, rhs, ty=ty)
 
     return generic
 
@@ -732,10 +729,10 @@ Std.__ffi_generics__ = {
     # - "__invert__"/"__not__": (value: Value) -> std.Not.
     # - "__neg__": (value: Value) -> int | float | std.Sub.
     # - "__pos__": (value: Value) -> Value.
-    "__invert__": lambda value: std.Not(_parse_value_ty(value), value),
-    "__not__": lambda value: std.Not(_parse_value_ty(value), value),
+    "__invert__": lambda value: std.Not(value, ty=_parse_value_ty(value)),
+    "__not__": lambda value: std.Not(value, ty=_parse_value_ty(value)),
     "__neg__": lambda value: (
-        -value if isinstance(value, (int, float)) else std.Sub(_parse_value_ty(value), 0, value)
+        -value if isinstance(value, (int, float)) else std.Sub(0, value, ty=_parse_value_ty(value))
     ),
     "__pos__": lambda value: value,
     # Access/call/cast generics:
@@ -749,7 +746,7 @@ Std.__ffi_generics__ = {
     "__slice__": std.Range,
     "__cast__": lambda ty, value: std.Cast(normalize_ty(ty), value),
     # TODO: Infer or propagate the result type for generic expression calls.
-    "__call__": lambda callee, *args: std.Call(std.AnyTy(), callee, *args),
+    "__call__": lambda callee, *args: std.Call(callee, *args, ty=std.AnyTy()),
     # Statement generics:
     # - "__store__": (lhs: std.Expr, rhs: ExprLike, *indices: Index) -> std.Store.
     # - "__if__": (cond: ExprLike, then_body: Body, else_body: Body) -> std.IfStmt.
@@ -775,8 +772,8 @@ Std.__ffi_generics__ = {
     # Binding generics:
     # - "__bind_expr__": (names: Names, ty: TypeLike | None, expr: ExprLike | std.BindExpr)
     #   -> std.BindExpr.
-    # - "__bind_var_def__": (names: Names, *tys: TypeLike) -> std.BindVarDef.
-    # - "__bind_var_def__": (names: Names, bind: std.BindVarDef) -> std.BindVarDef.
+    # - "__bind_var_def__": (names: Names, *tys: TypeLike) -> std.VarDef.
+    # - "__bind_var_def__": (names: Names, bind: std.VarDef) -> std.VarDef.
     "__bind_expr__": _bind_expr_from_names,
     "__bind_var_def__": lambda names, *tys: _bind_var_def_from_names(names, tys),
 }
