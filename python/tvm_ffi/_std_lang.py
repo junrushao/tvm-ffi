@@ -170,7 +170,7 @@ class ModuleFactory(Frame):
 class RegionFactory(Frame):
     """Base frame for body-bearing region statements with optional bindings."""
 
-    node_cls: type[std.Scope] = std.Scope
+    node_cls: TypingAny = std.Scope
 
     def __init__(self, binds: Sequence[std.Stmt] | None = None, **attrs: TypingAny) -> None:
         """Create a region frame from placeholder binds and attributes."""
@@ -205,7 +205,7 @@ class RegionFactory(Frame):
         """Return variables introduced by the region header."""
         return [var for bind in self.binds for var in _binding_vars(bind)]
 
-    def to_dialect(self) -> std.Scope:
+    def to_dialect(self) -> std.Stmt:
         """Build the concrete region statement after its body has been parsed."""
         return self.node_cls(
             binds=self.binds,
@@ -220,10 +220,8 @@ class ScopeFactory(RegionFactory):
     node_cls = std.Scope
 
 
-class ForFactory(RegionFactory):
+class ForFactory(Frame):
     """Parser frame for ``for`` loops and explicit ``std.For`` construction."""
-
-    node_cls = std.For
 
     def __init__(
         self,
@@ -242,36 +240,50 @@ class ForFactory(RegionFactory):
             if all(MISSING.is_(value) for value in range_values)
             else _find_common_ty(*range_values)
         )
-        super().__init__([std.VarDef(std.Var(loop_ty, ""))], **attrs)
+        self.attrs = dict(attrs)
+        self.vars: list[std.Var] = [std.Var(loop_ty, "")]
+        self.body: list[TypingAny] = []
+
+    def bind_names(self, names: Sequence[str]) -> None:
+        """Rename placeholder loop variables to match the ``for`` target."""
+        if len(names) != len(self.vars):
+            raise TypeError(f"expected {len(self.vars)} binding target(s), got {len(names)}")
+        self.vars = [std.Var(var.ty, name) for var, name in zip(self.vars, names)]
+
+    def bound_vars(self) -> list[std.Var]:
+        """Return variables introduced by the loop header."""
+        return list(self.vars)
 
     def to_dialect(self) -> std.For:
         """Build a ``std.For`` after the target name and body are known."""
         return std.For(
-            binds=self.binds,
+            start=self.start,
+            stop=self.stop,
+            step=self.step,
+            vars=self.vars,
             body=self.body,
-            range_=std.Range(self.start, self.stop, self.step),
             attrs=self.attrs or None,
         )
 
 
-class WhileFactory(RegionFactory):
+class WhileFactory(Frame):
     """Parser frame for Python ``while`` and explicit ``std.while_`` regions."""
 
-    node_cls = std.While
-
     def __init__(
-        self, cond: TypingAny, binds: Sequence[std.Stmt] | None = None, **attrs: TypingAny
+        self,
+        cond: TypingAny,
+        **attrs: TypingAny,
     ) -> None:
-        """Create a while frame with a condition and optional header bindings."""
-        super().__init__(binds, **attrs)
+        """Create a while frame with a condition and optional attributes."""
+        self.attrs = dict(attrs)
         self.cond = cond
+        self.body: list[TypingAny] = []
 
     def to_dialect(self) -> std.While:
         """Build a ``std.While`` after its body has been parsed."""
         return std.While(
-            binds=self.binds,
-            body=self.body,
             cond=self.cond,
+            body=self.body,
             attrs=self.attrs or None,
         )
 
@@ -408,18 +420,20 @@ class Std:
     @staticmethod
     def for_(range_: TypingAny = None, *binds: TypingAny, **kwargs: TypingAny) -> ForFactory:
         """Create the parser frame used by explicit ``std.for_(...)`` loop headers."""
+        if binds:
+            raise TypeError("std.for_ does not accept header bindings")
         if isinstance(range_, std.Range):
             frame = ForFactory(range_.start, range_.stop, range_.step, **kwargs)
         else:
             frame = ForFactory(None, range_, None, **kwargs)
-        if binds:
-            frame.binds = _normalize_binds(binds)
         return frame
 
     @staticmethod
     def while_(cond: TypingAny, *binds: TypingAny, **kwargs: TypingAny) -> WhileFactory:
         """Create the parser frame used by ``with std.while_(...)`` syntax."""
-        return WhileFactory(cond, _normalize_binds(binds), **kwargs)
+        if binds:
+            raise TypeError("std.while_ does not accept header bindings")
+        return WhileFactory(cond, **kwargs)
 
     @staticmethod
     def min(*args: TypingAny) -> std.Min:

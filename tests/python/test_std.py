@@ -1846,25 +1846,30 @@ class TestFor:
         )
         body = [std.Store(x, 1, rhs=2)]
         node = std.For(
-            range_=range_node,
+            start=range_node.start,
+            stop=range_node.stop,
+            step=range_node.step,
             attrs={"tag": "demo"},
-            binds=[std.VarDef(x)],
             body=body,
+            vars=[x],
         )
 
         assert isinstance(node, std.For)
-        assert isinstance(node, std.Scope)
-        assert issubclass(std.For, std.Scope)
+        assert not isinstance(node, std.Scope)
+        assert not issubclass(std.For, std.Scope)
         assert tuple(field.name for field in fields(std.For)) == (
             "attrs",
-            "binds",
+            "start",
+            "stop",
+            "step",
+            "vars",
             "body",
-            "range_",
         )
-        assert node.range_ == range_node
+        assert node.start == range_node.start
+        assert node.stop == range_node.stop
+        assert node.step == range_node.step
         assert node.attrs is not None
-        assert isinstance(node.binds[0], std.VarDef)
-        assert list(node.binds[0].vars) == [x]
+        assert list(node.vars) == [x]
         assert list(node.body) == body
 
     def test_attrs_field_accepts_dict_attrs_and_none(self) -> None:
@@ -1877,21 +1882,27 @@ class TestFor:
         body = [std.Store(x, 1, rhs=2)]
         attrs = {"pragma": "unroll"}
         with_attrs = std.For(
-            range_=cond_range,
+            start=cond_range.start,
+            stop=cond_range.stop,
+            step=cond_range.step,
             attrs=attrs,
-            binds=[std.VarDef(x)],
             body=body,
+            vars=[x],
         )
         without_attrs = std.For(
-            range_=cond_range,
-            binds=[std.VarDef(x)],
+            start=cond_range.start,
+            stop=cond_range.stop,
+            step=cond_range.step,
             body=body,
+            vars=[x],
         )
         with_empty_attrs = std.For(
-            range_=cond_range,
+            start=cond_range.start,
+            stop=cond_range.stop,
+            step=cond_range.step,
             attrs={},
-            binds=[std.VarDef(x)],
             body=body,
+            vars=[x],
         )
 
         assert isinstance(with_attrs.attrs, std.DictAttrs)
@@ -1905,13 +1916,12 @@ class TestFor:
         i32 = std.PrimTy("int32")
         x = std.Var(ty=i32, name="x")
         node = std.For(
-            range_=std.Range(
-                start=1,
-                stop=2,
-            ),
+            start=1,
+            stop=2,
+            step=None,
             attrs={"tag": "demo"},
-            binds=[std.VarDef(x)],
             body=[std.Store(x, 1, rhs=2)],
+            vars=[x],
         )
 
         assert node.text() == 'for x in range(1, 2, tag="demo"):\n  x[1] = 2'
@@ -1920,45 +1930,62 @@ class TestFor:
         i32 = std.PrimTy("int32")
         x = std.Var(ty=i32, name="x")
         node = std.For(
-            range_=std.Range(
-                start=1,
-                stop=2,
-            ),
+            start=1,
+            stop=2,
+            step=None,
             attrs={"z": 3, "a": 1},
-            binds=[std.VarDef(x)],
             body=[std.Store(x, 1, rhs=2)],
+            vars=[x],
         )
 
         assert node.text() == "for x in range(1, 2, a=1, z=3):\n  x[1] = 2"
 
+    def test_text_format_preserves_sparse_range_fields(self) -> None:
+        i32 = std.PrimTy("int32")
+        x = std.Var(ty=i32, name="x")
+        start_only = std.For(
+            start=1,
+            stop=None,
+            step=None,
+            body=[],
+            vars=[x],
+        )
+        step_only = std.For(
+            start=None,
+            stop=None,
+            step=2,
+            body=[],
+            vars=[x],
+        )
+
+        assert start_only.text() == "for x in range(1, None):\n  pass"
+        assert step_only.text() == "for x in range(None, None, 2):\n  pass"
+
     def test_structural_equality(self) -> None:
         i32 = std.PrimTy("int32")
         lhs = std.For(
-            range_=std.Range(
-                start=1,
-                stop=2,
-            ),
+            start=1,
+            stop=2,
+            step=None,
             attrs={"tag": "demo"},
-            binds=[std.VarDef(std.Var(ty=i32, name="x"))],
             body=[std.Store(std.Var(ty=i32, name="x"), 1, rhs=2)],
+            vars=[std.Var(ty=i32, name="x")],
         )
         rhs = std.For(
-            range_=std.Range(
-                start=1,
-                stop=2,
-            ),
+            start=1,
+            stop=2,
+            step=None,
             attrs={"tag": "demo"},
-            binds=[std.VarDef(std.Var(ty=i32, name="x"))],
             body=[std.Store(std.Var(ty=i32, name="x"), 1, rhs=2)],
+            vars=[std.Var(ty=i32, name="x")],
         )
         different = std.For(
-            range_=std.Range(
-                start=1,
-                stop=3,
-            ),
+            start=1,
+            stop=3,
+            step=None,
             attrs={"tag": "demo"},
-            binds=[std.VarDef(std.Var(ty=i32, name="x"))],
             body=[std.Store(std.Var(ty=i32, name="x"), 1, rhs=2)],
+            vars=[std.Var(ty=i32, name="x")],
         )
 
         assert tvm_ffi.structural_equal(lhs, rhs)
@@ -1976,23 +2003,19 @@ class TestWhile:
         node = std.While(
             cond=cond,
             attrs={"tag": "demo"},
-            binds=[std.VarDef(x)],
             body=body,
         )
 
         assert isinstance(node, std.While)
-        assert isinstance(node, std.Scope)
-        assert issubclass(std.While, std.Scope)
+        assert not isinstance(node, std.Scope)
+        assert not issubclass(std.While, std.Scope)
         assert tuple(field.name for field in fields(std.While)) == (
             "attrs",
-            "binds",
-            "body",
             "cond",
+            "body",
         )
         assert node.cond == cond
         assert node.attrs is not None
-        assert isinstance(node.binds[0], std.VarDef)
-        assert list(node.binds[0].vars) == [x]
         assert list(node.body) == body
 
     def test_attrs_field_accepts_dict_attrs_and_none(self) -> None:
@@ -2005,32 +2028,23 @@ class TestWhile:
         with_attrs = std.While(
             cond=cond,
             attrs=attrs,
-            binds=[std.VarDef(x)],
             body=body,
         )
         without_attrs = std.While(
             cond=cond,
-            binds=[std.VarDef(x)],
             body=body,
         )
         with_empty_attrs = std.While(
             cond=cond,
             attrs={},
-            binds=[],
             body=body,
         )
 
         assert isinstance(with_attrs.attrs, std.DictAttrs)
         assert dict(with_attrs.attrs.values) == attrs
         assert without_attrs.attrs is None
-        assert (
-            with_attrs.text()
-            == 'with std.while_(x < std.i32(2), std.VarDef(std.i32), pragma="pipeline") as x:\n  y = 2'
-        )
-        assert (
-            without_attrs.text()
-            == "with std.while_(x < std.i32(2), std.VarDef(std.i32)) as x:\n  y = 2"
-        )
+        assert with_attrs.text() == 'with std.while_(x < std.i32(2), pragma="pipeline"):\n  y = 2'
+        assert without_attrs.text() == "while x < std.i32(2):\n  y = 2"
         assert with_empty_attrs.text() == "while x < std.i32(2):\n  y = 2"
 
     def test_text_format(self) -> None:
@@ -2039,7 +2053,6 @@ class TestWhile:
         node = std.While(
             cond=std.Lt(ty=i32, a=x, b=2),
             attrs={"tag": "demo"},
-            binds=[std.VarDef(x)],
             body=[
                 std.BindExpr(
                     std.IntImm(std.PrimTy("int64"), 2),
@@ -2048,17 +2061,13 @@ class TestWhile:
             ],
         )
 
-        assert (
-            node.text()
-            == 'with std.while_(x < std.i32(2), std.VarDef(std.i32), tag="demo") as x:\n  y = 2'
-        )
+        assert node.text() == 'with std.while_(x < std.i32(2), tag="demo"):\n  y = 2'
 
     def test_text_format_with_simple_while(self) -> None:
         i32 = std.PrimTy("int32")
         x = std.Var(ty=i32, name="x")
         node = std.While(
             cond=std.Lt(ty=i32, a=x, b=2),
-            binds=[],
             body=[
                 std.BindExpr(
                     std.IntImm(std.PrimTy("int64"), 2),
@@ -2069,17 +2078,12 @@ class TestWhile:
 
         assert node.text() == "while x < std.i32(2):\n  y = 2"
 
-    def test_text_format_with_sorted_attrs_and_vars(self) -> None:
+    def test_text_format_with_sorted_attrs(self) -> None:
         i32 = std.PrimTy("int32")
         x = std.Var(ty=i32, name="x")
-        state = std.Var(ty=i32, name="state")
         node = std.While(
             cond=std.Lt(ty=i32, a=x, b=2),
             attrs={"z": 3, "a": 1},
-            binds=[
-                std.VarDef(x),
-                std.VarDef(state),
-            ],
             body=[
                 std.BindExpr(
                     std.IntImm(std.PrimTy("int64"), 2),
@@ -2088,10 +2092,7 @@ class TestWhile:
             ],
         )
 
-        assert (
-            node.text() == "with std.while_(x < std.i32(2), std.VarDef(std.i32), "
-            "std.VarDef(std.i32), a=1, z=3) as (x, state):\n  y = 2"
-        )
+        assert node.text() == "with std.while_(x < std.i32(2), a=1, z=3):\n  y = 2"
 
     def test_structural_equality(self) -> None:
         i32 = std.PrimTy("int32")
@@ -2102,7 +2103,6 @@ class TestWhile:
                 b=2,
             ),
             attrs={"tag": "demo"},
-            binds=[std.VarDef(std.Var(ty=i32, name="x"))],
             body=[
                 std.BindExpr(
                     std.IntImm(std.PrimTy("int64"), 2),
@@ -2117,7 +2117,6 @@ class TestWhile:
                 b=2,
             ),
             attrs={"tag": "demo"},
-            binds=[std.VarDef(std.Var(ty=i32, name="x"))],
             body=[
                 std.BindExpr(
                     std.IntImm(std.PrimTy("int64"), 2),
@@ -2132,7 +2131,6 @@ class TestWhile:
                 b=2,
             ),
             attrs={"tag": "demo"},
-            binds=[std.VarDef(std.Var(ty=i32, name="x"))],
             body=[
                 std.BindExpr(
                     std.IntImm(std.PrimTy("int64"), 2),
@@ -3074,7 +3072,7 @@ class TestDialectPrintMap:
             ret_type=i32,
             body=[std.Return(x)],
         )
-        cfg = pyast.PrinterConfig(dialect_print_map={"std$Func": "ffi_func"})
+        cfg = pyast.PrinterConfig(dialect_print_map={"std$func": "ffi_func"})
 
         assert (
             node.text(cfg) == '@ffi_func(tag="demo")\ndef main(x: std.i32) -> std.i32:\n  return x'
@@ -3112,11 +3110,13 @@ class TestDialectPrintMap:
         i32 = std.PrimTy("int32")
         x = std.Var(ty=i32, name="x")
         node = std.For(
-            range_=std.Range(start=1, stop=2),
-            binds=[std.VarDef(x)],
+            start=1,
+            stop=2,
+            step=None,
             body=[std.Store(x, 1, rhs=2)],
+            vars=[x],
         )
-        cfg = pyast.PrinterConfig(dialect_print_map={"std": "core"})
+        cfg = pyast.PrinterConfig(dialect_print_map={"": "core"})
 
         assert node.text(cfg) == "for x in core.range(1, 2):\n  x[1] = 2"
 
@@ -3124,11 +3124,13 @@ class TestDialectPrintMap:
         i32 = std.PrimTy("int32")
         x = std.Var(ty=i32, name="x")
         node = std.For(
-            range_=std.Range(start=1, stop=2),
-            binds=[std.VarDef(x)],
+            start=1,
+            stop=2,
+            step=None,
             body=[std.Store(x, 1, rhs=2)],
+            vars=[x],
         )
-        cfg = pyast.PrinterConfig(dialect_print_map={"std$For": "ffi.range"})
+        cfg = pyast.PrinterConfig(dialect_print_map={"$range": "ffi.range"})
 
         assert node.text(cfg) == "for x in ffi.range(1, 2):\n  x[1] = 2"
 

@@ -1581,18 +1581,22 @@ class TestParseFor:
     def test_basic(self) -> None:
         x = std.Var(I64, "x")
         expected = std.For(
-            [std.VarDef(x)],
-            [std.Store(x, 1, rhs=2)],
-            std.Range(1, 2),
+            start=1,
+            stop=2,
+            step=None,
+            body=[std.Store(x, 1, rhs=2)],
+            vars=[x],
         )
         _assert_parse_equal("for x in range(1, 2):\n  x[1] = 2", expected)
 
     def test_with_attrs(self) -> None:
         x = std.Var(I64, "x")
         expected = std.For(
-            [std.VarDef(x)],
-            [std.Store(x, 1, rhs=2)],
-            std.Range(1, 2),
+            start=1,
+            stop=2,
+            step=None,
+            body=[std.Store(x, 1, rhs=2)],
+            vars=[x],
             attrs={"tag": "demo"},
         )
         _assert_parse_equal(
@@ -1603,18 +1607,22 @@ class TestParseFor:
     def test_with_one_arg_range(self) -> None:
         i = std.Var(I64, "i")
         expected = std.For(
-            [std.VarDef(i)],
-            [],
-            std.Range(stop=10),
+            start=None,
+            stop=10,
+            step=None,
+            body=[],
+            vars=[i],
         )
         _assert_parse_equal("for i in range(10):\n  pass", expected)
 
     def test_with_three_arg_range(self) -> None:
         i = std.Var(I64, "i")
         expected = std.For(
-            [std.VarDef(i)],
-            [],
-            std.Range(0, 10, 2),
+            start=0,
+            stop=10,
+            step=2,
+            body=[],
+            vars=[i],
         )
         _assert_parse_equal("for i in range(0, 10, 2):\n  pass", expected)
 
@@ -1629,14 +1637,18 @@ class TestParseFor:
     def test_range_resolves_qualified_or_unqualified(self) -> None:
         a = parse("@std.func\ndef f():\n  for i in range(10):\n    pass")
         b = parse("@std.func\ndef f():\n  for i in std.range(10):\n    pass")
-        assert _equal(a.body[0].range_, b.body[0].range_)
+        assert _equal(a.body[0].start, b.body[0].start)
+        assert _equal(a.body[0].stop, b.body[0].stop)
+        assert _equal(a.body[0].step, b.body[0].step)
 
     def test_explicit_for_factory(self) -> None:
         i = std.Var(ANY, "i")
         expected = std.For(
-            [std.VarDef(i)],
-            [],
-            std.Range(1, 10, 2),
+            start=1,
+            stop=10,
+            step=2,
+            body=[],
+            vars=[i],
             attrs={"tag": "demo"},
         )
         _assert_parse_equal(
@@ -1654,16 +1666,18 @@ class TestParseFor:
             "@std.func\ndef f():\n  for i in range(n):\n    pass\n",
             extra_vars={"n": n},
         )
-        loop_var = next(iter(result.body[0].binds)).vars[0]
+        loop_var = result.body[0].vars[0]
         assert _equal(loop_var.ty, I64)
 
     def test_underscore_target(self) -> None:
         # `_` is a regular name bound to the loop induction var.
         underscore = std.Var(I64, "_")
         expected = std.For(
-            [std.VarDef(underscore)],
-            [],
-            std.Range(stop=10),
+            start=None,
+            stop=10,
+            step=None,
+            body=[],
+            vars=[underscore],
         )
         _assert_parse_equal("for _ in range(10):\n  pass", expected)
 
@@ -1671,15 +1685,19 @@ class TestParseFor:
         i = std.Var(I64, "i")
         j = std.Var(I64, "j")
         expected = std.For(
-            [std.VarDef(i)],
-            [
+            start=None,
+            stop=10,
+            step=None,
+            body=[
                 std.For(
-                    [std.VarDef(j)],
-                    [],
-                    std.Range(stop=10),
+                    start=None,
+                    stop=10,
+                    step=None,
+                    body=[],
+                    vars=[j],
                 )
             ],
-            std.Range(stop=10),
+            vars=[i],
         )
         _assert_parse_equal(
             "for i in range(10):\n  for j in range(10):\n    pass",
@@ -1690,19 +1708,43 @@ class TestParseFor:
         x = std.Var(I64, "x")
         _assert_roundtrip(
             std.For(
-                [std.VarDef(x)],
-                [std.Store(x, 1, rhs=2)],
-                std.Range(1, 2),
+                start=1,
+                stop=2,
+                step=None,
+                body=[std.Store(x, 1, rhs=2)],
+                vars=[x],
             )
         )
         _assert_roundtrip(
             std.For(
-                [std.VarDef(x)],
-                [std.Store(x, 1, rhs=2)],
-                std.Range(1, 2),
+                start=1,
+                stop=2,
+                step=None,
+                body=[std.Store(x, 1, rhs=2)],
+                vars=[x],
                 attrs={"tag": "demo"},
             )
         )
+
+    def test_round_trip_sparse_range_fields(self) -> None:
+        x = std.Var(I64, "x")
+        for node in [
+            std.For(
+                start=1,
+                stop=None,
+                step=None,
+                body=[],
+                vars=[x],
+            ),
+            std.For(
+                start=None,
+                stop=None,
+                step=2,
+                body=[],
+                vars=[x],
+            ),
+        ]:
+            _assert_roundtrip(node)
 
 
 ################################################################################
@@ -1715,9 +1757,8 @@ class TestParseWhile:
         x = std.Var(I32, "x")
         y = std.Var(I64, "y")
         expected = std.While(
-            [],
-            [std.BindExpr(std.IntImm(I64, 2), y)],
-            std.Lt(std.Var(I32, "x"), 2, ty=I32),
+            cond=std.Lt(std.Var(I32, "x"), 2, ty=I32),
+            body=[std.BindExpr(std.IntImm(I64, 2), y)],
         )
         _assert_parse_equal(
             "while x < 2:\n  y = 2",
@@ -1732,17 +1773,16 @@ class TestParseWhile:
         assert isinstance(result.body[0].cond, std.BoolImm)
         assert result.body[0].cond.value is True
 
-    def test_with_form_with_binds_and_attrs(self) -> None:
+    def test_with_form_with_attrs(self) -> None:
         x = std.Var(I32, "x")
         y = std.Var(I64, "y")
         expected = std.While(
-            [std.VarDef(x)],
-            [std.BindExpr(std.IntImm(I64, 2), y)],
-            std.Lt(std.Var(I32, "x"), 2, ty=I32),
+            cond=std.Lt(std.Var(I32, "x"), 2, ty=I32),
+            body=[std.BindExpr(std.IntImm(I64, 2), y)],
             attrs={"tag": "demo"},
         )
         _assert_parse_equal(
-            'with std.while_(x < 2, std.VarDef(std.i32), tag="demo") as x:\n  y = 2',
+            'with std.while_(x < 2, tag="demo"):\n  y = 2',
             expected,
             extra_vars={"x": x},
         )
@@ -1753,17 +1793,15 @@ class TestParseWhile:
         y = std.Var(I64, "y")
         _assert_roundtrip(
             std.While(
-                [],
-                [std.BindExpr(std.IntImm(I64, 2), y)],
-                std.Lt(x, 2, ty=I64),
+                cond=std.Lt(x, 2, ty=I64),
+                body=[std.BindExpr(std.IntImm(I64, 2), y)],
             ),
             extra_vars={"x": x, "y": y},
         )
         _assert_roundtrip(
             std.While(
-                [std.VarDef(x)],
-                [std.BindExpr(std.IntImm(I64, 2), y)],
-                std.Lt(x, 2, ty=I64),
+                cond=std.Lt(x, 2, ty=I64),
+                body=[std.BindExpr(std.IntImm(I64, 2), y)],
                 attrs={"tag": "demo"},
             ),
             extra_vars={"x": x, "y": y},
@@ -2057,14 +2095,18 @@ class TestRoundtripFromTestStd:
         x = std.Var(I64, "x")
         for node in [
             std.For(
-                [std.VarDef(x)],
-                [std.Store(x, 1, rhs=2)],
-                std.Range(1, 2),
+                start=1,
+                stop=2,
+                step=None,
+                body=[std.Store(x, 1, rhs=2)],
+                vars=[x],
             ),
             std.For(
-                [std.VarDef(x)],
-                [std.Store(x, 1, rhs=2)],
-                std.Range(1, 2),
+                start=1,
+                stop=2,
+                step=None,
+                body=[std.Store(x, 1, rhs=2)],
+                vars=[x],
                 attrs={"tag": "demo"},
             ),
         ]:
@@ -2082,11 +2124,13 @@ class TestRoundtripFromTestStd:
         x = std.Var(I64, "x")
         y = std.Var(I64, "y")
         for node in [
-            std.While([], [std.BindExpr(std.IntImm(I64, 2), y)], std.Lt(x, 2, ty=I64)),
             std.While(
-                [std.VarDef(x)],
-                [std.BindExpr(std.IntImm(I64, 2), y)],
-                std.Lt(x, 2, ty=I64),
+                cond=std.Lt(x, 2, ty=I64),
+                body=[std.BindExpr(std.IntImm(I64, 2), y)],
+            ),
+            std.While(
+                cond=std.Lt(x, 2, ty=I64),
+                body=[std.BindExpr(std.IntImm(I64, 2), y)],
                 attrs={"tag": "demo"},
             ),
         ]:
@@ -2199,13 +2243,13 @@ class TestTypeInference:
             extra_vars={"x": x},
         )
         for_stmt = result.body[0]
-        loop_var = for_stmt.binds[0].vars[0]
+        loop_var = for_stmt.vars[0]
         assert _equal(loop_var.ty, I64)
 
     def test_for_default_int_when_all_literal(self) -> None:
         result = parse("@std.func\ndef f():\n  for i in range(0, 10):\n    pass")
         for_stmt = result.body[0]
-        loop_var = for_stmt.binds[0].vars[0]
+        loop_var = for_stmt.vars[0]
         assert _equal(loop_var.ty, I64)
 
 

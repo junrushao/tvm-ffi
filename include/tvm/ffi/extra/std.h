@@ -20,6 +20,39 @@
  * \file tvm/ffi/extra/std.h
  * \brief Standard core dialect node definitions.
  */
+
+/*
+ * Node
+ * |-- Ty
+ * |   |-- AnyTy
+ * |   |-- PrimTy
+ * |   |-- TupleTy
+ * |   `-- TensorTy
+ * |-- Attrs
+ * |   `-- DictAttrs
+ * |-- Aggregate
+ * |   `-- Range
+ * |-- Module
+ * |-- Stmt
+ * |   |-- Assert / Return / Yield_ / Break / Continue
+ * |   |-- IfStmt
+ * |   |-- Func
+ * |   |-- For
+ * |   |-- While
+ * |   |-- Scope
+ * |   |-- BindExpr
+ * |   |-- VarDef
+ * |   `-- Store
+ * `-- Expr
+ *     |-- Var
+ *     |-- Cast
+ *     |-- Load
+ *     |-- Call
+ *     |-- BoolImm / IntImm / FloatImm / StringImm
+ *     |-- Add/Sub/Mul/Xor/Pow, CDiv/CMod/FloorDiv/FloorMod, LShift/RShift, Min/Max
+ *     |-- Eq / Ne / Le / Ge / Gt / Lt
+ *     `-- And / Or / Not
+ */
 #ifndef TVM_FFI_EXTRA_STD_H_
 #define TVM_FFI_EXTRA_STD_H_
 
@@ -778,52 +811,68 @@ struct Scope : public Stmt {
 };
 
 /*! \brief Data object for a for loop. */
-struct ForObj : public ScopeObj {
-  /*! \brief Iteration range. */
-  Range range_;
+struct ForObj : public StmtObj {
+  /*! \brief Optional loop range start. */
+  Optional<Expr> start;
+  /*! \brief Optional loop range stop. */
+  Optional<Expr> stop;
+  /*! \brief Optional loop range step. */
+  Optional<Expr> step;
+  /*! \brief Loop variables introduced by the header. */
+  List<Var> vars;
+  /*! \brief Loop body statements. */
+  List<Stmt> body;
 
   /// \cond Doxygen_Suppress
   ForObj() = default;
-  ForObj(Range range_, Optional<Attrs> attrs, List<Stmt> binds, List<Stmt> body)
-      : ScopeObj(std::move(attrs), std::move(binds), std::move(body)), range_(std::move(range_)) {}
+  ForObj(Optional<Expr> start, Optional<Expr> stop, Optional<Expr> step, Optional<Attrs> attrs,
+         List<Var> vars, List<Stmt> body)
+      : StmtObj(std::move(attrs)),
+        start(std::move(start)),
+        stop(std::move(stop)),
+        step(std::move(step)),
+        vars(std::move(vars)),
+        body(std::move(body)) {}
 
-  TVM_FFI_DECLARE_OBJECT_INFO("ffi.std.For", ForObj, ScopeObj);
+  TVM_FFI_DECLARE_OBJECT_INFO("ffi.std.For", ForObj, StmtObj);
   /// \endcond
 };
 
 /*! \brief Reference wrapper for a for loop. */
-struct For : public Scope {
+struct For : public Stmt {
   /*! \brief Construct a for loop. */
-  For(Range range_, Optional<Attrs> attrs, List<Stmt> binds, List<Stmt> body)
-      : For(make_object<ForObj>(std::move(range_), std::move(attrs), std::move(binds),
-                                std::move(body))) {}
+  For(Optional<Expr> start, Optional<Expr> stop, Optional<Expr> step, Optional<Attrs> attrs,
+      List<Var> vars, List<Stmt> body)
+      : For(make_object<ForObj>(std::move(start), std::move(stop), std::move(step),
+                                std::move(attrs), std::move(vars), std::move(body))) {}
   /// \cond Doxygen_Suppress
-  TVM_FFI_DEFINE_OBJECT_REF_METHODS_NULLABLE(For, Scope, ForObj);
+  TVM_FFI_DEFINE_OBJECT_REF_METHODS_NULLABLE(For, Stmt, ForObj);
   /// \endcond
 };
 
 /*! \brief Data object for a while loop. */
-struct WhileObj : public ScopeObj {
+struct WhileObj : public StmtObj {
   /*! \brief Loop condition. */
   Expr cond;
+  /*! \brief Loop body statements. */
+  List<Stmt> body;
 
   /// \cond Doxygen_Suppress
   WhileObj() = default;
-  WhileObj(Expr cond, Optional<Attrs> attrs, List<Stmt> binds, List<Stmt> body)
-      : ScopeObj(std::move(attrs), std::move(binds), std::move(body)), cond(std::move(cond)) {}
+  WhileObj(Expr cond, Optional<Attrs> attrs, List<Stmt> body)
+      : StmtObj(std::move(attrs)), cond(std::move(cond)), body(std::move(body)) {}
 
-  TVM_FFI_DECLARE_OBJECT_INFO("ffi.std.While", WhileObj, ScopeObj);
+  TVM_FFI_DECLARE_OBJECT_INFO("ffi.std.While", WhileObj, StmtObj);
   /// \endcond
 };
 
 /*! \brief Reference wrapper for a while loop. */
-struct While : public Scope {
+struct While : public Stmt {
   /*! \brief Construct a while loop. */
-  While(Expr cond, Optional<Attrs> attrs, List<Stmt> binds, List<Stmt> body)
-      : While(make_object<WhileObj>(std::move(cond), std::move(attrs), std::move(binds),
-                                    std::move(body))) {}
+  While(Expr cond, Optional<Attrs> attrs, List<Stmt> body)
+      : While(make_object<WhileObj>(std::move(cond), std::move(attrs), std::move(body))) {}
   /// \cond Doxygen_Suppress
-  TVM_FFI_DEFINE_OBJECT_REF_METHODS_NULLABLE(While, Scope, WhileObj);
+  TVM_FFI_DEFINE_OBJECT_REF_METHODS_NULLABLE(While, Stmt, WhileObj);
   /// \endcond
 };
 

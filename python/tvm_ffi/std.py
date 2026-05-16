@@ -1127,17 +1127,21 @@ class Scope(Stmt):
 
 
 @c_class("ffi.std.For")
-class For(Scope):
+class For(Stmt):
     """For loop."""
 
     __ffi_dialect_mnemonic__: ClassVar[DialectMnemonic] = ("std", "For")
 
     # tvm-ffi-stubgen(begin): object/ffi.std.For
     # fmt: off
-    range_: Range
+    start: Expr | None
+    stop: Expr | None
+    step: Expr | None
+    vars: MutableSequence[Var]
+    body: MutableSequence[Stmt]
     if TYPE_CHECKING:
-        def __init__(self, binds: MutableSequence[Stmt], body: MutableSequence[Stmt], range_: Range, *, attrs: Attrs | None = ...) -> None: ...
-        def __ffi_init__(self, binds: MutableSequence[Stmt], body: MutableSequence[Stmt], range_: Range, *, attrs: Attrs | None = ...) -> None: ...  # ty: ignore[invalid-method-override]
+        def __init__(self, start: Expr | None, stop: Expr | None, step: Expr | None, vars: MutableSequence[Var], body: MutableSequence[Stmt], *, attrs: Attrs | None = ...) -> None: ...
+        def __ffi_init__(self, start: Expr | None, stop: Expr | None, step: Expr | None, vars: MutableSequence[Var], body: MutableSequence[Stmt], *, attrs: Attrs | None = ...) -> None: ...  # ty: ignore[invalid-method-override]
     # fmt: on
     # tvm-ffi-stubgen(end)
 
@@ -1145,16 +1149,18 @@ class For(Scope):
 
         def __init__(
             self,
-            binds: MutableSequence[Stmt],
+            start: ExprLike | None,
+            stop: ExprLike | None,
+            step: ExprLike | None,
+            vars: MutableSequence[Var],
             body: MutableSequence[Stmt],
-            range_: RangeLike,
             *,
             attrs: AttrsLike = ...,
         ) -> None: ...
 
 
 @c_class("ffi.std.While")
-class While(Scope):
+class While(Stmt):
     """While loop."""
 
     __ffi_dialect_mnemonic__: ClassVar[DialectMnemonic] = ("std", "While")
@@ -1162,9 +1168,10 @@ class While(Scope):
     # tvm-ffi-stubgen(begin): object/ffi.std.While
     # fmt: off
     cond: Expr
+    body: MutableSequence[Stmt]
     if TYPE_CHECKING:
-        def __init__(self, binds: MutableSequence[Stmt], body: MutableSequence[Stmt], cond: Expr, *, attrs: Attrs | None = ...) -> None: ...
-        def __ffi_init__(self, binds: MutableSequence[Stmt], body: MutableSequence[Stmt], cond: Expr, *, attrs: Attrs | None = ...) -> None: ...  # ty: ignore[invalid-method-override]
+        def __init__(self, cond: Expr, body: MutableSequence[Stmt], *, attrs: Attrs | None = ...) -> None: ...
+        def __ffi_init__(self, cond: Expr, body: MutableSequence[Stmt], *, attrs: Attrs | None = ...) -> None: ...  # ty: ignore[invalid-method-override]
     # fmt: on
     # tvm-ffi-stubgen(end)
 
@@ -1172,9 +1179,8 @@ class While(Scope):
 
         def __init__(
             self,
-            binds: MutableSequence[Stmt],
-            body: MutableSequence[Stmt],
             cond: ExprLike,
+            body: MutableSequence[Stmt],
             *,
             attrs: AttrsLike = ...,
         ) -> None: ...
