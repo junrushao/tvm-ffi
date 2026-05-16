@@ -54,13 +54,15 @@ Array<String> DialectMnemonic(int32_t type_index) {
 
 text::ExprAST GetPrintedName(const pyast::PrinterConfig& cfg, String dialect, String mnemonic) {
   const auto& dialect_map = cfg->dialect_print_map;
-  if (std::optional<String> mapped = dialect_map.Get(dialect + "$" + mnemonic)) {
-    return (*mapped == "*") ? text::IdAST(std::move(mnemonic))
-                            : text::DottedName(std::move(*mapped));
-  }
-  if (std::optional<String> mapped = dialect_map.Get(dialect)) {
-    return (*mapped == "*") ? text::IdAST(std::move(mnemonic))
-                            : text::DottedName(std::move(*mapped))->Attr(std::move(mnemonic));
+  if (dialect_map.defined()) {
+    if (std::optional<String> mapped = dialect_map.Get(dialect + "$" + mnemonic)) {
+      return (*mapped == "*") ? text::IdAST(std::move(mnemonic))
+                              : text::DottedName(std::move(*mapped));
+    }
+    if (std::optional<String> mapped = dialect_map.Get(dialect)) {
+      return (*mapped == "*") ? text::IdAST(std::move(mnemonic))
+                              : text::DottedName(std::move(*mapped))->Attr(std::move(mnemonic));
+    }
   }
   if (dialect == "") {
     return text::IdAST(std::move(mnemonic));
@@ -89,7 +91,7 @@ text::ExprAST DefineVar(const text::IRPrinter& printer, const Var& var) {
   return *ret;
 }
 
-struct ExprCtx {
+struct ExprBuilder {
   std::vector<String> dialects;
   List<text::ExprAST> operands;
   List<String> kwargs_keys;
@@ -163,7 +165,7 @@ struct ExprCtx {
   }
 };
 
-struct ScopeCtx {
+struct ScopeBuilder {
   text::ExprAST scope_call;
   List<text::ExprAST> operands;
   List<String> kwargs_keys;
@@ -171,14 +173,16 @@ struct ScopeCtx {
   List<text::ExprAST> targets;
   List<text::StmtAST> body;
 
-  ScopeCtx(const char* new_mnemonic, String dialect, const text::PrinterConfig& cfg)
+  ScopeBuilder(const char* new_mnemonic, String dialect, const text::PrinterConfig& cfg)
       : scope_call(GetPrintedName(cfg, std::move(dialect), new_mnemonic)) {}
 
-  void AddBodyStmt(const text::IRPrinter& printer, const Stmt& stmt, const Path& path) {
-    body.push_back(printer->operator()(stmt, path).cast<text::StmtAST>());
+  template <typename T>
+  void AddBodyStmt(const text::IRPrinter& printer, const T& stmt, const Path& path) {
+    body.push_back(printer->operator()(stmt, path).template cast<text::StmtAST>());
   }
 
-  void AddBodyStmts(const text::IRPrinter& printer, const List<Stmt>& stmts, const Path& path) {
+  template <typename T>
+  void AddBodyStmts(const text::IRPrinter& printer, const List<T>& stmts, const Path& path) {
     int64_t n = static_cast<int64_t>(stmts.size());
     for (int64_t i = 0; i < n; ++i) {
       AddBodyStmt(printer, stmts[i], path->ArrayItem(i));
@@ -283,7 +287,7 @@ text::NodeAST TextPrint(const TensorTy& obj, const text::IRPrinter& printer, con
 }
 
 text::NodeAST TextPrint(const Cast& obj, const text::IRPrinter& printer, const Path& path) {
-  ExprCtx ctx;
+  ExprBuilder ctx;
   ctx.AddOperand(printer, obj->value, path->Attr("value"));
   text::ExprAST ty = printer->ToExpr(obj->ty, path->Attr("ty"));
   if (ctx.dialects.empty()) {
@@ -417,7 +421,7 @@ text::NodeAST TextPrint(const StringImm& obj, const text::IRPrinter&, const Path
 
 template <typename T, text::OperationASTObj::Kind op_kind>
 text::NodeAST PrintBinaryOp(const T& obj, const text::IRPrinter& printer, const Path& path) {
-  ExprCtx ctx;
+  ExprBuilder ctx;
   ctx.AddOperand(printer, obj->a, path->Attr("a"));
   ctx.AddOperand(printer, obj->b, path->Attr("b"));
   if constexpr (op_kind != text::OperationASTObj::kUndefined) {
@@ -444,7 +448,9 @@ TVM_FFI_STD_BINARY_OP_TEXT_PRINT(FloorMod, text::OperationASTObj::kMod)
 TVM_FFI_STD_BINARY_OP_TEXT_PRINT(Pow, text::OperationASTObj::kPow)
 TVM_FFI_STD_BINARY_OP_TEXT_PRINT(LShift, text::OperationASTObj::kLShift)
 TVM_FFI_STD_BINARY_OP_TEXT_PRINT(RShift, text::OperationASTObj::kRShift)
-TVM_FFI_STD_BINARY_OP_TEXT_PRINT(Xor, text::OperationASTObj::kBitXor)
+TVM_FFI_STD_BINARY_OP_TEXT_PRINT(BitwiseAnd, text::OperationASTObj::kBitAnd)
+TVM_FFI_STD_BINARY_OP_TEXT_PRINT(BitwiseOr, text::OperationASTObj::kBitOr)
+TVM_FFI_STD_BINARY_OP_TEXT_PRINT(BitwiseXor, text::OperationASTObj::kBitXor)
 TVM_FFI_STD_BINARY_OP_TEXT_PRINT(Eq, text::OperationASTObj::kEq)
 TVM_FFI_STD_BINARY_OP_TEXT_PRINT(Ne, text::OperationASTObj::kNotEq)
 TVM_FFI_STD_BINARY_OP_TEXT_PRINT(Le, text::OperationASTObj::kLtE)
@@ -476,10 +482,47 @@ text::NodeAST TextPrint(const CMod& obj, const text::IRPrinter& printer, const P
 }
 
 text::NodeAST TextPrint(const Not& obj, const text::IRPrinter& printer, const Path& path) {
-  ExprCtx ctx;
+  ExprBuilder ctx;
   ctx.AddOperand(printer, obj->operand, path->Attr("operand"));
   if (ctx.ExprDerivable()) {
     return text::OperationAST(static_cast<int64_t>(text::OperationASTObj::kNot),
+                              std::move(ctx.operands));
+  }
+  ctx.AddTy(printer, obj->ty, path->Attr("ty"));
+  return CallMnemonic(printer->cfg, obj)
+      ->CallKw(ctx.operands, std::move(ctx.kwargs_keys), std::move(ctx.kwargs_values));
+}
+
+text::NodeAST TextPrint(const BitwiseNot& obj, const text::IRPrinter& printer, const Path& path) {
+  ExprBuilder ctx;
+  ctx.AddOperand(printer, obj->operand, path->Attr("operand"));
+  if (ctx.ExprDerivable()) {
+    return text::OperationAST(static_cast<int64_t>(text::OperationASTObj::kInvert),
+                              std::move(ctx.operands));
+  }
+  ctx.AddTy(printer, obj->ty, path->Attr("ty"));
+  return CallMnemonic(printer->cfg, obj)
+      ->CallKw(ctx.operands, std::move(ctx.kwargs_keys), std::move(ctx.kwargs_values));
+}
+
+text::NodeAST TextPrint(const Abs& obj, const text::IRPrinter& printer, const Path& path) {
+  ExprBuilder ctx;
+  ctx.AddOperand(printer, obj->operand, path->Attr("operand"));
+  if (ctx.ExprDerivable()) {
+    return text::IdAST("abs")->Call(std::move(ctx.operands));
+  }
+  ctx.AddTy(printer, obj->ty, path->Attr("ty"));
+  return CallMnemonic(printer->cfg, obj)
+      ->CallKw(ctx.operands, std::move(ctx.kwargs_keys), std::move(ctx.kwargs_values));
+}
+
+text::NodeAST TextPrint(const IfExpr& obj, const text::IRPrinter& printer, const Path& path) {
+  ExprBuilder ctx;
+  ctx.AddOperand(printer, obj->cond, path->Attr("cond"));
+  ctx.AddOperand(printer, obj->then_expr, path->Attr("then_expr"));
+  ctx.AddOperand(printer, obj->else_expr, path->Attr("else_expr"));
+  if (ctx.ExprDerivable()) {
+    return text::OperationAST(static_cast<int64_t>(text::OperationASTObj::kIfThenElse),
                               std::move(ctx.operands));
   }
   ctx.AddTy(printer, obj->ty, path->Attr("ty"));
@@ -492,7 +535,7 @@ text::NodeAST TextPrint(const Not& obj, const text::IRPrinter& printer, const Pa
 /*****************************************************/
 
 text::NodeAST TextPrint(const Load& obj, const text::IRPrinter& printer, const Path& path) {
-  ExprCtx ctx;
+  ExprBuilder ctx;
   ctx.AddOperand(printer, obj->lhs, path->Attr("lhs"));
   Path indices_path = path->Attr("indices");
   for (size_t i = 0; i < obj->indices.size(); ++i) {
@@ -508,7 +551,7 @@ text::NodeAST TextPrint(const Load& obj, const text::IRPrinter& printer, const P
 }
 
 text::NodeAST TextPrint(const Store& obj, const text::IRPrinter& printer, const Path& path) {
-  ExprCtx ctx;
+  ExprBuilder ctx;
   Path indices_path = path->Attr("indices");
   for (size_t i = 0; i < obj->indices.size(); ++i) {
     ctx.operands.push_back(TextPrintSlice(obj->indices[i], printer, indices_path->ArrayItem(i)));
@@ -549,7 +592,7 @@ Optional<text::ExprAST> StmtValue(List<text::ExprAST> operands) {
 }
 
 text::NodeAST TextPrint(const Assert& obj, const text::IRPrinter& printer, const Path& path) {
-  ExprCtx ctx;
+  ExprBuilder ctx;
   ctx.AddOperand(printer, obj->cond, path->Attr("cond"));
   ctx.AddAttrs(printer, obj->attrs, path->Attr("attrs"));
   if (ctx.ExprDerivable() || (ctx.dialects.empty() && ctx.StmtDerivable(printer, obj))) {
@@ -559,7 +602,7 @@ text::NodeAST TextPrint(const Assert& obj, const text::IRPrinter& printer, const
 }
 
 text::NodeAST TextPrint(const Return& obj, const text::IRPrinter& printer, const Path& path) {
-  ExprCtx ctx;
+  ExprBuilder ctx;
   ctx.AddOperands(printer, obj->exprs, path->Attr("exprs"));
   ctx.AddAttrs(printer, obj->attrs, path->Attr("attrs"));
   if (ctx.ExprDerivable() || (ctx.dialects.empty() && ctx.StmtDerivable(printer, obj))) {
@@ -569,7 +612,7 @@ text::NodeAST TextPrint(const Return& obj, const text::IRPrinter& printer, const
 }
 
 text::NodeAST TextPrint(const Yield_& obj, const text::IRPrinter& printer, const Path& path) {
-  ExprCtx ctx;
+  ExprBuilder ctx;
   ctx.AddOperands(printer, obj->exprs, path->Attr("exprs"));
   ctx.AddAttrs(printer, obj->attrs, path->Attr("attrs"));
   if (ctx.ExprDerivable() || (ctx.dialects.empty() && ctx.StmtDerivable(printer, obj))) {
@@ -579,13 +622,13 @@ text::NodeAST TextPrint(const Yield_& obj, const text::IRPrinter& printer, const
 }
 
 text::NodeAST TextPrint(const Break& obj, const text::IRPrinter& printer, const Path& path) {
-  ExprCtx ctx;
+  ExprBuilder ctx;
   ctx.AddAttrs(printer, obj->attrs, path->Attr("attrs"));
   return ctx.StmtDerivable(printer, obj) ? text::BreakAST() : ctx.StmtCall(printer, obj);
 }
 
 text::NodeAST TextPrint(const Continue& obj, const text::IRPrinter& printer, const Path& path) {
-  ExprCtx ctx;
+  ExprBuilder ctx;
   ctx.AddAttrs(printer, obj->attrs, path->Attr("attrs"));
   return ctx.StmtDerivable(printer, obj) ? text::ContinueAST() : ctx.StmtCall(printer, obj);
 }
@@ -595,7 +638,15 @@ text::NodeAST TextPrint(const Continue& obj, const text::IRPrinter& printer, con
 /***************************************************************/
 
 text::NodeAST TextPrint(const Call& obj, const text::IRPrinter& printer, const Path& path) {
-  ExprCtx ctx;
+  // TODO(@junrushao): There are three main issues we havne't considered:
+  // (Issue 1) There are multiple possible `Call`s we want to support separately:
+  // 1. Calling a function in the same Module
+  // 2. Calling an Enum - TVM style `Op`
+  // 3. Calling an external function symbol
+  // 4. Calling a lambda?
+  // (Issue 2) Support type parameters supplied to a call for dynamic shape usecases
+  // (Issue 3) Support type relations for type inference
+  ExprBuilder ctx;
   text::ExprAST callee;
   if (std::optional<String> symbol = obj->callee.as<String>()) {
     callee = text::IdAST(*symbol);
@@ -649,7 +700,7 @@ text::NodeAST TextPrint(const BindExpr& obj, const text::IRPrinter& printer, con
   // Binding expressions keep literal type annotations on the RHS, unlike
   // arithmetic/operator sugar where typed immediates collapse to Python
   // literals.
-  ExprCtx ctx;
+  ExprBuilder ctx;
   ctx.AddOperand(printer, obj->expr, path->Attr("expr"));
   ctx.AddAttrs(printer, obj->attrs, path->Attr("attrs"));
   text::ExprAST rhs = ctx.kwargs_keys.empty()
@@ -664,7 +715,7 @@ text::NodeAST TextPrint(const BindExpr& obj, const text::IRPrinter& printer, con
 }
 
 text::NodeAST TextPrint(const VarDef& obj, const text::IRPrinter& printer, const Path& path) {
-  ExprCtx ctx;
+  ExprBuilder ctx;
   ctx.AddVarDefTypes(printer, obj->vars, path->Attr("vars"));
   ctx.AddAttrs(printer, obj->attrs, path->Attr("attrs"));
   if (obj->vars.empty()) {
@@ -686,7 +737,7 @@ text::NodeAST TextPrint(const VarDef& obj, const text::IRPrinter& printer, const
 /*****************************************************************/
 
 text::NodeAST TextPrint(const Module& obj, const text::IRPrinter& printer, const Path& path) {
-  ScopeCtx ctx("module", DialectName(obj), printer->cfg);
+  ScopeBuilder ctx("module", DialectName(obj), printer->cfg);
   ctx.AddBodyStmts(printer, obj->funcs, path->Attr("funcs"));
   return text::ClassAST(text::IdAST("MyModule"), {}, {ctx.scope_call}, std::move(ctx.body));
 }
@@ -698,7 +749,7 @@ text::NodeAST TextPrint(const IfStmt& obj, const text::IRPrinter& printer, const
 }
 
 text::NodeAST TextPrint(const While& obj, const text::IRPrinter& printer, const Path& path) {
-  ScopeCtx ctx("while_", DialectName(obj), printer->cfg);
+  ScopeBuilder ctx("while_", DialectName(obj), printer->cfg);
   ctx.AddAttrs(printer, obj->attrs, path->Attr("attrs"));
   ctx.AddBodyStmts(printer, obj->body, path->Attr("body"));
   text::ExprAST cond = printer->ToExpr(obj->cond, path->Attr("cond"));
@@ -711,7 +762,7 @@ text::NodeAST TextPrint(const While& obj, const text::IRPrinter& printer, const 
 }
 
 text::NodeAST TextPrint(const For& obj, const text::IRPrinter& printer, const Path& path) {
-  ScopeCtx ctx("range", "", printer->cfg);
+  ScopeBuilder ctx("range", "", printer->cfg);
   ctx.AddTargets(printer, obj->vars);
   // ----------- "range" section ----------- //
   auto maybe_append_operand = [&](const Optional<Expr>& operand, const char* name) {
@@ -749,7 +800,8 @@ text::NodeAST TextPrint(const For& obj, const text::IRPrinter& printer, const Pa
 }
 
 text::NodeAST TextPrint(const Func& obj, const text::IRPrinter& printer, const Path& path) {
-  ScopeCtx ctx("func", DialectName(obj), printer->cfg);
+  // TODO(@junrushao): Handle dynamic shape, where a VarDef may contain other variable definition.
+  ScopeBuilder ctx("func", DialectName(obj), printer->cfg);
   ctx.AddAttrs(printer, obj->attrs, path->Attr("attrs"));
   // ----------- "args" section ----------- //
   List<text::AssignAST> args;
@@ -772,7 +824,7 @@ text::NodeAST TextPrint(const Func& obj, const text::IRPrinter& printer, const P
 }
 
 text::NodeAST TextPrint(const Scope& obj, const text::IRPrinter& printer, const Path& path) {
-  ScopeCtx ctx("scope", DialectName(obj), printer->cfg);
+  ScopeBuilder ctx("scope", DialectName(obj), printer->cfg);
   ctx.AddAttrs(printer, obj->attrs, path->Attr("attrs"));
   int64_t n = static_cast<int64_t>(obj->binds.size());
   ctx.operands.reserve(n);
@@ -780,7 +832,7 @@ text::NodeAST TextPrint(const Scope& obj, const text::IRPrinter& printer, const 
   for (int64_t i = 0; i < n; ++i) {
     const Stmt& bind = obj->binds[i];
     Path bind_path = binds_path->ArrayItem(i);
-    ExprCtx bind_ctx;
+    ExprBuilder bind_ctx;
     const List<Var>* vars = nullptr;
     if (const BindExprObj* bind_expr = bind.as<BindExprObj>()) {
       bind_ctx.AddOperand(printer, bind_expr->expr, bind_path->Attr("expr"));
@@ -818,6 +870,117 @@ auto TextPrintHook() {
   };
 }
 
+Expr CoerceInitArgToExpr(AnyView value, const Ty& result_ty) {
+  TVMFFIAny raw = value.CopyToTVMFFIAny();
+  if (std::optional<Expr> expr = ObjectRefTypeTraitsBase<Expr>::TryCastFromAnyView(&raw)) {
+    return *std::move(expr);
+  }
+
+  if (const PrimTyObj* prim_ty = result_ty.as<PrimTyObj>()) {
+    if (raw.type_index == TypeIndex::kTVMFFIBool) {
+      bool bool_value = TypeTraits<bool>::CopyFromAnyViewAfterCheck(&raw);
+      if (DTypeIsBool(prim_ty->dtype)) {
+        return BoolImm(result_ty, bool_value);
+      }
+      if (DTypeIsInt(prim_ty->dtype)) {
+        return IntImm(result_ty, static_cast<int64_t>(bool_value));
+      }
+      if (DTypeIsFloat(prim_ty->dtype)) {
+        return FloatImm(result_ty, static_cast<double>(bool_value));
+      }
+    }
+    if (std::optional<int64_t> int_value = TypeTraits<int64_t>::TryCastFromAnyView(&raw)) {
+      if (DTypeIsBool(prim_ty->dtype)) {
+        return BoolImm(result_ty, static_cast<bool>(*int_value));
+      }
+      if (DTypeIsInt(prim_ty->dtype)) {
+        return IntImm(result_ty, *int_value);
+      }
+      if (DTypeIsFloat(prim_ty->dtype)) {
+        return FloatImm(result_ty, static_cast<double>(*int_value));
+      }
+    }
+    if (raw.type_index == TypeIndex::kTVMFFIFloat) {
+      double float_value = TypeTraits<double>::CopyFromAnyViewAfterCheck(&raw);
+      if (DTypeIsBool(prim_ty->dtype)) {
+        return BoolImm(result_ty, static_cast<bool>(float_value));
+      }
+      if (DTypeIsInt(prim_ty->dtype)) {
+        return IntImm(result_ty, static_cast<int64_t>(float_value));
+      }
+      if (DTypeIsFloat(prim_ty->dtype)) {
+        return FloatImm(result_ty, float_value);
+      }
+    }
+  }
+
+  if (result_ty.as<AnyTyObj>() != nullptr) {
+    if (raw.type_index == TypeIndex::kTVMFFIBool) {
+      return BoolImm(result_ty, TypeTraits<bool>::CopyFromAnyViewAfterCheck(&raw));
+    }
+    if (std::optional<int64_t> int_value = TypeTraits<int64_t>::TryCastFromAnyView(&raw)) {
+      return IntImm(result_ty, *int_value);
+    }
+    if (raw.type_index == TypeIndex::kTVMFFIFloat) {
+      return FloatImm(result_ty, TypeTraits<double>::CopyFromAnyViewAfterCheck(&raw));
+    }
+    if (std::optional<String> str_value = TypeTraits<String>::TryCastFromAnyView(&raw)) {
+      return StringImm(result_ty, *std::move(str_value));
+    }
+  }
+
+  if (std::optional<Expr> expr = TypeTraits<Expr>::TryCastFromAnyView(&raw)) {
+    return *std::move(expr);
+  }
+  TVM_FFI_THROW(TypeError) << "Unsupported type for conversion to Expr: " << value.GetTypeKey();
+  TVM_FFI_UNREACHABLE();
+}
+
+Expr CoerceComparisonInitArgToExpr(AnyView value, AnyView other) {
+  TVMFFIAny raw = value.CopyToTVMFFIAny();
+  if (std::optional<Expr> expr = ObjectRefTypeTraitsBase<Expr>::TryCastFromAnyView(&raw)) {
+    return *std::move(expr);
+  }
+
+  TVMFFIAny other_raw = other.CopyToTVMFFIAny();
+  if (std::optional<Expr> other_expr =
+          ObjectRefTypeTraitsBase<Expr>::TryCastFromAnyView(&other_raw)) {
+    const Ty& other_ty = (*other_expr)->ty;
+    if (other_ty.defined() && other_ty.as<AnyTyObj>() == nullptr) {
+      return CoerceInitArgToExpr(value, other_ty);
+    }
+  }
+  return CoerceInitArgToExpr(value, AnyTy());
+}
+
+template <typename TObj>
+ObjectRef InitBinaryExpr(AnyView a, AnyView b, Ty ty) {
+  Expr lhs = CoerceInitArgToExpr(a, ty);
+  Expr rhs = CoerceInitArgToExpr(b, ty);
+  return ObjectRef(make_object<TObj>(std::move(ty), std::move(lhs), std::move(rhs)));
+}
+
+template <typename TObj>
+ObjectRef InitComparisonExpr(AnyView a, AnyView b, Ty ty) {
+  Expr lhs = CoerceComparisonInitArgToExpr(a, b);
+  Expr rhs = CoerceComparisonInitArgToExpr(b, a);
+  return ObjectRef(make_object<TObj>(std::move(ty), std::move(lhs), std::move(rhs)));
+}
+
+template <typename TObj>
+ObjectRef InitUnaryExpr(AnyView operand, Ty ty) {
+  Expr expr = CoerceInitArgToExpr(operand, ty);
+  return ObjectRef(make_object<TObj>(std::move(ty), std::move(expr)));
+}
+
+ObjectRef InitIfExpr(AnyView cond, AnyView then_expr, AnyView else_expr, Ty ty) {
+  Expr cond_value = CoerceInitArgToExpr(cond, PrimTy(kDefaultBoolLiteralType));
+  Expr then_value = CoerceInitArgToExpr(then_expr, ty);
+  Expr else_value = CoerceInitArgToExpr(else_expr, ty);
+  return ObjectRef(make_object<IfExprObj>(std::move(ty), std::move(cond_value),
+                                          std::move(then_value), std::move(else_value)));
+}
+
 TVM_FFI_STATIC_INIT_BLOCK() {
 #define TVM_FFI_STD_OBJECT_DEF_BASE(ObjType, RefType) \
   refl::ObjectDef<ObjType>().def_type_attr(refl::type_attr::kTextPrint, TextPrintHook<RefType>())
@@ -831,6 +994,14 @@ TVM_FFI_STATIC_INIT_BLOCK() {
       .def_type_attr(refl::type_attr::kTextPrint, TextPrintHook<RefType>()) \
       .def_type_attr(refl::type_attr::kDialectMnemonic,                     \
                      Array<String>{String("std"), String(Name)})
+
+#define TVM_FFI_STD_OBJECT_DEF_CUSTOM_INIT(ObjType, RefType, Name, InitFunc) \
+  refl::ObjectDef<ObjType>(refl::init(false))                                \
+      .def_type_attr(refl::type_attr::kTextPrint, TextPrintHook<RefType>())  \
+      .def_type_attr(refl::type_attr::kDialectMnemonic,                      \
+                     Array<String>{String("std"), String(Name)})             \
+      .def_static(refl::type_attr::kInit, InitFunc)                          \
+      .def_type_attr(refl::type_attr::kInit, InitFunc)
 
   TVM_FFI_STD_OBJECT_DEF_BASE_INIT(NodeObj, Node, refl::init(false));
   TVM_FFI_STD_OBJECT_DEF_BASE_INIT(TyObj, Ty, refl::init(false));
@@ -851,6 +1022,7 @@ TVM_FFI_STATIC_INIT_BLOCK() {
   TVM_FFI_STD_OBJECT_DEF(ModuleObj, Module, "Module").def_rw("funcs", &ModuleObj::funcs);
   TVM_FFI_STD_OBJECT_DEF(RangeObj, Range, "Range")
       .def_convert<Range>()
+      .def(refl::init<Optional<Expr>, Optional<Expr>, Optional<Expr>>())
       .def_rw("start", &RangeObj::start, refl::default_value(nullptr))
       .def_rw("stop", &RangeObj::stop, refl::default_value(nullptr))
       .def_rw("step", &RangeObj::step, refl::default_value(nullptr));
@@ -866,10 +1038,16 @@ TVM_FFI_STATIC_INIT_BLOCK() {
   TVM_FFI_STD_OBJECT_DEF(StringImmObj, StringImm, "StringImm")
       .def_rw("value", &StringImmObj::value);
 
-#define TVM_FFI_STD_DEF_BINARY(TypeName)                     \
-  TVM_FFI_STD_OBJECT_DEF(TypeName##Obj, TypeName, #TypeName) \
-      .def(refl::init<AnyView, AnyView, Ty>())               \
-      .def_rw("a", &TypeName##Obj::a)                        \
+#define TVM_FFI_STD_DEF_BINARY(TypeName)                                 \
+  TVM_FFI_STD_OBJECT_DEF_CUSTOM_INIT(TypeName##Obj, TypeName, #TypeName, \
+                                     &InitBinaryExpr<TypeName##Obj>)     \
+      .def_rw("a", &TypeName##Obj::a)                                    \
+      .def_rw("b", &TypeName##Obj::b)
+
+#define TVM_FFI_STD_DEF_COMPARISON(TypeName)                             \
+  TVM_FFI_STD_OBJECT_DEF_CUSTOM_INIT(TypeName##Obj, TypeName, #TypeName, \
+                                     &InitComparisonExpr<TypeName##Obj>) \
+      .def_rw("a", &TypeName##Obj::a)                                    \
       .def_rw("b", &TypeName##Obj::b)
 
   TVM_FFI_STD_DEF_BINARY(Add);
@@ -882,25 +1060,37 @@ TVM_FFI_STATIC_INIT_BLOCK() {
   TVM_FFI_STD_DEF_BINARY(Pow);
   TVM_FFI_STD_DEF_BINARY(LShift);
   TVM_FFI_STD_DEF_BINARY(RShift);
-  TVM_FFI_STD_DEF_BINARY(Xor);
+  TVM_FFI_STD_DEF_BINARY(BitwiseAnd);
+  TVM_FFI_STD_DEF_BINARY(BitwiseOr);
+  TVM_FFI_STD_DEF_BINARY(BitwiseXor);
   TVM_FFI_STD_DEF_BINARY(Min);
   TVM_FFI_STD_DEF_BINARY(Max);
-  TVM_FFI_STD_DEF_BINARY(Eq);
-  TVM_FFI_STD_DEF_BINARY(Ne);
-  TVM_FFI_STD_DEF_BINARY(Le);
-  TVM_FFI_STD_DEF_BINARY(Ge);
-  TVM_FFI_STD_DEF_BINARY(Gt);
-  TVM_FFI_STD_DEF_BINARY(Lt);
+  TVM_FFI_STD_DEF_COMPARISON(Eq);
+  TVM_FFI_STD_DEF_COMPARISON(Ne);
+  TVM_FFI_STD_DEF_COMPARISON(Le);
+  TVM_FFI_STD_DEF_COMPARISON(Ge);
+  TVM_FFI_STD_DEF_COMPARISON(Gt);
+  TVM_FFI_STD_DEF_COMPARISON(Lt);
   TVM_FFI_STD_DEF_BINARY(And);
   TVM_FFI_STD_DEF_BINARY(Or);
 
+#undef TVM_FFI_STD_DEF_COMPARISON
 #undef TVM_FFI_STD_DEF_BINARY
 
-  TVM_FFI_STD_OBJECT_DEF(NotObj, Not, "Not")
+  TVM_FFI_STD_OBJECT_DEF_CUSTOM_INIT(NotObj, Not, "Not", &InitUnaryExpr<NotObj>)
       .def_convert<Not>()
-      .def(refl::init<AnyView, Ty>())
       .def_rw("operand", &NotObj::operand);
+  TVM_FFI_STD_OBJECT_DEF_CUSTOM_INIT(BitwiseNotObj, BitwiseNot, "BitwiseNot",
+                                     &InitUnaryExpr<BitwiseNotObj>)
+      .def_rw("operand", &BitwiseNotObj::operand);
+  TVM_FFI_STD_OBJECT_DEF_CUSTOM_INIT(AbsObj, Abs, "Abs", &InitUnaryExpr<AbsObj>)
+      .def_rw("operand", &AbsObj::operand);
+  TVM_FFI_STD_OBJECT_DEF_CUSTOM_INIT(IfExprObj, IfExpr, "IfExpr", InitIfExpr)
+      .def_rw("cond", &IfExprObj::cond)
+      .def_rw("then_expr", &IfExprObj::then_expr)
+      .def_rw("else_expr", &IfExprObj::else_expr);
   TVM_FFI_STD_OBJECT_DEF(LoadObj, Load, "Load")
+      .def(refl::init<Expr, List<Range>, Ty>())
       .def_rw("lhs", &LoadObj::lhs)
       .def_rw("indices", &LoadObj::indices);
   TVM_FFI_STD_OBJECT_DEF(CastObj, Cast, "Cast").def_rw("value", &CastObj::value);
@@ -909,6 +1099,7 @@ TVM_FFI_STATIC_INIT_BLOCK() {
       .def_rw("args", &CallObj::args)
       .def_rw("attr", &CallObj::attr, refl::default_value(nullptr));
   TVM_FFI_STD_OBJECT_DEF(IfStmtObj, IfStmt, "IfStmt")
+      .def(refl::init<Expr, List<Stmt>, List<Stmt>, Optional<Attrs>>())
       .def_rw("cond", &IfStmtObj::cond)
       .def_rw("then_body", &IfStmtObj::then_body)
       .def_rw("else_body", &IfStmtObj::else_body);
@@ -921,19 +1112,25 @@ TVM_FFI_STATIC_INIT_BLOCK() {
       .def_rw("binds", &ScopeObj::binds, refl::AttachFieldFlag::SEqHashDefRecursive())
       .def_rw("body", &ScopeObj::body);
   TVM_FFI_STD_OBJECT_DEF(ForObj, For, "For")
+      .def(refl::init<Optional<Expr>, Optional<Expr>, Optional<Expr>, List<Var>, List<Stmt>,
+                      Optional<Attrs>>())
       .def_rw("start", &ForObj::start, refl::default_value(nullptr))
       .def_rw("stop", &ForObj::stop, refl::default_value(nullptr))
       .def_rw("step", &ForObj::step, refl::default_value(nullptr))
       .def_rw("vars", &ForObj::vars, refl::AttachFieldFlag::SEqHashDefRecursive())
       .def_rw("body", &ForObj::body);
   TVM_FFI_STD_OBJECT_DEF(WhileObj, While, "While")
+      .def(refl::init<Expr, List<Stmt>, Optional<Attrs>>())
       .def_rw("cond", &WhileObj::cond)
       .def_rw("body", &WhileObj::body);
   TVM_FFI_STD_OBJECT_DEF(StoreObj, Store, "Store")
+      .def(refl::init<Expr, List<Range>, Expr, Optional<Attrs>>())
       .def_rw("lhs", &StoreObj::lhs)
       .def_rw("indices", &StoreObj::indices)
       .def_rw("rhs", &StoreObj::rhs);
-  TVM_FFI_STD_OBJECT_DEF(AssertObj, Assert, "Assert").def_rw("cond", &AssertObj::cond);
+  TVM_FFI_STD_OBJECT_DEF(AssertObj, Assert, "Assert")
+      .def(refl::init<Expr, Optional<Attrs>>())
+      .def_rw("cond", &AssertObj::cond);
   TVM_FFI_STD_OBJECT_DEF(ReturnObj, Return, "Return").def_rw("exprs", &ReturnObj::exprs);
   TVM_FFI_STD_OBJECT_DEF(YieldObj, Yield_, "Yield").def_rw("exprs", &YieldObj::exprs);
   TVM_FFI_STD_OBJECT_DEF(BreakObj, Break, "Break");
@@ -942,6 +1139,7 @@ TVM_FFI_STATIC_INIT_BLOCK() {
       .def_rw("values", &DictAttrsObj::values);
 
 #undef TVM_FFI_STD_OBJECT_DEF
+#undef TVM_FFI_STD_OBJECT_DEF_CUSTOM_INIT
 #undef TVM_FFI_STD_OBJECT_DEF_BASE
 #undef TVM_FFI_STD_OBJECT_DEF_BASE_INIT
 }

@@ -159,7 +159,9 @@ TEST(StdDialect, DialectMnemonics) {
       {stdir::PowObj::RuntimeTypeIndex(), {"std", "Pow"}},
       {stdir::LShiftObj::RuntimeTypeIndex(), {"std", "LShift"}},
       {stdir::RShiftObj::RuntimeTypeIndex(), {"std", "RShift"}},
-      {stdir::XorObj::RuntimeTypeIndex(), {"std", "Xor"}},
+      {stdir::BitwiseAndObj::RuntimeTypeIndex(), {"std", "BitwiseAnd"}},
+      {stdir::BitwiseOrObj::RuntimeTypeIndex(), {"std", "BitwiseOr"}},
+      {stdir::BitwiseXorObj::RuntimeTypeIndex(), {"std", "BitwiseXor"}},
       {stdir::MinObj::RuntimeTypeIndex(), {"std", "Min"}},
       {stdir::MaxObj::RuntimeTypeIndex(), {"std", "Max"}},
       {stdir::EqObj::RuntimeTypeIndex(), {"std", "Eq"}},
@@ -171,6 +173,9 @@ TEST(StdDialect, DialectMnemonics) {
       {stdir::AndObj::RuntimeTypeIndex(), {"std", "And"}},
       {stdir::OrObj::RuntimeTypeIndex(), {"std", "Or"}},
       {stdir::NotObj::RuntimeTypeIndex(), {"std", "Not"}},
+      {stdir::BitwiseNotObj::RuntimeTypeIndex(), {"std", "BitwiseNot"}},
+      {stdir::AbsObj::RuntimeTypeIndex(), {"std", "Abs"}},
+      {stdir::IfExprObj::RuntimeTypeIndex(), {"std", "IfExpr"}},
       {stdir::LoadObj::RuntimeTypeIndex(), {"std", "Load"}},
       {stdir::CastObj::RuntimeTypeIndex(), {"std", "Cast"}},
       {stdir::CallObj::RuntimeTypeIndex(), {"std", "Call"}},
@@ -189,7 +194,7 @@ TEST(StdDialect, DialectMnemonics) {
   };
   std::set<std::string> seen_mnemonics;
 
-  EXPECT_EQ(cases.size(), 49);
+  EXPECT_EQ(cases.size(), 54);
   for (const auto& [type_index, expected] : cases) {
     ffi::AnyView value = dialect_mnemonic_col[type_index];
 

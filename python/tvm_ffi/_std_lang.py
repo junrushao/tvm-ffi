@@ -288,6 +288,52 @@ class WhileFactory(Frame):
         )
 
 
+def _make_binary_generic(op_cls: type) -> Callable[..., std.Expr]:
+    """Create a binary expression generic that infers its result type."""
+
+    def generic(lhs: TypingAny, rhs: TypingAny) -> std.Expr:
+        ty = _find_common_ty(lhs, rhs)
+        return op_cls(lhs, rhs, ty=ty)
+
+    return generic
+
+
+def _bool_like_ty(ty: std.Ty) -> std.Ty:
+    """Return the boolean result type matching a value type's shape/lanes."""
+    if isinstance(ty, std.AnyTy):
+        return ty
+    if isinstance(ty, std.PrimTy):
+        return std.PrimTy(std.PrimTy("bool").dtype.with_lanes(ty.dtype.lanes))
+    if isinstance(ty, std.TensorTy):
+        return std.TensorTy(list(ty.shape), std.PrimTy("bool").dtype.with_lanes(ty.dtype.lanes))
+    return std.AnyTy()
+
+
+def _make_bool_binary_generic(op_cls: type) -> Callable[..., std.Expr]:
+    """Create a binary generic whose result is bool-shaped."""
+
+    def generic(lhs: TypingAny, rhs: TypingAny) -> std.Expr:
+        value_ty = _find_common_ty(lhs, rhs)
+        return op_cls(lhs, rhs, ty=_bool_like_ty(value_ty))
+
+    return generic
+
+
+def _make_not(value: TypingAny) -> std.Not:
+    """Build logical negation from parser syntax."""
+    return std.Not(value, ty=_bool_like_ty(_parse_value_ty(value)))
+
+
+def _make_bitwise_not(value: TypingAny) -> std.BitwiseNot:
+    """Build bitwise negation from parser syntax."""
+    return std.BitwiseNot(value, ty=_parse_value_ty(value))
+
+
+def _make_if_expr(cond: TypingAny, then_expr: TypingAny, else_expr: TypingAny) -> std.IfExpr:
+    """Build a ternary expression from parser syntax."""
+    return std.IfExpr(cond, then_expr, else_expr, ty=_find_common_ty(then_expr, else_expr))
+
+
 class Std:
     """Parser language module for the standard dialect."""
 
@@ -358,7 +404,9 @@ class Std:
     Pow = std.Pow
     LShift = std.LShift
     RShift = std.RShift
-    Xor = std.Xor
+    BitwiseAnd = std.BitwiseAnd
+    BitwiseOr = std.BitwiseOr
+    BitwiseXor = std.BitwiseXor
     Min = std.Min
     Max = std.Max
     Eq = std.Eq
@@ -371,6 +419,9 @@ class Std:
     Or = std.Or
 
     Not = std.Not
+    BitwiseNot = std.BitwiseNot
+    Abs = std.Abs
+    IfExpr = std.IfExpr
     Load = std.Load
     Cast = std.Cast
     Call = std.Call
@@ -386,6 +437,36 @@ class Std:
     Continue = std.Continue
 
     @staticmethod
+    def func(**attrs: TypingAny) -> FuncFactory:
+        """Create the parser frame used by ``@std.func`` syntax."""
+        return FuncFactory(**attrs)
+
+    @staticmethod
+    def module(**attrs: TypingAny) -> ModuleFactory:
+        """Create the parser frame used by ``@std.module`` syntax."""
+        return ModuleFactory(**attrs)
+
+    @staticmethod
+    def while_(cond: TypingAny, **attrs: TypingAny) -> WhileFactory:
+        """Create the parser frame used by ``with std.while_(...)`` syntax."""
+        return WhileFactory(cond, **attrs)
+
+    @staticmethod
+    def min(lhs: TypingAny, rhs: TypingAny) -> std.Min:
+        """Create the parser-visible ``min`` expression."""
+        return std.Min(lhs, rhs, ty=_find_common_ty(lhs, rhs))
+
+    @staticmethod
+    def max(lhs: TypingAny, rhs: TypingAny) -> std.Max:
+        """Create the parser-visible ``max`` expression."""
+        return std.Max(lhs, rhs, ty=_find_common_ty(lhs, rhs))
+
+    @staticmethod
+    def abs(value: TypingAny) -> std.Abs:
+        """Create the parser-visible ``abs`` expression."""
+        return std.Abs(value, ty=_parse_value_ty(value))
+
+    @staticmethod
     def range(*args: TypingAny, **attrs: TypingAny) -> ForFactory:
         """Create a loop frame for parser-visible Python range loops."""
         if len(args) == 1:
@@ -399,57 +480,18 @@ class Std:
         return ForFactory(start, stop, step, **attrs)
 
     @staticmethod
-    def func(*args: TypingAny, **kwargs: TypingAny) -> FuncFactory:
-        """Create the parser frame used by ``@std.func`` decorators."""
-        if args:
-            raise TypeError("std.func decorator does not accept positional arguments")
-        return FuncFactory(**kwargs)
-
-    @staticmethod
-    def module(*args: TypingAny, **kwargs: TypingAny) -> ModuleFactory:
-        """Create the parser frame used by ``@std.module`` decorators."""
-        if args:
-            raise TypeError("std.module decorator does not accept positional arguments")
-        return ModuleFactory(**kwargs)
-
-    @staticmethod
     def scope(*binds: TypingAny, **kwargs: TypingAny) -> ScopeFactory:
         """Create the parser frame used by ``with std.scope(...)`` syntax."""
         return ScopeFactory(_normalize_binds(binds), **kwargs)
 
     @staticmethod
-    def for_(range_: TypingAny = None, *binds: TypingAny, **kwargs: TypingAny) -> ForFactory:
+    def for_(range_: TypingAny = None, **kwargs: TypingAny) -> ForFactory:
         """Create the parser frame used by explicit ``std.for_(...)`` loop headers."""
-        if binds:
-            raise TypeError("std.for_ does not accept header bindings")
         if isinstance(range_, std.Range):
             frame = ForFactory(range_.start, range_.stop, range_.step, **kwargs)
         else:
             frame = ForFactory(None, range_, None, **kwargs)
         return frame
-
-    @staticmethod
-    def while_(cond: TypingAny, *binds: TypingAny, **kwargs: TypingAny) -> WhileFactory:
-        """Create the parser frame used by ``with std.while_(...)`` syntax."""
-        if binds:
-            raise TypeError("std.while_ does not accept header bindings")
-        return WhileFactory(cond, **kwargs)
-
-    @staticmethod
-    def min(*args: TypingAny) -> std.Min:
-        """Implement parser-visible ``min`` as the standard dialect min expression."""
-        if len(args) != 2:
-            raise TypeError("std.min expects exactly two arguments")
-        lhs, rhs = args
-        return Std.__ffi_generics__["min"](lhs, rhs)
-
-    @staticmethod
-    def max(*args: TypingAny) -> std.Max:
-        """Implement parser-visible ``max`` as the standard dialect max expression."""
-        if len(args) != 2:
-            raise TypeError("std.max expects exactly two arguments")
-        lhs, rhs = args
-        return Std.__ffi_generics__["max"](lhs, rhs)
 
 
 def _same_ty(lhs: std.Ty, rhs: std.Ty) -> bool:
@@ -689,20 +731,11 @@ def _make_mod(lhs: TypingAny, rhs: TypingAny) -> std.FloorMod | std.CMod:
     return std.FloorMod(lhs, rhs, ty=ty)
 
 
-def _make_binary_generic(op_cls: type) -> Callable[..., std.Expr]:
-    """Create a binary expression generic that infers its result type."""
-
-    def generic(lhs: TypingAny, rhs: TypingAny) -> std.Expr:
-        ty = _find_common_ty(lhs, rhs)
-        return op_cls(lhs, rhs, ty=ty)
-
-    return generic
-
-
 Std.__ffi_globals__ = {
     "range": Std.range,
     "min": Std.min,
     "max": Std.max,
+    "abs": Std.abs,
 }
 
 # Type shorthands for the generic comments below:
@@ -724,31 +757,32 @@ Std.__ffi_generics__ = {
     "__pow__": _make_binary_generic(std.Pow),
     "__lshift__": _make_binary_generic(std.LShift),
     "__rshift__": _make_binary_generic(std.RShift),
-    "__xor__": _make_binary_generic(std.Xor),
+    "__and__": _make_binary_generic(std.BitwiseAnd),
+    "__or__": _make_binary_generic(std.BitwiseOr),
+    "__xor__": _make_binary_generic(std.BitwiseXor),
     "min": _make_binary_generic(std.Min),
     "max": _make_binary_generic(std.Max),
     # Comparison/logical generics: (lhs: Value, rhs: Value) -> std comparison/logical expr.
-    # "__and__"/"__or__" are bitwise Python syntax; "__logical_*__" are and/or syntax.
-    "__eq__": _make_binary_generic(std.Eq),
-    "__ne__": _make_binary_generic(std.Ne),
-    "__le__": _make_binary_generic(std.Le),
-    "__ge__": _make_binary_generic(std.Ge),
-    "__gt__": _make_binary_generic(std.Gt),
-    "__lt__": _make_binary_generic(std.Lt),
-    "__and__": _make_binary_generic(std.And),
-    "__or__": _make_binary_generic(std.Or),
-    "__logical_and__": _make_binary_generic(std.And),
-    "__logical_or__": _make_binary_generic(std.Or),
+    "__eq__": _make_bool_binary_generic(std.Eq),
+    "__ne__": _make_bool_binary_generic(std.Ne),
+    "__le__": _make_bool_binary_generic(std.Le),
+    "__ge__": _make_bool_binary_generic(std.Ge),
+    "__gt__": _make_bool_binary_generic(std.Gt),
+    "__lt__": _make_bool_binary_generic(std.Lt),
+    "__logical_and__": _make_bool_binary_generic(std.And),
+    "__logical_or__": _make_bool_binary_generic(std.Or),
     # Unary expression generics:
-    # - "__invert__"/"__not__": (value: Value) -> std.Not.
+    # - "__invert__": (value: Value) -> std.BitwiseNot.
+    # - "__not__": (value: Value) -> std.Not.
     # - "__neg__": (value: Value) -> int | float | std.Sub.
     # - "__pos__": (value: Value) -> Value.
-    "__invert__": lambda value: std.Not(value, ty=_parse_value_ty(value)),
-    "__not__": lambda value: std.Not(value, ty=_parse_value_ty(value)),
+    "__invert__": _make_bitwise_not,
+    "__not__": _make_not,
     "__neg__": lambda value: (
         -value if isinstance(value, (int, float)) else std.Sub(0, value, ty=_parse_value_ty(value))
     ),
     "__pos__": lambda value: value,
+    "__if_then_else__": _make_if_expr,
     # Access/call/cast generics:
     # - "__load__": (base: std.Expr, *indices: Index) -> std.Load.
     # - "__slice__": (start: ExprLike | None, stop: ExprLike | None,

@@ -49,7 +49,9 @@
  *     |-- Load
  *     |-- Call
  *     |-- BoolImm / IntImm / FloatImm / StringImm
- *     |-- Add/Sub/Mul/Xor/Pow, CDiv/CMod/FloorDiv/FloorMod, LShift/RShift, Min/Max
+ *     |-- Add/Sub/Mul/Pow, CDiv/CMod/FloorDiv/FloorMod, LShift/RShift, Min/Max
+ *     |-- BitwiseAnd / BitwiseOr / BitwiseXor / BitwiseNot
+ *     |-- IfExpr / Abs
  *     |-- Eq / Ne / Le / Ge / Gt / Lt
  *     `-- And / Or / Not
  */
@@ -66,24 +68,13 @@
 #include <tvm/ffi/optional.h>
 #include <tvm/ffi/string.h>
 
+#include <optional>
+#include <string>
 #include <utility>
 
 namespace tvm {
 namespace ffi {
 namespace std_ {
-struct Ty;
-struct Expr;
-namespace details {
-inline void CheckDerivedOperandTy(const char* node_name, const char* operand_name,
-                                  const Ty& result_ty, const Expr& operand);
-inline void CheckBinaryDerivedOperandTys(const char* node_name, const Ty& result_ty, const Expr& a,
-                                         const Expr& b);
-inline Expr CoerceInitArgToExpr(AnyView value, const Ty& result_ty);
-template <typename Obj>
-inline ObjectPtr<Obj> MakeBinaryObj(const char* node_name, Ty ty, Expr a, Expr b);
-template <typename Obj>
-inline ObjectPtr<Obj> MakeUnaryObj(const char* node_name, Ty ty, Expr operand);
-}  // namespace details
 
 /*! \brief Base object for all standard dialect nodes. */
 struct NodeObj : public Object {
@@ -158,11 +149,7 @@ template <>
 inline constexpr bool use_default_type_traits_v<std_::Attrs> = false;
 
 template <>
-struct TypeTraits<std_::Attrs> : public ObjectRefTypeTraitsBase<std_::Attrs> {
-  using Base = ObjectRefTypeTraitsBase<std_::Attrs>;
-
-  TVM_FFI_INLINE static std::optional<std_::Attrs> TryCastFromAnyView(const TVMFFIAny* src);
-};
+struct TypeTraits<std_::Attrs>;
 
 namespace std_ {
 
@@ -210,12 +197,15 @@ struct Expr : public Node {
 template <>
 inline constexpr bool use_default_type_traits_v<std_::Expr> = false;
 
+/// \cond Doxygen_Suppress
+namespace details {
 template <>
-struct TypeTraits<std_::Expr> : public ObjectRefTypeTraitsBase<std_::Expr> {
-  using Base = ObjectRefTypeTraitsBase<std_::Expr>;
+inline constexpr bool storage_enabled_v<std_::Expr> = true;
+}  // namespace details
 
-  TVM_FFI_INLINE static std::optional<std_::Expr> TryCastFromAnyView(const TVMFFIAny* src);
-};
+template <>
+struct TypeTraits<std_::Expr>;
+/// \endcond
 
 namespace std_ {
 
@@ -310,8 +300,7 @@ struct RangeObj : public AggregateObj {
 
   /// \cond Doxygen_Suppress
   RangeObj() = default;
-  explicit RangeObj(Optional<Expr> start, Optional<Expr> stop = {}, Optional<Expr> step = {})
-      : start(std::move(start)), stop(std::move(stop)), step(std::move(step)) {}
+  explicit RangeObj(Optional<Expr> start, Optional<Expr> stop = {}, Optional<Expr> step = {});
 
   TVM_FFI_DECLARE_OBJECT_INFO("ffi.std.Range", RangeObj, AggregateObj);
   /// \endcond
@@ -335,12 +324,15 @@ struct Range : public Aggregate {
 template <>
 inline constexpr bool use_default_type_traits_v<std_::Range> = false;
 
+/// \cond Doxygen_Suppress
+namespace details {
 template <>
-struct TypeTraits<std_::Range> : public ObjectRefTypeTraitsBase<std_::Range> {
-  using Base = ObjectRefTypeTraitsBase<std_::Range>;
+inline constexpr bool storage_enabled_v<std_::Range> = true;
+}  // namespace details
 
-  TVM_FFI_INLINE static std::optional<std_::Range> TryCastFromAnyView(const TVMFFIAny* src);
-};
+template <>
+struct TypeTraits<std_::Range>;
+/// \endcond
 
 namespace std_ {
 
@@ -432,6 +424,27 @@ struct TensorTy : public Ty {
   /// \endcond
 };
 
+namespace details {
+inline void CheckArithmeticTys(const char* node_name, const Ty& result_ty, const Expr& a,
+                               const Expr& b);
+inline void CheckComparisonTys(const char* node_name, const Ty& result_ty, const Expr& a,
+                               const Expr& b);
+inline void CheckBitwiseBinaryTys(const char* node_name, const Ty& result_ty, const Expr& a,
+                                  const Expr& b);
+inline void CheckLogicalBinaryTys(const char* node_name, const Ty& result_ty, const Expr& a,
+                                  const Expr& b);
+inline void CheckArithmeticUnaryTy(const char* node_name, const Ty& result_ty, const Expr& operand);
+inline void CheckBitwiseUnaryTy(const char* node_name, const Ty& result_ty, const Expr& operand);
+inline void CheckLogicalUnaryTy(const char* node_name, const Ty& result_ty, const Expr& operand);
+inline void CheckIfExprTy(const Ty& result_ty, const Expr& cond, const Expr& then_expr,
+                          const Expr& else_expr);
+inline void CheckRangeDTypes(const char* node_name, const Optional<Expr>& start,
+                             const Optional<Expr>& stop, const Optional<Expr>& step);
+inline void CheckLoadTy(const Ty& result_ty, const Expr& lhs, const List<Range>& indices);
+inline void CheckStoreTy(const Expr& lhs, const List<Range>& indices, const Expr& rhs);
+inline void CheckScalarBoolCond(const char* node_name, const Expr& cond);
+}  // namespace details
+
 /*! \brief Data object for a boolean literal. */
 struct BoolImmObj : public ExprObj {
   /*! \brief Boolean literal value. */
@@ -522,62 +535,58 @@ struct StringImm : public Expr {
 };
 
 /*! \brief Define the object and reference wrapper for a standard binary expression node. */
-#define TVM_FFI_STD_BINARY_EXPR(TypeName)                                                        \
-  /*! \brief Data object for a binary expression. */                                             \
-  struct TypeName##Obj : public ExprObj {                                                        \
-    /*! \brief Left operand. */                                                                  \
-    Expr a;                                                                                      \
-    /*! \brief Right operand. */                                                                 \
-    Expr b;                                                                                      \
-                                                                                                 \
-    /** \cond Doxygen_Suppress */                                                                \
-    TypeName##Obj() = default;                                                                   \
-    TypeName##Obj(Ty ty, Expr a, Expr b)                                                         \
-        : ExprObj(std::move(ty)), a(std::move(a)), b(std::move(b)) {                             \
-      details::CheckBinaryDerivedOperandTys(#TypeName, this->ty, this->a, this->b);              \
-    }                                                                                            \
-    TypeName##Obj(Expr a, Expr b, Ty ty)                                                         \
-        : TypeName##Obj(std::move(ty), std::move(a), std::move(b)) {}                            \
-    TypeName##Obj(AnyView a, AnyView b, const Ty& ty)                                            \
-        : TypeName##Obj(ty, details::CoerceInitArgToExpr(a, ty),                                 \
-                        details::CoerceInitArgToExpr(b, ty)) {}                                  \
-                                                                                                 \
-    TVM_FFI_DECLARE_OBJECT_INFO("ffi.std." #TypeName, TypeName##Obj, ExprObj);                   \
-    /** \endcond */                                                                              \
-  };                                                                                             \
-                                                                                                 \
-  /*! \brief Reference wrapper for a binary expression. */                                       \
-  struct TypeName : public Expr {                                                                \
-    /*! \brief Construct a binary expression. */                                                 \
-    TypeName(Ty ty, Expr a, Expr b)                                                              \
-        : TypeName(details::MakeBinaryObj<TypeName##Obj>(#TypeName, std::move(ty), std::move(a), \
-                                                         std::move(b))) {}                       \
-    /** \cond Doxygen_Suppress */                                                                \
-    TVM_FFI_DEFINE_OBJECT_REF_METHODS_NULLABLE(TypeName, Expr, TypeName##Obj);                   \
-    /** \endcond */                                                                              \
+#define TVM_FFI_STD_BINARY_EXPR(TypeName, CheckFunc)                                         \
+  /*! \brief Data object for a binary expression. */                                         \
+  struct TypeName##Obj : public ExprObj {                                                    \
+    /*! \brief Left operand. */                                                              \
+    Expr a;                                                                                  \
+    /*! \brief Right operand. */                                                             \
+    Expr b;                                                                                  \
+                                                                                             \
+    /** \cond Doxygen_Suppress */                                                            \
+    TypeName##Obj() = default;                                                               \
+    TypeName##Obj(Ty ty, Expr a, Expr b)                                                     \
+        : ExprObj(std::move(ty)), a(std::move(a)), b(std::move(b)) {                         \
+      details::CheckFunc(#TypeName, this->ty, this->a, this->b);                             \
+    }                                                                                        \
+                                                                                             \
+    TVM_FFI_DECLARE_OBJECT_INFO("ffi.std." #TypeName, TypeName##Obj, ExprObj);               \
+    /** \endcond */                                                                          \
+  };                                                                                         \
+                                                                                             \
+  /*! \brief Reference wrapper for a binary expression. */                                   \
+  struct TypeName : public Expr {                                                            \
+    /*! \brief Construct a binary expression. */                                             \
+    TypeName(Ty ty, Expr a, Expr b)                                                          \
+        : TypeName(make_object<TypeName##Obj>(std::move(ty), std::move(a), std::move(b))) {} \
+    /** \cond Doxygen_Suppress */                                                            \
+    TVM_FFI_DEFINE_OBJECT_REF_METHODS_NULLABLE(TypeName, Expr, TypeName##Obj);               \
+    /** \endcond */                                                                          \
   }
 
-TVM_FFI_STD_BINARY_EXPR(Add);
-TVM_FFI_STD_BINARY_EXPR(Sub);
-TVM_FFI_STD_BINARY_EXPR(Mul);
-TVM_FFI_STD_BINARY_EXPR(CDiv);
-TVM_FFI_STD_BINARY_EXPR(FloorDiv);
-TVM_FFI_STD_BINARY_EXPR(FloorMod);
-TVM_FFI_STD_BINARY_EXPR(CMod);
-TVM_FFI_STD_BINARY_EXPR(Pow);
-TVM_FFI_STD_BINARY_EXPR(LShift);
-TVM_FFI_STD_BINARY_EXPR(RShift);
-TVM_FFI_STD_BINARY_EXPR(Xor);
-TVM_FFI_STD_BINARY_EXPR(Min);
-TVM_FFI_STD_BINARY_EXPR(Max);
-TVM_FFI_STD_BINARY_EXPR(Eq);
-TVM_FFI_STD_BINARY_EXPR(Ne);
-TVM_FFI_STD_BINARY_EXPR(Le);
-TVM_FFI_STD_BINARY_EXPR(Ge);
-TVM_FFI_STD_BINARY_EXPR(Gt);
-TVM_FFI_STD_BINARY_EXPR(Lt);
-TVM_FFI_STD_BINARY_EXPR(And);
-TVM_FFI_STD_BINARY_EXPR(Or);
+TVM_FFI_STD_BINARY_EXPR(Add, CheckArithmeticTys);
+TVM_FFI_STD_BINARY_EXPR(Sub, CheckArithmeticTys);
+TVM_FFI_STD_BINARY_EXPR(Mul, CheckArithmeticTys);
+TVM_FFI_STD_BINARY_EXPR(CDiv, CheckArithmeticTys);
+TVM_FFI_STD_BINARY_EXPR(FloorDiv, CheckArithmeticTys);
+TVM_FFI_STD_BINARY_EXPR(FloorMod, CheckArithmeticTys);
+TVM_FFI_STD_BINARY_EXPR(CMod, CheckArithmeticTys);
+TVM_FFI_STD_BINARY_EXPR(Pow, CheckArithmeticTys);
+TVM_FFI_STD_BINARY_EXPR(LShift, CheckArithmeticTys);
+TVM_FFI_STD_BINARY_EXPR(RShift, CheckArithmeticTys);
+TVM_FFI_STD_BINARY_EXPR(BitwiseAnd, CheckBitwiseBinaryTys);
+TVM_FFI_STD_BINARY_EXPR(BitwiseOr, CheckBitwiseBinaryTys);
+TVM_FFI_STD_BINARY_EXPR(BitwiseXor, CheckBitwiseBinaryTys);
+TVM_FFI_STD_BINARY_EXPR(Min, CheckArithmeticTys);
+TVM_FFI_STD_BINARY_EXPR(Max, CheckArithmeticTys);
+TVM_FFI_STD_BINARY_EXPR(Eq, CheckComparisonTys);
+TVM_FFI_STD_BINARY_EXPR(Ne, CheckComparisonTys);
+TVM_FFI_STD_BINARY_EXPR(Le, CheckComparisonTys);
+TVM_FFI_STD_BINARY_EXPR(Ge, CheckComparisonTys);
+TVM_FFI_STD_BINARY_EXPR(Gt, CheckComparisonTys);
+TVM_FFI_STD_BINARY_EXPR(Lt, CheckComparisonTys);
+TVM_FFI_STD_BINARY_EXPR(And, CheckLogicalBinaryTys);
+TVM_FFI_STD_BINARY_EXPR(Or, CheckLogicalBinaryTys);
 
 #undef TVM_FFI_STD_BINARY_EXPR
 
@@ -589,10 +598,8 @@ struct NotObj : public ExprObj {
   /// \cond Doxygen_Suppress
   NotObj() = default;
   NotObj(Ty ty, Expr operand) : ExprObj(std::move(ty)), operand(std::move(operand)) {
-    details::CheckDerivedOperandTy("Not", "operand", this->ty, this->operand);
+    details::CheckLogicalUnaryTy("Not", this->ty, this->operand);
   }
-  NotObj(Expr operand, Ty ty) : NotObj(std::move(ty), std::move(operand)) {}
-  NotObj(AnyView operand, const Ty& ty) : NotObj(ty, details::CoerceInitArgToExpr(operand, ty)) {}
 
   TVM_FFI_DECLARE_OBJECT_INFO("ffi.std.Not", NotObj, ExprObj);
   /// \endcond
@@ -601,13 +608,98 @@ struct NotObj : public ExprObj {
 /*! \brief Reference wrapper for logical negation. */
 struct Not : public Expr {
   /*! \brief Construct a logical negation expression. */
-  Not(Ty ty, Expr operand)
-      : Not(details::MakeUnaryObj<NotObj>("Not", std::move(ty), std::move(operand))) {}
+  Not(Ty ty, Expr operand) : Not(make_object<NotObj>(std::move(ty), std::move(operand))) {}
   /*! \brief Convert a general FFI value into a logical negation expression. */
   static Not FromAny(AnyView src);
 
   /// \cond Doxygen_Suppress
   TVM_FFI_DEFINE_OBJECT_REF_METHODS_NULLABLE(Not, Expr, NotObj);
+  /// \endcond
+};
+
+/*! \brief Data object for bitwise negation. */
+struct BitwiseNotObj : public ExprObj {
+  /*! \brief Operand to negate. */
+  Expr operand;
+
+  /// \cond Doxygen_Suppress
+  BitwiseNotObj() = default;
+  BitwiseNotObj(Ty ty, Expr operand) : ExprObj(std::move(ty)), operand(std::move(operand)) {
+    details::CheckBitwiseUnaryTy("BitwiseNot", this->ty, this->operand);
+  }
+
+  TVM_FFI_DECLARE_OBJECT_INFO("ffi.std.BitwiseNot", BitwiseNotObj, ExprObj);
+  /// \endcond
+};
+
+/*! \brief Reference wrapper for bitwise negation. */
+struct BitwiseNot : public Expr {
+  /*! \brief Construct a bitwise negation expression. */
+  BitwiseNot(Ty ty, Expr operand)
+      : BitwiseNot(make_object<BitwiseNotObj>(std::move(ty), std::move(operand))) {}
+
+  /// \cond Doxygen_Suppress
+  TVM_FFI_DEFINE_OBJECT_REF_METHODS_NULLABLE(BitwiseNot, Expr, BitwiseNotObj);
+  /// \endcond
+};
+
+/*! \brief Data object for absolute value. */
+struct AbsObj : public ExprObj {
+  /*! \brief Operand. */
+  Expr operand;
+
+  /// \cond Doxygen_Suppress
+  AbsObj() = default;
+  AbsObj(Ty ty, Expr operand) : ExprObj(std::move(ty)), operand(std::move(operand)) {
+    details::CheckArithmeticUnaryTy("Abs", this->ty, this->operand);
+  }
+
+  TVM_FFI_DECLARE_OBJECT_INFO("ffi.std.Abs", AbsObj, ExprObj);
+  /// \endcond
+};
+
+/*! \brief Reference wrapper for absolute value. */
+struct Abs : public Expr {
+  /*! \brief Construct an absolute value expression. */
+  Abs(Ty ty, Expr operand) : Abs(make_object<AbsObj>(std::move(ty), std::move(operand))) {}
+
+  /// \cond Doxygen_Suppress
+  TVM_FFI_DEFINE_OBJECT_REF_METHODS_NULLABLE(Abs, Expr, AbsObj);
+  /// \endcond
+};
+
+/*! \brief Data object for a ternary expression. */
+struct IfExprObj : public ExprObj {
+  /*! \brief Condition expression. */
+  Expr cond;
+  /*! \brief Expression used when the condition is true. */
+  Expr then_expr;
+  /*! \brief Expression used when the condition is false. */
+  Expr else_expr;
+
+  /// \cond Doxygen_Suppress
+  IfExprObj() = default;
+  IfExprObj(Ty ty, Expr cond, Expr then_expr, Expr else_expr)
+      : ExprObj(std::move(ty)),
+        cond(std::move(cond)),
+        then_expr(std::move(then_expr)),
+        else_expr(std::move(else_expr)) {
+    details::CheckIfExprTy(this->ty, this->cond, this->then_expr, this->else_expr);
+  }
+
+  TVM_FFI_DECLARE_OBJECT_INFO("ffi.std.IfExpr", IfExprObj, ExprObj);
+  /// \endcond
+};
+
+/*! \brief Reference wrapper for a ternary expression. */
+struct IfExpr : public Expr {
+  /*! \brief Construct a ternary expression. */
+  IfExpr(Ty ty, Expr cond, Expr then_expr, Expr else_expr)
+      : IfExpr(make_object<IfExprObj>(std::move(ty), std::move(cond), std::move(then_expr),
+                                      std::move(else_expr))) {}
+
+  /// \cond Doxygen_Suppress
+  TVM_FFI_DEFINE_OBJECT_REF_METHODS_NULLABLE(IfExpr, Expr, IfExprObj);
   /// \endcond
 };
 
@@ -617,11 +709,7 @@ template <>
 inline constexpr bool use_default_type_traits_v<std_::Not> = false;
 
 template <>
-struct TypeTraits<std_::Not> : public ObjectRefTypeTraitsBase<std_::Not> {
-  using Base = ObjectRefTypeTraitsBase<std_::Not>;
-
-  TVM_FFI_INLINE static std::optional<std_::Not> TryCastFromAnyView(const TVMFFIAny* src);
-};
+struct TypeTraits<std_::Not>;
 
 namespace std_ {
 
@@ -635,7 +723,11 @@ struct LoadObj : public ExprObj {
   /// \cond Doxygen_Suppress
   LoadObj() = default;
   LoadObj(Ty ty, Expr lhs, List<Range> indices)
-      : ExprObj(std::move(ty)), lhs(std::move(lhs)), indices(std::move(indices)) {}
+      : ExprObj(std::move(ty)), lhs(std::move(lhs)), indices(std::move(indices)) {
+    details::CheckLoadTy(this->ty, this->lhs, this->indices);
+  }
+  LoadObj(Expr lhs, List<Range> indices, Ty ty)
+      : LoadObj(std::move(ty), std::move(lhs), std::move(indices)) {}
 
   TVM_FFI_DECLARE_OBJECT_INFO("ffi.std.Load", LoadObj, ExprObj);
   /// \endcond
@@ -716,8 +808,13 @@ struct IfStmtObj : public StmtObj {
 
   /// \cond Doxygen_Suppress
   IfStmtObj() = default;
-  IfStmtObj(Expr cond, List<Stmt> then_body, List<Stmt> else_body)
-      : cond(std::move(cond)), then_body(std::move(then_body)), else_body(std::move(else_body)) {}
+  IfStmtObj(Expr cond, List<Stmt> then_body, List<Stmt> else_body, Optional<Attrs> attrs = {})
+      : StmtObj(std::move(attrs)),
+        cond(std::move(cond)),
+        then_body(std::move(then_body)),
+        else_body(std::move(else_body)) {
+    details::CheckScalarBoolCond("IfStmt", this->cond);
+  }
 
   TVM_FFI_DECLARE_OBJECT_INFO("ffi.std.IfStmt", IfStmtObj, StmtObj);
   /// \endcond
@@ -832,7 +929,13 @@ struct ForObj : public StmtObj {
         stop(std::move(stop)),
         step(std::move(step)),
         vars(std::move(vars)),
-        body(std::move(body)) {}
+        body(std::move(body)) {
+    details::CheckRangeDTypes("For", this->start, this->stop, this->step);
+  }
+  ForObj(Optional<Expr> start, Optional<Expr> stop, Optional<Expr> step, List<Var> vars,
+         List<Stmt> body, Optional<Attrs> attrs = {})
+      : ForObj(std::move(start), std::move(stop), std::move(step), std::move(attrs),
+               std::move(vars), std::move(body)) {}
 
   TVM_FFI_DECLARE_OBJECT_INFO("ffi.std.For", ForObj, StmtObj);
   /// \endcond
@@ -860,7 +963,11 @@ struct WhileObj : public StmtObj {
   /// \cond Doxygen_Suppress
   WhileObj() = default;
   WhileObj(Expr cond, Optional<Attrs> attrs, List<Stmt> body)
-      : StmtObj(std::move(attrs)), cond(std::move(cond)), body(std::move(body)) {}
+      : StmtObj(std::move(attrs)), cond(std::move(cond)), body(std::move(body)) {
+    details::CheckScalarBoolCond("While", this->cond);
+  }
+  WhileObj(Expr cond, List<Stmt> body, Optional<Attrs> attrs = {})
+      : WhileObj(std::move(cond), std::move(attrs), std::move(body)) {}
 
   TVM_FFI_DECLARE_OBJECT_INFO("ffi.std.While", WhileObj, StmtObj);
   /// \endcond
@@ -887,8 +994,13 @@ struct StoreObj : public StmtObj {
 
   /// \cond Doxygen_Suppress
   StoreObj() = default;
-  StoreObj(Expr lhs, List<Range> indices, Expr rhs)
-      : lhs(std::move(lhs)), indices(std::move(indices)), rhs(std::move(rhs)) {}
+  StoreObj(Expr lhs, List<Range> indices, Expr rhs, Optional<Attrs> attrs = {})
+      : StmtObj(std::move(attrs)),
+        lhs(std::move(lhs)),
+        indices(std::move(indices)),
+        rhs(std::move(rhs)) {
+    details::CheckStoreTy(this->lhs, this->indices, this->rhs);
+  }
 
   TVM_FFI_DECLARE_OBJECT_INFO("ffi.std.Store", StoreObj, StmtObj);
   /// \endcond
@@ -911,7 +1023,10 @@ struct AssertObj : public StmtObj {
 
   /// \cond Doxygen_Suppress
   AssertObj() = default;
-  explicit AssertObj(Expr cond) : cond(std::move(cond)) {}
+  explicit AssertObj(Expr cond, Optional<Attrs> attrs = {})
+      : StmtObj(std::move(attrs)), cond(std::move(cond)) {
+    details::CheckScalarBoolCond("Assert", this->cond);
+  }
 
   TVM_FFI_DECLARE_OBJECT_INFO("ffi.std.Assert", AssertObj, StmtObj);
   /// \endcond
@@ -1033,6 +1148,34 @@ struct DictAttrs : public Attrs {
 
 }  // namespace std_
 
+template <>
+struct TypeTraits<std_::Attrs> : public ObjectRefTypeTraitsBase<std_::Attrs> {
+  using Base = ObjectRefTypeTraitsBase<std_::Attrs>;
+
+  TVM_FFI_INLINE static std::optional<std_::Attrs> TryCastFromAnyView(const TVMFFIAny* src);
+};
+
+template <>
+struct TypeTraits<std_::Expr> : public ObjectRefTypeTraitsBase<std_::Expr> {
+  using Base = ObjectRefTypeTraitsBase<std_::Expr>;
+
+  TVM_FFI_INLINE static std::optional<std_::Expr> TryCastFromAnyView(const TVMFFIAny* src);
+};
+
+template <>
+struct TypeTraits<std_::Range> : public ObjectRefTypeTraitsBase<std_::Range> {
+  using Base = ObjectRefTypeTraitsBase<std_::Range>;
+
+  TVM_FFI_INLINE static std::optional<std_::Range> TryCastFromAnyView(const TVMFFIAny* src);
+};
+
+template <>
+struct TypeTraits<std_::Not> : public ObjectRefTypeTraitsBase<std_::Not> {
+  using Base = ObjectRefTypeTraitsBase<std_::Not>;
+
+  TVM_FFI_INLINE static std::optional<std_::Not> TryCastFromAnyView(const TVMFFIAny* src);
+};
+
 inline std::optional<std_::Attrs> TypeTraits<std_::Attrs>::TryCastFromAnyView(
     const TVMFFIAny* src) {
   if (src->type_index == TypeIndex::kTVMFFINone) {
@@ -1144,143 +1287,322 @@ inline Not Not::FromAny(AnyView src) {
 }
 
 namespace details {
-inline Expr CoerceInitArgToExpr(AnyView value, const Ty& result_ty) {
-  TVMFFIAny raw = value.CopyToTVMFFIAny();
-  if (std::optional<Expr> expr = ObjectRefTypeTraitsBase<Expr>::TryCastFromAnyView(&raw)) {
-    return *std::move(expr);
-  }
+inline void CheckExprDefined(const char* node_name, const char* operand_name, const Expr& expr) {
+  TVM_FFI_CHECK(expr.defined(), TypeError)
+      << node_name << " operand `" << operand_name << "` must be defined";
+  TVM_FFI_CHECK(expr->ty.defined(), TypeError)
+      << node_name << " operand `" << operand_name << "` type must be defined";
+}
 
-  if (const PrimTyObj* prim_ty = result_ty.as<PrimTyObj>()) {
-    if (raw.type_index == TypeIndex::kTVMFFIBool) {
-      bool bool_value = TypeTraits<bool>::CopyFromAnyViewAfterCheck(&raw);
-      if (DTypeIsBool(prim_ty->dtype)) {
-        return BoolImm(result_ty, bool_value);
-      }
-      if (DTypeIsInt(prim_ty->dtype)) {
-        return IntImm(result_ty, static_cast<int64_t>(bool_value));
-      }
-      if (DTypeIsFloat(prim_ty->dtype)) {
-        return FloatImm(result_ty, static_cast<double>(bool_value));
-      }
-    }
-    if (std::optional<int64_t> int_value = TypeTraits<int64_t>::TryCastFromAnyView(&raw)) {
-      if (DTypeIsBool(prim_ty->dtype)) {
-        return BoolImm(result_ty, static_cast<bool>(*int_value));
-      }
-      if (DTypeIsInt(prim_ty->dtype)) {
-        return IntImm(result_ty, *int_value);
-      }
-      if (DTypeIsFloat(prim_ty->dtype)) {
-        return FloatImm(result_ty, static_cast<double>(*int_value));
-      }
-    }
-    if (raw.type_index == TypeIndex::kTVMFFIFloat) {
-      double float_value = TypeTraits<double>::CopyFromAnyViewAfterCheck(&raw);
-      if (DTypeIsBool(prim_ty->dtype)) {
-        return BoolImm(result_ty, static_cast<bool>(float_value));
-      }
-      if (DTypeIsInt(prim_ty->dtype)) {
-        return IntImm(result_ty, static_cast<int64_t>(float_value));
-      }
-      if (DTypeIsFloat(prim_ty->dtype)) {
-        return FloatImm(result_ty, float_value);
-      }
-    }
+inline std::optional<DLDataType> DTypeFromTy(const char* node_name, const std::string& ty_name,
+                                             const Ty& ty) {
+  TVM_FFI_CHECK(ty.defined(), TypeError) << node_name << " " << ty_name << " type must be defined";
+  if (ty.as<AnyTyObj>() != nullptr) {
+    return std::nullopt;
   }
-
-  if (result_ty.as<AnyTyObj>() != nullptr) {
-    if (raw.type_index == TypeIndex::kTVMFFIBool) {
-      return BoolImm(result_ty, TypeTraits<bool>::CopyFromAnyViewAfterCheck(&raw));
-    }
-    if (std::optional<int64_t> int_value = TypeTraits<int64_t>::TryCastFromAnyView(&raw)) {
-      return IntImm(result_ty, *int_value);
-    }
-    if (raw.type_index == TypeIndex::kTVMFFIFloat) {
-      return FloatImm(result_ty, TypeTraits<double>::CopyFromAnyViewAfterCheck(&raw));
-    }
-    if (std::optional<String> str_value = TypeTraits<String>::TryCastFromAnyView(&raw)) {
-      return StringImm(result_ty, *std::move(str_value));
-    }
+  if (const PrimTyObj* prim_ty = ty.as<PrimTyObj>()) {
+    return prim_ty->dtype;
   }
-
-  if (std::optional<Expr> expr = TypeTraits<Expr>::TryCastFromAnyView(&raw)) {
-    return *std::move(expr);
+  if (const TensorTyObj* tensor_ty = ty.as<TensorTyObj>()) {
+    return tensor_ty->dtype;
   }
-  TVM_FFI_THROW(TypeError) << "Unsupported type for conversion to Expr: " << value.GetTypeKey();
+  TVM_FFI_THROW(TypeError) << node_name << " " << ty_name << " type " << ReprPrint(ty)
+                           << " does not have a dtype";
   TVM_FFI_UNREACHABLE();
 }
 
-inline void CheckDerivedOperandTy(const char* node_name, const char* operand_name,
-                                  const Ty& result_ty, const Expr& operand) {
-  TVM_FFI_CHECK(result_ty.defined(), TypeError) << node_name << " result type must be defined";
-  TVM_FFI_CHECK(operand.defined(), TypeError)
-      << node_name << " operand `" << operand_name << "` must be defined";
-  const Ty& operand_ty = operand->ty;
-  TVM_FFI_CHECK(operand_ty.defined(), TypeError)
-      << node_name << " operand `" << operand_name << "` type must be defined";
-
-  bool result_is_any = result_ty->IsInstance<AnyTyObj>();
-  bool operand_is_any = operand_ty->IsInstance<AnyTyObj>();
-  TVM_FFI_CHECK(result_is_any == operand_is_any, TypeError)
-      << node_name << " cannot derive result type " << ReprPrint(result_ty) << " from operand `"
-      << operand_name << "` with type " << ReprPrint(operand_ty)
-      << "; use an explicit Cast or construct operands with matching types";
-  if (!result_is_any) {
-    TVM_FFI_CHECK(StructuralEqual::Equal(result_ty, operand_ty), TypeError)
-        << node_name << " operand `" << operand_name << "` type " << ReprPrint(operand_ty)
-        << " does not match result type " << ReprPrint(result_ty);
-  }
+inline std::optional<DLDataType> DTypeFromExpr(const char* node_name, const char* operand_name,
+                                               const Expr& expr) {
+  CheckExprDefined(node_name, operand_name, expr);
+  return DTypeFromTy(node_name, std::string("operand `") + operand_name + "`", expr->ty);
 }
 
-inline void CheckBinaryDerivedOperandTys(const char* node_name, const Ty& result_ty, const Expr& a,
-                                         const Expr& b) {
-  TVM_FFI_CHECK(result_ty.defined(), TypeError) << node_name << " result type must be defined";
-  TVM_FFI_CHECK(a.defined(), TypeError) << node_name << " operand `a` must be defined";
-  TVM_FFI_CHECK(b.defined(), TypeError) << node_name << " operand `b` must be defined";
-  const Ty& a_ty = a->ty;
-  const Ty& b_ty = b->ty;
-  TVM_FFI_CHECK(a_ty.defined(), TypeError) << node_name << " operand `a` type must be defined";
-  TVM_FFI_CHECK(b_ty.defined(), TypeError) << node_name << " operand `b` type must be defined";
+inline Ty IndexedTy(Ty ty, const List<Range>& indices) {
+  for (const Range& index : indices) {
+    const TupleTyObj* tuple_ty = ty.as<TupleTyObj>();
+    if (tuple_ty == nullptr) {
+      return ty;
+    }
+    if (!index->start.has_value() || index->stop.has_value() || index->step.has_value()) {
+      return AnyTy();
+    }
+    const IntImmObj* static_index = index->start.value().as<IntImmObj>();
+    if (static_index == nullptr) {
+      return AnyTy();
+    }
+    int64_t field_index = static_index->value;
+    int64_t num_fields = static_cast<int64_t>(tuple_ty->fields.size());
+    if (field_index < 0) {
+      field_index += num_fields;
+    }
+    if (field_index < 0 || field_index >= num_fields) {
+      return AnyTy();
+    }
+    ty = tuple_ty->fields[field_index];
+  }
+  return ty;
+}
 
-  bool result_is_any = result_ty->IsInstance<AnyTyObj>();
-  bool a_is_any = a_ty->IsInstance<AnyTyObj>();
-  bool b_is_any = b_ty->IsInstance<AnyTyObj>();
-  if (result_is_any) {
-    TVM_FFI_CHECK(a_is_any || b_is_any, TypeError)
-        << node_name << " cannot derive result type " << ReprPrint(result_ty)
-        << " from operands with types " << ReprPrint(a_ty) << " and " << ReprPrint(b_ty)
-        << "; use an explicit Cast or construct operands with matching types";
+inline void CheckConcreteTysEqual(const char* node_name, const char* lhs_name, const Ty& lhs,
+                                  const char* rhs_name, const Ty& rhs) {
+  TVM_FFI_CHECK(lhs.defined(), TypeError)
+      << node_name << " " << lhs_name << " type must be defined";
+  TVM_FFI_CHECK(rhs.defined(), TypeError)
+      << node_name << " " << rhs_name << " type must be defined";
+  if ((lhs.defined() && lhs.as<AnyTyObj>() != nullptr) ||
+      (rhs.defined() && rhs.as<AnyTyObj>() != nullptr)) {
     return;
   }
-
-  TVM_FFI_CHECK(!a_is_any, TypeError)
-      << node_name << " cannot derive result type " << ReprPrint(result_ty)
-      << " from operand `a` with type " << ReprPrint(a_ty)
-      << "; use an explicit Cast or construct operands with matching types";
-  TVM_FFI_CHECK(!b_is_any, TypeError)
-      << node_name << " cannot derive result type " << ReprPrint(result_ty)
-      << " from operand `b` with type " << ReprPrint(b_ty)
-      << "; use an explicit Cast or construct operands with matching types";
-  TVM_FFI_CHECK(StructuralEqual::Equal(result_ty, a_ty), TypeError)
-      << node_name << " operand `a` type " << ReprPrint(a_ty) << " does not match result type "
-      << ReprPrint(result_ty);
-  TVM_FFI_CHECK(StructuralEqual::Equal(result_ty, b_ty), TypeError)
-      << node_name << " operand `b` type " << ReprPrint(b_ty) << " does not match result type "
-      << ReprPrint(result_ty);
+  TVM_FFI_CHECK(StructuralEqual::Equal(lhs, rhs), TypeError)
+      << node_name << " " << lhs_name << " type " << ReprPrint(lhs) << " does not match "
+      << rhs_name << " type " << ReprPrint(rhs);
 }
 
-template <typename Obj>
-inline ObjectPtr<Obj> MakeBinaryObj(const char* node_name, Ty ty, Expr a, Expr b) {
-  CheckBinaryDerivedOperandTys(node_name, ty, a, b);
-  return make_object<Obj>(std::move(ty), std::move(a), std::move(b));
+inline void CheckConcreteDTypesEqual(const char* node_name, const char* lhs_name, DLDataType lhs,
+                                     const char* rhs_name, DLDataType rhs) {
+  TVM_FFI_CHECK(lhs == rhs, TypeError)
+      << node_name << " " << lhs_name << " dtype " << DLDataTypeToString(lhs) << " does not match "
+      << rhs_name << " dtype " << DLDataTypeToString(rhs);
 }
 
-template <typename Obj>
-inline ObjectPtr<Obj> MakeUnaryObj(const char* node_name, Ty ty, Expr operand) {
-  CheckDerivedOperandTy(node_name, "operand", ty, operand);
-  return make_object<Obj>(std::move(ty), std::move(operand));
+inline void CheckBoolDType(const char* node_name, const char* ty_name, DLDataType dtype) {
+  TVM_FFI_CHECK(dtype.code == kDLBool && dtype.bits == 8, TypeError)
+      << node_name << " " << ty_name << " dtype must be bool8, but got "
+      << DLDataTypeToString(dtype);
+}
+
+inline void CheckBitwiseDType(const char* node_name, const char* ty_name, DLDataType dtype) {
+  TVM_FFI_CHECK(DTypeIsInt(dtype), TypeError)
+      << node_name << " " << ty_name << " dtype must be integer, but got "
+      << DLDataTypeToString(dtype);
+}
+
+inline void CheckArithmeticTys(const char* node_name, const Ty& result_ty, const Expr& a,
+                               const Expr& b) {
+  TVM_FFI_CHECK(result_ty.defined(), TypeError) << node_name << " result type must be defined";
+  CheckExprDefined(node_name, "a", a);
+  CheckExprDefined(node_name, "b", b);
+  CheckConcreteTysEqual(node_name, "operand `a`", a->ty, "operand `b`", b->ty);
+  CheckConcreteTysEqual(node_name, "result", result_ty, "operand `a`", a->ty);
+  CheckConcreteTysEqual(node_name, "result", result_ty, "operand `b`", b->ty);
+  if (!(result_ty.defined() && result_ty.as<AnyTyObj>() != nullptr)) {
+    DTypeFromTy(node_name, "result", result_ty);
+  }
+  DTypeFromExpr(node_name, "a", a);
+  DTypeFromExpr(node_name, "b", b);
+}
+
+inline void CheckComparisonResultShape(const char* node_name, const Ty& input_ty,
+                                       const Ty& result_ty) {
+  if ((input_ty.defined() && input_ty.as<AnyTyObj>() != nullptr) ||
+      (result_ty.defined() && result_ty.as<AnyTyObj>() != nullptr)) {
+    return;
+  }
+  if (const PrimTyObj* input_prim = input_ty.as<PrimTyObj>()) {
+    const PrimTyObj* result_prim = result_ty.as<PrimTyObj>();
+    TVM_FFI_CHECK(result_prim != nullptr, TypeError)
+        << node_name << " result type " << ReprPrint(result_ty)
+        << " must be a primitive boolean type for primitive operands";
+    CheckBoolDType(node_name, "result", result_prim->dtype);
+    TVM_FFI_CHECK(result_prim->dtype.lanes == input_prim->dtype.lanes, TypeError)
+        << node_name << " result dtype lane count " << result_prim->dtype.lanes
+        << " does not match operand lane count " << input_prim->dtype.lanes;
+    return;
+  }
+  if (const TensorTyObj* input_tensor = input_ty.as<TensorTyObj>()) {
+    const TensorTyObj* result_tensor = result_ty.as<TensorTyObj>();
+    TVM_FFI_CHECK(result_tensor != nullptr, TypeError)
+        << node_name << " result type " << ReprPrint(result_ty)
+        << " must be a tensor boolean type for tensor operands";
+    CheckBoolDType(node_name, "result", result_tensor->dtype);
+    TVM_FFI_CHECK(result_tensor->dtype.lanes == input_tensor->dtype.lanes, TypeError)
+        << node_name << " result dtype lane count " << result_tensor->dtype.lanes
+        << " does not match operand lane count " << input_tensor->dtype.lanes;
+    TVM_FFI_CHECK(StructuralEqual::Equal(result_tensor->shape, input_tensor->shape), TypeError)
+        << node_name << " result shape does not match operand shape";
+    return;
+  }
+  TVM_FFI_THROW(TypeError) << node_name << " operand type " << ReprPrint(input_ty)
+                           << " does not have a comparable dtype";
+}
+
+inline void CheckArithmeticUnaryTy(const char* node_name, const Ty& result_ty,
+                                   const Expr& operand) {
+  TVM_FFI_CHECK(result_ty.defined(), TypeError) << node_name << " result type must be defined";
+  CheckExprDefined(node_name, "operand", operand);
+  CheckConcreteTysEqual(node_name, "result", result_ty, "operand `operand`", operand->ty);
+  if (!(result_ty.defined() && result_ty.as<AnyTyObj>() != nullptr)) {
+    DTypeFromTy(node_name, "result", result_ty);
+  }
+  DTypeFromExpr(node_name, "operand", operand);
+}
+
+inline void CheckBitwiseBinaryTys(const char* node_name, const Ty& result_ty, const Expr& a,
+                                  const Expr& b) {
+  CheckArithmeticTys(node_name, result_ty, a, b);
+  if (std::optional<DLDataType> result_dtype = DTypeFromTy(node_name, "result", result_ty)) {
+    CheckBitwiseDType(node_name, "result", *result_dtype);
+  }
+  if (std::optional<DLDataType> a_dtype = DTypeFromExpr(node_name, "a", a)) {
+    CheckBitwiseDType(node_name, "operand `a`", *a_dtype);
+  }
+  if (std::optional<DLDataType> b_dtype = DTypeFromExpr(node_name, "b", b)) {
+    CheckBitwiseDType(node_name, "operand `b`", *b_dtype);
+  }
+}
+
+inline void CheckComparisonTys(const char* node_name, const Ty& result_ty, const Expr& a,
+                               const Expr& b) {
+  TVM_FFI_CHECK(result_ty.defined(), TypeError) << node_name << " result type must be defined";
+  CheckExprDefined(node_name, "a", a);
+  CheckExprDefined(node_name, "b", b);
+  CheckConcreteTysEqual(node_name, "operand `a`", a->ty, "operand `b`", b->ty);
+  if (!(a->ty.defined() && a->ty.as<AnyTyObj>() != nullptr)) {
+    DTypeFromExpr(node_name, "a", a);
+    CheckComparisonResultShape(node_name, a->ty, result_ty);
+  } else if (!(b->ty.defined() && b->ty.as<AnyTyObj>() != nullptr)) {
+    DTypeFromExpr(node_name, "b", b);
+    CheckComparisonResultShape(node_name, b->ty, result_ty);
+  } else if (!(result_ty.defined() && result_ty.as<AnyTyObj>() != nullptr)) {
+    if (std::optional<DLDataType> result_dtype = DTypeFromTy(node_name, "result", result_ty)) {
+      CheckBoolDType(node_name, "result", *result_dtype);
+    }
+  }
+}
+
+inline void CheckLogicalBinaryTys(const char* node_name, const Ty& result_ty, const Expr& a,
+                                  const Expr& b) {
+  TVM_FFI_CHECK(result_ty.defined(), TypeError) << node_name << " result type must be defined";
+  CheckExprDefined(node_name, "a", a);
+  CheckExprDefined(node_name, "b", b);
+  CheckConcreteTysEqual(node_name, "operand `a`", a->ty, "operand `b`", b->ty);
+  CheckConcreteTysEqual(node_name, "result", result_ty, "operand `a`", a->ty);
+  CheckConcreteTysEqual(node_name, "result", result_ty, "operand `b`", b->ty);
+  if (std::optional<DLDataType> result_dtype = DTypeFromTy(node_name, "result", result_ty)) {
+    CheckBoolDType(node_name, "result", *result_dtype);
+  }
+  if (std::optional<DLDataType> a_dtype = DTypeFromExpr(node_name, "a", a)) {
+    CheckBoolDType(node_name, "operand `a`", *a_dtype);
+  }
+  if (std::optional<DLDataType> b_dtype = DTypeFromExpr(node_name, "b", b)) {
+    CheckBoolDType(node_name, "operand `b`", *b_dtype);
+  }
+}
+
+inline void CheckBitwiseUnaryTy(const char* node_name, const Ty& result_ty, const Expr& operand) {
+  CheckArithmeticUnaryTy(node_name, result_ty, operand);
+  if (std::optional<DLDataType> result_dtype = DTypeFromTy(node_name, "result", result_ty)) {
+    CheckBitwiseDType(node_name, "result", *result_dtype);
+  }
+  if (std::optional<DLDataType> operand_dtype = DTypeFromExpr(node_name, "operand", operand)) {
+    CheckBitwiseDType(node_name, "operand `operand`", *operand_dtype);
+  }
+}
+
+inline void CheckLogicalUnaryTy(const char* node_name, const Ty& result_ty, const Expr& operand) {
+  TVM_FFI_CHECK(result_ty.defined(), TypeError) << node_name << " result type must be defined";
+  CheckExprDefined(node_name, "operand", operand);
+  CheckConcreteTysEqual(node_name, "result", result_ty, "operand `operand`", operand->ty);
+  if (std::optional<DLDataType> result_dtype = DTypeFromTy(node_name, "result", result_ty)) {
+    CheckBoolDType(node_name, "result", *result_dtype);
+  }
+  if (std::optional<DLDataType> operand_dtype = DTypeFromExpr(node_name, "operand", operand)) {
+    CheckBoolDType(node_name, "operand `operand`", *operand_dtype);
+  }
+}
+
+inline void CheckIfExprTy(const Ty& result_ty, const Expr& cond, const Expr& then_expr,
+                          const Expr& else_expr) {
+  TVM_FFI_CHECK(result_ty.defined(), TypeError) << "IfExpr result type must be defined";
+  CheckScalarBoolCond("IfExpr", cond);
+  CheckExprDefined("IfExpr", "then_expr", then_expr);
+  CheckExprDefined("IfExpr", "else_expr", else_expr);
+  CheckConcreteTysEqual("IfExpr", "result", result_ty, "operand `then_expr`", then_expr->ty);
+  CheckConcreteTysEqual("IfExpr", "result", result_ty, "operand `else_expr`", else_expr->ty);
+  CheckConcreteTysEqual("IfExpr", "operand `then_expr`", then_expr->ty, "operand `else_expr`",
+                        else_expr->ty);
+}
+
+inline void CheckRangeDTypes(const char* node_name, const Optional<Expr>& start,
+                             const Optional<Expr>& stop, const Optional<Expr>& step) {
+  std::optional<DLDataType> expected_dtype;
+  auto check_one = [&](const Optional<Expr>& expr, const char* operand_name) {
+    if (!expr.has_value()) {
+      return;
+    }
+    std::optional<DLDataType> dtype = DTypeFromExpr(node_name, operand_name, expr.value());
+    if (!dtype.has_value()) {
+      return;
+    }
+    if (!expected_dtype.has_value()) {
+      expected_dtype = *dtype;
+      return;
+    }
+    CheckConcreteDTypesEqual(node_name, operand_name, *dtype, "previous range operand",
+                             *expected_dtype);
+  };
+  check_one(start, "start");
+  check_one(stop, "stop");
+  check_one(step, "step");
+}
+
+inline void CheckRangeList(const char* node_name, const List<Range>& indices) {
+  for (int32_t i = 0, n = static_cast<int32_t>(indices.size()); i < n; ++i) {
+    TVM_FFI_CHECK(indices[i].defined(), TypeError)
+        << node_name << " index range `" << i << "` must be defined";
+    const RangeObj* range = indices[i].as<RangeObj>();
+    TVM_FFI_CHECK(range != nullptr, TypeError)
+        << node_name << " index `" << i << "` must be a Range";
+    CheckRangeDTypes(node_name, range->start, range->stop, range->step);
+  }
+}
+
+inline void CheckLoadTy(const Ty& result_ty, const Expr& lhs, const List<Range>& indices) {
+  CheckRangeList("Load", indices);
+  CheckExprDefined("Load", "lhs", lhs);
+  std::optional<DLDataType> lhs_dtype =
+      DTypeFromTy("Load", "loaded element", IndexedTy(lhs->ty, indices));
+  std::optional<DLDataType> result_dtype = DTypeFromTy("Load", "result", result_ty);
+  if (lhs_dtype.has_value() && result_dtype.has_value()) {
+    CheckConcreteDTypesEqual("Load", "result", *result_dtype, "loaded element", *lhs_dtype);
+  }
+}
+
+inline void CheckStoreTy(const Expr& lhs, const List<Range>& indices, const Expr& rhs) {
+  CheckRangeList("Store", indices);
+  CheckExprDefined("Store", "lhs", lhs);
+  CheckExprDefined("Store", "rhs", rhs);
+  std::optional<DLDataType> lhs_dtype =
+      DTypeFromTy("Store", "stored element", IndexedTy(lhs->ty, indices));
+  std::optional<DLDataType> rhs_dtype = DTypeFromTy("Store", "operand `rhs`", rhs->ty);
+  if (lhs_dtype.has_value() && rhs_dtype.has_value()) {
+    CheckConcreteDTypesEqual("Store", "stored value", *rhs_dtype, "stored element", *lhs_dtype);
+  }
+}
+
+inline void CheckScalarBoolCond(const char* node_name, const Expr& cond) {
+  CheckExprDefined(node_name, "cond", cond);
+  if (cond->ty.defined() && cond->ty.as<AnyTyObj>() != nullptr) {
+    return;
+  }
+  const PrimTyObj* prim_ty = cond->ty.as<PrimTyObj>();
+  TVM_FFI_CHECK(prim_ty != nullptr, TypeError)
+      << node_name << " condition type " << ReprPrint(cond->ty)
+      << " must be a primitive scalar bool type";
+  CheckBoolDType(node_name, "condition", prim_ty->dtype);
+  TVM_FFI_CHECK(prim_ty->dtype.lanes == 1, TypeError)
+      << node_name << " condition dtype must be scalar bool, but got "
+      << DLDataTypeToString(prim_ty->dtype);
 }
 }  // namespace details
+
+/// \cond Doxygen_Suppress
+inline RangeObj::RangeObj(Optional<Expr> start, Optional<Expr> stop, Optional<Expr> step)
+    : start(std::move(start)), stop(std::move(stop)), step(std::move(step)) {
+  details::CheckRangeDTypes("Range", this->start, this->stop, this->step);
+}
+/// \endcond
+
 }  // namespace std_
 }  // namespace ffi
 }  // namespace tvm
