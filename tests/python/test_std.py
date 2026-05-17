@@ -604,6 +604,21 @@ class TestRange:
         assert node.stop is None
         assert node.step is None
 
+    def test_rejects_mismatched_concrete_dtypes(self) -> None:
+        i32 = std.PrimTy("int32")
+        f32 = std.PrimTy("float32")
+
+        with pytest.raises(TypeError, match="does not match previous range operand"):
+            std.Range(start=std.IntImm(i32, 1), stop=std.FloatImm(f32, 2.0))
+
+    def test_allows_any_typed_operands(self) -> None:
+        any_ty = std.AnyTy()
+        f32 = std.PrimTy("float32")
+        node = std.Range(start=std.IntImm(any_ty, 1), stop=std.FloatImm(f32, 2.0))
+
+        assert isinstance(node.start, std.IntImm)
+        assert isinstance(node.stop, std.FloatImm)
+
 
 class TestIntImm:
     def test_constructor(self) -> None:
@@ -718,7 +733,7 @@ class TestStringImm:
         assert not tvm_ffi.structural_equal(lhs, different)
 
 
-_BINARY_EXPR_CLASSES: list[Any] = [
+_ARITHMETIC_EXPR_CLASSES: list[Any] = [
     std.Add,
     std.Sub,
     std.Mul,
@@ -729,23 +744,34 @@ _BINARY_EXPR_CLASSES: list[Any] = [
     std.Pow,
     std.LShift,
     std.RShift,
-    std.Xor,
     std.Min,
     std.Max,
+]
+
+_BITWISE_BINARY_EXPR_CLASSES: list[Any] = [
+    std.BitwiseAnd,
+    std.BitwiseOr,
+    std.BitwiseXor,
+]
+
+_COMPARISON_EXPR_CLASSES: list[Any] = [
     std.Eq,
     std.Ne,
     std.Le,
     std.Ge,
     std.Gt,
     std.Lt,
+]
+
+_LOGICAL_BINARY_EXPR_CLASSES: list[Any] = [
     std.And,
     std.Or,
 ]
 
 
 class TestDerivedOperandTypeChecks:
-    @pytest.mark.parametrize("cls", _BINARY_EXPR_CLASSES)
-    def test_binary_constructor_allows_matching_non_any_operands(self, cls: Any) -> None:
+    @pytest.mark.parametrize("cls", _ARITHMETIC_EXPR_CLASSES)
+    def test_arithmetic_constructor_allows_matching_non_any_operands(self, cls: Any) -> None:
         i32 = std.PrimTy("int32")
         x = std.Var(i32, "x")
         one = std.IntImm(i32, 1)
@@ -755,75 +781,142 @@ class TestDerivedOperandTypeChecks:
         assert tvm_ffi.structural_equal(node.a.ty, i32)
         assert tvm_ffi.structural_equal(node.b.ty, i32)
 
-    @pytest.mark.parametrize("cls", _BINARY_EXPR_CLASSES)
-    def test_binary_constructor_rejects_mismatched_non_any_operands(self, cls: Any) -> None:
+    @pytest.mark.parametrize("cls", _ARITHMETIC_EXPR_CLASSES)
+    def test_arithmetic_constructor_rejects_mismatched_non_any_operands(self, cls: Any) -> None:
         i32 = std.PrimTy("int32")
         i64 = std.PrimTy("int64")
         x = std.Var(i32, "x")
         y = std.Var(i64, "y")
 
-        with pytest.raises(TypeError, match="does not match result type"):
+        with pytest.raises(TypeError, match="does not match operand"):
             cls(x, y, ty=i32)
 
-    @pytest.mark.parametrize("cls", _BINARY_EXPR_CLASSES)
-    def test_binary_constructor_rejects_any_to_concrete_promotion(self, cls: Any) -> None:
+    @pytest.mark.parametrize("cls", _ARITHMETIC_EXPR_CLASSES)
+    def test_arithmetic_constructor_allows_any_operand(self, cls: Any) -> None:
         i32 = std.PrimTy("int32")
         any_ty = std.AnyTy()
         x = std.Var(i32, "x")
         one = std.IntImm(any_ty, 1)
+        node = cls(x, one, ty=i32)
 
-        with pytest.raises(TypeError, match="cannot derive result type"):
-            cls(x, one, ty=i32)
+        assert tvm_ffi.structural_equal(node.ty, i32)
+        assert tvm_ffi.structural_equal(node.a.ty, i32)
+        assert tvm_ffi.structural_equal(node.b.ty, any_ty)
 
-    @pytest.mark.parametrize("cls", _BINARY_EXPR_CLASSES)
-    def test_binary_constructor_rejects_concrete_to_any_erasure(self, cls: Any) -> None:
+    @pytest.mark.parametrize("cls", _ARITHMETIC_EXPR_CLASSES)
+    def test_arithmetic_constructor_allows_any_result(self, cls: Any) -> None:
         i32 = std.PrimTy("int32")
         any_ty = std.AnyTy()
         x = std.Var(i32, "x")
         one = std.IntImm(i32, 1)
-
-        with pytest.raises(TypeError, match="cannot derive result type"):
-            cls(x, one, ty=any_ty)
-
-    @pytest.mark.parametrize("cls", _BINARY_EXPR_CLASSES)
-    def test_binary_constructor_allows_any_operands_with_any_result(self, cls: Any) -> None:
-        any_ty = std.AnyTy()
-        i32 = std.PrimTy("int32")
-        x = std.Var(any_ty, "x")
-        one = std.IntImm(i32, 1)
         node = cls(x, one, ty=any_ty)
 
         assert tvm_ffi.structural_equal(node.ty, any_ty)
-        assert tvm_ffi.structural_equal(node.a.ty, any_ty)
+        assert tvm_ffi.structural_equal(node.a.ty, i32)
         assert tvm_ffi.structural_equal(node.b.ty, i32)
 
-    def test_unary_constructor_allows_matching_non_any_operand(self) -> None:
-        i32 = std.PrimTy("int32")
-        node = std.Not(std.IntImm(i32, 1), ty=i32)
-
-        assert tvm_ffi.structural_equal(node.ty, i32)
-        assert tvm_ffi.structural_equal(node.operand.ty, i32)
-
-    def test_unary_constructor_rejects_mismatched_non_any_operand(self) -> None:
+    @pytest.mark.parametrize("cls", _ARITHMETIC_EXPR_CLASSES)
+    def test_arithmetic_constructor_rejects_mismatched_concrete_operands_with_any_result(
+        self, cls: Any
+    ) -> None:
+        any_ty = std.AnyTy()
         i32 = std.PrimTy("int32")
         i64 = std.PrimTy("int64")
+        x = std.Var(i32, "x")
+        y = std.Var(i64, "y")
 
-        with pytest.raises(TypeError, match="does not match result type"):
-            std.Not(std.IntImm(i64, 1), ty=i32)
+        with pytest.raises(TypeError, match="does not match operand"):
+            cls(x, y, ty=any_ty)
 
-    def test_unary_constructor_rejects_any_to_concrete_promotion(self) -> None:
+    @pytest.mark.parametrize("cls", _BITWISE_BINARY_EXPR_CLASSES)
+    def test_bitwise_binary_constructor_uses_integer_operands_and_result(self, cls: Any) -> None:
         i32 = std.PrimTy("int32")
-        any_ty = std.AnyTy()
+        node = cls(1, 2, ty=i32)
 
-        with pytest.raises(TypeError, match="cannot derive result type"):
-            std.Not(std.IntImm(any_ty, 1), ty=i32)
+        assert tvm_ffi.structural_equal(node.ty, i32)
+        assert tvm_ffi.structural_equal(node.a.ty, i32)
+        assert tvm_ffi.structural_equal(node.b.ty, i32)
 
-    def test_unary_constructor_rejects_concrete_to_any_erasure(self) -> None:
+    @pytest.mark.parametrize("cls", _BITWISE_BINARY_EXPR_CLASSES)
+    def test_bitwise_binary_constructor_rejects_non_integer_dtype(self, cls: Any) -> None:
+        f32 = std.PrimTy("float32")
+
+        with pytest.raises(TypeError, match="result dtype must be integer"):
+            cls(1, 2, ty=f32)
+
+    @pytest.mark.parametrize("cls", _COMPARISON_EXPR_CLASSES)
+    def test_comparison_constructor_uses_bool_result(self, cls: Any) -> None:
         i32 = std.PrimTy("int32")
-        any_ty = std.AnyTy()
+        bool_ty = std.PrimTy("bool")
+        x = std.Var(i32, "x")
+        node = cls(x, 1, ty=bool_ty)
 
-        with pytest.raises(TypeError, match="cannot derive result type"):
-            std.Not(std.IntImm(i32, 1), ty=any_ty)
+        assert tvm_ffi.structural_equal(node.ty, bool_ty)
+        assert tvm_ffi.structural_equal(node.a.ty, i32)
+        assert tvm_ffi.structural_equal(node.b.ty, i32)
+
+    @pytest.mark.parametrize("cls", _COMPARISON_EXPR_CLASSES)
+    def test_comparison_constructor_rejects_non_bool_result(self, cls: Any) -> None:
+        i32 = std.PrimTy("int32")
+        x = std.Var(i32, "x")
+        y = std.Var(i32, "y")
+
+        with pytest.raises(TypeError, match="result dtype must be bool8"):
+            cls(x, y, ty=i32)
+
+    @pytest.mark.parametrize("cls", _COMPARISON_EXPR_CLASSES)
+    def test_comparison_constructor_rejects_result_lane_mismatch(self, cls: Any) -> None:
+        i32 = std.PrimTy("int32")
+        boolx4 = std.PrimTy("boolx4")
+        x = std.Var(i32, "x")
+        y = std.Var(i32, "y")
+
+        with pytest.raises(TypeError, match="result dtype lane count"):
+            cls(x, y, ty=boolx4)
+
+    @pytest.mark.parametrize("cls", _LOGICAL_BINARY_EXPR_CLASSES)
+    def test_logical_binary_constructor_uses_bool_operands_and_result(self, cls: Any) -> None:
+        bool_ty = std.PrimTy("bool")
+        node = cls(True, False, ty=bool_ty)
+
+        assert tvm_ffi.structural_equal(node.ty, bool_ty)
+        assert tvm_ffi.structural_equal(node.a.ty, bool_ty)
+        assert tvm_ffi.structural_equal(node.b.ty, bool_ty)
+
+    @pytest.mark.parametrize("cls", _LOGICAL_BINARY_EXPR_CLASSES)
+    def test_logical_binary_constructor_rejects_non_bool_dtype(self, cls: Any) -> None:
+        i32 = std.PrimTy("int32")
+
+        with pytest.raises(TypeError, match="result dtype must be bool8"):
+            cls(1, 2, ty=i32)
+
+    def test_unary_constructor_allows_matching_non_any_operand(self) -> None:
+        bool_ty = std.PrimTy("bool")
+        node = std.Not(std.BoolImm(bool_ty, True), ty=bool_ty)
+
+        assert tvm_ffi.structural_equal(node.ty, bool_ty)
+        assert tvm_ffi.structural_equal(node.operand.ty, bool_ty)
+
+    def test_unary_constructor_rejects_mismatched_non_any_operand(self) -> None:
+        bool_ty = std.PrimTy("bool")
+        boolx4 = std.PrimTy("boolx4")
+
+        with pytest.raises(TypeError, match="does not match operand"):
+            std.Not(std.BoolImm(boolx4, True), ty=bool_ty)
+
+    def test_unary_constructor_rejects_non_bool_dtype(self) -> None:
+        i32 = std.PrimTy("int32")
+
+        with pytest.raises(TypeError, match="result dtype must be bool8"):
+            std.Not(std.IntImm(i32, 1), ty=i32)
+
+    def test_unary_constructor_allows_any_operand(self) -> None:
+        bool_ty = std.PrimTy("bool")
+        any_ty = std.AnyTy()
+        node = std.Not(std.BoolImm(any_ty, True), ty=bool_ty)
+
+        assert tvm_ffi.structural_equal(node.ty, bool_ty)
+        assert tvm_ffi.structural_equal(node.operand.ty, any_ty)
 
     def test_unary_constructor_allows_any_operand_with_any_result(self) -> None:
         any_ty = std.AnyTy()
@@ -831,6 +924,19 @@ class TestDerivedOperandTypeChecks:
 
         assert tvm_ffi.structural_equal(node.ty, any_ty)
         assert tvm_ffi.structural_equal(node.operand.ty, any_ty)
+
+    def test_bitwise_not_constructor_rejects_non_integer_dtype(self) -> None:
+        f32 = std.PrimTy("float32")
+
+        with pytest.raises(TypeError, match="result dtype must be integer"):
+            std.BitwiseNot(std.FloatImm(f32, 1.0), ty=f32)
+
+    def test_abs_constructor_preserves_operand_type(self) -> None:
+        i32 = std.PrimTy("int32")
+        node = std.Abs(-1, ty=i32)
+
+        assert tvm_ffi.structural_equal(node.ty, i32)
+        assert tvm_ffi.structural_equal(node.operand.ty, i32)
 
 
 class TestAdd:
@@ -1046,7 +1152,9 @@ class TestAdditionalBinaryOps:
             ("Pow", "std.i32(1) ** std.i32(2)"),
             ("LShift", "std.i32(1) << std.i32(2)"),
             ("RShift", "std.i32(1) >> std.i32(2)"),
-            ("Xor", "std.i32(1) ^ std.i32(2)"),
+            ("BitwiseAnd", "std.i32(1) & std.i32(2)"),
+            ("BitwiseOr", "std.i32(1) | std.i32(2)"),
+            ("BitwiseXor", "std.i32(1) ^ std.i32(2)"),
         ],
     )
     def test_constructor_and_text_format(self, cls_name: str, text: str) -> None:
@@ -1063,7 +1171,10 @@ class TestAdditionalBinaryOps:
         assert node.b.value == 2
         assert node.text() == text
 
-    @pytest.mark.parametrize("cls_name", ["CDiv", "CMod", "Pow", "LShift", "RShift", "Xor"])
+    @pytest.mark.parametrize(
+        "cls_name",
+        ["CDiv", "CMod", "Pow", "LShift", "RShift", "BitwiseAnd", "BitwiseOr", "BitwiseXor"],
+    )
     def test_structural_equality(self, cls_name: str) -> None:
         cls = getattr(std, cls_name)
         i32 = std.PrimTy("int32")
@@ -1151,32 +1262,36 @@ class TestMax:
 class TestEq:
     def test_constructor(self) -> None:
         i32 = std.PrimTy("int32")
-        one = 1
-        two = 2
-        node = std.Eq(ty=i32, a=one, b=two)
+        bool_ty = std.PrimTy("bool")
+        one = std.IntImm(i32, 1)
+        two = std.IntImm(i32, 2)
+        node = std.Eq(ty=bool_ty, a=one, b=two)
 
         assert isinstance(node, std.Eq)
         assert tuple(field.name for field in fields(std.Eq)) == ("ty", "a", "b")
-        assert node.ty == i32
+        assert node.ty == bool_ty
         assert isinstance(node.a, std.IntImm)
         assert isinstance(node.b, std.IntImm)
-        assert node.a.value == one
-        assert node.b.value == two
+        assert node.a.ty == i32
+        assert node.b.ty == i32
+        assert node.a.value == 1
+        assert node.b.value == 2
 
     def test_text_format(self) -> None:
         i32 = std.PrimTy("int32")
-        node = std.Eq(ty=i32, a=1, b=2)
+        node = std.Eq(ty=std.PrimTy("bool"), a=std.IntImm(i32, 1), b=std.IntImm(i32, 2))
 
         assert node.text() == "std.i32(1) == std.i32(2)"
 
     def test_structural_equality(self) -> None:
         i32 = std.PrimTy("int32")
-        lhs = std.Eq(ty=i32, a=1, b=2)
-        rhs = std.Eq(ty=i32, a=1, b=2)
+        bool_ty = std.PrimTy("bool")
+        lhs = std.Eq(ty=bool_ty, a=std.IntImm(i32, 1), b=std.IntImm(i32, 2))
+        rhs = std.Eq(ty=bool_ty, a=std.IntImm(i32, 1), b=std.IntImm(i32, 2))
         different = std.Eq(
-            ty=i32,
-            a=1,
-            b=3,
+            ty=bool_ty,
+            a=std.IntImm(i32, 1),
+            b=std.IntImm(i32, 3),
         )
 
         assert tvm_ffi.structural_equal(lhs, rhs)
@@ -1187,32 +1302,36 @@ class TestEq:
 class TestNe:
     def test_constructor(self) -> None:
         i32 = std.PrimTy("int32")
-        one = 1
-        two = 2
-        node = std.Ne(ty=i32, a=one, b=two)
+        bool_ty = std.PrimTy("bool")
+        one = std.IntImm(i32, 1)
+        two = std.IntImm(i32, 2)
+        node = std.Ne(ty=bool_ty, a=one, b=two)
 
         assert isinstance(node, std.Ne)
         assert tuple(field.name for field in fields(std.Ne)) == ("ty", "a", "b")
-        assert node.ty == i32
+        assert node.ty == bool_ty
         assert isinstance(node.a, std.IntImm)
         assert isinstance(node.b, std.IntImm)
-        assert node.a.value == one
-        assert node.b.value == two
+        assert node.a.ty == i32
+        assert node.b.ty == i32
+        assert node.a.value == 1
+        assert node.b.value == 2
 
     def test_text_format(self) -> None:
         i32 = std.PrimTy("int32")
-        node = std.Ne(ty=i32, a=1, b=2)
+        node = std.Ne(ty=std.PrimTy("bool"), a=std.IntImm(i32, 1), b=std.IntImm(i32, 2))
 
         assert node.text() == "std.i32(1) != std.i32(2)"
 
     def test_structural_equality(self) -> None:
         i32 = std.PrimTy("int32")
-        lhs = std.Ne(ty=i32, a=1, b=2)
-        rhs = std.Ne(ty=i32, a=1, b=2)
+        bool_ty = std.PrimTy("bool")
+        lhs = std.Ne(ty=bool_ty, a=std.IntImm(i32, 1), b=std.IntImm(i32, 2))
+        rhs = std.Ne(ty=bool_ty, a=std.IntImm(i32, 1), b=std.IntImm(i32, 2))
         different = std.Ne(
-            ty=i32,
-            a=1,
-            b=3,
+            ty=bool_ty,
+            a=std.IntImm(i32, 1),
+            b=std.IntImm(i32, 3),
         )
 
         assert tvm_ffi.structural_equal(lhs, rhs)
@@ -1223,32 +1342,36 @@ class TestNe:
 class TestLe:
     def test_constructor(self) -> None:
         i32 = std.PrimTy("int32")
-        one = 1
-        two = 2
-        node = std.Le(ty=i32, a=one, b=two)
+        bool_ty = std.PrimTy("bool")
+        one = std.IntImm(i32, 1)
+        two = std.IntImm(i32, 2)
+        node = std.Le(ty=bool_ty, a=one, b=two)
 
         assert isinstance(node, std.Le)
         assert tuple(field.name for field in fields(std.Le)) == ("ty", "a", "b")
-        assert node.ty == i32
+        assert node.ty == bool_ty
         assert isinstance(node.a, std.IntImm)
         assert isinstance(node.b, std.IntImm)
-        assert node.a.value == one
-        assert node.b.value == two
+        assert node.a.ty == i32
+        assert node.b.ty == i32
+        assert node.a.value == 1
+        assert node.b.value == 2
 
     def test_text_format(self) -> None:
         i32 = std.PrimTy("int32")
-        node = std.Le(ty=i32, a=1, b=2)
+        node = std.Le(ty=std.PrimTy("bool"), a=std.IntImm(i32, 1), b=std.IntImm(i32, 2))
 
         assert node.text() == "std.i32(1) <= std.i32(2)"
 
     def test_structural_equality(self) -> None:
         i32 = std.PrimTy("int32")
-        lhs = std.Le(ty=i32, a=1, b=2)
-        rhs = std.Le(ty=i32, a=1, b=2)
+        bool_ty = std.PrimTy("bool")
+        lhs = std.Le(ty=bool_ty, a=std.IntImm(i32, 1), b=std.IntImm(i32, 2))
+        rhs = std.Le(ty=bool_ty, a=std.IntImm(i32, 1), b=std.IntImm(i32, 2))
         different = std.Le(
-            ty=i32,
-            a=1,
-            b=3,
+            ty=bool_ty,
+            a=std.IntImm(i32, 1),
+            b=std.IntImm(i32, 3),
         )
 
         assert tvm_ffi.structural_equal(lhs, rhs)
@@ -1259,32 +1382,36 @@ class TestLe:
 class TestGe:
     def test_constructor(self) -> None:
         i32 = std.PrimTy("int32")
-        one = 1
-        two = 2
-        node = std.Ge(ty=i32, a=one, b=two)
+        bool_ty = std.PrimTy("bool")
+        one = std.IntImm(i32, 1)
+        two = std.IntImm(i32, 2)
+        node = std.Ge(ty=bool_ty, a=one, b=two)
 
         assert isinstance(node, std.Ge)
         assert tuple(field.name for field in fields(std.Ge)) == ("ty", "a", "b")
-        assert node.ty == i32
+        assert node.ty == bool_ty
         assert isinstance(node.a, std.IntImm)
         assert isinstance(node.b, std.IntImm)
-        assert node.a.value == one
-        assert node.b.value == two
+        assert node.a.ty == i32
+        assert node.b.ty == i32
+        assert node.a.value == 1
+        assert node.b.value == 2
 
     def test_text_format(self) -> None:
         i32 = std.PrimTy("int32")
-        node = std.Ge(ty=i32, a=1, b=2)
+        node = std.Ge(ty=std.PrimTy("bool"), a=std.IntImm(i32, 1), b=std.IntImm(i32, 2))
 
         assert node.text() == "std.i32(1) >= std.i32(2)"
 
     def test_structural_equality(self) -> None:
         i32 = std.PrimTy("int32")
-        lhs = std.Ge(ty=i32, a=1, b=2)
-        rhs = std.Ge(ty=i32, a=1, b=2)
+        bool_ty = std.PrimTy("bool")
+        lhs = std.Ge(ty=bool_ty, a=std.IntImm(i32, 1), b=std.IntImm(i32, 2))
+        rhs = std.Ge(ty=bool_ty, a=std.IntImm(i32, 1), b=std.IntImm(i32, 2))
         different = std.Ge(
-            ty=i32,
-            a=1,
-            b=3,
+            ty=bool_ty,
+            a=std.IntImm(i32, 1),
+            b=std.IntImm(i32, 3),
         )
 
         assert tvm_ffi.structural_equal(lhs, rhs)
@@ -1295,32 +1422,36 @@ class TestGe:
 class TestGt:
     def test_constructor(self) -> None:
         i32 = std.PrimTy("int32")
-        one = 1
-        two = 2
-        node = std.Gt(ty=i32, a=one, b=two)
+        bool_ty = std.PrimTy("bool")
+        one = std.IntImm(i32, 1)
+        two = std.IntImm(i32, 2)
+        node = std.Gt(ty=bool_ty, a=one, b=two)
 
         assert isinstance(node, std.Gt)
         assert tuple(field.name for field in fields(std.Gt)) == ("ty", "a", "b")
-        assert node.ty == i32
+        assert node.ty == bool_ty
         assert isinstance(node.a, std.IntImm)
         assert isinstance(node.b, std.IntImm)
-        assert node.a.value == one
-        assert node.b.value == two
+        assert node.a.ty == i32
+        assert node.b.ty == i32
+        assert node.a.value == 1
+        assert node.b.value == 2
 
     def test_text_format(self) -> None:
         i32 = std.PrimTy("int32")
-        node = std.Gt(ty=i32, a=1, b=2)
+        node = std.Gt(ty=std.PrimTy("bool"), a=std.IntImm(i32, 1), b=std.IntImm(i32, 2))
 
         assert node.text() == "std.i32(1) > std.i32(2)"
 
     def test_structural_equality(self) -> None:
         i32 = std.PrimTy("int32")
-        lhs = std.Gt(ty=i32, a=1, b=2)
-        rhs = std.Gt(ty=i32, a=1, b=2)
+        bool_ty = std.PrimTy("bool")
+        lhs = std.Gt(ty=bool_ty, a=std.IntImm(i32, 1), b=std.IntImm(i32, 2))
+        rhs = std.Gt(ty=bool_ty, a=std.IntImm(i32, 1), b=std.IntImm(i32, 2))
         different = std.Gt(
-            ty=i32,
-            a=1,
-            b=3,
+            ty=bool_ty,
+            a=std.IntImm(i32, 1),
+            b=std.IntImm(i32, 3),
         )
 
         assert tvm_ffi.structural_equal(lhs, rhs)
@@ -1331,32 +1462,36 @@ class TestGt:
 class TestLt:
     def test_constructor(self) -> None:
         i32 = std.PrimTy("int32")
-        one = 1
-        two = 2
-        node = std.Lt(ty=i32, a=one, b=two)
+        bool_ty = std.PrimTy("bool")
+        one = std.IntImm(i32, 1)
+        two = std.IntImm(i32, 2)
+        node = std.Lt(ty=bool_ty, a=one, b=two)
 
         assert isinstance(node, std.Lt)
         assert tuple(field.name for field in fields(std.Lt)) == ("ty", "a", "b")
-        assert node.ty == i32
+        assert node.ty == bool_ty
         assert isinstance(node.a, std.IntImm)
         assert isinstance(node.b, std.IntImm)
-        assert node.a.value == one
-        assert node.b.value == two
+        assert node.a.ty == i32
+        assert node.b.ty == i32
+        assert node.a.value == 1
+        assert node.b.value == 2
 
     def test_text_format(self) -> None:
         i32 = std.PrimTy("int32")
-        node = std.Lt(ty=i32, a=1, b=2)
+        node = std.Lt(ty=std.PrimTy("bool"), a=std.IntImm(i32, 1), b=std.IntImm(i32, 2))
 
         assert node.text() == "std.i32(1) < std.i32(2)"
 
     def test_structural_equality(self) -> None:
         i32 = std.PrimTy("int32")
-        lhs = std.Lt(ty=i32, a=1, b=2)
-        rhs = std.Lt(ty=i32, a=1, b=2)
+        bool_ty = std.PrimTy("bool")
+        lhs = std.Lt(ty=bool_ty, a=std.IntImm(i32, 1), b=std.IntImm(i32, 2))
+        rhs = std.Lt(ty=bool_ty, a=std.IntImm(i32, 1), b=std.IntImm(i32, 2))
         different = std.Lt(
-            ty=i32,
-            a=1,
-            b=3,
+            ty=bool_ty,
+            a=std.IntImm(i32, 1),
+            b=std.IntImm(i32, 3),
         )
 
         assert tvm_ffi.structural_equal(lhs, rhs)
@@ -1366,33 +1501,31 @@ class TestLt:
 
 class TestAnd:
     def test_constructor(self) -> None:
-        i32 = std.PrimTy("int32")
-        one = 1
-        two = 2
-        node = std.And(ty=i32, a=one, b=two)
+        bool_ty = std.PrimTy("bool")
+        node = std.And(ty=bool_ty, a=True, b=False)
 
         assert isinstance(node, std.And)
         assert tuple(field.name for field in fields(std.And)) == ("ty", "a", "b")
-        assert node.ty == i32
-        assert isinstance(node.a, std.IntImm)
-        assert isinstance(node.b, std.IntImm)
-        assert node.a.value == one
-        assert node.b.value == two
+        assert node.ty == bool_ty
+        assert isinstance(node.a, std.BoolImm)
+        assert isinstance(node.b, std.BoolImm)
+        assert node.a.value is True
+        assert node.b.value is False
 
     def test_text_format(self) -> None:
-        i32 = std.PrimTy("int32")
-        node = std.And(ty=i32, a=1, b=2)
+        bool_ty = std.PrimTy("bool")
+        node = std.And(ty=bool_ty, a=True, b=False)
 
-        assert node.text() == "std.i32(1) and std.i32(2)"
+        assert node.text() == "std.And(True, False, ty=std.bool)"
 
     def test_structural_equality(self) -> None:
-        i32 = std.PrimTy("int32")
-        lhs = std.And(ty=i32, a=1, b=2)
-        rhs = std.And(ty=i32, a=1, b=2)
+        bool_ty = std.PrimTy("bool")
+        lhs = std.And(ty=bool_ty, a=True, b=False)
+        rhs = std.And(ty=bool_ty, a=True, b=False)
         different = std.And(
-            ty=i32,
-            a=1,
-            b=3,
+            ty=bool_ty,
+            a=False,
+            b=False,
         )
 
         assert tvm_ffi.structural_equal(lhs, rhs)
@@ -1402,33 +1535,31 @@ class TestAnd:
 
 class TestOr:
     def test_constructor(self) -> None:
-        i32 = std.PrimTy("int32")
-        one = 1
-        two = 2
-        node = std.Or(ty=i32, a=one, b=two)
+        bool_ty = std.PrimTy("bool")
+        node = std.Or(ty=bool_ty, a=True, b=False)
 
         assert isinstance(node, std.Or)
         assert tuple(field.name for field in fields(std.Or)) == ("ty", "a", "b")
-        assert node.ty == i32
-        assert isinstance(node.a, std.IntImm)
-        assert isinstance(node.b, std.IntImm)
-        assert node.a.value == one
-        assert node.b.value == two
+        assert node.ty == bool_ty
+        assert isinstance(node.a, std.BoolImm)
+        assert isinstance(node.b, std.BoolImm)
+        assert node.a.value is True
+        assert node.b.value is False
 
     def test_text_format(self) -> None:
-        i32 = std.PrimTy("int32")
-        node = std.Or(ty=i32, a=1, b=2)
+        bool_ty = std.PrimTy("bool")
+        node = std.Or(ty=bool_ty, a=True, b=False)
 
-        assert node.text() == "std.i32(1) or std.i32(2)"
+        assert node.text() == "std.Or(True, False, ty=std.bool)"
 
     def test_structural_equality(self) -> None:
-        i32 = std.PrimTy("int32")
-        lhs = std.Or(ty=i32, a=1, b=2)
-        rhs = std.Or(ty=i32, a=1, b=2)
+        bool_ty = std.PrimTy("bool")
+        lhs = std.Or(ty=bool_ty, a=True, b=False)
+        rhs = std.Or(ty=bool_ty, a=True, b=False)
         different = std.Or(
-            ty=i32,
-            a=1,
-            b=3,
+            ty=bool_ty,
+            a=False,
+            b=False,
         )
 
         assert tvm_ffi.structural_equal(lhs, rhs)
@@ -1438,21 +1569,21 @@ class TestOr:
 
 class TestNot:
     def test_constructor(self) -> None:
-        i32 = std.PrimTy("int32")
-        operand = 1
-        node = std.Not(ty=i32, operand=operand)
+        bool_ty = std.PrimTy("bool")
+        operand = True
+        node = std.Not(ty=bool_ty, operand=operand)
 
         assert isinstance(node, std.Not)
         assert tuple(field.name for field in fields(std.Not)) == ("ty", "operand")
-        assert node.ty == i32
-        assert isinstance(node.operand, std.IntImm)
-        assert node.operand.value == operand
+        assert node.ty == bool_ty
+        assert isinstance(node.operand, std.BoolImm)
+        assert node.operand.value is operand
 
     def test_text_format(self) -> None:
-        i32 = std.PrimTy("int32")
-        node = std.Not(ty=i32, operand=1)
+        bool_ty = std.PrimTy("bool")
+        node = std.Not(ty=bool_ty, operand=True)
 
-        assert node.text() == "not std.i32(1)"
+        assert node.text() == "std.Not(True, ty=std.bool)"
 
     def test_from_any_converts_python_int_to_not(self) -> None:
         node = core._to_py_class_value(core.TypeSchema.from_annotation(std.Not).convert(1))
@@ -1464,14 +1595,79 @@ class TestNot:
         assert node.text() == "std.Not(1, ty=std.Any)"
 
     def test_structural_equality(self) -> None:
-        i32 = std.PrimTy("int32")
-        lhs = std.Not(ty=i32, operand=1)
-        rhs = std.Not(ty=i32, operand=1)
-        different = std.Not(ty=i32, operand=2)
+        bool_ty = std.PrimTy("bool")
+        lhs = std.Not(ty=bool_ty, operand=True)
+        rhs = std.Not(ty=bool_ty, operand=True)
+        different = std.Not(ty=bool_ty, operand=False)
 
         assert tvm_ffi.structural_equal(lhs, rhs)
         assert tvm_ffi.structural_hash(lhs) == tvm_ffi.structural_hash(rhs)
         assert not tvm_ffi.structural_equal(lhs, different)
+
+
+class TestBitwiseNot:
+    def test_constructor(self) -> None:
+        i32 = std.PrimTy("int32")
+        node = std.BitwiseNot(1, ty=i32)
+
+        assert isinstance(node, std.BitwiseNot)
+        assert tuple(field.name for field in fields(std.BitwiseNot)) == ("ty", "operand")
+        assert node.ty == i32
+        assert isinstance(node.operand, std.IntImm)
+        assert node.operand.value == 1
+
+    def test_text_format(self) -> None:
+        i32 = std.PrimTy("int32")
+        node = std.BitwiseNot(std.Var(i32, "x"), ty=i32)
+
+        assert node.text() == "~x"
+
+
+class TestAbs:
+    def test_constructor(self) -> None:
+        i32 = std.PrimTy("int32")
+        node = std.Abs(-1, ty=i32)
+
+        assert isinstance(node, std.Abs)
+        assert tuple(field.name for field in fields(std.Abs)) == ("ty", "operand")
+        assert node.ty == i32
+        assert isinstance(node.operand, std.IntImm)
+        assert node.operand.value == -1
+
+    def test_text_format(self) -> None:
+        i32 = std.PrimTy("int32")
+        node = std.Abs(std.Var(i32, "x"), ty=i32)
+
+        assert node.text() == "abs(x)"
+
+
+class TestIfExpr:
+    def test_constructor(self) -> None:
+        bool_ty = std.PrimTy("bool")
+        i32 = std.PrimTy("int32")
+        node = std.IfExpr(True, 1, 2, ty=i32)
+
+        assert isinstance(node, std.IfExpr)
+        assert tuple(field.name for field in fields(std.IfExpr)) == (
+            "ty",
+            "cond",
+            "then_expr",
+            "else_expr",
+        )
+        assert node.ty == i32
+        assert tvm_ffi.structural_equal(node.cond.ty, bool_ty)
+        assert tvm_ffi.structural_equal(node.then_expr.ty, i32)
+        assert tvm_ffi.structural_equal(node.else_expr.ty, i32)
+
+    def test_text_format(self) -> None:
+        bool_ty = std.PrimTy("bool")
+        i32 = std.PrimTy("int32")
+        cond = std.Var(bool_ty, "cond")
+        x = std.Var(i32, "x")
+        y = std.Var(i32, "y")
+        node = std.IfExpr(cond, x, y, ty=i32)
+
+        assert node.text() == "x if cond else y"
 
 
 class TestLoad:
@@ -1586,6 +1782,13 @@ class TestLoad:
         assert tvm_ffi.structural_equal(lhs, rhs)
         assert tvm_ffi.structural_hash(lhs) == tvm_ffi.structural_hash(rhs)
         assert not tvm_ffi.structural_equal(lhs, different)
+
+    def test_rejects_result_dtype_mismatch(self) -> None:
+        i32 = std.PrimTy("int32")
+        f32 = std.PrimTy("float32")
+
+        with pytest.raises(TypeError, match="result dtype"):
+            std.Load(std.Var(ty=i32, name="x"), ty=f32)
 
 
 class TestCast:
@@ -1752,7 +1955,7 @@ class TestIfStmt:
         x = std.Var(ty=i32, name="x")
         y = std.Var(ty=i32, name="y")
         two = 2
-        cond = std.Lt(ty=i32, a=x, b=two)
+        cond = std.Lt(ty=std.PrimTy("bool"), a=x, b=two)
         then_body = [std.Return(x)]
         else_body = [std.Return(y)]
         node = std.IfStmt(cond=cond, then_body=then_body, else_body=else_body)
@@ -1783,7 +1986,7 @@ class TestIfStmt:
         x = std.Var(ty=i32, name="x")
         y = std.Var(ty=i32, name="y")
         node = std.IfStmt(
-            cond=std.Lt(ty=i32, a=x, b=2),
+            cond=std.Lt(ty=std.PrimTy("bool"), a=x, b=2),
             then_body=[std.Return(x)],
             else_body=[std.Return(y)],
         )
@@ -1794,7 +1997,7 @@ class TestIfStmt:
         i32 = std.PrimTy("int32")
         x = std.Var(ty=i32, name="x")
         node = std.IfStmt(
-            cond=std.Lt(ty=i32, a=x, b=2),
+            cond=std.Lt(ty=std.PrimTy("bool"), a=x, b=2),
             then_body=[std.Return(x)],
             else_body=[],
         )
@@ -1805,7 +2008,7 @@ class TestIfStmt:
         i32 = std.PrimTy("int32")
         lhs = std.IfStmt(
             cond=std.Lt(
-                ty=i32,
+                ty=std.PrimTy("bool"),
                 a=std.Var(ty=i32, name="x"),
                 b=2,
             ),
@@ -1814,7 +2017,7 @@ class TestIfStmt:
         )
         rhs = std.IfStmt(
             cond=std.Lt(
-                ty=i32,
+                ty=std.PrimTy("bool"),
                 a=std.Var(ty=i32, name="x"),
                 b=2,
             ),
@@ -1823,7 +2026,7 @@ class TestIfStmt:
         )
         different = std.IfStmt(
             cond=std.Gt(
-                ty=i32,
+                ty=std.PrimTy("bool"),
                 a=std.Var(ty=i32, name="x"),
                 b=2,
             ),
@@ -1834,6 +2037,12 @@ class TestIfStmt:
         assert tvm_ffi.structural_equal(lhs, rhs)
         assert tvm_ffi.structural_hash(lhs) == tvm_ffi.structural_hash(rhs)
         assert not tvm_ffi.structural_equal(lhs, different)
+
+    def test_rejects_non_bool_condition(self) -> None:
+        i32 = std.PrimTy("int32")
+
+        with pytest.raises(TypeError, match="condition dtype must be bool8"):
+            std.IfStmt(cond=std.IntImm(i32, 1), then_body=[], else_body=[])
 
 
 class TestFor:
@@ -1998,7 +2207,7 @@ class TestWhile:
         i32 = std.PrimTy("int32")
         x = std.Var(ty=i32, name="x")
         y = std.Var(ty=i32, name="y")
-        cond = std.Lt(ty=i32, a=x, b=2)
+        cond = std.Lt(ty=std.PrimTy("bool"), a=x, b=2)
         body = [std.BindExpr(std.IntImm(std.PrimTy("int64"), 2), y)]
         node = std.While(
             cond=cond,
@@ -2022,7 +2231,7 @@ class TestWhile:
         i32 = std.PrimTy("int32")
         x = std.Var(ty=i32, name="x")
         y = std.Var(ty=i32, name="y")
-        cond = std.Lt(ty=i32, a=x, b=2)
+        cond = std.Lt(ty=std.PrimTy("bool"), a=x, b=2)
         body = [std.BindExpr(std.IntImm(std.PrimTy("int64"), 2), y)]
         attrs = {"pragma": "pipeline"}
         with_attrs = std.While(
@@ -2051,7 +2260,7 @@ class TestWhile:
         i32 = std.PrimTy("int32")
         x = std.Var(ty=i32, name="x")
         node = std.While(
-            cond=std.Lt(ty=i32, a=x, b=2),
+            cond=std.Lt(ty=std.PrimTy("bool"), a=x, b=2),
             attrs={"tag": "demo"},
             body=[
                 std.BindExpr(
@@ -2067,7 +2276,7 @@ class TestWhile:
         i32 = std.PrimTy("int32")
         x = std.Var(ty=i32, name="x")
         node = std.While(
-            cond=std.Lt(ty=i32, a=x, b=2),
+            cond=std.Lt(ty=std.PrimTy("bool"), a=x, b=2),
             body=[
                 std.BindExpr(
                     std.IntImm(std.PrimTy("int64"), 2),
@@ -2082,7 +2291,7 @@ class TestWhile:
         i32 = std.PrimTy("int32")
         x = std.Var(ty=i32, name="x")
         node = std.While(
-            cond=std.Lt(ty=i32, a=x, b=2),
+            cond=std.Lt(ty=std.PrimTy("bool"), a=x, b=2),
             attrs={"z": 3, "a": 1},
             body=[
                 std.BindExpr(
@@ -2098,7 +2307,7 @@ class TestWhile:
         i32 = std.PrimTy("int32")
         lhs = std.While(
             cond=std.Lt(
-                ty=i32,
+                ty=std.PrimTy("bool"),
                 a=std.Var(ty=i32, name="x"),
                 b=2,
             ),
@@ -2112,7 +2321,7 @@ class TestWhile:
         )
         rhs = std.While(
             cond=std.Lt(
-                ty=i32,
+                ty=std.PrimTy("bool"),
                 a=std.Var(ty=i32, name="x"),
                 b=2,
             ),
@@ -2126,7 +2335,7 @@ class TestWhile:
         )
         different = std.While(
             cond=std.Gt(
-                ty=i32,
+                ty=std.PrimTy("bool"),
                 a=std.Var(ty=i32, name="x"),
                 b=2,
             ),
@@ -2142,6 +2351,12 @@ class TestWhile:
         assert tvm_ffi.structural_equal(lhs, rhs)
         assert tvm_ffi.structural_hash(lhs) == tvm_ffi.structural_hash(rhs)
         assert not tvm_ffi.structural_equal(lhs, different)
+
+    def test_rejects_vector_bool_condition(self) -> None:
+        boolx4 = std.PrimTy("boolx4")
+
+        with pytest.raises(TypeError, match="condition dtype must be scalar bool"):
+            std.While(cond=std.BoolImm(boolx4, True), body=[])
 
 
 class TestScope:
@@ -2504,12 +2719,19 @@ class TestStore:
         assert tvm_ffi.structural_hash(lhs) == tvm_ffi.structural_hash(rhs)
         assert not tvm_ffi.structural_equal(lhs, different)
 
+    def test_rejects_rhs_dtype_mismatch(self) -> None:
+        i32 = std.PrimTy("int32")
+        f32 = std.PrimTy("float32")
+
+        with pytest.raises(TypeError, match="stored value dtype"):
+            std.Store(std.Var(ty=i32, name="x"), 1, rhs=std.FloatImm(f32, 2.0))
+
 
 class TestAssert:
     def test_constructor(self) -> None:
         i32 = std.PrimTy("int32")
         x = std.Var(ty=i32, name="x")
-        cond = std.Lt(ty=i32, a=x, b=2)
+        cond = std.Lt(ty=std.PrimTy("bool"), a=x, b=2)
         node = std.Assert(cond=cond)
 
         assert isinstance(node, std.Assert)
@@ -2526,10 +2748,11 @@ class TestAssert:
         x = std.Var(ty=i32, name="x")
 
         assert (
-            std.Assert(std.Lt(ty=i32, a=x, b=std.IntImm(i32, 2))).text() == "assert x < std.i32(2)"
+            std.Assert(std.Lt(ty=std.PrimTy("bool"), a=x, b=std.IntImm(i32, 2))).text()
+            == "assert x < std.i32(2)"
         )
         assert (
-            std.Assert(std.Lt(ty=i32, a=x, b=std.IntImm(i32, 2)), tag="demo").text()
+            std.Assert(std.Lt(ty=std.PrimTy("bool"), a=x, b=std.IntImm(i32, 2)), tag="demo").text()
             == 'std.Assert(x < std.i32(2), tag="demo")'
         )
 
@@ -2540,11 +2763,23 @@ class TestAssert:
         assert node.cond.value == 1
         assert node.text() == "assert 1"
 
+    def test_rejects_non_bool_concrete_condition(self) -> None:
+        i32 = std.PrimTy("int32")
+
+        with pytest.raises(TypeError, match="condition dtype must be bool8"):
+            std.Assert(std.IntImm(i32, 1))
+
     def test_structural_equality(self) -> None:
         i32 = std.PrimTy("int32")
-        lhs = std.Assert(std.Lt(ty=i32, a=std.Var(ty=i32, name="x"), b=2), tag="demo")
-        rhs = std.Assert(std.Lt(ty=i32, a=std.Var(ty=i32, name="renamed"), b=2), tag="demo")
-        different = std.Assert(std.Lt(ty=i32, a=std.Var(ty=i32, name="x"), b=3), tag="demo")
+        lhs = std.Assert(
+            std.Lt(ty=std.PrimTy("bool"), a=std.Var(ty=i32, name="x"), b=2), tag="demo"
+        )
+        rhs = std.Assert(
+            std.Lt(ty=std.PrimTy("bool"), a=std.Var(ty=i32, name="renamed"), b=2), tag="demo"
+        )
+        different = std.Assert(
+            std.Lt(ty=std.PrimTy("bool"), a=std.Var(ty=i32, name="x"), b=3), tag="demo"
+        )
 
         assert tvm_ffi.structural_equal(lhs, rhs)
         assert tvm_ffi.structural_hash(lhs) == tvm_ffi.structural_hash(rhs)
@@ -2786,7 +3021,9 @@ class TestDialectMnemonic:
             (std.Pow, ("std", "Pow")),
             (std.LShift, ("std", "LShift")),
             (std.RShift, ("std", "RShift")),
-            (std.Xor, ("std", "Xor")),
+            (std.BitwiseAnd, ("std", "BitwiseAnd")),
+            (std.BitwiseOr, ("std", "BitwiseOr")),
+            (std.BitwiseXor, ("std", "BitwiseXor")),
             (std.Min, ("std", "Min")),
             (std.Max, ("std", "Max")),
             (std.Eq, ("std", "Eq")),
@@ -2798,6 +3035,9 @@ class TestDialectMnemonic:
             (std.And, ("std", "And")),
             (std.Or, ("std", "Or")),
             (std.Not, ("std", "Not")),
+            (std.BitwiseNot, ("std", "BitwiseNot")),
+            (std.Abs, ("std", "Abs")),
+            (std.IfExpr, ("std", "IfExpr")),
             (std.Load, ("std", "Load")),
             (std.Cast, ("std", "Cast")),
             (std.Call, ("std", "Call")),
@@ -2833,7 +3073,7 @@ class TestDialectMnemonic:
             if isinstance(cls, type) and issubclass(cls, std.Node) and cls not in abstract:
                 concrete_classes.append(cls)
 
-        assert len(concrete_classes) == 50
+        assert len(concrete_classes) == 55
         for cls in concrete_classes:
             cls_any = cast(Any, cls)
             info = cls_any.__tvm_ffi_type_info__
@@ -2916,7 +3156,7 @@ class TestDialectMnemonic:
             (std.BindExpr(one, x), std.BindExpr),
             (std.VarDef(x, tag="demo"), std.VarDef),
             (std.Store(x, rhs=one), std.Store),
-            (std.Assert(one), std.Assert),
+            (std.Assert(std.BoolImm(std.PrimTy("bool"), True)), std.Assert),
             (std.Return(x), std.Return),
             (std.Yield(x), std.Yield),
             (std.Break(), std.Break),

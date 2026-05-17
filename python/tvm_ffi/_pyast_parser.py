@@ -746,7 +746,10 @@ class Parser:
         if op == kind.Parens:
             return self.visit(operands[0])
         if op == kind.IfThenElse:
-            raise NotImplementedError("ternary expressions are not supported")
+            return self._run_generics(
+                "__if_then_else__",
+                (self.visit(operands[0]), self.visit(operands[1]), self.visit(operands[2])),
+            )
         if op == kind.ChainedCompare:
             return self._visit_chained_compare(operands)
         return self._run_generics(_OP_GENERICS[op], tuple(self.visit(op) for op in operands))

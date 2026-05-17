@@ -82,8 +82,9 @@ TEST(StdDialect, TextPrintVarDef) {
 
 TEST(StdDialect, TextPrintAssert) {
   stdir::PrimTy i32(ffi::StringToDLDataType("int32"));
+  stdir::PrimTy bool_ty(ffi::StringToDLDataType("bool"));
   stdir::Var x(i32, "x");
-  stdir::Assert assert_stmt(stdir::Lt(i32, x, stdir::IntImm(i32, 2)));
+  stdir::Assert assert_stmt(stdir::Lt(bool_ty, x, stdir::IntImm(i32, 2)));
 
   text::IRPrinter printer{text::PrinterConfig()};
   text::NodeAST ast =
@@ -159,7 +160,9 @@ TEST(StdDialect, DialectMnemonics) {
       {stdir::PowObj::RuntimeTypeIndex(), {"std", "Pow"}},
       {stdir::LShiftObj::RuntimeTypeIndex(), {"std", "LShift"}},
       {stdir::RShiftObj::RuntimeTypeIndex(), {"std", "RShift"}},
-      {stdir::XorObj::RuntimeTypeIndex(), {"std", "Xor"}},
+      {stdir::BitwiseAndObj::RuntimeTypeIndex(), {"std", "BitwiseAnd"}},
+      {stdir::BitwiseOrObj::RuntimeTypeIndex(), {"std", "BitwiseOr"}},
+      {stdir::BitwiseXorObj::RuntimeTypeIndex(), {"std", "BitwiseXor"}},
       {stdir::MinObj::RuntimeTypeIndex(), {"std", "Min"}},
       {stdir::MaxObj::RuntimeTypeIndex(), {"std", "Max"}},
       {stdir::EqObj::RuntimeTypeIndex(), {"std", "Eq"}},
@@ -171,6 +174,9 @@ TEST(StdDialect, DialectMnemonics) {
       {stdir::AndObj::RuntimeTypeIndex(), {"std", "And"}},
       {stdir::OrObj::RuntimeTypeIndex(), {"std", "Or"}},
       {stdir::NotObj::RuntimeTypeIndex(), {"std", "Not"}},
+      {stdir::BitwiseNotObj::RuntimeTypeIndex(), {"std", "BitwiseNot"}},
+      {stdir::AbsObj::RuntimeTypeIndex(), {"std", "Abs"}},
+      {stdir::IfExprObj::RuntimeTypeIndex(), {"std", "IfExpr"}},
       {stdir::LoadObj::RuntimeTypeIndex(), {"std", "Load"}},
       {stdir::CastObj::RuntimeTypeIndex(), {"std", "Cast"}},
       {stdir::CallObj::RuntimeTypeIndex(), {"std", "Call"}},
@@ -189,7 +195,7 @@ TEST(StdDialect, DialectMnemonics) {
   };
   std::set<std::string> seen_mnemonics;
 
-  EXPECT_EQ(cases.size(), 49);
+  EXPECT_EQ(cases.size(), 54);
   for (const auto& [type_index, expected] : cases) {
     ffi::AnyView value = dialect_mnemonic_col[type_index];
 
@@ -280,19 +286,24 @@ TEST(StdDialect, BinaryConstructorsRejectTypePromotionAndErasure) {
 
   EXPECT_NO_THROW({ stdir::Add(any, x_any, any_one); });
   EXPECT_NO_THROW({ stdir::Add(any, x_any, one_i32); });
+  EXPECT_NO_THROW({ stdir::Add(i32, x_i32, any_one); });
+  EXPECT_NO_THROW({ stdir::Add(any, x_i32, one_i32); });
   EXPECT_THROW({ stdir::Add(i32, x_i32, y_i64); }, ffi::Error);
-  EXPECT_THROW({ stdir::Add(i32, x_i32, any_one); }, ffi::Error);
-  EXPECT_THROW({ stdir::Add(any, x_i32, x_i32); }, ffi::Error);
+  EXPECT_THROW({ stdir::Add(any, x_i32, y_i64); }, ffi::Error);
 }
 
 TEST(StdDialect, UnaryConstructorsRejectTypePromotionAndErasure) {
   stdir::AnyTy any;
   stdir::PrimTy i32(ffi::StringToDLDataType("int32"));
+  stdir::PrimTy bool_ty(ffi::StringToDLDataType("bool"));
   stdir::Var x_i32(i32, "x");
   stdir::IntImm any_one(any, 1);
+  stdir::BoolImm any_true(any, true);
   stdir::Var x_any(any, "x");
 
   EXPECT_NO_THROW({ stdir::Not(any, x_any); });
+  EXPECT_NO_THROW({ stdir::Not(bool_ty, any_true); });
+  EXPECT_NO_THROW({ stdir::Not(any, any_true); });
   EXPECT_THROW({ stdir::Not(i32, any_one); }, ffi::Error);
   EXPECT_THROW({ stdir::Not(any, x_i32); }, ffi::Error);
 }
