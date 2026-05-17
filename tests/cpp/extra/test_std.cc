@@ -274,6 +274,54 @@ TEST(StdDialect, TextSugarUsesNamedOperands) {
   EXPECT_EQ(ast->ToPython(text::PrinterConfig()), "x + std.i32(1)");
 }
 
+TEST(StdDialect, ExprOperatorHelpers) {
+  stdir::PrimTy bool_ty(ffi::StringToDLDataType("bool"));
+  stdir::PrimTy i32(ffi::StringToDLDataType("int32"));
+  stdir::Var cond(bool_ty, "cond");
+  stdir::Var x(i32, "x");
+
+  stdir::Expr add = x + 1;
+  stdir::Expr radd = 1 + x;
+  stdir::Expr div = x / 2;
+  stdir::Expr mod = x % 2;
+  stdir::Expr bitwise = ~x;
+  stdir::Expr neg = -x;
+  stdir::Expr cmp = x < 2;
+  stdir::Expr eq = x == 2;
+  stdir::Expr min_expr = stdir::min(x, 3);
+  stdir::Expr select_expr = stdir::if_then_else(cond, x, stdir::IntImm(i32, 4));
+
+  EXPECT_NE(add.as<stdir::AddObj>(), nullptr);
+  EXPECT_NE(radd.as<stdir::AddObj>(), nullptr);
+  EXPECT_NE(div.as<stdir::CDivObj>(), nullptr);
+  EXPECT_NE(mod.as<stdir::FloorModObj>(), nullptr);
+  EXPECT_NE(bitwise.as<stdir::BitwiseNotObj>(), nullptr);
+  EXPECT_NE(neg.as<stdir::SubObj>(), nullptr);
+  EXPECT_NE(cmp.as<stdir::LtObj>(), nullptr);
+  EXPECT_NE(eq.as<stdir::EqObj>(), nullptr);
+  EXPECT_NE(min_expr.as<stdir::MinObj>(), nullptr);
+  EXPECT_NE(select_expr.as<stdir::IfExprObj>(), nullptr);
+}
+
+TEST(StdDialect, ExprOperatorHelpersAreExposedAsGlobalFuncs) {
+  stdir::PrimTy bool_ty(ffi::StringToDLDataType("bool"));
+  stdir::PrimTy i32(ffi::StringToDLDataType("int32"));
+  stdir::Var cond(bool_ty, "cond");
+  stdir::Var x(i32, "x");
+
+  ffi::Function add = ffi::Function::GetGlobalRequired("ffi.std.add");
+  ffi::Function eq = ffi::Function::GetGlobalRequired("ffi.std.eq");
+  ffi::Function select = ffi::Function::GetGlobalRequired("ffi.std.select");
+
+  stdir::Expr add_expr = add(x, 1).cast<stdir::Expr>();
+  stdir::Expr eq_expr = eq(x, 1).cast<stdir::Expr>();
+  stdir::Expr select_expr = select(cond, x, 2).cast<stdir::Expr>();
+
+  EXPECT_NE(add_expr.as<stdir::AddObj>(), nullptr);
+  EXPECT_NE(eq_expr.as<stdir::EqObj>(), nullptr);
+  EXPECT_NE(select_expr.as<stdir::IfExprObj>(), nullptr);
+}
+
 TEST(StdDialect, BinaryConstructorsRejectTypePromotionAndErasure) {
   stdir::AnyTy any;
   stdir::PrimTy i32(ffi::StringToDLDataType("int32"));

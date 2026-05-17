@@ -22,9 +22,9 @@ from collections.abc import Sequence
 from typing import Any as TypingAny
 from typing import Callable, ClassVar, cast
 
-from tvm_ffi.core import MISSING
+from tvm_ffi.structural import structural_equal
 
-from . import std
+from . import dtype, std
 from ._pyast_parser import (
     Factory,
     Frame,
@@ -71,7 +71,7 @@ class AnyTyFactory(TyFactory):
         """Return the dialect ``std.AnyTy`` node."""
         return self.ty
 
-    def __call__(self, value: TypingAny) -> std.Cast:
+    def __call__(self, value: TypingAny) -> std.Expr:
         """Treat ``std.Any(x)`` as an explicit cast to the fallback type."""
         return self._make_cast(value)
 
@@ -180,14 +180,14 @@ class RegionFactory(Frame):
 
     def bind_names(self, names: Sequence[str]) -> None:
         """Rename placeholder bind variables to match ``for`` or ``with as`` targets."""
-        vars_in_order = [(bind, var) for bind in self.binds for var in _binding_vars(bind)]
-        if len(names) != len(vars_in_order):
-            raise TypeError(f"expected {len(vars_in_order)} binding target(s), got {len(names)}")
+        num_bind_vars = sum(len(cast(TypingAny, bind).vars) for bind in self.binds)
+        if len(names) != num_bind_vars:
+            raise TypeError(f"expected {num_bind_vars} binding target(s), got {len(names)}")
 
         rebuilt: list[std.Stmt] = []
         offset = 0
         for bind in self.binds:
-            bind_vars = _binding_vars(bind)
+            bind_vars = cast(TypingAny, bind).vars
             count = len(bind_vars)
             new_vars = [std.Var(bind_vars[i].ty, names[offset + i]) for i in range(count)]
             offset += count
@@ -203,7 +203,7 @@ class RegionFactory(Frame):
 
     def bound_vars(self) -> list[std.Var]:
         """Return variables introduced by the region header."""
-        return [var for bind in self.binds for var in _binding_vars(bind)]
+        return [var for bind in self.binds for var in cast(TypingAny, bind).vars]
 
     def to_dialect(self) -> std.Stmt:
         """Build the concrete region statement after its body has been parsed."""
@@ -228,20 +228,33 @@ class ForFactory(Frame):
         start: TypingAny | None,
         stop: TypingAny | None,
         step: TypingAny | None,
+        *,
+        ty: std.TyLike | None = None,
         **attrs: TypingAny,
     ) -> None:
         """Create a loop frame with a placeholder induction variable."""
         self.start = start
         self.stop = stop
         self.step = step
-        range_values = tuple(MISSING if value is None else value for value in (start, stop, step))
-        loop_ty = (
-            std.PrimTy("int64")
-            if all(MISSING.is_(value) for value in range_values)
-            else _find_common_ty(*range_values)
-        )
+        for value in (start, stop, step):
+            if value is None or isinstance(value, int):
+                continue
+            if not isinstance(value, std.Expr):
+                raise TypeError(
+                    f"range expects Python integers or integer expressions, got {type(value).__name__}"
+                )
+            if isinstance(value.ty, (std.AnyTy, std.PrimTy)):
+                ty = value.ty
+            elif isinstance(value, str) and dtype.is_dtype(value):
+                ty = std.PrimTy(value)
+            else:
+                raise TypeError(
+                    f"Range expression must have a Python integer or an std.Expr with integer type, got {value.ty.text()}"
+                )
+        if ty is None:
+            ty = std.PrimTy("int64")
         self.attrs = dict(attrs)
-        self.vars: list[std.Var] = [std.Var(loop_ty, "")]
+        self.vars: list[std.Var] = [std.Var(ty, "")]
         self.body: list[TypingAny] = []
 
     def bind_names(self, names: Sequence[str]) -> None:
@@ -286,37 +299,6 @@ class WhileFactory(Frame):
             body=self.body,
             attrs=self.attrs or None,
         )
-
-
-def _make_binary_generic(op_cls: type) -> Callable[..., std.Expr]:
-    """Create a binary expression generic that infers its result type."""
-
-    def generic(lhs: TypingAny, rhs: TypingAny) -> std.Expr:
-        ty = _find_common_ty(lhs, rhs)
-        return op_cls(lhs, rhs, ty=ty)
-
-    return generic
-
-
-def _bool_like_ty(ty: std.Ty) -> std.Ty:
-    """Return the boolean result type matching a value type's shape/lanes."""
-    if isinstance(ty, std.AnyTy):
-        return ty
-    if isinstance(ty, std.PrimTy):
-        return std.PrimTy(std.PrimTy("bool").dtype.with_lanes(ty.dtype.lanes))
-    if isinstance(ty, std.TensorTy):
-        return std.TensorTy(list(ty.shape), std.PrimTy("bool").dtype.with_lanes(ty.dtype.lanes))
-    return std.AnyTy()
-
-
-def _make_bool_binary_generic(op_cls: type) -> Callable[..., std.Expr]:
-    """Create a binary generic whose result is bool-shaped."""
-
-    def generic(lhs: TypingAny, rhs: TypingAny) -> std.Expr:
-        value_ty = _find_common_ty(lhs, rhs)
-        return op_cls(lhs, rhs, ty=_bool_like_ty(value_ty))
-
-    return generic
 
 
 class Std:
@@ -421,35 +403,12 @@ class Std:
     Break = std.Break
     Continue = std.Continue
 
-    @staticmethod
-    def func(**attrs: TypingAny) -> FuncFactory:
-        """Create the parser frame used by ``@std.func`` syntax."""
-        return FuncFactory(**attrs)
-
-    @staticmethod
-    def module(**attrs: TypingAny) -> ModuleFactory:
-        """Create the parser frame used by ``@std.module`` syntax."""
-        return ModuleFactory(**attrs)
-
-    @staticmethod
-    def while_(cond: TypingAny, **attrs: TypingAny) -> WhileFactory:
-        """Create the parser frame used by ``with std.while_(...)`` syntax."""
-        return WhileFactory(cond, **attrs)
-
-    @staticmethod
-    def min(lhs: TypingAny, rhs: TypingAny) -> std.Min:
-        """Create the parser-visible ``min`` expression."""
-        return std.Min(lhs, rhs, ty=_find_common_ty(lhs, rhs))
-
-    @staticmethod
-    def max(lhs: TypingAny, rhs: TypingAny) -> std.Max:
-        """Create the parser-visible ``max`` expression."""
-        return std.Max(lhs, rhs, ty=_find_common_ty(lhs, rhs))
-
-    @staticmethod
-    def abs(value: TypingAny) -> std.Abs:
-        """Create the parser-visible ``abs`` expression."""
-        return std.Abs(value, ty=_parse_value_ty(value))
+    func = FuncFactory
+    module = ModuleFactory
+    while_ = WhileFactory
+    min = std.min
+    max = std.max
+    abs = std.abs
 
     @staticmethod
     def range(*args: TypingAny, **attrs: TypingAny) -> ForFactory:
@@ -473,42 +432,8 @@ class Std:
     def for_(range_: TypingAny = None, **kwargs: TypingAny) -> ForFactory:
         """Create the parser frame used by explicit ``std.for_(...)`` loop headers."""
         if isinstance(range_, std.Range):
-            frame = ForFactory(range_.start, range_.stop, range_.step, **kwargs)
-        else:
-            frame = ForFactory(None, range_, None, **kwargs)
-        return frame
-
-
-def _same_ty(lhs: std.Ty, rhs: std.Ty) -> bool:
-    """Compare two dialect types structurally for parser type inference."""
-    from tvm_ffi.structural import structural_equal  # noqa: PLC0415
-
-    return structural_equal(lhs, rhs)
-
-
-def _materialize_literal(value: std.ExprLike, ty: std.TyLike) -> std.Expr:
-    """Convert native literals to typed or default dialect immediates."""
-    if not isinstance(value, (bool, int, float, str)):
-        return value
-    ty = normalize_ty(ty)
-    if isinstance(ty, std.PrimTy):
-        literal = ty.coerce_literal(value)
-        if literal is not None:
-            return literal
-    return std.Expr.literal(value)
-
-
-def _parse_value_ty(value: std.ExprLike) -> std.Ty:
-    """Infer a standard dialect type for parsed values and native literals."""
-    if isinstance(value, std.Expr):
-        return value.ty
-    if isinstance(value, bool):
-        return std.PrimTy("bool")
-    if isinstance(value, int):
-        return std.PrimTy("int64")
-    if isinstance(value, float):
-        return std.PrimTy("float32")
-    return std.AnyTy()
+            return ForFactory(range_.start, range_.stop, range_.step, **kwargs)
+        return ForFactory(None, range_, None, **kwargs)
 
 
 def _normalize_binds(values: Sequence[TypingAny]) -> list[std.Stmt]:
@@ -539,6 +464,18 @@ def _bind_expr_from_names(
     expr: std.ExprLike | std.BindExpr,
 ) -> std.BindExpr:
     """Build assignment bindings once the left-hand names are known."""
+
+    def _materialize_literal(value: std.ExprLike, ty: std.TyLike) -> std.Expr:
+        """Convert native literals to typed or default dialect immediates."""
+        if not isinstance(value, (bool, int, float, str)):
+            return value
+        ty = normalize_ty(ty)
+        if isinstance(ty, std.PrimTy):
+            literal = ty.coerce_literal(value)
+            if literal is not None:
+                return literal
+        return std.Expr.literal(value)
+
     attrs = None
     if isinstance(expr, std.BindExpr):
         if expr.vars:
@@ -553,18 +490,21 @@ def _bind_expr_from_names(
         bind_ty = normalize_ty(ty)
         expr = _materialize_literal(expr, bind_ty)
         expr_ty = expr.ty
-        if not isinstance(bind_ty, std.AnyTy) and not isinstance(expr_ty, std.AnyTy):
-            if not _same_ty(bind_ty, expr_ty):
-                raise TypeError(
-                    f"type mismatch: {bind_ty.text()} vs {expr_ty.text()}; "
-                    "use an explicit cast on the rhs"
-                )
+        if (
+            not isinstance(bind_ty, std.AnyTy)
+            and not isinstance(expr_ty, std.AnyTy)
+            and not structural_equal(bind_ty, expr_ty)
+        ):
+            raise TypeError(
+                f"type mismatch: {bind_ty.text()} vs {expr_ty.text()}; "
+                "use an explicit cast on the rhs"
+            )
 
     vars = [std.Var(bind_ty, name) for name in names]
     return std.BindExpr(expr, *vars, **(attrs or {}))
 
 
-def _bind_var_def_from_names(names: Sequence[str], tys: Sequence[TypingAny]) -> std.VarDef:
+def _bind_var_def_from_names(names: Sequence[str], *tys: TypingAny) -> std.VarDef:
     """Build annotated variable definitions from left-hand names and types."""
     if len(tys) == 1 and isinstance(tys[0], std.VarDef):
         bind = tys[0]
@@ -579,135 +519,30 @@ def _bind_var_def_from_names(names: Sequence[str], tys: Sequence[TypingAny]) -> 
     return std.VarDef(*vars)
 
 
-def _binding_vars(bind: std.Stmt) -> Sequence[std.Var]:
-    """Return variables carried by supported binding statements."""
-    if isinstance(bind, (std.BindExpr, std.VarDef)):
-        return bind.vars
-    raise TypeError(f"unsupported bind type: {type(bind).__name__}")
+def _make_call(callee: TypingAny, *args: TypingAny) -> std.Call:
+    """Build a call from generic call syntax."""
+    return std.Call(callee, *args, ty=std.AnyTy())
 
 
-def _element_ty(base_ty: std.Ty, indices: Sequence[TypingAny]) -> std.Ty:
-    """Infer the result type of a load from a base type and index count."""
-    num_indices = len(indices)
-    if num_indices == 0:
-        return base_ty
-    result = base_ty
-    if isinstance(base_ty, std.AnyTy):
-        result = std.AnyTy()
-    elif isinstance(base_ty, std.TensorTy):
-        rank = len(base_ty.shape)
-        if num_indices >= rank:
-            result = std.PrimTy(base_ty.dtype)
-        else:
-            result = std.TensorTy(list(base_ty.shape)[num_indices:], base_ty.dtype)
-    elif isinstance(base_ty, std.TupleTy):
-        index = indices[0]
-        if isinstance(index, int):
-            fields = list(base_ty.fields)
-            try:
-                field_ty = fields[index]
-            except IndexError:
-                result = std.AnyTy()
-            else:
-                result = _element_ty(field_ty, indices[1:])
-        else:
-            result = std.AnyTy()
-    return result
-
-
-def _make_load(args: Sequence[TypingAny]) -> std.Load:
-    """Build a load from generic index syntax."""
-    if len(args) < 1:
-        raise TypeError("std.Load expects at least an expression")
-    lhs = args[0]
-    indices = args[1:]
-    if not isinstance(lhs, std.Expr):
-        raise TypeError(f"std.Load base must be an expression, got {type(lhs).__name__}")
-    ty = _element_ty(lhs.ty, indices)
-    return std.Load(lhs, *indices, ty=ty)
-
-
-def _find_common_ty(*args: TypingAny) -> std.Ty:
-    """Choose a result type for binary-like expressions from parser values.
-
-    Used by arithmetic, comparisons, logical ops, and range type inference.
-    ``MISSING`` values are skipped, matching types are kept, native literals may
-    adopt a non-literal primitive type, ``std.Any`` dominates typed operands, and
-    remaining mismatches are reported as parse errors.
-    """
-    ty: std.Ty | None = None
-    ty_value: TypingAny = MISSING
-    for value in args:
-        if MISSING.is_(value):
-            continue
-
-        next_ty = _parse_value_ty(value)
-        if ty is None:
-            ty = next_ty
-            ty_value = value
-            continue
-        if _same_ty(ty, next_ty):
-            continue
-        ty_value_is_literal = isinstance(ty_value, (bool, int, float, str))
-        value_is_literal = isinstance(value, (bool, int, float, str))
-        if ty_value_is_literal and not value_is_literal and isinstance(next_ty, std.PrimTy):
-            can_adopt = (
-                isinstance(ty_value, int)
-                and (next_ty.dtype.is_bool or next_ty.dtype.is_integer or next_ty.dtype.is_float)
-            ) or (isinstance(ty_value, float) and next_ty.dtype.is_float)
-            if can_adopt:
-                ty = next_ty
-                ty_value = value
-                continue
-        if value_is_literal and not ty_value_is_literal and isinstance(ty, std.PrimTy):
-            can_adopt = (
-                isinstance(value, int)
-                and (ty.dtype.is_bool or ty.dtype.is_integer or ty.dtype.is_float)
-            ) or (isinstance(value, float) and ty.dtype.is_float)
-            if can_adopt:
-                continue
-        if isinstance(ty, std.AnyTy):
-            continue
-        if isinstance(next_ty, std.AnyTy):
-            ty = next_ty
-            ty_value = value
-            continue
-        hint = (
-            f"; cast literal {ty_value!r} with {next_ty.text()}({ty_value!r})"
-            if ty_value_is_literal and not value_is_literal
-            else f"; cast literal {value!r} with {ty.text()}({value!r})"
-            if value_is_literal and not ty_value_is_literal
-            else f"; cast literals explicitly, for example {next_ty.text()}({ty_value!r})"
-            if ty_value_is_literal and not _same_ty(next_ty, ty)
-            else f"; cast literals explicitly, for example {ty.text()}({value!r})"
-            if value_is_literal and not _same_ty(ty, next_ty)
-            else "; explicit casts are required, for example std.i64(0)"
-        )
-        raise TypeError(f"type mismatch: {ty.text()} vs {next_ty.text()}{hint}")
-
-    if ty is None:
-        raise TypeError("cannot infer type from missing values")
-    return ty
-
-
-def _make_floordiv(lhs: TypingAny, rhs: TypingAny) -> std.FloorDiv:
+def _make_floordiv(lhs: TypingAny, rhs: TypingAny) -> std.Expr:
     """Build integer floor division from the parser ``//`` generic."""
-    ty = _find_common_ty(lhs, rhs)
+    result = std.floordiv(lhs, rhs)
+    ty = result.ty
     dtype = ty.dtype if isinstance(ty, (std.PrimTy, std.TensorTy)) else None
     if dtype is None or not dtype.is_integer:
         raise TypeError(f"__floordiv__ only supports integer types, got {ty.text()}")
-    return std.FloorDiv(lhs, rhs, ty=ty)
+    return result
 
 
-def _make_mod(lhs: TypingAny, rhs: TypingAny) -> std.FloorMod | std.CMod:
+def _make_mod(lhs: TypingAny, rhs: TypingAny) -> std.Expr:
     """Build modulo from the parser ``%`` generic based on the resolved type."""
-    ty = _find_common_ty(lhs, rhs)
+    ty = std.add(lhs, rhs).ty
     dtype = ty.dtype if isinstance(ty, (std.PrimTy, std.TensorTy)) else None
     if dtype is not None and dtype.is_float:
-        return std.CMod(lhs, rhs, ty=ty)
+        return std.cmod(lhs, rhs)
     if dtype is None or not dtype.is_integer:
         raise TypeError(f"__mod__ only supports integer types, got {ty.text()}")
-    return std.FloorMod(lhs, rhs, ty=ty)
+    return std.floormod(lhs, rhs)
 
 
 Std.__ffi_globals__ = {
@@ -718,42 +553,38 @@ Std.__ffi_globals__ = {
 }
 
 Std.__ffi_generics__ = {
-    "__add__": _make_binary_generic(std.Add),
-    "__sub__": _make_binary_generic(std.Sub),
-    "__mul__": _make_binary_generic(std.Mul),
-    "__truediv__": _make_binary_generic(std.CDiv),
+    "__add__": std.add,
+    "__sub__": std.sub,
+    "__mul__": std.mul,
+    "__truediv__": std.cdiv,
     "__floordiv__": _make_floordiv,
     "__mod__": _make_mod,
-    "__pow__": _make_binary_generic(std.Pow),
-    "__lshift__": _make_binary_generic(std.LShift),
-    "__rshift__": _make_binary_generic(std.RShift),
-    "__and__": _make_binary_generic(std.BitwiseAnd),
-    "__or__": _make_binary_generic(std.BitwiseOr),
-    "__xor__": _make_binary_generic(std.BitwiseXor),
-    "min": _make_binary_generic(std.Min),
-    "max": _make_binary_generic(std.Max),
-    "__eq__": _make_bool_binary_generic(std.Eq),
-    "__ne__": _make_bool_binary_generic(std.Ne),
-    "__le__": _make_bool_binary_generic(std.Le),
-    "__ge__": _make_bool_binary_generic(std.Ge),
-    "__gt__": _make_bool_binary_generic(std.Gt),
-    "__lt__": _make_bool_binary_generic(std.Lt),
-    "__logical_and__": _make_bool_binary_generic(std.And),
-    "__logical_or__": _make_bool_binary_generic(std.Or),
-    "__invert__": lambda value: std.BitwiseNot(value, ty=_parse_value_ty(value)),
-    "__not__": lambda value: std.Not(value, ty=_bool_like_ty(_parse_value_ty(value))),
-    "__neg__": lambda value: (
-        -value if isinstance(value, (int, float)) else std.Sub(0, value, ty=_parse_value_ty(value))
-    ),
-    "__pos__": lambda value: value,
-    "__if_then_else__": lambda cond, then_expr, else_expr: std.IfExpr(
-        cond, then_expr, else_expr, ty=_find_common_ty(then_expr, else_expr)
-    ),
-    "__load__": lambda base, *indices: _make_load((base, *indices)),
+    "__pow__": std.pow,
+    "__lshift__": std.left_shift,
+    "__rshift__": std.right_shift,
+    "__and__": std.bitwise_and,
+    "__or__": std.bitwise_or,
+    "__xor__": std.bitwise_xor,
+    "min": std.min,
+    "max": std.max,
+    "__eq__": std.eq,
+    "__ne__": std.ne,
+    "__le__": std.le,
+    "__ge__": std.ge,
+    "__gt__": std.gt,
+    "__lt__": std.lt,
+    "__logical_and__": std.logical_and,
+    "__logical_or__": std.logical_or,
+    "__invert__": std.bitwise_not,
+    "__not__": std.logical_not,
+    "__neg__": std.neg,
+    "__pos__": lambda x: x,
+    "__if_then_else__": std.if_then_else,
+    "__load__": std.Load,
     "__slice__": std.Range,
-    "__cast__": lambda ty, value: std.Cast(normalize_ty(ty), value),
-    "__call__": lambda callee, *args: std.Call(callee, *args, ty=std.AnyTy()),
-    "__store__": lambda lhs, rhs, *indices: std.Store(lhs, *indices, rhs=rhs),
+    "__cast__": std.cast,
+    "__call__": _make_call,
+    "__store__": std.Store,
     "__if__": std.IfStmt,
     "__while__": WhileFactory,
     "__assert__": std.Assert,
@@ -774,6 +605,6 @@ Std.__ffi_generics__ = {
     # - "__bind_var_def__": (names: Names, *tys: TypeLike) -> std.VarDef.
     # - "__bind_var_def__": (names: Names, bind: std.VarDef) -> std.VarDef.
     "__bind_expr__": _bind_expr_from_names,
-    "__bind_var_def__": lambda names, *tys: _bind_var_def_from_names(names, tys),
+    "__bind_var_def__": _bind_var_def_from_names,
 }
 register_dialect("std", Std)

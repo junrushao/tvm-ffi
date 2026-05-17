@@ -323,6 +323,38 @@ class dtype(str):
         """Whether this dtype stores opaque handle values."""
         return self.type_code == DataTypeCode.HANDLE
 
+    @staticmethod
+    def is_dtype(arg: str | dtype) -> builtins.bool:
+        """Check if the given string is a valid dtype.
+
+        Parameters
+        ----------
+        arg
+            The string to check.
+
+        Returns
+        -------
+        bool
+            Whether the input string is a valid dtype.
+
+        Examples
+        --------
+        .. code-block:: python
+
+            import tvm_ffi
+
+            assert tvm_ffi.dtype.is_dtype("float32")
+            assert not tvm_ffi.dtype.is_dtype("not_a_dtype")
+
+        """
+        if isinstance(arg, dtype):
+            return True
+        try:
+            core.DataType(str(arg))
+            return True
+        except ValueError:
+            return False
+
 
 try:
     # this helps to make numpy as optional

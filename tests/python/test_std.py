@@ -1670,6 +1670,164 @@ class TestIfExpr:
         assert node.text() == "x if cond else y"
 
 
+class TestExprOperators:
+    @pytest.mark.parametrize(
+        "expr,text",
+        [
+            (std.Var(std.PrimTy("int64"), "x"), "x"),
+            (std.Var(std.PrimTy("int32"), "y"), "y"),
+            (std.IntImm(std.PrimTy("int64"), -1), "-1"),
+            (std.IntImm(std.PrimTy("int64"), 1), "1"),
+            (std.IntImm(std.PrimTy("int32"), 65536), "std.i32(65536)"),
+            (std.BoolImm(std.PrimTy("bool"), True), "True"),
+            (std.BoolImm(std.PrimTy("bool"), False), "False"),
+            (std.FloatImm(std.PrimTy("float64"), 0.0), "std.f64(0.0)"),
+            (std.FloatImm(std.PrimTy("float64"), 1.0), "std.f64(1.0)"),
+            (std.FloatImm(std.PrimTy("float64"), -1.0), "std.f64(-1.0)"),
+        ],
+    )
+    def test_mlc_expr_leaf_text_cases(self, expr: std.Expr, text: str) -> None:
+        assert expr.text() == text
+
+    def test_mlc_cast_case(self) -> None:
+        x = std.Var(std.PrimTy("int64"), "x")
+
+        assert x.cast("int32").text() == "std.i32(x)"
+
+    def test_mlc_arithmetic_binary_cases(self) -> None:
+        i64 = std.PrimTy("int64")
+        x = std.Var(i64, "x")
+        y = std.Var(i64, "y")
+        cases = [
+            (x + y, std.Add, "x + y"),
+            (x - y, std.Sub, "x - y"),
+            (x * y, std.Mul, "x * y"),
+            (std.truncdiv(x, y), std.CDiv, "x / y"),
+            (std.truncmod(x, y), std.CMod, "std.CMod(x, y, ty=std.i64)"),
+            (x // y, std.FloorDiv, "x // y"),
+            (x % y, std.FloorMod, "x % y"),
+            (std.min(x, y), std.Min, "min(x, y)"),
+            (std.max(x, y), std.Max, "max(x, y)"),
+        ]
+
+        for expr, cls, text in cases:
+            assert isinstance(expr, cls)
+            assert expr.text() == text
+
+    def test_mlc_comparison_cases(self) -> None:
+        i64 = std.PrimTy("int64")
+        x = std.Var(i64, "x")
+        y = std.Var(i64, "y")
+        cases = [
+            (std.eq(x, y), std.Eq, "x == y"),
+            (std.ne(x, y), std.Ne, "x != y"),
+            (x >= y, std.Ge, "x >= y"),
+            (x <= y, std.Le, "x <= y"),
+            (x > y, std.Gt, "x > y"),
+            (x < y, std.Lt, "x < y"),
+        ]
+
+        for expr, cls, text in cases:
+            assert isinstance(expr, cls)
+            assert isinstance(expr.ty, std.PrimTy)
+            assert expr.ty.dtype == tvm_ffi.bool
+            assert expr.text() == text
+
+    def test_mlc_logical_select_and_range_cases(self) -> None:
+        bool_ty = std.PrimTy("bool")
+        i64 = std.PrimTy("int64")
+        cond = std.Var(bool_ty, "cond")
+        x = std.Var(bool_ty, "x")
+        y = std.Var(bool_ty, "y")
+        min_var = std.Var(i64, "min")
+        extent = std.Var(i64, "extent")
+        true_value = std.Var(i64, "true_value")
+        false_value = std.Var(i64, "false_value")
+
+        assert std.logical_and(x, y).text() == "x and y"
+        assert std.logical_or(x, y).text() == "x or y"
+        assert std.logical_not(x).text() == "not x"
+        assert std.select(cond, true_value, false_value).text() == (
+            "true_value if cond else false_value"
+        )
+        assert std.Range(min_var, extent).text() == "std.Range(min, extent)"
+
+    def test_python_dunders_construct_std_nodes(self) -> None:
+        i32 = std.PrimTy("int32")
+        x = std.Var(i32, "x")
+
+        cases = [
+            (x + 1, std.Add, "x + std.i32(1)"),
+            (1 + x, std.Add, "std.i32(1) + x"),
+            (x - 1, std.Sub, "x - std.i32(1)"),
+            (1 - x, std.Sub, "std.i32(1) - x"),
+            (x * 2, std.Mul, "x * std.i32(2)"),
+            (x / 2, std.CDiv, "x / std.i32(2)"),
+            (x // 2, std.FloorDiv, "x // std.i32(2)"),
+            (x % 2, std.FloorMod, "x % std.i32(2)"),
+            (x**2, std.Pow, "x ** std.i32(2)"),
+            (x << 1, std.LShift, "x << std.i32(1)"),
+            (x >> 1, std.RShift, "x >> std.i32(1)"),
+            (x & 3, std.BitwiseAnd, "x & std.i32(3)"),
+            (x | 3, std.BitwiseOr, "x | std.i32(3)"),
+            (x ^ 3, std.BitwiseXor, "x ^ std.i32(3)"),
+            (~x, std.BitwiseNot, "~x"),
+            (-x, std.Sub, "std.i32(0) - x"),
+            (abs(x), std.Abs, "abs(x)"),
+        ]
+
+        for expr, cls, text in cases:
+            assert isinstance(expr, cls)
+            assert expr.text() == text
+
+    def test_python_comparison_dunders_construct_std_nodes(self) -> None:
+        i32 = std.PrimTy("int32")
+        x = std.Var(i32, "x")
+
+        cases = [
+            (x < 2, std.Lt, "x < std.i32(2)"),
+            (x <= 2, std.Le, "x <= std.i32(2)"),
+            (x > 2, std.Gt, "x > std.i32(2)"),
+            (x >= 2, std.Ge, "x >= std.i32(2)"),
+            (x == 2, std.Eq, "x == std.i32(2)"),
+            (x != 2, std.Ne, "x != std.i32(2)"),
+        ]
+
+        for expr, cls, text in cases:
+            assert isinstance(expr, cls)
+            assert isinstance(expr.ty, std.PrimTy)
+            assert expr.ty.dtype == tvm_ffi.bool
+            assert expr.text() == text
+
+    def test_python_named_operator_helpers(self) -> None:
+        bool_ty = std.PrimTy("bool")
+        i32 = std.PrimTy("int32")
+        cond = std.Var(bool_ty, "cond")
+        x = std.Var(i32, "x")
+
+        assert std.min(x, 1).text() == "min(x, std.i32(1))"
+        assert std.max(x, 1).text() == "max(x, std.i32(1))"
+        assert cond.logical_and(True).text() == "cond"
+        assert cond.logical_or(False).text() == "cond"
+        assert cond.logical_not().text() == "not cond"
+        assert cond.if_then_else(x, 1).text() == "x if cond else std.i32(1)"
+        assert x.astype(std.PrimTy("float32")).text() == "std.f32(x)"
+
+    def test_operator_helpers_are_exposed_as_global_funcs(self) -> None:
+        i32 = std.PrimTy("int32")
+        x = std.Var(i32, "x")
+
+        assert tvm_ffi.get_global_func("ffi.std.add")(x, 1).text() == "x + std.i32(1)"
+        assert tvm_ffi.get_global_func("ffi.std.eq")(x, 1).text() == "x == std.i32(1)"
+        assert tvm_ffi.get_global_func("ffi.std.bitwise_not")(x).text() == "~x"
+
+    def test_python_bool_context_rejected(self) -> None:
+        x = std.Var(std.PrimTy("bool"), "x")
+
+        with pytest.raises(TypeError, match=r"Cannot use std\.Expr as a Python bool"):
+            bool(x)
+
+
 class TestLoad:
     def test_constructor(self) -> None:
         i32 = std.PrimTy("int32")
@@ -1680,7 +1838,7 @@ class TestLoad:
             stop=2,
             step=3,
         )
-        node = std.Load(x, first, second, ty=i32)
+        node = std.Load(x, first, second)
 
         assert isinstance(node, std.Load)
         assert tuple(field.name for field in fields(std.Load)) == (
@@ -1713,10 +1871,10 @@ class TestLoad:
     def test_text_format_index_variants(self) -> None:
         i32 = std.PrimTy("int32")
 
-        no_indices = std.Load(std.Var(ty=i32, name="x"), ty=i32)
+        no_indices = std.Load(std.Var(ty=i32, name="x"))
         assert no_indices.text() == "x[()]"
 
-        point = std.Load(std.Var(ty=i32, name="x"), 1, ty=i32)
+        point = std.Load(std.Var(ty=i32, name="x"), 1)
         assert point.text() == "x[1]"
 
         slice_without_step = std.Load(
@@ -1725,7 +1883,6 @@ class TestLoad:
                 start=1,
                 stop=2,
             ),
-            ty=i32,
         )
         assert slice_without_step.text() == "x[1:2]"
 
@@ -1735,7 +1892,6 @@ class TestLoad:
                 start=None,
                 stop=2,
             ),
-            ty=i32,
         )
         assert slice_without_start.text() == "x[:2]"
 
@@ -1745,7 +1901,6 @@ class TestLoad:
                 start=1,
                 step=3,
             ),
-            ty=i32,
         )
         assert slice_without_stop.text() == "x[1::3]"
 
@@ -1787,7 +1942,7 @@ class TestLoad:
         i32 = std.PrimTy("int32")
         f32 = std.PrimTy("float32")
 
-        with pytest.raises(TypeError, match="result dtype"):
+        with pytest.raises(TypeError, match="result type"):
             std.Load(std.Var(ty=i32, name="x"), ty=f32)
 
 
@@ -2053,7 +2208,7 @@ class TestFor:
             start=1,
             stop=2,
         )
-        body = [std.Store(x, 1, rhs=2)]
+        body = [std.Store(x, 2, 1)]
         node = std.For(
             start=range_node.start,
             stop=range_node.stop,
@@ -2088,7 +2243,7 @@ class TestFor:
             start=1,
             stop=2,
         )
-        body = [std.Store(x, 1, rhs=2)]
+        body = [std.Store(x, 2, 1)]
         attrs = {"pragma": "unroll"}
         with_attrs = std.For(
             start=cond_range.start,
@@ -2129,7 +2284,7 @@ class TestFor:
             stop=2,
             step=None,
             attrs={"tag": "demo"},
-            body=[std.Store(x, 1, rhs=2)],
+            body=[std.Store(x, 2, 1)],
             vars=[x],
         )
 
@@ -2143,7 +2298,7 @@ class TestFor:
             stop=2,
             step=None,
             attrs={"z": 3, "a": 1},
-            body=[std.Store(x, 1, rhs=2)],
+            body=[std.Store(x, 2, 1)],
             vars=[x],
         )
 
@@ -2177,7 +2332,7 @@ class TestFor:
             stop=2,
             step=None,
             attrs={"tag": "demo"},
-            body=[std.Store(std.Var(ty=i32, name="x"), 1, rhs=2)],
+            body=[std.Store(std.Var(ty=i32, name="x"), 2, 1)],
             vars=[std.Var(ty=i32, name="x")],
         )
         rhs = std.For(
@@ -2185,7 +2340,7 @@ class TestFor:
             stop=2,
             step=None,
             attrs={"tag": "demo"},
-            body=[std.Store(std.Var(ty=i32, name="x"), 1, rhs=2)],
+            body=[std.Store(std.Var(ty=i32, name="x"), 2, 1)],
             vars=[std.Var(ty=i32, name="x")],
         )
         different = std.For(
@@ -2193,7 +2348,7 @@ class TestFor:
             stop=3,
             step=None,
             attrs={"tag": "demo"},
-            body=[std.Store(std.Var(ty=i32, name="x"), 1, rhs=2)],
+            body=[std.Store(std.Var(ty=i32, name="x"), 2, 1)],
             vars=[std.Var(ty=i32, name="x")],
         )
 
@@ -2632,7 +2787,7 @@ class TestStore:
         x = std.Var(ty=i32, name="x")
         index = 1
         rhs = 2
-        node = std.Store(x, index, rhs=rhs)
+        node = std.Store(x, rhs, index)
 
         assert isinstance(node, std.Store)
         assert tuple(field.name for field in fields(std.Store)) == (
@@ -2650,58 +2805,58 @@ class TestStore:
         assert isinstance(node.rhs, std.IntImm)
         assert node.rhs.value == rhs
 
-        with_attrs = std.Store(x, index, rhs=rhs, tag="demo")
+        with_attrs = std.Store(x, rhs, index, tag="demo")
         assert isinstance(with_attrs.attrs, std.DictAttrs)
         assert dict(with_attrs.attrs.values) == {"tag": "demo"}
 
     def test_text_format(self) -> None:
         i32 = std.PrimTy("int32")
-        node = std.Store(std.Var(ty=i32, name="x"), 1, rhs=2)
-        with_attrs = std.Store(std.Var(ty=i32, name="x"), 1, rhs=2, tag="demo")
+        node = std.Store(std.Var(ty=i32, name="x"), 2, 1)
+        with_attrs = std.Store(std.Var(ty=i32, name="x"), 2, 1, tag="demo")
 
         assert node.text() == "x[1] = 2"
-        assert with_attrs.text() == 'std.Store(x, 1, 2, tag="demo")'
+        assert with_attrs.text() == 'std.Store(x, 2, 1, tag="demo")'
 
     def test_text_format_index_variants(self) -> None:
         i32 = std.PrimTy("int32")
 
-        no_indices = std.Store(std.Var(ty=i32, name="x"), rhs=2)
+        no_indices = std.Store(std.Var(ty=i32, name="x"), 2)
         assert no_indices.text() == "x[()] = 2"
 
         slice_without_step = std.Store(
             std.Var(ty=i32, name="x"),
+            3,
             std.Range(
                 start=1,
                 stop=2,
             ),
-            rhs=3,
         )
         assert slice_without_step.text() == "x[1:2] = 3"
 
         slice_without_start = std.Store(
             std.Var(ty=i32, name="x"),
+            3,
             std.Range(
                 start=None,
                 stop=2,
             ),
-            rhs=3,
         )
         assert slice_without_start.text() == "x[:2] = 3"
 
         mixed_indices = std.Store(
             std.Var(ty=i32, name="x"),
+            4,
             std.Range(
                 start=1,
                 stop=2,
             ),
             3,
-            rhs=4,
         )
         assert mixed_indices.text() == "x[1:2, 3] = 4"
 
     def test_constructor_converts_python_indices_and_rhs(self) -> None:
         i32 = std.PrimTy("int32")
-        node = std.Store(std.Var(ty=i32, name="x"), 1, rhs=2)
+        node = std.Store(std.Var(ty=i32, name="x"), 2, 1)
 
         index = next(iter(node.indices))
         assert isinstance(index, std.Range)
@@ -2711,9 +2866,9 @@ class TestStore:
 
     def test_structural_equality(self) -> None:
         i32 = std.PrimTy("int32")
-        lhs = std.Store(std.Var(ty=i32, name="x"), 1, rhs=2)
-        rhs = std.Store(std.Var(ty=i32, name="x"), 1, rhs=2)
-        different = std.Store(std.Var(ty=i32, name="x"), 1, rhs=3)
+        lhs = std.Store(std.Var(ty=i32, name="x"), 2, 1)
+        rhs = std.Store(std.Var(ty=i32, name="x"), 2, 1)
+        different = std.Store(std.Var(ty=i32, name="x"), 3, 1)
 
         assert tvm_ffi.structural_equal(lhs, rhs)
         assert tvm_ffi.structural_hash(lhs) == tvm_ffi.structural_hash(rhs)
@@ -2723,8 +2878,8 @@ class TestStore:
         i32 = std.PrimTy("int32")
         f32 = std.PrimTy("float32")
 
-        with pytest.raises(TypeError, match="stored value dtype"):
-            std.Store(std.Var(ty=i32, name="x"), 1, rhs=std.FloatImm(f32, 2.0))
+        with pytest.raises(TypeError, match="stored value type"):
+            std.Store(std.Var(ty=i32, name="x"), std.FloatImm(f32, 2.0), 1)
 
 
 class TestAssert:
@@ -3155,7 +3310,7 @@ class TestDialectMnemonic:
             (std.Call("callee", x, tag="demo", ty=i32), std.Call),
             (std.BindExpr(one, x), std.BindExpr),
             (std.VarDef(x, tag="demo"), std.VarDef),
-            (std.Store(x, rhs=one), std.Store),
+            (std.Store(x, one), std.Store),
             (std.Assert(std.BoolImm(std.PrimTy("bool"), True)), std.Assert),
             (std.Return(x), std.Return),
             (std.Yield(x), std.Yield),
@@ -3353,7 +3508,7 @@ class TestDialectPrintMap:
             start=1,
             stop=2,
             step=None,
-            body=[std.Store(x, 1, rhs=2)],
+            body=[std.Store(x, 2, 1)],
             vars=[x],
         )
         cfg = pyast.PrinterConfig(dialect_print_map={"": "core"})
@@ -3367,7 +3522,7 @@ class TestDialectPrintMap:
             start=1,
             stop=2,
             step=None,
-            body=[std.Store(x, 1, rhs=2)],
+            body=[std.Store(x, 2, 1)],
             vars=[x],
         )
         cfg = pyast.PrinterConfig(dialect_print_map={"$range": "ffi.range"})
