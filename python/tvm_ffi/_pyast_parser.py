@@ -202,12 +202,12 @@ class TyFactory(Factory):
         """Return the concrete ``std.Ty`` represented by the factory."""
         raise NotImplementedError
 
-    def _make_cast(self, value: Any) -> std.Cast:
+    def _make_cast(self, value: Any) -> std.Expr:
         """Build a cast after validating that the call operand is expression-like."""
         if not isinstance(value, std.Expr) and not isinstance(value, (bool, int, float, str)):
             value_type = "TyFactory" if hasattr(value, "to_dialect") else type(value).__name__
             raise TypeError(f"expected expression, got {value_type}")
-        return std.Cast(self.to_dialect(), value)
+        return std.cast(self.to_dialect(), value)
 
 
 class Frame(Factory):
@@ -476,11 +476,14 @@ class Parser:
         """Evaluate decorators and context managers as parser frames.
 
         Frame syntax is produced by normal parser-side factories such as
-        ``@std.func`` and ``with std.scope(...)``.  Bare factories are called
-        with no arguments so ``@std.func`` and ``@std.func()`` are equivalent.
+        ``@std.func`` and ``with std.scope(...)``.  Bare factories and frame
+        subclasses are called with no arguments so ``@std.func`` and
+        ``@std.func()`` are equivalent.
         """
         value = self.visit(node)
-        if callable(value) and not isinstance(value, (type, Frame)):
+        if isinstance(value, type) and issubclass(value, Frame):
+            value = value()
+        elif callable(value) and not isinstance(value, (type, Frame)):
             value = value()
         if not isinstance(value, Frame):
             raise TypeError(f"expected parser frame, got {type(value).__name__}")

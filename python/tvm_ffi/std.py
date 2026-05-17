@@ -38,7 +38,8 @@ from collections.abc import (
     MutableSequence,
     Sequence,
 )
-from typing import Any, ClassVar, cast
+from typing import Any, ClassVar
+from typing import cast as _typing_cast
 
 from typing_extensions import Never, Protocol, TypeAlias
 
@@ -46,6 +47,8 @@ from tvm_ffi import dtype
 from tvm_ffi.core import MISSING, Object
 from tvm_ffi.dataclasses import c_class, field
 from tvm_ffi.pyast import PrinterConfig
+
+from . import _std_api
 
 
 class _FactoryLike(Protocol):
@@ -66,7 +69,7 @@ def _normalize_ty(value: TyLike) -> Ty:
     if isinstance(value, Ty):
         return value
     if hasattr(value, "to_dialect"):
-        return cast(Any, value).to_dialect()
+        return value.to_dialect()  # ty: ignore[call-non-callable]
     if isinstance(value, str):
         return PrimTy(value)
     raise TypeError(f"expected std type, got {type(value).__name__}")
@@ -85,17 +88,6 @@ def _binary_expr_ffi_init(self: Any, a: ExprLike, b: ExprLike, *, ty: TyLike) ->
 
 def _unary_expr_ffi_init(self: Any, operand: ExprLike, *, ty: TyLike) -> None:
     self.__ffi_init__(operand, _normalize_ty(ty))
-
-
-def _if_expr_ffi_init(
-    self: Any,
-    cond: ExprLike,
-    then_expr: ExprLike,
-    else_expr: ExprLike,
-    *,
-    ty: TyLike,
-) -> None:
-    self.__ffi_init__(cond, then_expr, else_expr, _normalize_ty(ty))
 
 
 @c_class("ffi.std.Node", init=False)
@@ -217,6 +209,159 @@ class Expr(Node):
         if isinstance(value, str):
             return StringImm.from_py(value)
         raise TypeError(f"Unsupported type: {type(value).__name__}")
+
+    def __add__(self, other: ExprLike) -> Expr:
+        return add(self, other)
+
+    def __radd__(self, other: ExprLike) -> Expr:
+        return add(other, self)
+
+    def __sub__(self, other: ExprLike) -> Expr:
+        return sub(self, other)
+
+    def __rsub__(self, other: ExprLike) -> Expr:
+        return sub(other, self)
+
+    def __mul__(self, other: ExprLike) -> Expr:
+        return mul(self, other)
+
+    def __rmul__(self, other: ExprLike) -> Expr:
+        return mul(other, self)
+
+    def __truediv__(self, other: ExprLike) -> Expr:
+        return cdiv(self, other)
+
+    def __rtruediv__(self, other: ExprLike) -> Expr:
+        return cdiv(other, self)
+
+    def __floordiv__(self, other: ExprLike) -> Expr:
+        return floordiv(self, other)
+
+    def __rfloordiv__(self, other: ExprLike) -> Expr:
+        return floordiv(other, self)
+
+    def __mod__(self, other: ExprLike) -> Expr:
+        return floormod(self, other)
+
+    def __rmod__(self, other: ExprLike) -> Expr:
+        return floormod(other, self)
+
+    def __pow__(self, other: ExprLike) -> Expr:
+        return pow(self, other)
+
+    def __rpow__(self, other: ExprLike) -> Expr:
+        return pow(other, self)
+
+    def __neg__(self) -> Expr:
+        return neg(self)
+
+    def __pos__(self) -> Expr:
+        return self
+
+    def __abs__(self) -> Expr:
+        return abs(self)
+
+    def __lshift__(self, other: ExprLike) -> Expr:
+        return left_shift(self, other)
+
+    def __rlshift__(self, other: ExprLike) -> Expr:
+        return left_shift(other, self)
+
+    def __rshift__(self, other: ExprLike) -> Expr:
+        return right_shift(self, other)
+
+    def __rrshift__(self, other: ExprLike) -> Expr:
+        return right_shift(other, self)
+
+    def __and__(self, other: ExprLike) -> Expr:
+        return bitwise_and(self, other)
+
+    def __rand__(self, other: ExprLike) -> Expr:
+        return bitwise_and(other, self)
+
+    def __or__(self, other: ExprLike) -> Expr:
+        return bitwise_or(self, other)
+
+    def __ror__(self, other: ExprLike) -> Expr:
+        return bitwise_or(other, self)
+
+    def __xor__(self, other: ExprLike) -> Expr:
+        return bitwise_xor(self, other)
+
+    def __rxor__(self, other: ExprLike) -> Expr:
+        return bitwise_xor(other, self)
+
+    def __invert__(self) -> Expr:
+        return bitwise_not(self)
+
+    def __lt__(self, other: ExprLike) -> Expr:
+        return lt(self, other)
+
+    def __le__(self, other: ExprLike) -> Expr:
+        return le(self, other)
+
+    def __gt__(self, other: ExprLike) -> Expr:
+        return gt(self, other)
+
+    def __ge__(self, other: ExprLike) -> Expr:
+        return ge(self, other)
+
+    def __eq__(self, other: object) -> Expr | bool:  # ty: ignore[invalid-method-override]
+        if isinstance(other, Expr):
+            return Object.__eq__(self, other)
+        if isinstance(other, (bool, int, float, str)):
+            return eq(self, other)
+        return Object.__eq__(self, other)
+
+    def __ne__(self, other: object) -> Expr | bool:  # ty: ignore[invalid-method-override]
+        if isinstance(other, Expr):
+            return Object.__ne__(self, other)
+        if isinstance(other, (bool, int, float, str)):
+            return ne(self, other)
+        return not Object.__eq__(self, other)
+
+    def __bool__(self) -> bool:
+        raise TypeError(
+            "Cannot use std.Expr as a Python bool; use logical_and(), "
+            "logical_or(), or logical_not()"
+        )
+
+    def __nonzero__(self) -> bool:
+        return self.__bool__()
+
+    __hash__ = Object.__hash__
+
+    def equal(self, other: ExprLike) -> Expr:
+        """Create a standard dialect equality expression."""
+        return eq(self, other)
+
+    def not_equal(self, other: ExprLike) -> Expr:
+        """Create a standard dialect inequality expression."""
+        return ne(self, other)
+
+    def logical_and(self, other: ExprLike) -> Expr:
+        """Create a standard dialect logical-and expression."""
+        return logical_and(self, other)
+
+    def logical_or(self, other: ExprLike) -> Expr:
+        """Create a standard dialect logical-or expression."""
+        return logical_or(self, other)
+
+    def logical_not(self) -> Expr:
+        """Create a standard dialect logical-not expression."""
+        return logical_not(self)
+
+    def if_then_else(self, then_expr: ExprLike, else_expr: ExprLike) -> Expr:
+        """Create a standard dialect ternary expression."""
+        return if_then_else(self, then_expr, else_expr)
+
+    def cast(self, ty: TyLike) -> Expr:
+        """Cast this expression to a standard dialect type."""
+        return cast(ty, self)
+
+    def astype(self, ty: TyLike) -> Expr:
+        """Alias for ``cast``."""
+        return self.cast(ty)
 
 
 @c_class("ffi.std.Var")
@@ -1077,8 +1222,15 @@ class IfExpr(Expr):
     # fmt: on
     # tvm-ffi-stubgen(end)
 
-    if not TYPE_CHECKING:
-        __init__ = _if_expr_ffi_init
+    def __init__(
+        self: Any,
+        cond: ExprLike,
+        then_expr: ExprLike,
+        else_expr: ExprLike,
+        *,
+        ty: TyLike,
+    ) -> None:
+        self.__ffi_init__(cond, then_expr, else_expr, _normalize_ty(ty))
 
 
 @c_class("ffi.std.Load")
@@ -1092,8 +1244,8 @@ class Load(Expr):
     lhs: Expr
     indices: MutableSequence[Range]
     if TYPE_CHECKING:
-        def __init__(self, lhs: Expr, indices: MutableSequence[Range], *, ty: Ty) -> None: ...
-        def __ffi_init__(self, lhs: Expr, indices: MutableSequence[Range], *, ty: Ty) -> None: ...  # ty: ignore[invalid-method-override]
+        def __init__(self, lhs: ExprLike, *indices: RangeLike, ty: TyLike | None = ...) -> None: ...
+        def __ffi_init__(self, lhs: Expr, indices: MutableSequence[Range], ty: Ty | None = ...) -> None: ...  # ty: ignore[invalid-method-override]
     # fmt: on
     # tvm-ffi-stubgen(end)
 
@@ -1105,9 +1257,9 @@ class Load(Expr):
         self,
         lhs: ExprLike,
         *indices: RangeLike,
-        ty: TyLike,
+        ty: TyLike | None = None,
     ) -> None:
-        self.__ffi_init__(lhs, indices, _normalize_ty(ty))
+        self.__ffi_init__(lhs, indices, _normalize_ty(ty) if ty is not None else None)
 
 
 @c_class("ffi.std.Cast")
@@ -1381,7 +1533,7 @@ class Store(Stmt):
     indices: MutableSequence[Range]
     rhs: Expr
     if TYPE_CHECKING:
-        def __init__(self, lhs: Expr, indices: MutableSequence[Range], rhs: Expr, *, attrs: Attrs | None = ...) -> None: ...
+        def __init__(self, lhs: ExprLike, rhs: ExprLike, *indices: RangeLike, **kwargs: Any) -> None: ...
         def __ffi_init__(self, lhs: Expr, indices: MutableSequence[Range], rhs: Expr, *, attrs: Attrs | None = ...) -> None: ...  # ty: ignore[invalid-method-override]
     # fmt: on
     # tvm-ffi-stubgen(end)
@@ -1390,7 +1542,7 @@ class Store(Stmt):
 
         def __ffi_init__(self, *args: Any, **kwargs: Any) -> None: ...
 
-    def __init__(self, lhs: ExprLike, *indices: RangeLike, rhs: ExprLike, **kwargs: Any) -> None:
+    def __init__(self, lhs: ExprLike, rhs: ExprLike, *indices: RangeLike, **kwargs: Any) -> None:
         self.__ffi_init__(lhs, indices, rhs, kwargs or None)
 
 
@@ -1550,6 +1702,201 @@ class DictAttrs(Attrs):
         return self.values.items()
 
 
+def cast(ty: TyLike, value: ExprLike) -> Expr:
+    """Cast an expression to a standard dialect type."""
+    return _typing_cast(Expr, _std_api.cast(_normalize_ty(ty), value))
+
+
+def add(lhs: ExprLike, rhs: ExprLike) -> Expr:
+    """Create a standard dialect addition expression."""
+    return _typing_cast(Expr, _std_api.add(lhs, rhs))
+
+
+def sub(lhs: ExprLike, rhs: ExprLike) -> Expr:
+    """Create a standard dialect subtraction expression."""
+    return _typing_cast(Expr, _std_api.sub(lhs, rhs))
+
+
+def mul(lhs: ExprLike, rhs: ExprLike) -> Expr:
+    """Create a standard dialect multiplication expression."""
+    return _typing_cast(Expr, _std_api.mul(lhs, rhs))
+
+
+def cdiv(lhs: ExprLike, rhs: ExprLike) -> Expr:
+    """Create a standard dialect C-style division expression."""
+    return _typing_cast(Expr, _std_api.cdiv(lhs, rhs))
+
+
+def cmod(lhs: ExprLike, rhs: ExprLike) -> Expr:
+    """Create a standard dialect C-style modulo expression."""
+    return _typing_cast(Expr, _std_api.cmod(lhs, rhs))
+
+
+def truncdiv(lhs: ExprLike, rhs: ExprLike) -> Expr:
+    """Alias for C-style division."""
+    return _typing_cast(Expr, _std_api.truncdiv(lhs, rhs))
+
+
+def truncmod(lhs: ExprLike, rhs: ExprLike) -> Expr:
+    """Alias for C-style modulo."""
+    return _typing_cast(Expr, _std_api.truncmod(lhs, rhs))
+
+
+def floordiv(lhs: ExprLike, rhs: ExprLike) -> Expr:
+    """Create a standard dialect floor division expression."""
+    return _typing_cast(Expr, _std_api.floordiv(lhs, rhs))
+
+
+def floormod(lhs: ExprLike, rhs: ExprLike) -> Expr:
+    """Create a standard dialect floor modulo expression."""
+    return _typing_cast(Expr, _std_api.floormod(lhs, rhs))
+
+
+def pow(lhs: ExprLike, rhs: ExprLike) -> Expr:
+    """Create a standard dialect power expression."""
+    return _typing_cast(Expr, _std_api.pow(lhs, rhs))
+
+
+def min(lhs: ExprLike, rhs: ExprLike) -> Expr:
+    """Create a standard dialect minimum expression."""
+    return _typing_cast(Expr, _std_api.min(lhs, rhs))
+
+
+def max(lhs: ExprLike, rhs: ExprLike) -> Expr:
+    """Create a standard dialect maximum expression."""
+    return _typing_cast(Expr, _std_api.max(lhs, rhs))
+
+
+def eq(lhs: ExprLike, rhs: ExprLike) -> Expr:
+    """Create a standard dialect equality expression."""
+    return _typing_cast(Expr, _std_api.eq(lhs, rhs))
+
+
+def ne(lhs: ExprLike, rhs: ExprLike) -> Expr:
+    """Create a standard dialect inequality expression."""
+    return _typing_cast(Expr, _std_api.ne(lhs, rhs))
+
+
+def le(lhs: ExprLike, rhs: ExprLike) -> Expr:
+    """Create a standard dialect less-than-or-equal expression."""
+    return _typing_cast(Expr, _std_api.le(lhs, rhs))
+
+
+def ge(lhs: ExprLike, rhs: ExprLike) -> Expr:
+    """Create a standard dialect greater-than-or-equal expression."""
+    return _typing_cast(Expr, _std_api.ge(lhs, rhs))
+
+
+def gt(lhs: ExprLike, rhs: ExprLike) -> Expr:
+    """Create a standard dialect greater-than expression."""
+    return _typing_cast(Expr, _std_api.gt(lhs, rhs))
+
+
+def lt(lhs: ExprLike, rhs: ExprLike) -> Expr:
+    """Create a standard dialect less-than expression."""
+    return _typing_cast(Expr, _std_api.lt(lhs, rhs))
+
+
+def equal(lhs: ExprLike, rhs: ExprLike) -> Expr:
+    """Alias for equality."""
+    return _typing_cast(Expr, _std_api.equal(lhs, rhs))
+
+
+def not_equal(lhs: ExprLike, rhs: ExprLike) -> Expr:
+    """Alias for inequality."""
+    return _typing_cast(Expr, _std_api.not_equal(lhs, rhs))
+
+
+def less_equal(lhs: ExprLike, rhs: ExprLike) -> Expr:
+    """Alias for less-than-or-equal."""
+    return _typing_cast(Expr, _std_api.less_equal(lhs, rhs))
+
+
+def greater_equal(lhs: ExprLike, rhs: ExprLike) -> Expr:
+    """Alias for greater-than-or-equal."""
+    return _typing_cast(Expr, _std_api.greater_equal(lhs, rhs))
+
+
+def less(lhs: ExprLike, rhs: ExprLike) -> Expr:
+    """Alias for less-than."""
+    return _typing_cast(Expr, _std_api.less(lhs, rhs))
+
+
+def greater(lhs: ExprLike, rhs: ExprLike) -> Expr:
+    """Alias for greater-than."""
+    return _typing_cast(Expr, _std_api.greater(lhs, rhs))
+
+
+def logical_and(lhs: ExprLike, rhs: ExprLike) -> Expr:
+    """Create a standard dialect logical-and expression."""
+    return _typing_cast(Expr, _std_api.logical_and(lhs, rhs))
+
+
+def logical_or(lhs: ExprLike, rhs: ExprLike) -> Expr:
+    """Create a standard dialect logical-or expression."""
+    return _typing_cast(Expr, _std_api.logical_or(lhs, rhs))
+
+
+def logical_not(operand: ExprLike) -> Expr:
+    """Create a standard dialect logical-not expression."""
+    return _typing_cast(Expr, _std_api.logical_not(operand))
+
+
+def left_shift(lhs: ExprLike, rhs: ExprLike) -> Expr:
+    """Create a standard dialect left-shift expression."""
+    return _typing_cast(Expr, _std_api.left_shift(lhs, rhs))
+
+
+def right_shift(lhs: ExprLike, rhs: ExprLike) -> Expr:
+    """Create a standard dialect right-shift expression."""
+    return _typing_cast(Expr, _std_api.right_shift(lhs, rhs))
+
+
+def bitwise_and(lhs: ExprLike, rhs: ExprLike) -> Expr:
+    """Create a standard dialect bitwise-and expression."""
+    return _typing_cast(Expr, _std_api.bitwise_and(lhs, rhs))
+
+
+def bitwise_or(lhs: ExprLike, rhs: ExprLike) -> Expr:
+    """Create a standard dialect bitwise-or expression."""
+    return _typing_cast(Expr, _std_api.bitwise_or(lhs, rhs))
+
+
+def bitwise_xor(lhs: ExprLike, rhs: ExprLike) -> Expr:
+    """Create a standard dialect bitwise-xor expression."""
+    return _typing_cast(Expr, _std_api.bitwise_xor(lhs, rhs))
+
+
+def bitwise_not(operand: ExprLike) -> Expr:
+    """Create a standard dialect bitwise-not expression."""
+    return _typing_cast(Expr, _std_api.bitwise_not(operand))
+
+
+def bitwise_neg(operand: ExprLike) -> Expr:
+    """Alias for bitwise-not."""
+    return _typing_cast(Expr, _std_api.bitwise_neg(operand))
+
+
+def neg(operand: ExprLike) -> Expr:
+    """Create unary negation as ``0 - operand``."""
+    return _typing_cast(Expr, _std_api.neg(operand))
+
+
+def abs(operand: ExprLike) -> Expr:
+    """Create a standard dialect absolute-value expression."""
+    return _typing_cast(Expr, _std_api.abs(operand))
+
+
+def if_then_else(cond: ExprLike, then_expr: ExprLike, else_expr: ExprLike) -> Expr:
+    """Create a standard dialect ternary expression."""
+    return _typing_cast(Expr, _std_api.if_then_else(cond, then_expr, else_expr))
+
+
+def select(cond: ExprLike, then_expr: ExprLike, else_expr: ExprLike) -> Expr:
+    """Alias for a ternary expression."""
+    return _typing_cast(Expr, _std_api.select(cond, then_expr, else_expr))
+
+
 __all__ = [
     "Abs",
     "Add",
@@ -1612,4 +1959,43 @@ __all__ = [
     "VarDef",
     "While",
     "Yield",
+    "abs",
+    "add",
+    "bitwise_and",
+    "bitwise_neg",
+    "bitwise_not",
+    "bitwise_or",
+    "bitwise_xor",
+    "cast",
+    "cdiv",
+    "cmod",
+    "eq",
+    "equal",
+    "floordiv",
+    "floormod",
+    "ge",
+    "greater",
+    "greater_equal",
+    "gt",
+    "if_then_else",
+    "le",
+    "left_shift",
+    "less",
+    "less_equal",
+    "logical_and",
+    "logical_not",
+    "logical_or",
+    "lt",
+    "max",
+    "min",
+    "mul",
+    "ne",
+    "neg",
+    "not_equal",
+    "pow",
+    "right_shift",
+    "select",
+    "sub",
+    "truncdiv",
+    "truncmod",
 ]

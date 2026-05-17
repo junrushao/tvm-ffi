@@ -29,8 +29,11 @@
 #include <tvm/ffi/reflection/registry.h>
 
 #include <algorithm>
+#include <cmath>
+#include <limits>
 #include <optional>
 #include <string>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -82,11 +85,27 @@ std::optional<DLDataType> DTypeFromExpr(const char* node_name, const char* opera
 }
 
 Ty IndexedTy(Ty ty, const List<Range>& indices) {
-  for (const Range& index : indices) {
+  for (int64_t i = 0, n = static_cast<int64_t>(indices.size()); i < n;) {
+    if (ty.as<AnyTyObj>() != nullptr) {
+      return AnyTy();
+    }
+    if (const TensorTyObj* tensor_ty = ty.as<TensorTyObj>()) {
+      int64_t num_indices = n - i;
+      int64_t rank = static_cast<int64_t>(tensor_ty->shape.size());
+      if (num_indices >= rank) {
+        return PrimTy(tensor_ty->dtype);
+      }
+      List<Expr> shape;
+      for (int64_t j = num_indices; j < rank; ++j) {
+        shape.push_back(tensor_ty->shape[j]);
+      }
+      return TensorTy(std::move(shape), tensor_ty->dtype);
+    }
     const TupleTyObj* tuple_ty = ty.as<TupleTyObj>();
     if (tuple_ty == nullptr) {
       return ty;
     }
+    const Range& index = indices[i];
     if (!index->start.has_value() || index->stop.has_value() || index->step.has_value()) {
       return AnyTy();
     }
@@ -103,6 +122,7 @@ Ty IndexedTy(Ty ty, const List<Range>& indices) {
       return AnyTy();
     }
     ty = tuple_ty->fields[field_index];
+    ++i;
   }
   return ty;
 }
@@ -313,24 +333,15 @@ void CheckRangeList(const char* node_name, const List<Range>& indices) {
 void CheckLoadTy(const Ty& result_ty, const Expr& lhs, const List<Range>& indices) {
   CheckRangeList("Load", indices);
   CheckExprDefined("Load", "lhs", lhs);
-  std::optional<DLDataType> lhs_dtype =
-      DTypeFromTy("Load", "loaded element", IndexedTy(lhs->ty, indices));
-  std::optional<DLDataType> result_dtype = DTypeFromTy("Load", "result", result_ty);
-  if (lhs_dtype.has_value() && result_dtype.has_value()) {
-    CheckConcreteDTypesEqual("Load", "result", *result_dtype, "loaded element", *lhs_dtype);
-  }
+  CheckConcreteTysEqual("Load", "result", result_ty, "loaded element", IndexedTy(lhs->ty, indices));
 }
 
 void CheckStoreTy(const Expr& lhs, const List<Range>& indices, const Expr& rhs) {
   CheckRangeList("Store", indices);
   CheckExprDefined("Store", "lhs", lhs);
   CheckExprDefined("Store", "rhs", rhs);
-  std::optional<DLDataType> lhs_dtype =
-      DTypeFromTy("Store", "stored element", IndexedTy(lhs->ty, indices));
-  std::optional<DLDataType> rhs_dtype = DTypeFromTy("Store", "operand `rhs`", rhs->ty);
-  if (lhs_dtype.has_value() && rhs_dtype.has_value()) {
-    CheckConcreteDTypesEqual("Store", "stored value", *rhs_dtype, "stored element", *lhs_dtype);
-  }
+  CheckConcreteTysEqual("Store", "stored value", rhs->ty, "stored element",
+                        IndexedTy(lhs->ty, indices));
 }
 
 }  // namespace details
@@ -847,25 +858,18 @@ text::NodeAST TextPrint(const Load& obj, const text::IRPrinter& printer, const P
 
 text::NodeAST TextPrint(const Store& obj, const text::IRPrinter& printer, const Path& path) {
   ExprBuilder ctx;
+  ctx.AddOperand(printer, obj->lhs, path->Attr("lhs"));
+  ctx.AddOperand(printer, obj->rhs, path->Attr("rhs"));
   Path indices_path = path->Attr("indices");
   for (size_t i = 0; i < obj->indices.size(); ++i) {
     ctx.operands.push_back(TextPrintSlice(obj->indices[i], printer, indices_path->ArrayItem(i)));
   }
-  ctx.AddOperand(printer, obj->rhs, path->Attr("rhs"));
-  ctx.AddOperand(printer, obj->lhs, path->Attr("lhs"));
   ctx.AddAttrs(printer, obj->attrs, path->Attr("attrs"));
   if (ctx.ExprDerivable()) {
-    text::ExprAST lhs = ctx.operands.back();
-    ctx.operands.pop_back();
-    text::ExprAST rhs = ctx.operands.back();
-    ctx.operands.pop_back();
-    return text::AssignAST(text::IndexAST(std::move(lhs),  //
-                                          {ctx.operands.begin(), ctx.operands.end()}),
-                           std::move(rhs));
+    return text::AssignAST(text::IndexAST(ctx.operands[0],  //
+                                          {ctx.operands.begin() + 2, ctx.operands.end()}),
+                           ctx.operands[1]);
   } else {
-    text::ExprAST lhs = ctx.operands.back();
-    ctx.operands.pop_back();
-    ctx.operands.insert(ctx.operands.begin(), lhs);
     return text::ExprStmtAST(
         CallMnemonic(printer->cfg, obj)
             ->CallKw(ctx.operands, std::move(ctx.kwargs_keys), std::move(ctx.kwargs_values)));
@@ -1231,21 +1235,473 @@ Expr CoerceInitArgToExpr(AnyView value, const Ty& result_ty) {
   TVM_FFI_UNREACHABLE();
 }
 
-Expr CoerceComparisonInitArgToExpr(AnyView value, AnyView other) {
+Ty BoolLikeTy(const Ty& ty) {
+  if (!ty.defined() || ty.as<AnyTyObj>() != nullptr) {
+    return AnyTy();
+  }
+  if (const PrimTyObj* prim_ty = ty.as<PrimTyObj>()) {
+    DLDataType dtype{static_cast<uint8_t>(kDLBool), 8, prim_ty->dtype.lanes};
+    return PrimTy(dtype);
+  }
+  if (const TensorTyObj* tensor_ty = ty.as<TensorTyObj>()) {
+    DLDataType dtype{static_cast<uint8_t>(kDLBool), 8, tensor_ty->dtype.lanes};
+    return TensorTy(tensor_ty->shape, dtype);
+  }
+  return AnyTy();
+}
+
+std::optional<DLDataType> TryDTypeFromTy(const Ty& ty) {
+  if (!ty.defined() || ty.as<AnyTyObj>() != nullptr) {
+    return std::nullopt;
+  }
+  if (const PrimTyObj* prim_ty = ty.as<PrimTyObj>()) {
+    return prim_ty->dtype;
+  }
+  if (const TensorTyObj* tensor_ty = ty.as<TensorTyObj>()) {
+    return tensor_ty->dtype;
+  }
+  return std::nullopt;
+}
+
+Ty ExprTyOrAny(const Expr& expr) {
+  details::CheckExprDefined("expression operator", "operand", expr);
+  if (expr->ty.as<AnyTyObj>() != nullptr) {
+    return AnyTy();
+  }
+  return expr->ty;
+}
+
+Ty ValueTyOrAny(AnyView value) {
   TVMFFIAny raw = value.CopyToTVMFFIAny();
   if (std::optional<Expr> expr = ObjectRefTypeTraitsBase<Expr>::TryCastFromAnyView(&raw)) {
-    return *std::move(expr);
+    return ExprTyOrAny(*expr);
   }
+  if (raw.type_index == TypeIndex::kTVMFFIBool) {
+    return PrimTy(kDefaultBoolLiteralType);
+  }
+  if (TypeTraits<int64_t>::TryCastFromAnyView(&raw).has_value()) {
+    return PrimTy(kDefaultIntLiteralType);
+  }
+  if (raw.type_index == TypeIndex::kTVMFFIFloat) {
+    return PrimTy(kDefaultFloatLiteralType);
+  }
+  return AnyTy();
+}
 
-  TVMFFIAny other_raw = other.CopyToTVMFFIAny();
-  if (std::optional<Expr> other_expr =
-          ObjectRefTypeTraitsBase<Expr>::TryCastFromAnyView(&other_raw)) {
-    const Ty& other_ty = (*other_expr)->ty;
-    if (other_ty.defined() && other_ty.as<AnyTyObj>() == nullptr) {
-      return CoerceInitArgToExpr(value, other_ty);
+Expr DefaultExprFromValue(AnyView value) { return CoerceInitArgToExpr(value, ValueTyOrAny(value)); }
+
+std::optional<Expr> TryExprFromValue(AnyView value) {
+  TVMFFIAny raw = value.CopyToTVMFFIAny();
+  return ObjectRefTypeTraitsBase<Expr>::TryCastFromAnyView(&raw);
+}
+
+std::pair<Expr, Expr> CoerceBinaryValues(AnyView lhs, AnyView rhs) {
+  std::optional<Expr> lhs_expr = TryExprFromValue(lhs);
+  std::optional<Expr> rhs_expr = TryExprFromValue(rhs);
+  if (lhs_expr.has_value() && !rhs_expr.has_value()) {
+    return {*lhs_expr, CoerceInitArgToExpr(rhs, (*lhs_expr)->ty)};
+  }
+  if (!lhs_expr.has_value() && rhs_expr.has_value()) {
+    return {CoerceInitArgToExpr(lhs, (*rhs_expr)->ty), *rhs_expr};
+  }
+  return {DefaultExprFromValue(lhs), DefaultExprFromValue(rhs)};
+}
+
+DLDataType PromoteDTypes(DLDataType lhs, DLDataType rhs) {
+  if (lhs == rhs) {
+    return lhs;
+  }
+  TVM_FFI_CHECK(lhs.lanes == rhs.lanes, TypeError)
+      << "type mismatch: incompatible lane counts " << DLDataTypeToString(lhs) << " vs "
+      << DLDataTypeToString(rhs);
+
+  if (lhs.code == kDLFloat && rhs.code == kDLFloat) {
+    return lhs.bits < rhs.bits ? rhs : lhs;
+  }
+  if (lhs.code != kDLFloat && rhs.code == kDLFloat) {
+    return rhs;
+  }
+  if (lhs.code == kDLFloat && rhs.code != kDLFloat) {
+    return lhs;
+  }
+  if (lhs.code != kDLBfloat && rhs.code == kDLBfloat) {
+    return rhs;
+  }
+  if (lhs.code == kDLBfloat && rhs.code != kDLBfloat) {
+    return lhs;
+  }
+  if ((lhs.code == kDLInt && rhs.code == kDLInt) || (lhs.code == kDLUInt && rhs.code == kDLUInt)) {
+    return lhs.bits < rhs.bits ? rhs : lhs;
+  }
+  if ((lhs.code == kDLInt && rhs.code == kDLUInt) || (lhs.code == kDLUInt && rhs.code == kDLInt)) {
+    if (lhs.bits < rhs.bits) {
+      return rhs;
+    }
+    if (lhs.bits > rhs.bits) {
+      return lhs;
+    }
+    return lhs.code == kDLUInt ? lhs : rhs;
+  }
+  TVM_FFI_THROW(TypeError) << "type mismatch: cannot match type " << DLDataTypeToString(lhs)
+                           << " vs " << DLDataTypeToString(rhs);
+  TVM_FFI_UNREACHABLE();
+}
+
+Ty PromoteTys(const Ty& lhs, const Ty& rhs) {
+  TVM_FFI_CHECK(lhs.defined(), TypeError) << "type mismatch: lhs type must be defined";
+  TVM_FFI_CHECK(rhs.defined(), TypeError) << "type mismatch: rhs type must be defined";
+  if (StructuralEqual::Equal(lhs, rhs)) {
+    return lhs;
+  }
+  if (lhs.as<AnyTyObj>() != nullptr || rhs.as<AnyTyObj>() != nullptr) {
+    return AnyTy();
+  }
+  if (const TensorTyObj* lhs_tensor = lhs.as<TensorTyObj>()) {
+    const TensorTyObj* rhs_tensor = rhs.as<TensorTyObj>();
+    TVM_FFI_CHECK(rhs_tensor != nullptr, TypeError)
+        << "type mismatch: cannot match type " << ReprPrint(lhs) << " vs " << ReprPrint(rhs);
+    TVM_FFI_CHECK(StructuralEqual::Equal(lhs_tensor->shape, rhs_tensor->shape), TypeError)
+        << "type mismatch: cannot match tensor shape " << ReprPrint(lhs) << " vs "
+        << ReprPrint(rhs);
+    return TensorTy(lhs_tensor->shape, PromoteDTypes(lhs_tensor->dtype, rhs_tensor->dtype));
+  }
+  const PrimTyObj* lhs_prim = lhs.as<PrimTyObj>();
+  const PrimTyObj* rhs_prim = rhs.as<PrimTyObj>();
+  TVM_FFI_CHECK(lhs_prim != nullptr && rhs_prim != nullptr, TypeError)
+      << "type mismatch: cannot match type " << ReprPrint(lhs) << " vs " << ReprPrint(rhs);
+  return PrimTy(PromoteDTypes(lhs_prim->dtype, rhs_prim->dtype));
+}
+
+int64_t FoldInt64(int64_t value, DLDataType dtype) {
+  if (DTypeIsBool(dtype)) {
+    return value != 0;
+  }
+  if (dtype.bits < 64) {
+    uint64_t mask = (uint64_t{1} << dtype.bits) - 1;
+    uint64_t wrapped = static_cast<uint64_t>(value) & mask;
+    if (dtype.code == kDLInt) {
+      uint64_t sign_bit = uint64_t{1} << (dtype.bits - 1);
+      return static_cast<int64_t>((wrapped ^ sign_bit) - sign_bit);
+    }
+    return static_cast<int64_t>(wrapped);
+  }
+  return value;
+}
+
+double FoldFloat32(double value) {
+  double res = static_cast<double>(static_cast<float>(value));
+  if (std::isinf(res) || std::isnan(res)) {
+    return res;
+  }
+  if (res < std::numeric_limits<float>::lowest()) {
+    return -std::numeric_limits<double>::infinity();
+  }
+  if (res > std::numeric_limits<float>::max()) {
+    return std::numeric_limits<double>::infinity();
+  }
+  return res;
+}
+
+std::optional<int64_t> TryIntImmValue(const Expr& expr) {
+  if (const IntImmObj* int_imm = expr.as<IntImmObj>()) {
+    return int_imm->value;
+  }
+  if (const BoolImmObj* bool_imm = expr.as<BoolImmObj>()) {
+    return bool_imm->value;
+  }
+  return std::nullopt;
+}
+
+std::optional<double> TryFloatImmValue(const Expr& expr) {
+  if (const FloatImmObj* float_imm = expr.as<FloatImmObj>()) {
+    return float_imm->value;
+  }
+  return std::nullopt;
+}
+
+Expr IntImmLike(const Ty& ty, int64_t value) {
+  if (std::optional<DLDataType> dtype = TryDTypeFromTy(ty)) {
+    if (DTypeIsBool(*dtype)) {
+      return BoolImm(ty, value != 0);
+    }
+    return IntImm(ty, FoldInt64(value, *dtype));
+  }
+  return IntImm(ty, value);
+}
+
+Expr FloatImmLike(const Ty& ty, double value) {
+  if (std::optional<DLDataType> dtype = TryDTypeFromTy(ty)) {
+    if (dtype->code == kDLFloat && dtype->bits == 32) {
+      return FloatImm(ty, FoldFloat32(value));
     }
   }
-  return CoerceInitArgToExpr(value, AnyTy());
+  return FloatImm(ty, value);
+}
+
+Expr CastExprTo(Expr value, const Ty& ty) {
+  if (StructuralEqual::Equal(value->ty, ty)) {
+    return value;
+  }
+  if (const PrimTyObj* prim_ty = ty.as<PrimTyObj>()) {
+    if (std::optional<int64_t> int_value = TryIntImmValue(value)) {
+      if (DTypeIsBool(prim_ty->dtype)) {
+        return BoolImm(ty, *int_value != 0);
+      }
+      if (DTypeIsInt(prim_ty->dtype)) {
+        return IntImmLike(ty, *int_value);
+      }
+      if (DTypeIsFloat(prim_ty->dtype)) {
+        return FloatImmLike(ty, static_cast<double>(*int_value));
+      }
+    }
+    if (std::optional<double> float_value = TryFloatImmValue(value)) {
+      if (DTypeIsBool(prim_ty->dtype)) {
+        return BoolImm(ty, *float_value != 0.0);
+      }
+      if (DTypeIsInt(prim_ty->dtype)) {
+        return IntImmLike(ty, static_cast<int64_t>(*float_value));
+      }
+      if (DTypeIsFloat(prim_ty->dtype)) {
+        return FloatImmLike(ty, *float_value);
+      }
+    }
+  }
+  return Cast(ty, value);
+}
+
+Ty MatchBinaryTypes(Expr* lhs, Expr* rhs) {
+  details::CheckExprDefined("binary expression", "a", *lhs);
+  details::CheckExprDefined("binary expression", "b", *rhs);
+  Ty result_ty = PromoteTys((*lhs)->ty, (*rhs)->ty);
+  if (result_ty.as<AnyTyObj>() == nullptr) {
+    *lhs = CastExprTo(*lhs, result_ty);
+    *rhs = CastExprTo(*rhs, result_ty);
+  }
+  return result_ty;
+}
+
+Ty CommonValueTy(AnyView a, AnyView b) {
+  auto [lhs, rhs] = CoerceBinaryValues(a, b);
+  return MatchBinaryTypes(&lhs, &rhs);
+}
+
+void ExpectIntOrUInt(const char* op_name, const Expr& expr, const char* operand_name) {
+  if (std::optional<DLDataType> dtype = TryDTypeFromTy(expr->ty)) {
+    TVM_FFI_CHECK(DTypeIsInt(*dtype), TypeError)
+        << op_name << " expected integer dtype for " << operand_name << ", but got "
+        << DLDataTypeToString(*dtype);
+  }
+}
+
+void ExpectBool(const char* op_name, const Expr& expr, const char* operand_name) {
+  if (std::optional<DLDataType> dtype = TryDTypeFromTy(expr->ty)) {
+    TVM_FFI_CHECK(DTypeIsBool(*dtype), TypeError)
+        << op_name << " expected bool dtype for " << operand_name << ", but got "
+        << DLDataTypeToString(*dtype);
+  }
+}
+
+void CheckShiftAmount(const char* op_name, const Expr& rhs, DLDataType dtype) {
+  if (std::optional<int64_t> shift = TryIntImmValue(rhs)) {
+    TVM_FFI_CHECK(*shift >= 0 && *shift < dtype.bits, ValueError)
+        << op_name << " shift amount must be non-negative and less than "
+        << static_cast<int32_t>(dtype.bits) << " bit(s) for type " << DLDataTypeToString(dtype);
+  }
+}
+
+int64_t FloorDivValue(int64_t lhs, int64_t rhs) {
+  int64_t div = lhs / rhs;
+  int64_t mod = lhs % rhs;
+  bool already_floor = (rhs >= 0 && mod >= 0) || (rhs < 0 && mod <= 0);
+  return already_floor ? div : div - 1;
+}
+
+int64_t FloorModValue(int64_t lhs, int64_t rhs) {
+  int64_t mod = lhs % rhs;
+  bool already_floor = (rhs >= 0 && mod >= 0) || (rhs < 0 && mod <= 0);
+  return already_floor ? mod : mod + rhs;
+}
+
+template <typename TObj>
+std::optional<Expr> TryFoldBinary(const Ty& ty, const Expr& lhs, const Expr& rhs) {
+  std::optional<DLDataType> dtype = TryDTypeFromTy(ty);
+  std::optional<int64_t> lhs_int = TryIntImmValue(lhs);
+  std::optional<int64_t> rhs_int = TryIntImmValue(rhs);
+  std::optional<double> lhs_float = TryFloatImmValue(lhs);
+  std::optional<double> rhs_float = TryFloatImmValue(rhs);
+  if constexpr (std::is_same_v<TObj, AddObj>) {
+    if (lhs_int && rhs_int) return IntImmLike(ty, *lhs_int + *rhs_int);
+    if (lhs_int && *lhs_int == 0) return rhs;
+    if (rhs_int && *rhs_int == 0) return lhs;
+    if (lhs_float && rhs_float) return FloatImmLike(ty, *lhs_float + *rhs_float);
+    if (lhs_float && *lhs_float == 0.0) return rhs;
+    if (rhs_float && *rhs_float == 0.0) return lhs;
+  } else if constexpr (std::is_same_v<TObj, SubObj>) {
+    if (lhs_int && rhs_int) return IntImmLike(ty, *lhs_int - *rhs_int);
+    if (rhs_int && *rhs_int == 0) return lhs;
+    if (lhs_float && rhs_float) return FloatImmLike(ty, *lhs_float - *rhs_float);
+    if (rhs_float && *rhs_float == 0.0) return lhs;
+  } else if constexpr (std::is_same_v<TObj, MulObj>) {
+    if (lhs_int && rhs_int) return IntImmLike(ty, *lhs_int * *rhs_int);
+    if (lhs_int && *lhs_int == 1) return rhs;
+    if (lhs_int && *lhs_int == 0) return lhs;
+    if (rhs_int && *rhs_int == 1) return lhs;
+    if (rhs_int && *rhs_int == 0) return rhs;
+    if (lhs_float && rhs_float) return FloatImmLike(ty, *lhs_float * *rhs_float);
+    if (lhs_float && *lhs_float == 1.0) return rhs;
+    if (lhs_float && *lhs_float == 0.0) return lhs;
+    if (rhs_float && *rhs_float == 1.0) return lhs;
+    if (rhs_float && *rhs_float == 0.0) return rhs;
+  } else if constexpr (std::is_same_v<TObj, CDivObj>) {
+    if (rhs_int && *rhs_int == 0) TVM_FFI_THROW(ValueError) << "Divide by zero";
+    if (rhs_float && *rhs_float == 0.0) TVM_FFI_THROW(ValueError) << "Divide by zero";
+    if (lhs_int && rhs_int) return IntImmLike(ty, *lhs_int / *rhs_int);
+    if (lhs_int && *lhs_int == 0) return lhs;
+    if (rhs_int && *rhs_int == 1) return lhs;
+    if (lhs_float && rhs_float) return FloatImmLike(ty, *lhs_float / *rhs_float);
+    if (lhs_float && *lhs_float == 0.0) return lhs;
+    if (rhs_float && *rhs_float == 1.0) return lhs;
+  } else if constexpr (std::is_same_v<TObj, CModObj>) {
+    if (rhs_int && *rhs_int == 0) TVM_FFI_THROW(ValueError) << "Divide by zero";
+    if (rhs_float && *rhs_float == 0.0) TVM_FFI_THROW(ValueError) << "Divide by zero";
+    if (lhs_int && rhs_int) return IntImmLike(ty, *lhs_int % *rhs_int);
+    if (lhs_int && *lhs_int == 0) return lhs;
+    if (rhs_int && *rhs_int == 1) return IntImmLike(ty, 0);
+    if (lhs_float && rhs_float) return FloatImmLike(ty, std::fmod(*lhs_float, *rhs_float));
+  } else if constexpr (std::is_same_v<TObj, FloorDivObj>) {
+    if (rhs_int && *rhs_int == 0) TVM_FFI_THROW(ValueError) << "Divide by zero";
+    if (rhs_float && *rhs_float == 0.0) TVM_FFI_THROW(ValueError) << "Divide by zero";
+    if (lhs_int && rhs_int) return IntImmLike(ty, FloorDivValue(*lhs_int, *rhs_int));
+    if (lhs_int && *lhs_int == 0) return lhs;
+    if (rhs_int && *rhs_int == 1) return lhs;
+    if (lhs_float && rhs_float) return FloatImmLike(ty, std::floor(*lhs_float / *rhs_float));
+    if (lhs_float && *lhs_float == 0.0) return lhs;
+    if (rhs_float && *rhs_float == 1.0) return lhs;
+  } else if constexpr (std::is_same_v<TObj, FloorModObj>) {
+    if (rhs_int && *rhs_int == 0) TVM_FFI_THROW(ValueError) << "Divide by zero";
+    if (rhs_float && *rhs_float == 0.0) TVM_FFI_THROW(ValueError) << "Divide by zero";
+    if (lhs_int && rhs_int) return IntImmLike(ty, FloorModValue(*lhs_int, *rhs_int));
+    if (lhs_int && *lhs_int == 0) return lhs;
+    if (rhs_int && *rhs_int == 1) return IntImmLike(ty, 0);
+    if (lhs_float && rhs_float) {
+      double mod = std::fmod(*lhs_float, *rhs_float);
+      bool already_floor = (*rhs_float >= 0 && mod >= 0) || (*rhs_float < 0 && mod <= 0);
+      return FloatImmLike(ty, already_floor ? mod : mod + *rhs_float);
+    }
+  } else if constexpr (std::is_same_v<TObj, PowObj>) {
+    if (lhs_int && rhs_int && *rhs_int >= 0) {
+      return IntImmLike(ty, static_cast<int64_t>(std::pow(*lhs_int, *rhs_int)));
+    }
+    if (lhs_float && rhs_float) return FloatImmLike(ty, std::pow(*lhs_float, *rhs_float));
+    if (rhs_int && *rhs_int == 0) return IntImmLike(ty, 1);
+    if (rhs_int && *rhs_int == 1) return lhs;
+    if (rhs_float && *rhs_float == 0.0) return FloatImmLike(ty, 1.0);
+    if (rhs_float && *rhs_float == 1.0) return lhs;
+  } else if constexpr (std::is_same_v<TObj, MinObj>) {
+    if (lhs.same_as(rhs)) return lhs;
+    if (lhs_int && rhs_int) return IntImmLike(ty, std::min(*lhs_int, *rhs_int));
+    if (lhs_float && std::isinf(*lhs_float) && *lhs_float > 0) return rhs;
+    if (lhs_float && std::isinf(*lhs_float) && *lhs_float < 0) return lhs;
+    if (rhs_float && std::isinf(*rhs_float) && *rhs_float > 0) return lhs;
+    if (rhs_float && std::isinf(*rhs_float) && *rhs_float < 0) return rhs;
+    if (lhs_float && rhs_float) return FloatImmLike(ty, std::min(*lhs_float, *rhs_float));
+  } else if constexpr (std::is_same_v<TObj, MaxObj>) {
+    if (lhs.same_as(rhs)) return lhs;
+    if (lhs_int && rhs_int) return IntImmLike(ty, std::max(*lhs_int, *rhs_int));
+    if (lhs_float && std::isinf(*lhs_float) && *lhs_float > 0) return lhs;
+    if (lhs_float && std::isinf(*lhs_float) && *lhs_float < 0) return rhs;
+    if (rhs_float && std::isinf(*rhs_float) && *rhs_float > 0) return rhs;
+    if (rhs_float && std::isinf(*rhs_float) && *rhs_float < 0) return lhs;
+    if (lhs_float && rhs_float) return FloatImmLike(ty, std::max(*lhs_float, *rhs_float));
+  } else if constexpr (std::is_same_v<TObj, LShiftObj>) {
+    if (dtype) CheckShiftAmount("LShift", rhs, *dtype);
+    if (lhs_int && rhs_int) return IntImmLike(ty, *lhs_int << *rhs_int);
+    if (rhs_int && *rhs_int == 0) return lhs;
+  } else if constexpr (std::is_same_v<TObj, RShiftObj>) {
+    if (dtype) CheckShiftAmount("RShift", rhs, *dtype);
+    if (lhs_int && rhs_int) return IntImmLike(ty, *lhs_int >> *rhs_int);
+    if (rhs_int && *rhs_int == 0) return lhs;
+  } else if constexpr (std::is_same_v<TObj, BitwiseAndObj>) {
+    if (lhs_int && rhs_int) return IntImmLike(ty, *lhs_int & *rhs_int);
+  } else if constexpr (std::is_same_v<TObj, BitwiseOrObj>) {
+    if (lhs_int && rhs_int) return IntImmLike(ty, *lhs_int | *rhs_int);
+  } else if constexpr (std::is_same_v<TObj, BitwiseXorObj>) {
+    if (lhs_int && rhs_int) return IntImmLike(ty, *lhs_int ^ *rhs_int);
+  } else if constexpr (std::is_same_v<TObj, AndObj>) {
+    if (lhs_int && *lhs_int != 0) return rhs;
+    if (lhs_int && *lhs_int == 0) return lhs;
+    if (rhs_int && *rhs_int != 0) return lhs;
+    if (rhs_int && *rhs_int == 0) return rhs;
+  } else if constexpr (std::is_same_v<TObj, OrObj>) {
+    if (lhs_int && *lhs_int != 0) return lhs;
+    if (lhs_int && *lhs_int == 0) return rhs;
+    if (rhs_int && *rhs_int != 0) return rhs;
+    if (rhs_int && *rhs_int == 0) return lhs;
+  }
+  return std::nullopt;
+}
+
+template <typename TObj>
+std::optional<Expr> TryFoldComparison(const Ty& ty, const Expr& lhs, const Expr& rhs) {
+  std::optional<int64_t> lhs_int = TryIntImmValue(lhs);
+  std::optional<int64_t> rhs_int = TryIntImmValue(rhs);
+  std::optional<double> lhs_float = TryFloatImmValue(lhs);
+  std::optional<double> rhs_float = TryFloatImmValue(rhs);
+  auto make_bool = [&](bool value) { return BoolImm(ty, value); };
+  if constexpr (std::is_same_v<TObj, EqObj>) {
+    if (lhs_int && rhs_int) return make_bool(*lhs_int == *rhs_int);
+    if (lhs_float && rhs_float) return make_bool(*lhs_float == *rhs_float);
+  } else if constexpr (std::is_same_v<TObj, NeObj>) {
+    if (lhs_int && rhs_int) return make_bool(*lhs_int != *rhs_int);
+    if (lhs_float && rhs_float) return make_bool(*lhs_float != *rhs_float);
+  } else if constexpr (std::is_same_v<TObj, LeObj>) {
+    if (lhs_int && rhs_int) return make_bool(*lhs_int <= *rhs_int);
+    if (lhs_float && rhs_float) return make_bool(*lhs_float <= *rhs_float);
+  } else if constexpr (std::is_same_v<TObj, GeObj>) {
+    if (lhs_int && rhs_int) return make_bool(*lhs_int >= *rhs_int);
+    if (lhs_float && rhs_float) return make_bool(*lhs_float >= *rhs_float);
+  } else if constexpr (std::is_same_v<TObj, GtObj>) {
+    if (lhs_int && rhs_int) return make_bool(*lhs_int > *rhs_int);
+    if (lhs_float && rhs_float) return make_bool(*lhs_float > *rhs_float);
+  } else if constexpr (std::is_same_v<TObj, LtObj>) {
+    if (lhs_int && rhs_int) return make_bool(*lhs_int < *rhs_int);
+    if (lhs_float && rhs_float) return make_bool(*lhs_float < *rhs_float);
+  }
+  return std::nullopt;
+}
+
+template <typename TObj>
+void CheckHelperOperands(const char* op_name, const Expr& lhs, const Expr& rhs) {
+  if constexpr (std::is_same_v<TObj, LShiftObj> || std::is_same_v<TObj, RShiftObj> ||
+                std::is_same_v<TObj, BitwiseAndObj> || std::is_same_v<TObj, BitwiseOrObj> ||
+                std::is_same_v<TObj, BitwiseXorObj>) {
+    ExpectIntOrUInt(op_name, lhs, "lhs");
+    ExpectIntOrUInt(op_name, rhs, "rhs");
+  } else if constexpr (std::is_same_v<TObj, AndObj> || std::is_same_v<TObj, OrObj>) {
+    ExpectBool(op_name, lhs, "lhs");
+    ExpectBool(op_name, rhs, "rhs");
+  }
+}
+
+template <typename TObj>
+Expr BuildBinaryExpr(const char* op_name, Expr lhs, Expr rhs) {
+  Ty ty = MatchBinaryTypes(&lhs, &rhs);
+  CheckHelperOperands<TObj>(op_name, lhs, rhs);
+  if (std::optional<Expr> folded = TryFoldBinary<TObj>(ty, lhs, rhs)) {
+    return *std::move(folded);
+  }
+  return Expr(ObjectPtr<ExprObj>(make_object<TObj>(std::move(ty), std::move(lhs), std::move(rhs))));
+}
+
+template <typename TObj>
+Expr BuildComparisonExpr(Expr lhs, Expr rhs) {
+  Ty value_ty = MatchBinaryTypes(&lhs, &rhs);
+  Ty result_ty = BoolLikeTy(value_ty);
+  if (std::optional<Expr> folded = TryFoldComparison<TObj>(result_ty, lhs, rhs)) {
+    return *std::move(folded);
+  }
+  return Expr(
+      ObjectPtr<ExprObj>(make_object<TObj>(std::move(result_ty), std::move(lhs), std::move(rhs))));
 }
 
 template <typename TObj>
@@ -1257,8 +1713,9 @@ ObjectRef InitBinaryExpr(AnyView a, AnyView b, Ty ty) {
 
 template <typename TObj>
 ObjectRef InitComparisonExpr(AnyView a, AnyView b, Ty ty) {
-  Expr lhs = CoerceComparisonInitArgToExpr(a, b);
-  Expr rhs = CoerceComparisonInitArgToExpr(b, a);
+  Ty value_ty = CommonValueTy(a, b);
+  Expr lhs = CoerceInitArgToExpr(a, value_ty);
+  Expr rhs = CoerceInitArgToExpr(b, value_ty);
   return ObjectRef(make_object<TObj>(std::move(ty), std::move(lhs), std::move(rhs)));
 }
 
@@ -1276,7 +1733,289 @@ ObjectRef InitIfExpr(AnyView cond, AnyView then_expr, AnyView else_expr, Ty ty) 
                                           std::move(then_value), std::move(else_value)));
 }
 
+ObjectRef InitLoad(AnyView lhs, List<Range> indices, const Optional<Ty>& ty) {
+  TVMFFIAny raw = lhs.CopyToTVMFFIAny();
+  std::optional<Expr> lhs_expr = ObjectRefTypeTraitsBase<Expr>::TryCastFromAnyView(&raw);
+  TVM_FFI_CHECK(lhs_expr.has_value(), TypeError) << "std.Load base must be an expression";
+  Expr lhs_value = *std::move(lhs_expr);
+  Ty result_ty = ty.has_value() ? ty.value() : details::IndexedTy(lhs_value->ty, indices);
+  return ObjectRef(
+      make_object<LoadObj>(std::move(result_ty), std::move(lhs_value), std::move(indices)));
+}
+
+template <typename TObj>
+Expr MakeBinaryExpr(Expr a, Expr b) {
+  return BuildBinaryExpr<TObj>(TObj::_type_key, std::move(a), std::move(b));
+}
+
+template <typename TObj>
+Expr MakeBinaryExpr(Expr a, AnyView b) {
+  Expr rhs = CoerceInitArgToExpr(b, a->ty);
+  return BuildBinaryExpr<TObj>(TObj::_type_key, std::move(a), std::move(rhs));
+}
+
+template <typename TObj>
+Expr MakeBinaryExpr(AnyView a, Expr b) {
+  Expr lhs = CoerceInitArgToExpr(a, b->ty);
+  return BuildBinaryExpr<TObj>(TObj::_type_key, std::move(lhs), std::move(b));
+}
+
+template <typename TObj>
+Expr MakeBinaryExpr(AnyView a, AnyView b) {
+  auto [lhs, rhs] = CoerceBinaryValues(a, b);
+  return BuildBinaryExpr<TObj>(TObj::_type_key, std::move(lhs), std::move(rhs));
+}
+
+template <typename TObj>
+Expr MakeComparisonExpr(Expr a, Expr b) {
+  return BuildComparisonExpr<TObj>(std::move(a), std::move(b));
+}
+
+template <typename TObj>
+Expr MakeComparisonExpr(Expr a, AnyView b) {
+  Expr rhs = CoerceInitArgToExpr(b, a->ty);
+  return BuildComparisonExpr<TObj>(std::move(a), std::move(rhs));
+}
+
+template <typename TObj>
+Expr MakeComparisonExpr(AnyView a, Expr b) {
+  Expr lhs = CoerceInitArgToExpr(a, b->ty);
+  return BuildComparisonExpr<TObj>(std::move(lhs), std::move(b));
+}
+
+template <typename TObj>
+Expr MakeComparisonExpr(AnyView a, AnyView b) {
+  auto [lhs, rhs] = CoerceBinaryValues(a, b);
+  return BuildComparisonExpr<TObj>(std::move(lhs), std::move(rhs));
+}
+
+template <typename TObj>
+Expr MakeUnaryExpr(Expr operand) {
+  Ty ty = operand->ty;
+  if constexpr (std::is_same_v<TObj, NotObj>) {
+    ExpectBool("Not", operand, "operand");
+    if (std::optional<int64_t> value = TryIntImmValue(operand)) {
+      return BoolImm(ty, *value == 0);
+    }
+  } else if constexpr (std::is_same_v<TObj, BitwiseNotObj>) {
+    ExpectIntOrUInt("BitwiseNot", operand, "operand");
+  } else if constexpr (std::is_same_v<TObj, AbsObj>) {
+    if (std::optional<DLDataType> dtype = TryDTypeFromTy(ty)) {
+      if (dtype->code == kDLUInt) {
+        return operand;
+      }
+      if (std::optional<int64_t> value = TryIntImmValue(operand)) {
+        return IntImmLike(ty, std::abs(*value));
+      }
+      if (std::optional<double> value = TryFloatImmValue(operand)) {
+        return FloatImmLike(ty, std::fabs(*value));
+      }
+    }
+  }
+  return Expr(ObjectPtr<ExprObj>(make_object<TObj>(std::move(ty), std::move(operand))));
+}
+
+template <typename TObj>
+Expr MakeUnaryExpr(AnyView operand) {
+  return MakeUnaryExpr<TObj>(DefaultExprFromValue(operand));
+}
+
+Expr MakeNegExpr(AnyView operand) {
+  Expr expr = DefaultExprFromValue(operand);
+  if (std::optional<int64_t> int_value = TryIntImmValue(expr)) {
+    return IntImmLike(expr->ty, -*int_value);
+  }
+  if (std::optional<double> float_value = TryFloatImmValue(expr)) {
+    return FloatImmLike(expr->ty, -*float_value);
+  }
+  Expr zero = CoerceInitArgToExpr(AnyView(0), expr->ty);
+  return BuildBinaryExpr<SubObj>("Sub", std::move(zero), std::move(expr));
+}
+
+Expr MakeCastExpr(const Ty& ty, AnyView value) {
+  return CastExprTo(DefaultExprFromValue(value), ty);
+}
+
+Expr MakeIfThenElseExpr(AnyView cond, AnyView then_expr, AnyView else_expr) {
+  Expr cond_value = CoerceInitArgToExpr(cond, PrimTy(kDefaultBoolLiteralType));
+  auto [then_value, else_value] = CoerceBinaryValues(then_expr, else_expr);
+  Ty ty = MatchBinaryTypes(&then_value, &else_value);
+  if (std::optional<int64_t> cond_literal = TryIntImmValue(cond_value)) {
+    return *cond_literal != 0 ? then_value : else_value;
+  }
+  return IfExpr(std::move(ty), std::move(cond_value), std::move(then_value), std::move(else_value));
+}
+
+}  // namespace
+
+Expr cast(const Ty& ty, Expr value) { return CastExprTo(std::move(value), ty); }
+
+#define TVM_FFI_STD_DEFINE_BINARY_FUNC(FuncName, ObjType)                                    \
+  Expr FuncName(Expr a, Expr b) {                                                            \
+    return MakeBinaryExpr<ObjType##Obj>(std::move(a), std::move(b));                         \
+  }                                                                                          \
+  Expr FuncName(Expr a, AnyView b) { return MakeBinaryExpr<ObjType##Obj>(std::move(a), b); } \
+  Expr FuncName(AnyView a, Expr b) { return MakeBinaryExpr<ObjType##Obj>(a, std::move(b)); }
+
+TVM_FFI_STD_DEFINE_BINARY_FUNC(add, Add)
+TVM_FFI_STD_DEFINE_BINARY_FUNC(sub, Sub)
+TVM_FFI_STD_DEFINE_BINARY_FUNC(mul, Mul)
+TVM_FFI_STD_DEFINE_BINARY_FUNC(cdiv, CDiv)
+TVM_FFI_STD_DEFINE_BINARY_FUNC(cmod, CMod)
+TVM_FFI_STD_DEFINE_BINARY_FUNC(floordiv, FloorDiv)
+TVM_FFI_STD_DEFINE_BINARY_FUNC(floormod, FloorMod)
+TVM_FFI_STD_DEFINE_BINARY_FUNC(pow, Pow)
+TVM_FFI_STD_DEFINE_BINARY_FUNC(min, Min)
+TVM_FFI_STD_DEFINE_BINARY_FUNC(max, Max)
+TVM_FFI_STD_DEFINE_BINARY_FUNC(logical_and, And)
+TVM_FFI_STD_DEFINE_BINARY_FUNC(logical_or, Or)
+TVM_FFI_STD_DEFINE_BINARY_FUNC(left_shift, LShift)
+TVM_FFI_STD_DEFINE_BINARY_FUNC(right_shift, RShift)
+TVM_FFI_STD_DEFINE_BINARY_FUNC(bitwise_and, BitwiseAnd)
+TVM_FFI_STD_DEFINE_BINARY_FUNC(bitwise_or, BitwiseOr)
+TVM_FFI_STD_DEFINE_BINARY_FUNC(bitwise_xor, BitwiseXor)
+
+#undef TVM_FFI_STD_DEFINE_BINARY_FUNC
+
+#define TVM_FFI_STD_DEFINE_COMPARISON_FUNC(FuncName, ObjType)                                    \
+  Expr FuncName(Expr a, Expr b) {                                                                \
+    return MakeComparisonExpr<ObjType##Obj>(std::move(a), std::move(b));                         \
+  }                                                                                              \
+  Expr FuncName(Expr a, AnyView b) { return MakeComparisonExpr<ObjType##Obj>(std::move(a), b); } \
+  Expr FuncName(AnyView a, Expr b) { return MakeComparisonExpr<ObjType##Obj>(a, std::move(b)); }
+
+TVM_FFI_STD_DEFINE_COMPARISON_FUNC(eq, Eq)
+TVM_FFI_STD_DEFINE_COMPARISON_FUNC(ne, Ne)
+TVM_FFI_STD_DEFINE_COMPARISON_FUNC(le, Le)
+TVM_FFI_STD_DEFINE_COMPARISON_FUNC(ge, Ge)
+TVM_FFI_STD_DEFINE_COMPARISON_FUNC(gt, Gt)
+TVM_FFI_STD_DEFINE_COMPARISON_FUNC(lt, Lt)
+
+#undef TVM_FFI_STD_DEFINE_COMPARISON_FUNC
+
+Expr truncdiv(Expr a, Expr b) { return cdiv(std::move(a), std::move(b)); }
+Expr truncdiv(Expr a, AnyView b) { return cdiv(std::move(a), b); }
+Expr truncdiv(AnyView a, Expr b) { return cdiv(a, std::move(b)); }
+
+Expr truncmod(Expr a, Expr b) { return cmod(std::move(a), std::move(b)); }
+Expr truncmod(Expr a, AnyView b) { return cmod(std::move(a), b); }
+Expr truncmod(AnyView a, Expr b) { return cmod(a, std::move(b)); }
+
+Expr equal(Expr a, Expr b) { return eq(std::move(a), std::move(b)); }
+Expr equal(Expr a, AnyView b) { return eq(std::move(a), b); }
+Expr equal(AnyView a, Expr b) { return eq(a, std::move(b)); }
+
+Expr not_equal(Expr a, Expr b) { return ne(std::move(a), std::move(b)); }
+Expr not_equal(Expr a, AnyView b) { return ne(std::move(a), b); }
+Expr not_equal(AnyView a, Expr b) { return ne(a, std::move(b)); }
+
+Expr less_equal(Expr a, Expr b) { return le(std::move(a), std::move(b)); }
+Expr less_equal(Expr a, AnyView b) { return le(std::move(a), b); }
+Expr less_equal(AnyView a, Expr b) { return le(a, std::move(b)); }
+
+Expr greater_equal(Expr a, Expr b) { return ge(std::move(a), std::move(b)); }
+Expr greater_equal(Expr a, AnyView b) { return ge(std::move(a), b); }
+Expr greater_equal(AnyView a, Expr b) { return ge(a, std::move(b)); }
+
+Expr less(Expr a, Expr b) { return lt(std::move(a), std::move(b)); }
+Expr less(Expr a, AnyView b) { return lt(std::move(a), b); }
+Expr less(AnyView a, Expr b) { return lt(a, std::move(b)); }
+
+Expr greater(Expr a, Expr b) { return gt(std::move(a), std::move(b)); }
+Expr greater(Expr a, AnyView b) { return gt(std::move(a), b); }
+Expr greater(AnyView a, Expr b) { return gt(a, std::move(b)); }
+
+Expr neg(Expr operand) {
+  if (std::optional<int64_t> int_value = TryIntImmValue(operand)) {
+    return IntImmLike(operand->ty, -*int_value);
+  }
+  if (std::optional<double> float_value = TryFloatImmValue(operand)) {
+    return FloatImmLike(operand->ty, -*float_value);
+  }
+  Expr zero = CoerceInitArgToExpr(AnyView(0), operand->ty);
+  return BuildBinaryExpr<SubObj>("Sub", std::move(zero), std::move(operand));
+}
+
+Expr logical_not(Expr operand) { return MakeUnaryExpr<NotObj>(std::move(operand)); }
+Expr bitwise_not(Expr operand) { return MakeUnaryExpr<BitwiseNotObj>(std::move(operand)); }
+Expr bitwise_neg(Expr operand) { return bitwise_not(std::move(operand)); }
+Expr abs(Expr operand) { return MakeUnaryExpr<AbsObj>(std::move(operand)); }
+
+Expr if_then_else(Expr cond, Expr then_expr, Expr else_expr) {
+  Ty ty = MatchBinaryTypes(&then_expr, &else_expr);
+  if (std::optional<int64_t> cond_literal = TryIntImmValue(cond)) {
+    return *cond_literal != 0 ? then_expr : else_expr;
+  }
+  return IfExpr(std::move(ty), std::move(cond), std::move(then_expr), std::move(else_expr));
+}
+
+Expr select(Expr cond, Expr then_expr, Expr else_expr) {
+  return if_then_else(std::move(cond), std::move(then_expr), std::move(else_expr));
+}
+
+namespace {
+
 TVM_FFI_STATIC_INIT_BLOCK() {
+#define TVM_FFI_STD_GLOBAL_BINARY(FuncName, ObjType) \
+  global_def.def("ffi.std." #FuncName,               \
+                 [](AnyView a, AnyView b) { return MakeBinaryExpr<ObjType##Obj>(a, b); })
+
+#define TVM_FFI_STD_GLOBAL_COMPARISON(FuncName, ObjType) \
+  global_def.def("ffi.std." #FuncName,                   \
+                 [](AnyView a, AnyView b) { return MakeComparisonExpr<ObjType##Obj>(a, b); })
+
+  refl::GlobalDef global_def;
+  global_def.def("ffi.std.cast",
+                 [](const Ty& ty, AnyView value) { return MakeCastExpr(ty, value); });
+  TVM_FFI_STD_GLOBAL_BINARY(add, Add);
+  TVM_FFI_STD_GLOBAL_BINARY(sub, Sub);
+  TVM_FFI_STD_GLOBAL_BINARY(mul, Mul);
+  TVM_FFI_STD_GLOBAL_BINARY(cdiv, CDiv);
+  TVM_FFI_STD_GLOBAL_BINARY(cmod, CMod);
+  TVM_FFI_STD_GLOBAL_BINARY(truncdiv, CDiv);
+  TVM_FFI_STD_GLOBAL_BINARY(truncmod, CMod);
+  TVM_FFI_STD_GLOBAL_BINARY(floordiv, FloorDiv);
+  TVM_FFI_STD_GLOBAL_BINARY(floormod, FloorMod);
+  TVM_FFI_STD_GLOBAL_BINARY(pow, Pow);
+  TVM_FFI_STD_GLOBAL_BINARY(min, Min);
+  TVM_FFI_STD_GLOBAL_BINARY(max, Max);
+  TVM_FFI_STD_GLOBAL_COMPARISON(eq, Eq);
+  TVM_FFI_STD_GLOBAL_COMPARISON(ne, Ne);
+  TVM_FFI_STD_GLOBAL_COMPARISON(le, Le);
+  TVM_FFI_STD_GLOBAL_COMPARISON(ge, Ge);
+  TVM_FFI_STD_GLOBAL_COMPARISON(gt, Gt);
+  TVM_FFI_STD_GLOBAL_COMPARISON(lt, Lt);
+  TVM_FFI_STD_GLOBAL_COMPARISON(equal, Eq);
+  TVM_FFI_STD_GLOBAL_COMPARISON(not_equal, Ne);
+  TVM_FFI_STD_GLOBAL_COMPARISON(less_equal, Le);
+  TVM_FFI_STD_GLOBAL_COMPARISON(greater_equal, Ge);
+  TVM_FFI_STD_GLOBAL_COMPARISON(less, Lt);
+  TVM_FFI_STD_GLOBAL_COMPARISON(greater, Gt);
+  TVM_FFI_STD_GLOBAL_BINARY(logical_and, And);
+  TVM_FFI_STD_GLOBAL_BINARY(logical_or, Or);
+  TVM_FFI_STD_GLOBAL_BINARY(left_shift, LShift);
+  TVM_FFI_STD_GLOBAL_BINARY(right_shift, RShift);
+  TVM_FFI_STD_GLOBAL_BINARY(bitwise_and, BitwiseAnd);
+  TVM_FFI_STD_GLOBAL_BINARY(bitwise_or, BitwiseOr);
+  TVM_FFI_STD_GLOBAL_BINARY(bitwise_xor, BitwiseXor);
+  global_def.def("ffi.std.neg", [](AnyView operand) { return MakeNegExpr(operand); });
+  global_def.def("ffi.std.logical_not",
+                 [](AnyView operand) { return MakeUnaryExpr<NotObj>(operand); });
+  global_def.def("ffi.std.bitwise_not",
+                 [](AnyView operand) { return MakeUnaryExpr<BitwiseNotObj>(operand); });
+  global_def.def("ffi.std.bitwise_neg",
+                 [](AnyView operand) { return MakeUnaryExpr<BitwiseNotObj>(operand); });
+  global_def.def("ffi.std.abs", [](AnyView operand) { return MakeUnaryExpr<AbsObj>(operand); });
+  global_def.def("ffi.std.if_then_else", [](AnyView cond, AnyView then_expr, AnyView else_expr) {
+    return MakeIfThenElseExpr(cond, then_expr, else_expr);
+  });
+  global_def.def("ffi.std.select", [](AnyView cond, AnyView then_expr, AnyView else_expr) {
+    return MakeIfThenElseExpr(cond, then_expr, else_expr);
+  });
+
+#undef TVM_FFI_STD_GLOBAL_COMPARISON
+#undef TVM_FFI_STD_GLOBAL_BINARY
+
 #define TVM_FFI_STD_OBJECT_DEF_BASE(ObjType, RefType) \
   refl::ObjectDef<ObjType>().def_type_attr(refl::type_attr::kTextPrint, TextPrintHook<RefType>())
 
@@ -1384,8 +2123,7 @@ TVM_FFI_STATIC_INIT_BLOCK() {
       .def_rw("cond", &IfExprObj::cond)
       .def_rw("then_expr", &IfExprObj::then_expr)
       .def_rw("else_expr", &IfExprObj::else_expr);
-  TVM_FFI_STD_OBJECT_DEF(LoadObj, Load, "Load")
-      .def(refl::init<Expr, List<Range>, Ty>())
+  TVM_FFI_STD_OBJECT_DEF_CUSTOM_INIT(LoadObj, Load, "Load", InitLoad)
       .def_rw("lhs", &LoadObj::lhs)
       .def_rw("indices", &LoadObj::indices);
   TVM_FFI_STD_OBJECT_DEF(CastObj, Cast, "Cast").def_rw("value", &CastObj::value);

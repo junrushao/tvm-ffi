@@ -68,6 +68,7 @@
 #include <tvm/ffi/string.h>
 
 #include <optional>
+#include <type_traits>
 #include <utility>
 
 namespace tvm {
@@ -1297,6 +1298,106 @@ inline RangeObj::RangeObj(Optional<Expr> start, Optional<Expr> stop, Optional<Ex
   details::CheckRangeDTypes("Range", this->start, this->stop, this->step);
 }
 /// \endcond
+
+/*! \brief Cast an expression to a standard dialect type. */
+TVM_FFI_EXTRA_CXX_API Expr cast(Ty ty, Expr value);
+
+/*! \brief Declare overloads for a standard dialect binary expression helper. */
+#define TVM_FFI_STD_DECLARE_BINARY_OP(FuncName)                   \
+  /*! \brief Construct a standard dialect binary expression. */   \
+  TVM_FFI_EXTRA_CXX_API Expr FuncName(Expr a, Expr b);            \
+  /*! \brief Construct a binary expression with a general rhs. */ \
+  TVM_FFI_EXTRA_CXX_API Expr FuncName(Expr a, AnyView b);         \
+  /*! \brief Construct a binary expression with a general lhs. */ \
+  TVM_FFI_EXTRA_CXX_API Expr FuncName(AnyView a, Expr b)
+
+TVM_FFI_STD_DECLARE_BINARY_OP(add);
+TVM_FFI_STD_DECLARE_BINARY_OP(sub);
+TVM_FFI_STD_DECLARE_BINARY_OP(mul);
+TVM_FFI_STD_DECLARE_BINARY_OP(cdiv);
+TVM_FFI_STD_DECLARE_BINARY_OP(cmod);
+TVM_FFI_STD_DECLARE_BINARY_OP(truncdiv);
+TVM_FFI_STD_DECLARE_BINARY_OP(truncmod);
+TVM_FFI_STD_DECLARE_BINARY_OP(floordiv);
+TVM_FFI_STD_DECLARE_BINARY_OP(floormod);
+TVM_FFI_STD_DECLARE_BINARY_OP(pow);
+TVM_FFI_STD_DECLARE_BINARY_OP(min);
+TVM_FFI_STD_DECLARE_BINARY_OP(max);
+TVM_FFI_STD_DECLARE_BINARY_OP(eq);
+TVM_FFI_STD_DECLARE_BINARY_OP(ne);
+TVM_FFI_STD_DECLARE_BINARY_OP(le);
+TVM_FFI_STD_DECLARE_BINARY_OP(ge);
+TVM_FFI_STD_DECLARE_BINARY_OP(gt);
+TVM_FFI_STD_DECLARE_BINARY_OP(lt);
+TVM_FFI_STD_DECLARE_BINARY_OP(equal);
+TVM_FFI_STD_DECLARE_BINARY_OP(not_equal);
+TVM_FFI_STD_DECLARE_BINARY_OP(less_equal);
+TVM_FFI_STD_DECLARE_BINARY_OP(greater_equal);
+TVM_FFI_STD_DECLARE_BINARY_OP(less);
+TVM_FFI_STD_DECLARE_BINARY_OP(greater);
+TVM_FFI_STD_DECLARE_BINARY_OP(logical_and);
+TVM_FFI_STD_DECLARE_BINARY_OP(logical_or);
+TVM_FFI_STD_DECLARE_BINARY_OP(left_shift);
+TVM_FFI_STD_DECLARE_BINARY_OP(right_shift);
+TVM_FFI_STD_DECLARE_BINARY_OP(bitwise_and);
+TVM_FFI_STD_DECLARE_BINARY_OP(bitwise_or);
+TVM_FFI_STD_DECLARE_BINARY_OP(bitwise_xor);
+
+#undef TVM_FFI_STD_DECLARE_BINARY_OP
+
+/*! \brief Construct unary negation as ``0 - operand``. */
+TVM_FFI_EXTRA_CXX_API Expr neg(Expr operand);
+/*! \brief Construct logical negation. */
+TVM_FFI_EXTRA_CXX_API Expr logical_not(Expr operand);
+/*! \brief Construct bitwise negation. */
+TVM_FFI_EXTRA_CXX_API Expr bitwise_not(Expr operand);
+/*! \brief Alias for bitwise negation. */
+TVM_FFI_EXTRA_CXX_API Expr bitwise_neg(Expr operand);
+/*! \brief Construct absolute value. */
+TVM_FFI_EXTRA_CXX_API Expr abs(Expr operand);
+/*! \brief Construct a ternary expression. */
+TVM_FFI_EXTRA_CXX_API Expr if_then_else(Expr cond, Expr then_expr, Expr else_expr);
+/*! \brief Alias for a ternary expression. */
+TVM_FFI_EXTRA_CXX_API Expr select(Expr cond, Expr then_expr, Expr else_expr);
+
+/// \cond Doxygen_Suppress
+#define TVM_FFI_STD_BINARY_OPERATOR(Op, FuncName)                                          \
+  inline Expr operator Op(Expr a, Expr b) { return FuncName(std::move(a), std::move(b)); } \
+  template <typename T, std::enable_if_t<std::is_arithmetic_v<std::decay_t<T>>, int> = 0>  \
+  inline Expr operator Op(Expr a, T b) {                                                   \
+    return FuncName(std::move(a), AnyView(b));                                             \
+  }                                                                                        \
+  template <typename T, std::enable_if_t<std::is_arithmetic_v<std::decay_t<T>>, int> = 0>  \
+  inline Expr operator Op(T a, Expr b) {                                                   \
+    return FuncName(AnyView(a), std::move(b));                                             \
+  }
+
+TVM_FFI_STD_BINARY_OPERATOR(+, add)
+TVM_FFI_STD_BINARY_OPERATOR(-, sub)
+TVM_FFI_STD_BINARY_OPERATOR(*, mul)
+TVM_FFI_STD_BINARY_OPERATOR(/, cdiv)
+TVM_FFI_STD_BINARY_OPERATOR(%, floormod)
+TVM_FFI_STD_BINARY_OPERATOR(<<, left_shift)
+TVM_FFI_STD_BINARY_OPERATOR(>>, right_shift)
+TVM_FFI_STD_BINARY_OPERATOR(&, bitwise_and)
+TVM_FFI_STD_BINARY_OPERATOR(|, bitwise_or)
+TVM_FFI_STD_BINARY_OPERATOR(^, bitwise_xor)
+TVM_FFI_STD_BINARY_OPERATOR(<, lt)
+TVM_FFI_STD_BINARY_OPERATOR(<=, le)
+TVM_FFI_STD_BINARY_OPERATOR(>, gt)
+TVM_FFI_STD_BINARY_OPERATOR(>=, ge)
+TVM_FFI_STD_BINARY_OPERATOR(==, eq)
+TVM_FFI_STD_BINARY_OPERATOR(!=, ne)
+TVM_FFI_STD_BINARY_OPERATOR(&&, logical_and)
+TVM_FFI_STD_BINARY_OPERATOR(||, logical_or)
+
+#undef TVM_FFI_STD_BINARY_OPERATOR
+/// \endcond
+
+inline Expr operator-(Expr operand) { return neg(std::move(operand)); }
+inline Expr operator+(Expr operand) { return operand; }
+inline Expr operator!(Expr operand) { return logical_not(std::move(operand)); }
+inline Expr operator~(Expr operand) { return bitwise_not(std::move(operand)); }
 
 }  // namespace std_
 }  // namespace ffi

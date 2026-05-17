@@ -229,15 +229,15 @@ class TestParseLiterals:
 
     def test_in_context_int_uses_inferred_type(self) -> None:
         parsed = parse("1 + 2")
-        assert isinstance(parsed.a, std.IntImm)
-        assert _equal(parsed.a.ty, I64)
-        assert isinstance(parsed.b, std.IntImm)
-        assert _equal(parsed.b.ty, I64)
+        assert isinstance(parsed, std.IntImm)
+        assert _equal(parsed.ty, I64)
+        assert parsed.value == 3
 
     def test_in_context_float_uses_inferred_type(self) -> None:
         parsed = parse("1.5 + 1.5")
-        assert isinstance(parsed.a, std.FloatImm)
-        assert _equal(parsed.a.ty, F32)
+        assert isinstance(parsed, std.FloatImm)
+        assert _equal(parsed.ty, F32)
+        assert parsed.value == 3.0
 
     def test_bool_true(self) -> None:
         _assert_parse_equal("True", std.BoolImm(std.PrimTy("bool"), True))
@@ -320,95 +320,99 @@ class TestParseVariables:
 
 class TestParseArithmeticOps:
     def test_add(self) -> None:
-        _assert_parse_equal("1 + 2", std.Add(1, 2, ty=I64))
+        _assert_parse_equal("1 + 2", std.IntImm(I64, 3))
 
     def test_sub(self) -> None:
-        _assert_parse_equal("5 - 3", std.Sub(5, 3, ty=I64))
+        _assert_parse_equal("5 - 3", std.IntImm(I64, 2))
 
     def test_mul(self) -> None:
-        _assert_parse_equal("3 * 4", std.Mul(3, 4, ty=I64))
+        _assert_parse_equal("3 * 4", std.IntImm(I64, 12))
 
     def test_div(self) -> None:
-        _assert_parse_equal("6 / 2", std.CDiv(6, 2, ty=I64))
+        _assert_parse_equal("6 / 2", std.IntImm(I64, 3))
 
     def test_div_float_uses_cdiv(self) -> None:
         _assert_parse_equal(
             "std.f32(6) / std.f32(2)",
-            std.CDiv(std.FloatImm(F32, 6.0), std.FloatImm(F32, 2.0), ty=F32),
+            std.FloatImm(F32, 3.0),
         )
 
     def test_floordiv(self) -> None:
-        _assert_parse_equal("7 // 2", std.FloorDiv(7, 2, ty=I64))
+        _assert_parse_equal("7 // 2", std.IntImm(I64, 3))
 
     def test_floordiv_rejects_float(self) -> None:
         with pytest.raises(TypeError, match="__floordiv__ only supports integer types"):
             parse("std.f32(7) // std.f32(2)")
 
     def test_floormod(self) -> None:
-        _assert_parse_equal("7 % 2", std.FloorMod(7, 2, ty=I64))
+        _assert_parse_equal("7 % 2", std.IntImm(I64, 1))
 
     def test_mod_int_uses_floormod(self) -> None:
         _assert_parse_equal(
             "std.i32(7) % std.i32(2)",
-            std.FloorMod(std.IntImm(I32, 7), std.IntImm(I32, 2), ty=I32),
+            std.IntImm(I32, 1),
         )
 
     def test_mod_float_uses_cmod(self) -> None:
         _assert_parse_equal(
             "std.f32(7) % std.f32(2)",
-            std.CMod(std.FloatImm(F32, 7.0), std.FloatImm(F32, 2.0), ty=F32),
+            std.FloatImm(F32, 1.0),
         )
 
     def test_pow(self) -> None:
-        _assert_parse_equal("2 ** 3", std.Pow(2, 3, ty=I64))
+        _assert_parse_equal("2 ** 3", std.IntImm(I64, 8))
 
     def test_lshift(self) -> None:
-        _assert_parse_equal("1 << 3", std.LShift(1, 3, ty=I64))
+        _assert_parse_equal("1 << 3", std.IntImm(I64, 8))
 
     def test_rshift(self) -> None:
-        _assert_parse_equal("16 >> 2", std.RShift(16, 2, ty=I64))
+        _assert_parse_equal("16 >> 2", std.IntImm(I64, 4))
 
     def test_xor(self) -> None:
-        _assert_parse_equal("1 ^ 2", std.BitwiseXor(1, 2, ty=I64))
+        _assert_parse_equal("1 ^ 2", std.IntImm(I64, 3))
 
     def test_bitwise_and(self) -> None:
-        _assert_parse_equal("1 & 2", std.BitwiseAnd(1, 2, ty=I64))
+        _assert_parse_equal("1 & 2", std.IntImm(I64, 0))
 
     def test_bitwise_or(self) -> None:
-        _assert_parse_equal("1 | 2", std.BitwiseOr(1, 2, ty=I64))
+        _assert_parse_equal("1 | 2", std.IntImm(I64, 3))
 
     def test_min_call(self) -> None:
-        _assert_parse_equal("min(1, 2)", std.Min(1, 2, ty=I64))
+        _assert_parse_equal("min(1, 2)", std.IntImm(I64, 1))
 
     def test_max_call(self) -> None:
-        _assert_parse_equal("max(1, 2)", std.Max(1, 2, ty=I64))
+        _assert_parse_equal("max(1, 2)", std.IntImm(I64, 2))
 
     def test_min_resolves_qualified_or_unqualified(self) -> None:
         assert _equal(parse("min(1, 2)"), parse("std.min(1, 2)"))
 
-    @pytest.mark.skipif(
-        sys.version_info[:2] == (3, 8),
-        reason="Python 3.8 reports staticmethod TypeError messages without the class qualifier",
-    )
     def test_min_max_require_exactly_two_args(self) -> None:
-        with pytest.raises(TypeError, match=r"Std\.min\(\) missing .*rhs"):
+        with pytest.raises(TypeError, match=r"min\(\) missing .*rhs"):
             parse("min(1)")
-        with pytest.raises(TypeError, match=r"Std\.min\(\) takes 2 positional arguments"):
+        with pytest.raises(TypeError, match=r"min\(\) takes 2 positional arguments"):
             parse("min(1, 2, 3)")
-        with pytest.raises(TypeError, match=r"Std\.max\(\) missing .*rhs"):
+        with pytest.raises(TypeError, match=r"max\(\) missing .*rhs"):
             parse("max(1)")
 
     def test_paren_grouping(self) -> None:
+        a = std.Var(I64, "a")
+        b = std.Var(I64, "b")
+        c = std.Var(I64, "c")
         _assert_parse_equal(
-            "(1 + 2) * 3",
-            std.Mul(std.Add(1, 2, ty=I64), 3, ty=I64),
+            "(a + b) * c",
+            std.Mul(std.Add(a, b, ty=I64), c, ty=I64),
+            extra_vars={"a": a, "b": b, "c": c},
         )
 
     def test_left_associativity(self) -> None:
-        # `1 + 2 + 3` is `(1 + 2) + 3`.
+        # `a + b + c` is `(a + b) + c`.
+        a = std.Var(I64, "a")
+        b = std.Var(I64, "b")
+        c = std.Var(I64, "c")
         _assert_parse_equal(
-            "1 + 2 + 3",
-            std.Add(std.Add(1, 2, ty=I64), 3, ty=I64),
+            "a + b + c",
+            std.Add(std.Add(a, b, ty=I64), c, ty=I64),
+            extra_vars={"a": a, "b": b, "c": c},
         )
 
     def test_anyty_dominates_other_side(self) -> None:
@@ -420,29 +424,38 @@ class TestParseArithmeticOps:
             extra_vars={"a": a, "b": b},
         )
 
-    def test_type_mismatch_raises(self) -> None:
+    def test_mismatched_int_widths_promote(self) -> None:
         a = std.Var(I32, "a")
         b = std.Var(I64, "b")
-        with pytest.raises(TypeError, match="explicit casts are required"):
-            parse("a + b", extra_vars={"a": a, "b": b})
+        _assert_parse_equal(
+            "a + b",
+            std.Add(std.Cast(I64, a), b, ty=I64),
+            extra_vars={"a": a, "b": b},
+        )
 
     def test_bool_int_arith_is_type_mismatch(self) -> None:
         with pytest.raises(TypeError, match="type mismatch"):
             parse("True + 1")
 
-    def test_int_plus_float_is_type_mismatch_with_cast_hint(self) -> None:
-        with pytest.raises(TypeError, match="cast literals explicitly"):
-            parse("1 + 1.5")
+    def test_int_plus_float_promotes_to_float(self) -> None:
+        _assert_parse_equal("1 + 1.5", std.FloatImm(F32, 2.5))
 
     def test_operator_precedence(self) -> None:
-        parsed = parse("1 + 2 * 3")
+        a = std.Var(I64, "a")
+        b = std.Var(I64, "b")
+        c = std.Var(I64, "c")
+        parsed = parse("a + b * c", extra_vars={"a": a, "b": b, "c": c})
         assert isinstance(parsed, std.Add)
         assert isinstance(parsed.b, std.Mul)
 
     def test_min_call_structurally_nested(self) -> None:
+        a = std.Var(I64, "a")
+        b = std.Var(I64, "b")
+        c = std.Var(I64, "c")
         _assert_parse_equal(
-            "min(min(1, 2), 3)",
-            std.Min(std.Min(1, 2, ty=I64), 3, ty=I64),
+            "min(min(a, b), c)",
+            std.Min(std.Min(a, b, ty=I64), c, ty=I64),
+            extra_vars={"a": a, "b": b, "c": c},
         )
 
 
@@ -477,48 +490,66 @@ class TestParseUnaryOps:
 
 class TestParseComparisons:
     def test_eq(self) -> None:
-        _assert_parse_equal("1 == 2", std.Eq(1, 2, ty=BOOL))
+        _assert_parse_equal("1 == 2", std.BoolImm(BOOL, False))
 
     def test_ne(self) -> None:
-        _assert_parse_equal("1 != 2", std.Ne(1, 2, ty=BOOL))
+        _assert_parse_equal("1 != 2", std.BoolImm(BOOL, True))
 
     def test_lt(self) -> None:
-        _assert_parse_equal("1 < 2", std.Lt(1, 2, ty=BOOL))
+        _assert_parse_equal("1 < 2", std.BoolImm(BOOL, True))
 
     def test_le(self) -> None:
-        _assert_parse_equal("1 <= 2", std.Le(1, 2, ty=BOOL))
+        _assert_parse_equal("1 <= 2", std.BoolImm(BOOL, True))
 
     def test_gt(self) -> None:
-        _assert_parse_equal("1 > 2", std.Gt(1, 2, ty=BOOL))
+        _assert_parse_equal("1 > 2", std.BoolImm(BOOL, False))
 
     def test_ge(self) -> None:
-        _assert_parse_equal("1 >= 2", std.Ge(1, 2, ty=BOOL))
+        _assert_parse_equal("1 >= 2", std.BoolImm(BOOL, False))
 
     def test_chained_compare(self) -> None:
         _assert_parse_equal(
             "1 < 2 < 3",
-            std.And(std.Lt(1, 2, ty=BOOL), std.Lt(2, 3, ty=BOOL), ty=BOOL),
+            std.BoolImm(BOOL, True),
         )
 
     def test_chained_three_way(self) -> None:
         _assert_parse_equal(
             "1 < 2 == 2",
-            std.And(std.Lt(1, 2, ty=BOOL), std.Eq(2, 2, ty=BOOL), ty=BOOL),
+            std.BoolImm(BOOL, True),
         )
 
 
 class TestParseLogical:
     def test_logical_and(self) -> None:
-        _assert_parse_equal("1 and 2", std.And(1, 2, ty=BOOL))
+        x = std.Var(BOOL, "x")
+        y = std.Var(BOOL, "y")
+        _assert_parse_equal("x and y", std.And(x, y, ty=BOOL), extra_vars={"x": x, "y": y})
 
     def test_logical_or(self) -> None:
-        _assert_parse_equal("1 or 2", std.Or(1, 2, ty=BOOL))
+        x = std.Var(BOOL, "x")
+        y = std.Var(BOOL, "y")
+        _assert_parse_equal("x or y", std.Or(x, y, ty=BOOL), extra_vars={"x": x, "y": y})
 
     def test_logical_and_short_circuit_chain(self) -> None:
+        x = std.Var(BOOL, "x")
+        y = std.Var(BOOL, "y")
+        z = std.Var(BOOL, "z")
         _assert_parse_equal(
-            "1 and 2 and 3",
-            std.And(std.And(1, 2, ty=BOOL), 3, ty=BOOL),
+            "x and y and z",
+            std.And(std.And(x, y, ty=BOOL), z, ty=BOOL),
+            extra_vars={"x": x, "y": y, "z": z},
         )
+
+    def test_logical_bool_literals(self) -> None:
+        _assert_parse_equal("True and False", std.BoolImm(BOOL, False))
+        _assert_parse_equal("True or False", std.BoolImm(BOOL, True))
+
+    def test_logical_rejects_non_bool(self) -> None:
+        with pytest.raises(TypeError, match=r"expected bool dtype for lhs, but got int64"):
+            parse("1 and 2")
+        with pytest.raises(TypeError, match=r"expected bool dtype for lhs, but got int64"):
+            parse("1 or 2")
 
 
 class TestParseIfExpr:
@@ -537,7 +568,14 @@ class TestParseNativeFallbackOps:
     """Operators not registered by std still fall back to `_NATIVE_GENERICS`."""
 
     def test_pow_right_associativity_builds_ir(self) -> None:
-        _assert_parse_equal("1 ** 2 ** 3", std.Pow(1, std.Pow(2, 3, ty=I64), ty=I64))
+        a = std.Var(I64, "a")
+        b = std.Var(I64, "b")
+        c = std.Var(I64, "c")
+        _assert_parse_equal(
+            "a ** b ** c",
+            std.Pow(a, std.Pow(b, c, ty=I64), ty=I64),
+            extra_vars={"a": a, "b": b, "c": c},
+        )
 
     def test_is_literal_folds(self) -> None:
         _assert_parse_equal("1 is 2", std.BoolImm(std.PrimTy("bool"), False))
@@ -589,16 +627,15 @@ class TestParseCast:
 
     def test_cast_chain_through_three_types(self) -> None:
         parsed = parse("std.f64(std.f32(std.i32(1)))")
-        assert isinstance(parsed, std.Cast)
+        assert isinstance(parsed, std.FloatImm)
         assert _equal(parsed.ty, F64)
-        assert isinstance(parsed.value, std.Cast)
+        assert parsed.value == 1.0
 
     def test_cast_in_binop_preserves_target_type(self) -> None:
         parsed = parse("std.i32(1) + std.i32(2)")
-        assert isinstance(parsed, std.Add)
+        assert isinstance(parsed, std.IntImm)
         assert _equal(parsed.ty, I32)
-        assert isinstance(parsed.a, std.IntImm)
-        assert isinstance(parsed.b, std.IntImm)
+        assert parsed.value == 3
 
     def test_round_trip(self) -> None:
         _assert_roundtrip(std.Cast(I32, 1))
@@ -613,13 +650,13 @@ class TestParseCast:
 class TestParseLoad:
     def test_load_one_index(self) -> None:
         x = std.Var(I32, "x")
-        _assert_parse_equal("x[1]", std.Load(x, 1, ty=I32), extra_vars={"x": x})
+        _assert_parse_equal("x[1]", std.Load(x, 1), extra_vars={"x": x})
 
     def test_load_two_indices(self) -> None:
         x = std.Var(I32, "x")
         _assert_parse_equal(
             "x[1, 2]",
-            std.Load(x, 1, 2, ty=I32),
+            std.Load(x, 1, 2),
             extra_vars={"x": x},
         )
 
@@ -627,7 +664,7 @@ class TestParseLoad:
         x = std.Var(I32, "x")
         _assert_parse_equal(
             "x[1:2]",
-            std.Load(x, std.Range(1, 2), ty=I32),
+            std.Load(x, std.Range(1, 2)),
             extra_vars={"x": x},
         )
 
@@ -635,7 +672,7 @@ class TestParseLoad:
         x = std.Var(I32, "x")
         _assert_parse_equal(
             "x[1:2, 3]",
-            std.Load(x, std.Range(1, 2), 3, ty=I32),
+            std.Load(x, std.Range(1, 2), 3),
             extra_vars={"x": x},
         )
 
@@ -643,7 +680,7 @@ class TestParseLoad:
         x = std.Var(I32, "x")
         _assert_parse_equal(
             "x[-1]",
-            std.Load(x, -1, ty=I32),
+            std.Load(x, std.Range(start=std.IntImm(I64, -1))),
             extra_vars={"x": x},
         )
 
@@ -730,7 +767,7 @@ class TestParseStore:
         x = std.Var(I32, "x")
         _assert_parse_equal(
             "x[1] = 2",
-            self._wrap(std.Store(x, 1, rhs=2)),
+            self._wrap(std.Store(x, 2, 1)),
             extra_vars={"x": x},
         )
 
@@ -738,7 +775,7 @@ class TestParseStore:
         x = std.Var(I32, "x")
         _assert_parse_equal(
             "x[1:2] = 3",
-            self._wrap(std.Store(x, std.Range(1, 2), rhs=3)),
+            self._wrap(std.Store(x, 3, std.Range(1, 2))),
             extra_vars={"x": x},
         )
 
@@ -758,7 +795,7 @@ class TestParseStore:
         assert isinstance(result.body[0], std.Store)
 
     def test_store_with_attrs(self) -> None:
-        result = parse('@std.func\ndef f(x: std.i32):\n  std.Store(x, 1, rhs=2, tag="demo")')
+        result = parse('@std.func\ndef f(x: std.i32):\n  std.Store(x, 2, 1, tag="demo")')
         store = result.body[0]
         assert isinstance(store, std.Store)
         assert isinstance(store.attrs, std.DictAttrs)
@@ -771,8 +808,8 @@ class TestParseStore:
 
     def test_store_round_trip(self) -> None:
         x = std.Var(I32, "x")
-        _assert_roundtrip(std.Store(x, 1, rhs=2), extra_vars={"x": x})
-        _assert_roundtrip(std.Store(x, std.Range(None, 2), 3, rhs=4), extra_vars={"x": x})
+        _assert_roundtrip(std.Store(x, 2, 1), extra_vars={"x": x})
+        _assert_roundtrip(std.Store(x, 4, std.Range(None, 2), 3), extra_vars={"x": x})
 
     @staticmethod
     def _wrap(stmt: Any) -> Any:
@@ -811,7 +848,10 @@ class TestParseRange:
         _assert_parse_equal("1:10:2", std.Range(1, 10, 2))
 
     def test_negative(self) -> None:
-        _assert_parse_equal("-1:-3:-1", std.Range(-1, -3, -1))
+        _assert_parse_equal(
+            "-1:-3:-1",
+            std.Range(std.IntImm(I64, -1), std.IntImm(I64, -3), std.IntImm(I64, -1)),
+        )
 
     def test_start_stop(self) -> None:
         _assert_parse_equal("1:10", std.Range(1, 10))
@@ -847,9 +887,11 @@ class TestParseRange:
         _assert_parse_equal("std.Range(None, None, 2)", std.Range(None, None, 2))
         _assert_parse_equal("std.Range()", std.Range())
 
-    def test_operand_type_mismatch_suggests_literal_cast(self) -> None:
+    def test_range_rejects_non_integer_bound(self) -> None:
         n = std.Var(I64, "n")
-        with pytest.raises(TypeError, match=r"std\.i64\(0\.5\)"):
+        with pytest.raises(
+            TypeError, match=r"range expects Python integers or integer expressions"
+        ):
             parse(
                 "@std.func\ndef f():\n  for i in range(0.5, n, 2):\n    pass",
                 extra_vars={"n": n},
@@ -960,7 +1002,7 @@ class TestParseCall:
             parse("1(2)")
 
     def test_builtin_abs_resolves_to_std_abs(self) -> None:
-        _assert_parse_equal("abs(1)", std.Abs(1, ty=I64))
+        _assert_parse_equal("abs(1)", std.IntImm(I64, 1))
 
 
 ################################################################################
@@ -1209,7 +1251,7 @@ class TestParseStatements:
         result = parse("@std.func\ndef f() -> std.i32:\n  return 0")
         assert isinstance(result.body[0].exprs[0], std.IntImm)
         result = parse("@std.func\ndef f() -> std.i32:\n  return 1 + 2")
-        assert isinstance(result.body[0].exprs[0], std.Add)
+        assert isinstance(result.body[0].exprs[0], std.IntImm)
 
     def test_yield_var(self) -> None:
         x = std.Var(I32, "x")
@@ -1606,7 +1648,7 @@ class TestParseFor:
             start=1,
             stop=2,
             step=None,
-            body=[std.Store(x, 1, rhs=2)],
+            body=[std.Store(x, 2, 1)],
             vars=[x],
         )
         _assert_parse_equal("for x in range(1, 2):\n  x[1] = 2", expected)
@@ -1617,7 +1659,7 @@ class TestParseFor:
             start=1,
             stop=2,
             step=None,
-            body=[std.Store(x, 1, rhs=2)],
+            body=[std.Store(x, 2, 1)],
             vars=[x],
             attrs={"tag": "demo"},
         )
@@ -1733,7 +1775,7 @@ class TestParseFor:
                 start=1,
                 stop=2,
                 step=None,
-                body=[std.Store(x, 1, rhs=2)],
+                body=[std.Store(x, 2, 1)],
                 vars=[x],
             )
         )
@@ -1742,7 +1784,7 @@ class TestParseFor:
                 start=1,
                 stop=2,
                 step=None,
-                body=[std.Store(x, 1, rhs=2)],
+                body=[std.Store(x, 2, 1)],
                 vars=[x],
                 attrs={"tag": "demo"},
             )
@@ -2125,14 +2167,14 @@ class TestRoundtripFromTestStd:
                 start=1,
                 stop=2,
                 step=None,
-                body=[std.Store(x, 1, rhs=2)],
+                body=[std.Store(x, 2, 1)],
                 vars=[x],
             ),
             std.For(
                 start=1,
                 stop=2,
                 step=None,
-                body=[std.Store(x, 1, rhs=2)],
+                body=[std.Store(x, 2, 1)],
                 vars=[x],
                 attrs={"tag": "demo"},
             ),
@@ -2192,8 +2234,8 @@ class TestRoundtripFromTestStd:
 
     def test_store_round_trip(self) -> None:
         x = std.Var(I32, "x")
-        _assert_roundtrip(std.Store(x, 1, rhs=2), extra_vars={"x": x})
-        _assert_roundtrip(std.Store(x, std.Range(1, 2), 3, rhs=4), extra_vars={"x": x})
+        _assert_roundtrip(std.Store(x, 2, 1), extra_vars={"x": x})
+        _assert_roundtrip(std.Store(x, 4, std.Range(1, 2), 3), extra_vars={"x": x})
 
     def test_assert_return_yield_round_trip(self) -> None:
         x = std.Var(I64, "x")
@@ -2317,7 +2359,7 @@ class TestParserAPI:
 
     def test_single_value_returns_value(self) -> None:
         # The top-result hook unwraps a single value.
-        assert _equal(parse("1 + 2"), std.Add(1, 2, ty=I64))
+        assert _equal(parse("1 + 2"), std.IntImm(I64, 3))
 
     def test_multi_value_returns_list(self) -> None:
         result = parse("1\n2")
@@ -2336,8 +2378,8 @@ class TestParserAPI:
         assert len(result.funcs) == 2
 
     def test_leading_and_trailing_whitespace(self) -> None:
-        _assert_parse_equal("   1 + 2   ", std.Add(1, 2, ty=I64))
-        _assert_parse_equal("1 + 2\n", std.Add(1, 2, ty=I64))
+        _assert_parse_equal("   1 + 2   ", std.IntImm(I64, 3))
+        _assert_parse_equal("1 + 2\n", std.IntImm(I64, 3))
 
     def test_parse_callable(self) -> None:
         # The parser also accepts a Python callable; it inspects the source
@@ -2352,7 +2394,7 @@ class TestParserAPI:
 
     def test_feature_version_passes_through(self) -> None:
         # Pinning a feature version still parses ordinary expressions.
-        assert _equal(parse("1 + 2", feature_version=(3, 12)), std.Add(1, 2, ty=I64))
+        assert _equal(parse("1 + 2", feature_version=(3, 12)), std.IntImm(I64, 3))
 
     def test_extra_vars_none(self) -> None:
         # `None` is the documented sentinel for "no extras"; passing it
@@ -2428,7 +2470,7 @@ class TestParserErrors:
             parse("@std.func\ndef f():\n  async with std.scope():\n    pass")
 
     def test_ternary_expression_supported(self) -> None:
-        _assert_parse_equal("1 if 1 else 2", std.IfExpr(1, 1, 2, ty=I64))
+        _assert_parse_equal("1 if 1 else 2", std.IntImm(I64, 1))
 
     def test_walrus_unsupported(self) -> None:
         with pytest.raises(NotImplementedError):
@@ -2494,11 +2536,14 @@ class TestParserErrors:
         with pytest.raises(NameError, match="not defined"):
             parse("foo + 1")
 
-    def test_type_mismatch_in_binop(self) -> None:
+    def test_binop_promotes_mismatched_int_widths(self) -> None:
         a = std.Var(I32, "a")
         b = std.Var(I64, "b")
-        with pytest.raises(TypeError, match="type mismatch"):
-            parse("a + b", extra_vars={"a": a, "b": b})
+        _assert_parse_equal(
+            "a + b",
+            std.Add(std.Cast(I64, a), b, ty=I64),
+            extra_vars={"a": a, "b": b},
+        )
 
     def test_indexed_assign_no_rhs(self) -> None:
         x = std.Var(I32, "x")
@@ -2546,8 +2591,8 @@ class TestParserArchitecture:
         # The language module's `__ffi_globals__` are seeded into the
         # parser frame and resolve as ordinary identifiers.
         result = parse("min(1, 2)")
-        assert isinstance(result, std.Min)
+        assert _equal(result, std.IntImm(I64, 1))
         result = parse("max(1, 2)")
-        assert isinstance(result, std.Max)
+        assert _equal(result, std.IntImm(I64, 2))
         result = parse("@std.func\ndef f():\n  for i in range(10):\n    pass")
         assert isinstance(result.body[0], std.For)

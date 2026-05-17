@@ -257,12 +257,16 @@ def _escape_exhale_cpp_trailing_underscores(
     if not docname.startswith("reference/cpp/generated/"):
         return
 
-    def escape_title(text: str, title: str) -> str:
-        escaped = title[:-1] + r"\_" if title.endswith("_") else title
-        return text.replace(f"{title}\n{'=' * len(title)}", f"{escaped}\n{'=' * len(escaped)}")
-
-    source[0] = escape_title(source[0], "Namespace tvm::ffi::std_")
-    source[0] = escape_title(source[0], "Struct Yield_")
+    lines = source[0].splitlines(keepends=True)
+    for i in range(len(lines) - 1):
+        title = lines[i].rstrip("\n")
+        underline = lines[i + 1].rstrip("\n")
+        if underline and set(underline) == {"="}:
+            escaped = title.replace("std_", r"std\_").replace("Yield_", r"Yield\_")
+            if escaped != title:
+                lines[i] = escaped + ("\n" if lines[i].endswith("\n") else "")
+                lines[i + 1] = "=" * len(escaped) + ("\n" if lines[i + 1].endswith("\n") else "")
+    source[0] = "".join(lines)
 
 
 def setup(app: sphinx.application.Sphinx) -> None:
