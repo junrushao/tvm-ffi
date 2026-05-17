@@ -319,21 +319,6 @@ def _make_bool_binary_generic(op_cls: type) -> Callable[..., std.Expr]:
     return generic
 
 
-def _make_not(value: TypingAny) -> std.Not:
-    """Build logical negation from parser syntax."""
-    return std.Not(value, ty=_bool_like_ty(_parse_value_ty(value)))
-
-
-def _make_bitwise_not(value: TypingAny) -> std.BitwiseNot:
-    """Build bitwise negation from parser syntax."""
-    return std.BitwiseNot(value, ty=_parse_value_ty(value))
-
-
-def _make_if_expr(cond: TypingAny, then_expr: TypingAny, else_expr: TypingAny) -> std.IfExpr:
-    """Build a ternary expression from parser syntax."""
-    return std.IfExpr(cond, then_expr, else_expr, ty=_find_common_ty(then_expr, else_expr))
-
-
 class Std:
     """Parser language module for the standard dialect."""
 
@@ -705,12 +690,6 @@ def _find_common_ty(*args: TypingAny) -> std.Ty:
     return ty
 
 
-def _make_cdiv(lhs: TypingAny, rhs: TypingAny) -> std.CDiv:
-    """Build C-style division from the parser ``/`` generic."""
-    ty = _find_common_ty(lhs, rhs)
-    return std.CDiv(lhs, rhs, ty=ty)
-
-
 def _make_floordiv(lhs: TypingAny, rhs: TypingAny) -> std.FloorDiv:
     """Build integer floor division from the parser ``//`` generic."""
     ty = _find_common_ty(lhs, rhs)
@@ -738,20 +717,11 @@ Std.__ffi_globals__ = {
     "abs": Std.abs,
 }
 
-# Type shorthands for the generic comments below:
-# - Value: parser value accepted by _parse_value_ty, usually ExprLike.
-# - ExprLike: std.Expr | bool | int | float | str.
-# - TypeLike: std.Ty | TyFactory | str accepted by normalize_ty.
-# - Names: Sequence[str] of already-unpacked binding targets.
-# - Body: Sequence[std.Stmt] accumulated by the parser.
-# - Index: parser values used as load/store indices, typically ExprLike or std.Range.
 Std.__ffi_generics__ = {
-    # Binary expression generics: (lhs: Value, rhs: Value) -> std binary expression.
-    # The result type is _find_common_ty(lhs, rhs).
     "__add__": _make_binary_generic(std.Add),
     "__sub__": _make_binary_generic(std.Sub),
     "__mul__": _make_binary_generic(std.Mul),
-    "__truediv__": _make_cdiv,
+    "__truediv__": _make_binary_generic(std.CDiv),
     "__floordiv__": _make_floordiv,
     "__mod__": _make_mod,
     "__pow__": _make_binary_generic(std.Pow),
@@ -762,7 +732,6 @@ Std.__ffi_generics__ = {
     "__xor__": _make_binary_generic(std.BitwiseXor),
     "min": _make_binary_generic(std.Min),
     "max": _make_binary_generic(std.Max),
-    # Comparison/logical generics: (lhs: Value, rhs: Value) -> std comparison/logical expr.
     "__eq__": _make_bool_binary_generic(std.Eq),
     "__ne__": _make_bool_binary_generic(std.Ne),
     "__le__": _make_bool_binary_generic(std.Le),
@@ -771,37 +740,19 @@ Std.__ffi_generics__ = {
     "__lt__": _make_bool_binary_generic(std.Lt),
     "__logical_and__": _make_bool_binary_generic(std.And),
     "__logical_or__": _make_bool_binary_generic(std.Or),
-    # Unary expression generics:
-    # - "__invert__": (value: Value) -> std.BitwiseNot.
-    # - "__not__": (value: Value) -> std.Not.
-    # - "__neg__": (value: Value) -> int | float | std.Sub.
-    # - "__pos__": (value: Value) -> Value.
-    "__invert__": _make_bitwise_not,
-    "__not__": _make_not,
+    "__invert__": lambda value: std.BitwiseNot(value, ty=_parse_value_ty(value)),
+    "__not__": lambda value: std.Not(value, ty=_bool_like_ty(_parse_value_ty(value))),
     "__neg__": lambda value: (
         -value if isinstance(value, (int, float)) else std.Sub(0, value, ty=_parse_value_ty(value))
     ),
     "__pos__": lambda value: value,
-    "__if_then_else__": _make_if_expr,
-    # Access/call/cast generics:
-    # - "__load__": (base: std.Expr, *indices: Index) -> std.Load.
-    # - "__slice__": (start: ExprLike | None, stop: ExprLike | None,
-    #   step: ExprLike | None) -> std.Range.
-    # - "__cast__": (ty: TypeLike, value: ExprLike) -> std.Cast.
-    # - "__call__": (callee: str | std.Var | std.Expr | std.Func, *args: ExprLike)
-    #   -> std.Call with std.AnyTy result.
+    "__if_then_else__": lambda cond, then_expr, else_expr: std.IfExpr(
+        cond, then_expr, else_expr, ty=_find_common_ty(then_expr, else_expr)
+    ),
     "__load__": lambda base, *indices: _make_load((base, *indices)),
     "__slice__": std.Range,
     "__cast__": lambda ty, value: std.Cast(normalize_ty(ty), value),
-    # TODO: Infer or propagate the result type for generic expression calls.
     "__call__": lambda callee, *args: std.Call(callee, *args, ty=std.AnyTy()),
-    # Statement generics:
-    # - "__store__": (lhs: std.Expr, rhs: ExprLike, *indices: Index) -> std.Store.
-    # - "__if__": (cond: ExprLike, then_body: Body, else_body: Body) -> std.IfStmt.
-    # - "__while__": (cond: ExprLike) -> WhileFactory.
-    # - "__assert__": (cond: ExprLike) -> std.Assert.
-    # - "__return__"/"__yield__": (*exprs: ExprLike) -> std.Return/std.Yield.
-    # - "__break__"/"__continue__": () -> std.Break/std.Continue.
     "__store__": lambda lhs, rhs, *indices: std.Store(lhs, *indices, rhs=rhs),
     "__if__": std.IfStmt,
     "__while__": WhileFactory,

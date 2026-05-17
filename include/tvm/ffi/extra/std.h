@@ -62,14 +62,12 @@
 #include <tvm/ffi/container/dict.h>
 #include <tvm/ffi/container/list.h>
 #include <tvm/ffi/dtype.h>
-#include <tvm/ffi/extra/dataclass.h>
-#include <tvm/ffi/extra/structural_equal.h>
+#include <tvm/ffi/extra/base.h>
 #include <tvm/ffi/object.h>
 #include <tvm/ffi/optional.h>
 #include <tvm/ffi/string.h>
 
 #include <optional>
-#include <string>
 #include <utility>
 
 namespace tvm {
@@ -424,26 +422,33 @@ struct TensorTy : public Ty {
   /// \endcond
 };
 
+/// \cond Doxygen_Suppress
 namespace details {
-inline void CheckArithmeticTys(const char* node_name, const Ty& result_ty, const Expr& a,
-                               const Expr& b);
-inline void CheckComparisonTys(const char* node_name, const Ty& result_ty, const Expr& a,
-                               const Expr& b);
-inline void CheckBitwiseBinaryTys(const char* node_name, const Ty& result_ty, const Expr& a,
-                                  const Expr& b);
-inline void CheckLogicalBinaryTys(const char* node_name, const Ty& result_ty, const Expr& a,
-                                  const Expr& b);
-inline void CheckArithmeticUnaryTy(const char* node_name, const Ty& result_ty, const Expr& operand);
-inline void CheckBitwiseUnaryTy(const char* node_name, const Ty& result_ty, const Expr& operand);
-inline void CheckLogicalUnaryTy(const char* node_name, const Ty& result_ty, const Expr& operand);
-inline void CheckIfExprTy(const Ty& result_ty, const Expr& cond, const Expr& then_expr,
-                          const Expr& else_expr);
-inline void CheckRangeDTypes(const char* node_name, const Optional<Expr>& start,
-                             const Optional<Expr>& stop, const Optional<Expr>& step);
-inline void CheckLoadTy(const Ty& result_ty, const Expr& lhs, const List<Range>& indices);
-inline void CheckStoreTy(const Expr& lhs, const List<Range>& indices, const Expr& rhs);
-inline void CheckScalarBoolCond(const char* node_name, const Expr& cond);
+TVM_FFI_EXTRA_CXX_API void CheckArithmeticTys(const char* node_name, const Ty& result_ty,
+                                              const Expr& a, const Expr& b);
+TVM_FFI_EXTRA_CXX_API void CheckComparisonTys(const char* node_name, const Ty& result_ty,
+                                              const Expr& a, const Expr& b);
+TVM_FFI_EXTRA_CXX_API void CheckBitwiseBinaryTys(const char* node_name, const Ty& result_ty,
+                                                 const Expr& a, const Expr& b);
+TVM_FFI_EXTRA_CXX_API void CheckLogicalBinaryTys(const char* node_name, const Ty& result_ty,
+                                                 const Expr& a, const Expr& b);
+TVM_FFI_EXTRA_CXX_API void CheckArithmeticUnaryTy(const char* node_name, const Ty& result_ty,
+                                                  const Expr& operand);
+TVM_FFI_EXTRA_CXX_API void CheckBitwiseUnaryTy(const char* node_name, const Ty& result_ty,
+                                               const Expr& operand);
+TVM_FFI_EXTRA_CXX_API void CheckLogicalUnaryTy(const char* node_name, const Ty& result_ty,
+                                               const Expr& operand);
+TVM_FFI_EXTRA_CXX_API void CheckIfExprTy(const Ty& result_ty, const Expr& cond,
+                                         const Expr& then_expr, const Expr& else_expr);
+TVM_FFI_EXTRA_CXX_API void CheckRangeDTypes(const char* node_name, const Optional<Expr>& start,
+                                            const Optional<Expr>& stop, const Optional<Expr>& step);
+TVM_FFI_EXTRA_CXX_API void CheckLoadTy(const Ty& result_ty, const Expr& lhs,
+                                       const List<Range>& indices);
+TVM_FFI_EXTRA_CXX_API void CheckStoreTy(const Expr& lhs, const List<Range>& indices,
+                                        const Expr& rhs);
+TVM_FFI_EXTRA_CXX_API void CheckScalarBoolCond(const char* node_name, const Expr& cond);
 }  // namespace details
+/// \endcond
 
 /*! \brief Data object for a boolean literal. */
 struct BoolImmObj : public ExprObj {
@@ -1285,316 +1290,6 @@ inline Not Not::FromAny(AnyView src) {
   TVM_FFI_THROW(TypeError) << "Unsupported type for conversion to Not: " << src.GetTypeKey();
   TVM_FFI_UNREACHABLE();
 }
-
-namespace details {
-inline void CheckExprDefined(const char* node_name, const char* operand_name, const Expr& expr) {
-  TVM_FFI_CHECK(expr.defined(), TypeError)
-      << node_name << " operand `" << operand_name << "` must be defined";
-  TVM_FFI_CHECK(expr->ty.defined(), TypeError)
-      << node_name << " operand `" << operand_name << "` type must be defined";
-}
-
-inline std::optional<DLDataType> DTypeFromTy(const char* node_name, const std::string& ty_name,
-                                             const Ty& ty) {
-  TVM_FFI_CHECK(ty.defined(), TypeError) << node_name << " " << ty_name << " type must be defined";
-  if (ty.as<AnyTyObj>() != nullptr) {
-    return std::nullopt;
-  }
-  if (const PrimTyObj* prim_ty = ty.as<PrimTyObj>()) {
-    return prim_ty->dtype;
-  }
-  if (const TensorTyObj* tensor_ty = ty.as<TensorTyObj>()) {
-    return tensor_ty->dtype;
-  }
-  TVM_FFI_THROW(TypeError) << node_name << " " << ty_name << " type " << ReprPrint(ty)
-                           << " does not have a dtype";
-  TVM_FFI_UNREACHABLE();
-}
-
-inline std::optional<DLDataType> DTypeFromExpr(const char* node_name, const char* operand_name,
-                                               const Expr& expr) {
-  CheckExprDefined(node_name, operand_name, expr);
-  return DTypeFromTy(node_name, std::string("operand `") + operand_name + "`", expr->ty);
-}
-
-inline Ty IndexedTy(Ty ty, const List<Range>& indices) {
-  for (const Range& index : indices) {
-    const TupleTyObj* tuple_ty = ty.as<TupleTyObj>();
-    if (tuple_ty == nullptr) {
-      return ty;
-    }
-    if (!index->start.has_value() || index->stop.has_value() || index->step.has_value()) {
-      return AnyTy();
-    }
-    const IntImmObj* static_index = index->start.value().as<IntImmObj>();
-    if (static_index == nullptr) {
-      return AnyTy();
-    }
-    int64_t field_index = static_index->value;
-    int64_t num_fields = static_cast<int64_t>(tuple_ty->fields.size());
-    if (field_index < 0) {
-      field_index += num_fields;
-    }
-    if (field_index < 0 || field_index >= num_fields) {
-      return AnyTy();
-    }
-    ty = tuple_ty->fields[field_index];
-  }
-  return ty;
-}
-
-inline void CheckConcreteTysEqual(const char* node_name, const char* lhs_name, const Ty& lhs,
-                                  const char* rhs_name, const Ty& rhs) {
-  TVM_FFI_CHECK(lhs.defined(), TypeError)
-      << node_name << " " << lhs_name << " type must be defined";
-  TVM_FFI_CHECK(rhs.defined(), TypeError)
-      << node_name << " " << rhs_name << " type must be defined";
-  if ((lhs.defined() && lhs.as<AnyTyObj>() != nullptr) ||
-      (rhs.defined() && rhs.as<AnyTyObj>() != nullptr)) {
-    return;
-  }
-  TVM_FFI_CHECK(StructuralEqual::Equal(lhs, rhs), TypeError)
-      << node_name << " " << lhs_name << " type " << ReprPrint(lhs) << " does not match "
-      << rhs_name << " type " << ReprPrint(rhs);
-}
-
-inline void CheckConcreteDTypesEqual(const char* node_name, const char* lhs_name, DLDataType lhs,
-                                     const char* rhs_name, DLDataType rhs) {
-  TVM_FFI_CHECK(lhs == rhs, TypeError)
-      << node_name << " " << lhs_name << " dtype " << DLDataTypeToString(lhs) << " does not match "
-      << rhs_name << " dtype " << DLDataTypeToString(rhs);
-}
-
-inline void CheckBoolDType(const char* node_name, const char* ty_name, DLDataType dtype) {
-  TVM_FFI_CHECK(dtype.code == kDLBool && dtype.bits == 8, TypeError)
-      << node_name << " " << ty_name << " dtype must be bool8, but got "
-      << DLDataTypeToString(dtype);
-}
-
-inline void CheckBitwiseDType(const char* node_name, const char* ty_name, DLDataType dtype) {
-  TVM_FFI_CHECK(DTypeIsInt(dtype), TypeError)
-      << node_name << " " << ty_name << " dtype must be integer, but got "
-      << DLDataTypeToString(dtype);
-}
-
-inline void CheckArithmeticTys(const char* node_name, const Ty& result_ty, const Expr& a,
-                               const Expr& b) {
-  TVM_FFI_CHECK(result_ty.defined(), TypeError) << node_name << " result type must be defined";
-  CheckExprDefined(node_name, "a", a);
-  CheckExprDefined(node_name, "b", b);
-  CheckConcreteTysEqual(node_name, "operand `a`", a->ty, "operand `b`", b->ty);
-  CheckConcreteTysEqual(node_name, "result", result_ty, "operand `a`", a->ty);
-  CheckConcreteTysEqual(node_name, "result", result_ty, "operand `b`", b->ty);
-  if (!(result_ty.defined() && result_ty.as<AnyTyObj>() != nullptr)) {
-    DTypeFromTy(node_name, "result", result_ty);
-  }
-  DTypeFromExpr(node_name, "a", a);
-  DTypeFromExpr(node_name, "b", b);
-}
-
-inline void CheckComparisonResultShape(const char* node_name, const Ty& input_ty,
-                                       const Ty& result_ty) {
-  if ((input_ty.defined() && input_ty.as<AnyTyObj>() != nullptr) ||
-      (result_ty.defined() && result_ty.as<AnyTyObj>() != nullptr)) {
-    return;
-  }
-  if (const PrimTyObj* input_prim = input_ty.as<PrimTyObj>()) {
-    const PrimTyObj* result_prim = result_ty.as<PrimTyObj>();
-    TVM_FFI_CHECK(result_prim != nullptr, TypeError)
-        << node_name << " result type " << ReprPrint(result_ty)
-        << " must be a primitive boolean type for primitive operands";
-    CheckBoolDType(node_name, "result", result_prim->dtype);
-    TVM_FFI_CHECK(result_prim->dtype.lanes == input_prim->dtype.lanes, TypeError)
-        << node_name << " result dtype lane count " << result_prim->dtype.lanes
-        << " does not match operand lane count " << input_prim->dtype.lanes;
-    return;
-  }
-  if (const TensorTyObj* input_tensor = input_ty.as<TensorTyObj>()) {
-    const TensorTyObj* result_tensor = result_ty.as<TensorTyObj>();
-    TVM_FFI_CHECK(result_tensor != nullptr, TypeError)
-        << node_name << " result type " << ReprPrint(result_ty)
-        << " must be a tensor boolean type for tensor operands";
-    CheckBoolDType(node_name, "result", result_tensor->dtype);
-    TVM_FFI_CHECK(result_tensor->dtype.lanes == input_tensor->dtype.lanes, TypeError)
-        << node_name << " result dtype lane count " << result_tensor->dtype.lanes
-        << " does not match operand lane count " << input_tensor->dtype.lanes;
-    TVM_FFI_CHECK(StructuralEqual::Equal(result_tensor->shape, input_tensor->shape), TypeError)
-        << node_name << " result shape does not match operand shape";
-    return;
-  }
-  TVM_FFI_THROW(TypeError) << node_name << " operand type " << ReprPrint(input_ty)
-                           << " does not have a comparable dtype";
-}
-
-inline void CheckArithmeticUnaryTy(const char* node_name, const Ty& result_ty,
-                                   const Expr& operand) {
-  TVM_FFI_CHECK(result_ty.defined(), TypeError) << node_name << " result type must be defined";
-  CheckExprDefined(node_name, "operand", operand);
-  CheckConcreteTysEqual(node_name, "result", result_ty, "operand `operand`", operand->ty);
-  if (!(result_ty.defined() && result_ty.as<AnyTyObj>() != nullptr)) {
-    DTypeFromTy(node_name, "result", result_ty);
-  }
-  DTypeFromExpr(node_name, "operand", operand);
-}
-
-inline void CheckBitwiseBinaryTys(const char* node_name, const Ty& result_ty, const Expr& a,
-                                  const Expr& b) {
-  CheckArithmeticTys(node_name, result_ty, a, b);
-  if (std::optional<DLDataType> result_dtype = DTypeFromTy(node_name, "result", result_ty)) {
-    CheckBitwiseDType(node_name, "result", *result_dtype);
-  }
-  if (std::optional<DLDataType> a_dtype = DTypeFromExpr(node_name, "a", a)) {
-    CheckBitwiseDType(node_name, "operand `a`", *a_dtype);
-  }
-  if (std::optional<DLDataType> b_dtype = DTypeFromExpr(node_name, "b", b)) {
-    CheckBitwiseDType(node_name, "operand `b`", *b_dtype);
-  }
-}
-
-inline void CheckComparisonTys(const char* node_name, const Ty& result_ty, const Expr& a,
-                               const Expr& b) {
-  TVM_FFI_CHECK(result_ty.defined(), TypeError) << node_name << " result type must be defined";
-  CheckExprDefined(node_name, "a", a);
-  CheckExprDefined(node_name, "b", b);
-  CheckConcreteTysEqual(node_name, "operand `a`", a->ty, "operand `b`", b->ty);
-  if (!(a->ty.defined() && a->ty.as<AnyTyObj>() != nullptr)) {
-    DTypeFromExpr(node_name, "a", a);
-    CheckComparisonResultShape(node_name, a->ty, result_ty);
-  } else if (!(b->ty.defined() && b->ty.as<AnyTyObj>() != nullptr)) {
-    DTypeFromExpr(node_name, "b", b);
-    CheckComparisonResultShape(node_name, b->ty, result_ty);
-  } else if (!(result_ty.defined() && result_ty.as<AnyTyObj>() != nullptr)) {
-    if (std::optional<DLDataType> result_dtype = DTypeFromTy(node_name, "result", result_ty)) {
-      CheckBoolDType(node_name, "result", *result_dtype);
-    }
-  }
-}
-
-inline void CheckLogicalBinaryTys(const char* node_name, const Ty& result_ty, const Expr& a,
-                                  const Expr& b) {
-  TVM_FFI_CHECK(result_ty.defined(), TypeError) << node_name << " result type must be defined";
-  CheckExprDefined(node_name, "a", a);
-  CheckExprDefined(node_name, "b", b);
-  CheckConcreteTysEqual(node_name, "operand `a`", a->ty, "operand `b`", b->ty);
-  CheckConcreteTysEqual(node_name, "result", result_ty, "operand `a`", a->ty);
-  CheckConcreteTysEqual(node_name, "result", result_ty, "operand `b`", b->ty);
-  if (std::optional<DLDataType> result_dtype = DTypeFromTy(node_name, "result", result_ty)) {
-    CheckBoolDType(node_name, "result", *result_dtype);
-  }
-  if (std::optional<DLDataType> a_dtype = DTypeFromExpr(node_name, "a", a)) {
-    CheckBoolDType(node_name, "operand `a`", *a_dtype);
-  }
-  if (std::optional<DLDataType> b_dtype = DTypeFromExpr(node_name, "b", b)) {
-    CheckBoolDType(node_name, "operand `b`", *b_dtype);
-  }
-}
-
-inline void CheckBitwiseUnaryTy(const char* node_name, const Ty& result_ty, const Expr& operand) {
-  CheckArithmeticUnaryTy(node_name, result_ty, operand);
-  if (std::optional<DLDataType> result_dtype = DTypeFromTy(node_name, "result", result_ty)) {
-    CheckBitwiseDType(node_name, "result", *result_dtype);
-  }
-  if (std::optional<DLDataType> operand_dtype = DTypeFromExpr(node_name, "operand", operand)) {
-    CheckBitwiseDType(node_name, "operand `operand`", *operand_dtype);
-  }
-}
-
-inline void CheckLogicalUnaryTy(const char* node_name, const Ty& result_ty, const Expr& operand) {
-  TVM_FFI_CHECK(result_ty.defined(), TypeError) << node_name << " result type must be defined";
-  CheckExprDefined(node_name, "operand", operand);
-  CheckConcreteTysEqual(node_name, "result", result_ty, "operand `operand`", operand->ty);
-  if (std::optional<DLDataType> result_dtype = DTypeFromTy(node_name, "result", result_ty)) {
-    CheckBoolDType(node_name, "result", *result_dtype);
-  }
-  if (std::optional<DLDataType> operand_dtype = DTypeFromExpr(node_name, "operand", operand)) {
-    CheckBoolDType(node_name, "operand `operand`", *operand_dtype);
-  }
-}
-
-inline void CheckIfExprTy(const Ty& result_ty, const Expr& cond, const Expr& then_expr,
-                          const Expr& else_expr) {
-  TVM_FFI_CHECK(result_ty.defined(), TypeError) << "IfExpr result type must be defined";
-  CheckScalarBoolCond("IfExpr", cond);
-  CheckExprDefined("IfExpr", "then_expr", then_expr);
-  CheckExprDefined("IfExpr", "else_expr", else_expr);
-  CheckConcreteTysEqual("IfExpr", "result", result_ty, "operand `then_expr`", then_expr->ty);
-  CheckConcreteTysEqual("IfExpr", "result", result_ty, "operand `else_expr`", else_expr->ty);
-  CheckConcreteTysEqual("IfExpr", "operand `then_expr`", then_expr->ty, "operand `else_expr`",
-                        else_expr->ty);
-}
-
-inline void CheckRangeDTypes(const char* node_name, const Optional<Expr>& start,
-                             const Optional<Expr>& stop, const Optional<Expr>& step) {
-  std::optional<DLDataType> expected_dtype;
-  auto check_one = [&](const Optional<Expr>& expr, const char* operand_name) {
-    if (!expr.has_value()) {
-      return;
-    }
-    std::optional<DLDataType> dtype = DTypeFromExpr(node_name, operand_name, expr.value());
-    if (!dtype.has_value()) {
-      return;
-    }
-    if (!expected_dtype.has_value()) {
-      expected_dtype = *dtype;
-      return;
-    }
-    CheckConcreteDTypesEqual(node_name, operand_name, *dtype, "previous range operand",
-                             *expected_dtype);
-  };
-  check_one(start, "start");
-  check_one(stop, "stop");
-  check_one(step, "step");
-}
-
-inline void CheckRangeList(const char* node_name, const List<Range>& indices) {
-  for (int32_t i = 0, n = static_cast<int32_t>(indices.size()); i < n; ++i) {
-    TVM_FFI_CHECK(indices[i].defined(), TypeError)
-        << node_name << " index range `" << i << "` must be defined";
-    const RangeObj* range = indices[i].as<RangeObj>();
-    TVM_FFI_CHECK(range != nullptr, TypeError)
-        << node_name << " index `" << i << "` must be a Range";
-    CheckRangeDTypes(node_name, range->start, range->stop, range->step);
-  }
-}
-
-inline void CheckLoadTy(const Ty& result_ty, const Expr& lhs, const List<Range>& indices) {
-  CheckRangeList("Load", indices);
-  CheckExprDefined("Load", "lhs", lhs);
-  std::optional<DLDataType> lhs_dtype =
-      DTypeFromTy("Load", "loaded element", IndexedTy(lhs->ty, indices));
-  std::optional<DLDataType> result_dtype = DTypeFromTy("Load", "result", result_ty);
-  if (lhs_dtype.has_value() && result_dtype.has_value()) {
-    CheckConcreteDTypesEqual("Load", "result", *result_dtype, "loaded element", *lhs_dtype);
-  }
-}
-
-inline void CheckStoreTy(const Expr& lhs, const List<Range>& indices, const Expr& rhs) {
-  CheckRangeList("Store", indices);
-  CheckExprDefined("Store", "lhs", lhs);
-  CheckExprDefined("Store", "rhs", rhs);
-  std::optional<DLDataType> lhs_dtype =
-      DTypeFromTy("Store", "stored element", IndexedTy(lhs->ty, indices));
-  std::optional<DLDataType> rhs_dtype = DTypeFromTy("Store", "operand `rhs`", rhs->ty);
-  if (lhs_dtype.has_value() && rhs_dtype.has_value()) {
-    CheckConcreteDTypesEqual("Store", "stored value", *rhs_dtype, "stored element", *lhs_dtype);
-  }
-}
-
-inline void CheckScalarBoolCond(const char* node_name, const Expr& cond) {
-  CheckExprDefined(node_name, "cond", cond);
-  if (cond->ty.defined() && cond->ty.as<AnyTyObj>() != nullptr) {
-    return;
-  }
-  const PrimTyObj* prim_ty = cond->ty.as<PrimTyObj>();
-  TVM_FFI_CHECK(prim_ty != nullptr, TypeError)
-      << node_name << " condition type " << ReprPrint(cond->ty)
-      << " must be a primitive scalar bool type";
-  CheckBoolDType(node_name, "condition", prim_ty->dtype);
-  TVM_FFI_CHECK(prim_ty->dtype.lanes == 1, TypeError)
-      << node_name << " condition dtype must be scalar bool, but got "
-      << DLDataTypeToString(prim_ty->dtype);
-}
-}  // namespace details
 
 /// \cond Doxygen_Suppress
 inline RangeObj::RangeObj(Optional<Expr> start, Optional<Expr> stop, Optional<Expr> step)

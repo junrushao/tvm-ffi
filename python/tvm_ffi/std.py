@@ -534,13 +534,13 @@ class Add(Expr):
     a: Expr
     b: Expr
     if TYPE_CHECKING:
-        def __init__(self, a: Expr, b: Expr, *, ty: Ty) -> None: ...
+        def __init__(self, a: ExprLike, b: ExprLike, *, ty: TyLike) -> None: ...
         def __ffi_init__(self, a: Expr, b: Expr, *, ty: Ty) -> None: ...  # ty: ignore[invalid-method-override]
     # fmt: on
     # tvm-ffi-stubgen(end)
 
-    def __init__(self, a: ExprLike, b: ExprLike, *, ty: TyLike) -> None:
-        _binary_expr_ffi_init(self, a, b, ty=ty)
+    if not TYPE_CHECKING:
+        __init__ = _binary_expr_ffi_init
 
 
 @c_class("ffi.std.Sub")
@@ -554,13 +554,13 @@ class Sub(Expr):
     a: Expr
     b: Expr
     if TYPE_CHECKING:
-        def __init__(self, a: Expr, b: Expr, *, ty: Ty) -> None: ...
+        def __init__(self, a: ExprLike, b: ExprLike, *, ty: TyLike) -> None: ...
         def __ffi_init__(self, a: Expr, b: Expr, *, ty: Ty) -> None: ...  # ty: ignore[invalid-method-override]
     # fmt: on
     # tvm-ffi-stubgen(end)
 
-    def __init__(self, a: ExprLike, b: ExprLike, *, ty: TyLike) -> None:
-        _binary_expr_ffi_init(self, a, b, ty=ty)
+    if not TYPE_CHECKING:
+        __init__ = _binary_expr_ffi_init
 
 
 @c_class("ffi.std.Mul")
@@ -574,13 +574,13 @@ class Mul(Expr):
     a: Expr
     b: Expr
     if TYPE_CHECKING:
-        def __init__(self, a: Expr, b: Expr, *, ty: Ty) -> None: ...
+        def __init__(self, a: ExprLike, b: ExprLike, *, ty: TyLike) -> None: ...
         def __ffi_init__(self, a: Expr, b: Expr, *, ty: Ty) -> None: ...  # ty: ignore[invalid-method-override]
     # fmt: on
     # tvm-ffi-stubgen(end)
 
-    def __init__(self, a: ExprLike, b: ExprLike, *, ty: TyLike) -> None:
-        _binary_expr_ffi_init(self, a, b, ty=ty)
+    if not TYPE_CHECKING:
+        __init__ = _binary_expr_ffi_init
 
 
 @c_class("ffi.std.CDiv")
@@ -599,13 +599,13 @@ class CDiv(Expr):
     a: Expr
     b: Expr
     if TYPE_CHECKING:
-        def __init__(self, a: Expr, b: Expr, *, ty: Ty) -> None: ...
+        def __init__(self, a: ExprLike, b: ExprLike, *, ty: TyLike) -> None: ...
         def __ffi_init__(self, a: Expr, b: Expr, *, ty: Ty) -> None: ...  # ty: ignore[invalid-method-override]
     # fmt: on
     # tvm-ffi-stubgen(end)
 
-    def __init__(self, a: ExprLike, b: ExprLike, *, ty: TyLike) -> None:
-        _binary_expr_ffi_init(self, a, b, ty=ty)
+    if not TYPE_CHECKING:
+        __init__ = _binary_expr_ffi_init
 
 
 @c_class("ffi.std.FloorDiv")
@@ -624,13 +624,13 @@ class FloorDiv(Expr):
     a: Expr
     b: Expr
     if TYPE_CHECKING:
-        def __init__(self, a: Expr, b: Expr, *, ty: Ty) -> None: ...
+        def __init__(self, a: ExprLike, b: ExprLike, *, ty: TyLike) -> None: ...
         def __ffi_init__(self, a: Expr, b: Expr, *, ty: Ty) -> None: ...  # ty: ignore[invalid-method-override]
     # fmt: on
     # tvm-ffi-stubgen(end)
 
-    def __init__(self, a: ExprLike, b: ExprLike, *, ty: TyLike) -> None:
-        _binary_expr_ffi_init(self, a, b, ty=ty)
+    if not TYPE_CHECKING:
+        __init__ = _binary_expr_ffi_init
 
 
 @c_class("ffi.std.FloorMod")
@@ -649,13 +649,13 @@ class FloorMod(Expr):
     a: Expr
     b: Expr
     if TYPE_CHECKING:
-        def __init__(self, a: Expr, b: Expr, *, ty: Ty) -> None: ...
+        def __init__(self, a: ExprLike, b: ExprLike, *, ty: TyLike) -> None: ...
         def __ffi_init__(self, a: Expr, b: Expr, *, ty: Ty) -> None: ...  # ty: ignore[invalid-method-override]
     # fmt: on
     # tvm-ffi-stubgen(end)
 
-    def __init__(self, a: ExprLike, b: ExprLike, *, ty: TyLike) -> None:
-        _binary_expr_ffi_init(self, a, b, ty=ty)
+    if not TYPE_CHECKING:
+        __init__ = _binary_expr_ffi_init
 
 
 @c_class("ffi.std.CMod")
@@ -674,13 +674,13 @@ class CMod(Expr):
     a: Expr
     b: Expr
     if TYPE_CHECKING:
-        def __init__(self, a: Expr, b: Expr, *, ty: Ty) -> None: ...
+        def __init__(self, a: ExprLike, b: ExprLike, *, ty: TyLike) -> None: ...
         def __ffi_init__(self, a: Expr, b: Expr, *, ty: Ty) -> None: ...  # ty: ignore[invalid-method-override]
     # fmt: on
     # tvm-ffi-stubgen(end)
 
-    def __init__(self, a: ExprLike, b: ExprLike, *, ty: TyLike) -> None:
-        _binary_expr_ffi_init(self, a, b, ty=ty)
+    if not TYPE_CHECKING:
+        __init__ = _binary_expr_ffi_init
 
 
 @c_class("ffi.std.Pow")
@@ -694,13 +694,13 @@ class Pow(Expr):
     a: Expr
     b: Expr
     if TYPE_CHECKING:
-        def __init__(self, a: Expr, b: Expr, *, ty: Ty) -> None: ...
+        def __init__(self, a: ExprLike, b: ExprLike, *, ty: TyLike) -> None: ...
         def __ffi_init__(self, a: Expr, b: Expr, *, ty: Ty) -> None: ...  # ty: ignore[invalid-method-override]
     # fmt: on
     # tvm-ffi-stubgen(end)
 
-    def __init__(self, a: ExprLike, b: ExprLike, *, ty: TyLike) -> None:
-        _binary_expr_ffi_init(self, a, b, ty=ty)
+    if not TYPE_CHECKING:
+        __init__ = _binary_expr_ffi_init
 
 
 @c_class("ffi.std.LShift")
@@ -714,13 +714,13 @@ class LShift(Expr):
     a: Expr
     b: Expr
     if TYPE_CHECKING:
-        def __init__(self, a: Expr, b: Expr, *, ty: Ty) -> None: ...
+        def __init__(self, a: ExprLike, b: ExprLike, *, ty: TyLike) -> None: ...
         def __ffi_init__(self, a: Expr, b: Expr, *, ty: Ty) -> None: ...  # ty: ignore[invalid-method-override]
     # fmt: on
     # tvm-ffi-stubgen(end)
 
-    def __init__(self, a: ExprLike, b: ExprLike, *, ty: TyLike) -> None:
-        _binary_expr_ffi_init(self, a, b, ty=ty)
+    if not TYPE_CHECKING:
+        __init__ = _binary_expr_ffi_init
 
 
 @c_class("ffi.std.RShift")
@@ -734,13 +734,13 @@ class RShift(Expr):
     a: Expr
     b: Expr
     if TYPE_CHECKING:
-        def __init__(self, a: Expr, b: Expr, *, ty: Ty) -> None: ...
+        def __init__(self, a: ExprLike, b: ExprLike, *, ty: TyLike) -> None: ...
         def __ffi_init__(self, a: Expr, b: Expr, *, ty: Ty) -> None: ...  # ty: ignore[invalid-method-override]
     # fmt: on
     # tvm-ffi-stubgen(end)
 
-    def __init__(self, a: ExprLike, b: ExprLike, *, ty: TyLike) -> None:
-        _binary_expr_ffi_init(self, a, b, ty=ty)
+    if not TYPE_CHECKING:
+        __init__ = _binary_expr_ffi_init
 
 
 @c_class("ffi.std.BitwiseAnd")
@@ -754,13 +754,13 @@ class BitwiseAnd(Expr):
     a: Expr
     b: Expr
     if TYPE_CHECKING:
-        def __init__(self, a: Expr, b: Expr, *, ty: Ty) -> None: ...
+        def __init__(self, a: ExprLike, b: ExprLike, *, ty: TyLike) -> None: ...
         def __ffi_init__(self, a: Expr, b: Expr, *, ty: Ty) -> None: ...  # ty: ignore[invalid-method-override]
     # fmt: on
     # tvm-ffi-stubgen(end)
 
-    def __init__(self, a: ExprLike, b: ExprLike, *, ty: TyLike) -> None:
-        _binary_expr_ffi_init(self, a, b, ty=ty)
+    if not TYPE_CHECKING:
+        __init__ = _binary_expr_ffi_init
 
 
 @c_class("ffi.std.BitwiseOr")
@@ -774,13 +774,13 @@ class BitwiseOr(Expr):
     a: Expr
     b: Expr
     if TYPE_CHECKING:
-        def __init__(self, a: Expr, b: Expr, *, ty: Ty) -> None: ...
+        def __init__(self, a: ExprLike, b: ExprLike, *, ty: TyLike) -> None: ...
         def __ffi_init__(self, a: Expr, b: Expr, *, ty: Ty) -> None: ...  # ty: ignore[invalid-method-override]
     # fmt: on
     # tvm-ffi-stubgen(end)
 
-    def __init__(self, a: ExprLike, b: ExprLike, *, ty: TyLike) -> None:
-        _binary_expr_ffi_init(self, a, b, ty=ty)
+    if not TYPE_CHECKING:
+        __init__ = _binary_expr_ffi_init
 
 
 @c_class("ffi.std.BitwiseXor")
@@ -794,13 +794,13 @@ class BitwiseXor(Expr):
     a: Expr
     b: Expr
     if TYPE_CHECKING:
-        def __init__(self, a: Expr, b: Expr, *, ty: Ty) -> None: ...
+        def __init__(self, a: ExprLike, b: ExprLike, *, ty: TyLike) -> None: ...
         def __ffi_init__(self, a: Expr, b: Expr, *, ty: Ty) -> None: ...  # ty: ignore[invalid-method-override]
     # fmt: on
     # tvm-ffi-stubgen(end)
 
-    def __init__(self, a: ExprLike, b: ExprLike, *, ty: TyLike) -> None:
-        _binary_expr_ffi_init(self, a, b, ty=ty)
+    if not TYPE_CHECKING:
+        __init__ = _binary_expr_ffi_init
 
 
 @c_class("ffi.std.Min")
@@ -814,13 +814,13 @@ class Min(Expr):
     a: Expr
     b: Expr
     if TYPE_CHECKING:
-        def __init__(self, a: Expr, b: Expr, *, ty: Ty) -> None: ...
+        def __init__(self, a: ExprLike, b: ExprLike, *, ty: TyLike) -> None: ...
         def __ffi_init__(self, a: Expr, b: Expr, *, ty: Ty) -> None: ...  # ty: ignore[invalid-method-override]
     # fmt: on
     # tvm-ffi-stubgen(end)
 
-    def __init__(self, a: ExprLike, b: ExprLike, *, ty: TyLike) -> None:
-        _binary_expr_ffi_init(self, a, b, ty=ty)
+    if not TYPE_CHECKING:
+        __init__ = _binary_expr_ffi_init
 
 
 @c_class("ffi.std.Max")
@@ -834,13 +834,13 @@ class Max(Expr):
     a: Expr
     b: Expr
     if TYPE_CHECKING:
-        def __init__(self, a: Expr, b: Expr, *, ty: Ty) -> None: ...
+        def __init__(self, a: ExprLike, b: ExprLike, *, ty: TyLike) -> None: ...
         def __ffi_init__(self, a: Expr, b: Expr, *, ty: Ty) -> None: ...  # ty: ignore[invalid-method-override]
     # fmt: on
     # tvm-ffi-stubgen(end)
 
-    def __init__(self, a: ExprLike, b: ExprLike, *, ty: TyLike) -> None:
-        _binary_expr_ffi_init(self, a, b, ty=ty)
+    if not TYPE_CHECKING:
+        __init__ = _binary_expr_ffi_init
 
 
 @c_class("ffi.std.Eq")
@@ -854,13 +854,13 @@ class Eq(Expr):
     a: Expr
     b: Expr
     if TYPE_CHECKING:
-        def __init__(self, a: Expr, b: Expr, *, ty: Ty) -> None: ...
+        def __init__(self, a: ExprLike, b: ExprLike, *, ty: TyLike) -> None: ...
         def __ffi_init__(self, a: Expr, b: Expr, *, ty: Ty) -> None: ...  # ty: ignore[invalid-method-override]
     # fmt: on
     # tvm-ffi-stubgen(end)
 
-    def __init__(self, a: ExprLike, b: ExprLike, *, ty: TyLike) -> None:
-        _binary_expr_ffi_init(self, a, b, ty=ty)
+    if not TYPE_CHECKING:
+        __init__ = _binary_expr_ffi_init
 
 
 @c_class("ffi.std.Ne")
@@ -874,13 +874,13 @@ class Ne(Expr):
     a: Expr
     b: Expr
     if TYPE_CHECKING:
-        def __init__(self, a: Expr, b: Expr, *, ty: Ty) -> None: ...
+        def __init__(self, a: ExprLike, b: ExprLike, *, ty: TyLike) -> None: ...
         def __ffi_init__(self, a: Expr, b: Expr, *, ty: Ty) -> None: ...  # ty: ignore[invalid-method-override]
     # fmt: on
     # tvm-ffi-stubgen(end)
 
-    def __init__(self, a: ExprLike, b: ExprLike, *, ty: TyLike) -> None:
-        _binary_expr_ffi_init(self, a, b, ty=ty)
+    if not TYPE_CHECKING:
+        __init__ = _binary_expr_ffi_init
 
 
 @c_class("ffi.std.Le")
@@ -894,13 +894,13 @@ class Le(Expr):
     a: Expr
     b: Expr
     if TYPE_CHECKING:
-        def __init__(self, a: Expr, b: Expr, *, ty: Ty) -> None: ...
+        def __init__(self, a: ExprLike, b: ExprLike, *, ty: TyLike) -> None: ...
         def __ffi_init__(self, a: Expr, b: Expr, *, ty: Ty) -> None: ...  # ty: ignore[invalid-method-override]
     # fmt: on
     # tvm-ffi-stubgen(end)
 
-    def __init__(self, a: ExprLike, b: ExprLike, *, ty: TyLike) -> None:
-        _binary_expr_ffi_init(self, a, b, ty=ty)
+    if not TYPE_CHECKING:
+        __init__ = _binary_expr_ffi_init
 
 
 @c_class("ffi.std.Ge")
@@ -914,13 +914,13 @@ class Ge(Expr):
     a: Expr
     b: Expr
     if TYPE_CHECKING:
-        def __init__(self, a: Expr, b: Expr, *, ty: Ty) -> None: ...
+        def __init__(self, a: ExprLike, b: ExprLike, *, ty: TyLike) -> None: ...
         def __ffi_init__(self, a: Expr, b: Expr, *, ty: Ty) -> None: ...  # ty: ignore[invalid-method-override]
     # fmt: on
     # tvm-ffi-stubgen(end)
 
-    def __init__(self, a: ExprLike, b: ExprLike, *, ty: TyLike) -> None:
-        _binary_expr_ffi_init(self, a, b, ty=ty)
+    if not TYPE_CHECKING:
+        __init__ = _binary_expr_ffi_init
 
 
 @c_class("ffi.std.Gt")
@@ -934,13 +934,13 @@ class Gt(Expr):
     a: Expr
     b: Expr
     if TYPE_CHECKING:
-        def __init__(self, a: Expr, b: Expr, *, ty: Ty) -> None: ...
+        def __init__(self, a: ExprLike, b: ExprLike, *, ty: TyLike) -> None: ...
         def __ffi_init__(self, a: Expr, b: Expr, *, ty: Ty) -> None: ...  # ty: ignore[invalid-method-override]
     # fmt: on
     # tvm-ffi-stubgen(end)
 
-    def __init__(self, a: ExprLike, b: ExprLike, *, ty: TyLike) -> None:
-        _binary_expr_ffi_init(self, a, b, ty=ty)
+    if not TYPE_CHECKING:
+        __init__ = _binary_expr_ffi_init
 
 
 @c_class("ffi.std.Lt")
@@ -954,13 +954,13 @@ class Lt(Expr):
     a: Expr
     b: Expr
     if TYPE_CHECKING:
-        def __init__(self, a: Expr, b: Expr, *, ty: Ty) -> None: ...
+        def __init__(self, a: ExprLike, b: ExprLike, *, ty: TyLike) -> None: ...
         def __ffi_init__(self, a: Expr, b: Expr, *, ty: Ty) -> None: ...  # ty: ignore[invalid-method-override]
     # fmt: on
     # tvm-ffi-stubgen(end)
 
-    def __init__(self, a: ExprLike, b: ExprLike, *, ty: TyLike) -> None:
-        _binary_expr_ffi_init(self, a, b, ty=ty)
+    if not TYPE_CHECKING:
+        __init__ = _binary_expr_ffi_init
 
 
 @c_class("ffi.std.And")
@@ -974,13 +974,13 @@ class And(Expr):
     a: Expr
     b: Expr
     if TYPE_CHECKING:
-        def __init__(self, a: Expr, b: Expr, *, ty: Ty) -> None: ...
+        def __init__(self, a: ExprLike, b: ExprLike, *, ty: TyLike) -> None: ...
         def __ffi_init__(self, a: Expr, b: Expr, *, ty: Ty) -> None: ...  # ty: ignore[invalid-method-override]
     # fmt: on
     # tvm-ffi-stubgen(end)
 
-    def __init__(self, a: ExprLike, b: ExprLike, *, ty: TyLike) -> None:
-        _binary_expr_ffi_init(self, a, b, ty=ty)
+    if not TYPE_CHECKING:
+        __init__ = _binary_expr_ffi_init
 
 
 @c_class("ffi.std.Or")
@@ -994,13 +994,13 @@ class Or(Expr):
     a: Expr
     b: Expr
     if TYPE_CHECKING:
-        def __init__(self, a: Expr, b: Expr, *, ty: Ty) -> None: ...
+        def __init__(self, a: ExprLike, b: ExprLike, *, ty: TyLike) -> None: ...
         def __ffi_init__(self, a: Expr, b: Expr, *, ty: Ty) -> None: ...  # ty: ignore[invalid-method-override]
     # fmt: on
     # tvm-ffi-stubgen(end)
 
-    def __init__(self, a: ExprLike, b: ExprLike, *, ty: TyLike) -> None:
-        _binary_expr_ffi_init(self, a, b, ty=ty)
+    if not TYPE_CHECKING:
+        __init__ = _binary_expr_ffi_init
 
 
 @c_class("ffi.std.Not")
@@ -1013,13 +1013,13 @@ class Not(Expr):
     # fmt: off
     operand: Expr
     if TYPE_CHECKING:
-        def __init__(self, operand: Expr, *, ty: Ty) -> None: ...
+        def __init__(self, operand: ExprLike, *, ty: TyLike) -> None: ...
         def __ffi_init__(self, operand: Expr, *, ty: Ty) -> None: ...  # ty: ignore[invalid-method-override]
     # fmt: on
     # tvm-ffi-stubgen(end)
 
-    def __init__(self, operand: ExprLike, *, ty: TyLike) -> None:
-        _unary_expr_ffi_init(self, operand, ty=ty)
+    if not TYPE_CHECKING:
+        __init__ = _unary_expr_ffi_init
 
 
 @c_class("ffi.std.BitwiseNot")
@@ -1032,13 +1032,13 @@ class BitwiseNot(Expr):
     # fmt: off
     operand: Expr
     if TYPE_CHECKING:
-        def __init__(self, operand: Expr, *, ty: Ty) -> None: ...
+        def __init__(self, operand: ExprLike, *, ty: TyLike) -> None: ...
         def __ffi_init__(self, operand: Expr, *, ty: Ty) -> None: ...  # ty: ignore[invalid-method-override]
     # fmt: on
     # tvm-ffi-stubgen(end)
 
-    def __init__(self, operand: ExprLike, *, ty: TyLike) -> None:
-        _unary_expr_ffi_init(self, operand, ty=ty)
+    if not TYPE_CHECKING:
+        __init__ = _unary_expr_ffi_init
 
 
 @c_class("ffi.std.Abs")
@@ -1051,13 +1051,13 @@ class Abs(Expr):
     # fmt: off
     operand: Expr
     if TYPE_CHECKING:
-        def __init__(self, operand: Expr, *, ty: Ty) -> None: ...
+        def __init__(self, operand: ExprLike, *, ty: TyLike) -> None: ...
         def __ffi_init__(self, operand: Expr, *, ty: Ty) -> None: ...  # ty: ignore[invalid-method-override]
     # fmt: on
     # tvm-ffi-stubgen(end)
 
-    def __init__(self, operand: ExprLike, *, ty: TyLike) -> None:
-        _unary_expr_ffi_init(self, operand, ty=ty)
+    if not TYPE_CHECKING:
+        __init__ = _unary_expr_ffi_init
 
 
 @c_class("ffi.std.IfExpr")
@@ -1072,20 +1072,13 @@ class IfExpr(Expr):
     then_expr: Expr
     else_expr: Expr
     if TYPE_CHECKING:
-        def __init__(self, cond: Expr, then_expr: Expr, else_expr: Expr, *, ty: Ty) -> None: ...
+        def __init__(self, cond: ExprLike, then_expr: ExprLike, else_expr: ExprLike, *, ty: TyLike) -> None: ...
         def __ffi_init__(self, cond: Expr, then_expr: Expr, else_expr: Expr, *, ty: Ty) -> None: ...  # ty: ignore[invalid-method-override]
     # fmt: on
     # tvm-ffi-stubgen(end)
 
-    def __init__(
-        self,
-        cond: ExprLike,
-        then_expr: ExprLike,
-        else_expr: ExprLike,
-        *,
-        ty: TyLike,
-    ) -> None:
-        _if_expr_ffi_init(self, cond, then_expr, else_expr, ty=ty)
+    if not TYPE_CHECKING:
+        __init__ = _if_expr_ffi_init
 
 
 @c_class("ffi.std.Load")

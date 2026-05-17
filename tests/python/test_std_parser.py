@@ -386,6 +386,10 @@ class TestParseArithmeticOps:
     def test_min_resolves_qualified_or_unqualified(self) -> None:
         assert _equal(parse("min(1, 2)"), parse("std.min(1, 2)"))
 
+    @pytest.mark.skipif(
+        sys.version_info[:2] == (3, 8),
+        reason="Python 3.8 reports staticmethod TypeError messages without the class qualifier",
+    )
     def test_min_max_require_exactly_two_args(self) -> None:
         with pytest.raises(TypeError, match=r"Std\.min\(\) missing .*rhs"):
             parse("min(1)")
