@@ -3135,6 +3135,18 @@ class TestDictAttrs:
 
 
 class TestDialectMnemonic:
+    def test_subclass_keyword_sets_python_dialect_mnemonic(self) -> None:
+        class ToyNode(std.Node, mnemonic="toy.Node"):
+            pass
+
+        assert ToyNode.__ffi_dialect_mnemonic__ == ("toy", "Node")
+        assert "__ffi_dialect_mnemonic__" in ToyNode.__annotations__
+
+        with pytest.raises(TypeError, match="mnemonic"):
+
+            class _MissingMnemonic(std.Node):
+                pass
+
     def test_base_classes_have_python_dialect_mnemonics_but_no_type_attr(self) -> None:
         cases = [
             (std.Node, ("std", "Node")),

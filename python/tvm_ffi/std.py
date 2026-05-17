@@ -92,7 +92,11 @@ def _unary_expr_ffi_init(self: Any, operand: ExprLike, *, ty: TyLike) -> None:
 
 @c_class("ffi.std.Node", init=False)
 class Node(Object):
-    """Base class for the standard dialect."""
+    """Base class for the standard dialect.
+
+    Subclasses declare their printed dialect and mnemonic with
+    ``mnemonic="dialect.Name"`` in the class definition.
+    """
 
     __ffi_dialect_mnemonic__: ClassVar[DialectMnemonic] = ("std", "Node")
 
@@ -107,13 +111,16 @@ class Node(Object):
 
         def __ffi_init__(self, *args: Any, **kwargs: Any) -> None: ...
 
-    def __init_subclass__(cls, **kwargs: Any) -> None:
+    def __init_subclass__(cls, *, mnemonic: str | None = None, **kwargs: Any) -> None:
         super().__init_subclass__(**kwargs)
-        if "__ffi_dialect_mnemonic__" not in cls.__dict__:
+        if mnemonic is None:
             raise TypeError(
                 f"{cls.__name__}: subclasses of std.Node must define "
-                "__ffi_dialect_mnemonic__ directly on the class"
+                "mnemonic as a class definition keyword"
             )
+        dialect, name = mnemonic.rsplit(".", 1)
+        cls.__ffi_dialect_mnemonic__ = (dialect, name)
+        cls.__annotations__["__ffi_dialect_mnemonic__"] = ClassVar[DialectMnemonic]
 
     def text(self, config: PrinterConfig | None = None) -> str:
         """Render this standard dialect node with the FFI text printer."""
@@ -133,10 +140,8 @@ class Node(Object):
 
 
 @c_class("ffi.std.Ty", init=False)
-class Ty(Node):
+class Ty(Node, mnemonic="std.Ty"):
     """Base class for standard dialect types."""
-
-    __ffi_dialect_mnemonic__: ClassVar[DialectMnemonic] = ("std", "Ty")
 
     # tvm-ffi-stubgen(begin): object/ffi.std.Ty
     # fmt: off
@@ -145,10 +150,8 @@ class Ty(Node):
 
 
 @c_class("ffi.std.Attrs", init=False)
-class Attrs(Node):
+class Attrs(Node, mnemonic="std.Attrs"):
     """Base class for standard dialect attributes."""
-
-    __ffi_dialect_mnemonic__: ClassVar[DialectMnemonic] = ("std", "Attrs")
 
     # tvm-ffi-stubgen(begin): object/ffi.std.Attrs
     # fmt: off
@@ -157,10 +160,8 @@ class Attrs(Node):
 
 
 @c_class("ffi.std.Stmt", init=False)
-class Stmt(Node):
+class Stmt(Node, mnemonic="std.Stmt"):
     """Base class for standard dialect statements."""
-
-    __ffi_dialect_mnemonic__: ClassVar[DialectMnemonic] = ("std", "Stmt")
 
     # tvm-ffi-stubgen(begin): object/ffi.std.Stmt
     # fmt: off
@@ -172,10 +173,8 @@ class Stmt(Node):
 
 
 @c_class("ffi.std.Aggregate", init=False)
-class Aggregate(Node):
+class Aggregate(Node, mnemonic="std.Aggregate"):
     """Base class for standard dialect aggregate helper nodes."""
-
-    __ffi_dialect_mnemonic__: ClassVar[DialectMnemonic] = ("std", "Aggregate")
 
     # tvm-ffi-stubgen(begin): object/ffi.std.Aggregate
     # fmt: off
@@ -184,10 +183,8 @@ class Aggregate(Node):
 
 
 @c_class("ffi.std.Expr", init=False)
-class Expr(Node):
+class Expr(Node, mnemonic="std.Expr"):
     """Base class for standard dialect expressions."""
-
-    __ffi_dialect_mnemonic__: ClassVar[DialectMnemonic] = ("std", "Expr")
 
     # tvm-ffi-stubgen(begin): object/ffi.std.Expr
     # fmt: off
@@ -365,10 +362,8 @@ class Expr(Node):
 
 
 @c_class("ffi.std.Var")
-class Var(Expr):
+class Var(Expr, mnemonic="std.Var"):
     """A named SSA-style variable."""
-
-    __ffi_dialect_mnemonic__: ClassVar[DialectMnemonic] = ("std", "Var")
 
     # tvm-ffi-stubgen(begin): object/ffi.std.Var
     # fmt: off
@@ -384,10 +379,8 @@ class Var(Expr):
 
 
 @c_class("ffi.std.Func")
-class Func(Stmt):
+class Func(Stmt, mnemonic="std.Func"):
     """A standard dialect function."""
-
-    __ffi_dialect_mnemonic__: ClassVar[DialectMnemonic] = ("std", "Func")
 
     # tvm-ffi-stubgen(begin): object/ffi.std.Func
     # fmt: off
@@ -415,10 +408,8 @@ class Func(Stmt):
 
 
 @c_class("ffi.std.Module")
-class Module(Node):
+class Module(Node, mnemonic="std.Module"):
     """A module containing functions."""
-
-    __ffi_dialect_mnemonic__: ClassVar[DialectMnemonic] = ("std", "Module")
 
     # tvm-ffi-stubgen(begin): object/ffi.std.Module
     # fmt: off
@@ -431,10 +422,8 @@ class Module(Node):
 
 
 @c_class("ffi.std.Range")
-class Range(Aggregate):
+class Range(Aggregate, mnemonic="std.Range"):
     """A half-open range or slice."""
-
-    __ffi_dialect_mnemonic__: ClassVar[DialectMnemonic] = ("std", "Range")
 
     # tvm-ffi-stubgen(begin): object/ffi.std.Range
     # fmt: off
@@ -489,10 +478,8 @@ class Range(Aggregate):
 
 
 @c_class("ffi.std.AnyTy")
-class AnyTy(Ty):
+class AnyTy(Ty, mnemonic="std.Any"):
     """The unconstrained type."""
-
-    __ffi_dialect_mnemonic__: ClassVar[DialectMnemonic] = ("std", "Any")
 
     # tvm-ffi-stubgen(begin): object/ffi.std.AnyTy
     # fmt: off
@@ -504,10 +491,8 @@ class AnyTy(Ty):
 
 
 @c_class("ffi.std.PrimTy")
-class PrimTy(Ty):
+class PrimTy(Ty, mnemonic="std.Prim"):
     """A primitive scalar type."""
-
-    __ffi_dialect_mnemonic__: ClassVar[DialectMnemonic] = ("std", "Prim")
 
     # tvm-ffi-stubgen(begin): object/ffi.std.PrimTy
     # fmt: off
@@ -536,10 +521,8 @@ class PrimTy(Ty):
 
 
 @c_class("ffi.std.TupleTy")
-class TupleTy(Ty):
+class TupleTy(Ty, mnemonic="std.Tuple"):
     """A tuple type."""
-
-    __ffi_dialect_mnemonic__: ClassVar[DialectMnemonic] = ("std", "Tuple")
 
     # tvm-ffi-stubgen(begin): object/ffi.std.TupleTy
     # fmt: off
@@ -552,10 +535,8 @@ class TupleTy(Ty):
 
 
 @c_class("ffi.std.TensorTy")
-class TensorTy(Ty):
+class TensorTy(Ty, mnemonic="std.Tensor"):
     """A tensor type."""
-
-    __ffi_dialect_mnemonic__: ClassVar[DialectMnemonic] = ("std", "Tensor")
 
     # tvm-ffi-stubgen(begin): object/ffi.std.TensorTy
     # fmt: off
@@ -573,10 +554,8 @@ class TensorTy(Ty):
 
 
 @c_class("ffi.std.BoolImm")
-class BoolImm(Expr):
+class BoolImm(Expr, mnemonic="std.BoolImm"):
     """A boolean immediate."""
-
-    __ffi_dialect_mnemonic__: ClassVar[DialectMnemonic] = ("std", "BoolImm")
 
     # tvm-ffi-stubgen(begin): object/ffi.std.BoolImm
     # fmt: off
@@ -597,10 +576,8 @@ class BoolImm(Expr):
 
 
 @c_class("ffi.std.IntImm")
-class IntImm(Expr):
+class IntImm(Expr, mnemonic="std.IntImm"):
     """An integer immediate."""
-
-    __ffi_dialect_mnemonic__: ClassVar[DialectMnemonic] = ("std", "IntImm")
 
     # tvm-ffi-stubgen(begin): object/ffi.std.IntImm
     # fmt: off
@@ -621,10 +598,8 @@ class IntImm(Expr):
 
 
 @c_class("ffi.std.FloatImm")
-class FloatImm(Expr):
+class FloatImm(Expr, mnemonic="std.FloatImm"):
     """A floating-point immediate."""
-
-    __ffi_dialect_mnemonic__: ClassVar[DialectMnemonic] = ("std", "FloatImm")
 
     # tvm-ffi-stubgen(begin): object/ffi.std.FloatImm
     # fmt: off
@@ -645,10 +620,8 @@ class FloatImm(Expr):
 
 
 @c_class("ffi.std.StringImm")
-class StringImm(Expr):
+class StringImm(Expr, mnemonic="std.StringImm"):
     """A string immediate."""
-
-    __ffi_dialect_mnemonic__: ClassVar[DialectMnemonic] = ("std", "StringImm")
 
     # tvm-ffi-stubgen(begin): object/ffi.std.StringImm
     # fmt: off
@@ -669,10 +642,8 @@ class StringImm(Expr):
 
 
 @c_class("ffi.std.Add")
-class Add(Expr):
+class Add(Expr, mnemonic="std.Add"):
     """Addition."""
-
-    __ffi_dialect_mnemonic__: ClassVar[DialectMnemonic] = ("std", "Add")
 
     # tvm-ffi-stubgen(begin): object/ffi.std.Add
     # fmt: off
@@ -689,10 +660,8 @@ class Add(Expr):
 
 
 @c_class("ffi.std.Sub")
-class Sub(Expr):
+class Sub(Expr, mnemonic="std.Sub"):
     """Subtraction."""
-
-    __ffi_dialect_mnemonic__: ClassVar[DialectMnemonic] = ("std", "Sub")
 
     # tvm-ffi-stubgen(begin): object/ffi.std.Sub
     # fmt: off
@@ -709,10 +678,8 @@ class Sub(Expr):
 
 
 @c_class("ffi.std.Mul")
-class Mul(Expr):
+class Mul(Expr, mnemonic="std.Mul"):
     """Multiplication."""
-
-    __ffi_dialect_mnemonic__: ClassVar[DialectMnemonic] = ("std", "Mul")
 
     # tvm-ffi-stubgen(begin): object/ffi.std.Mul
     # fmt: off
@@ -729,15 +696,13 @@ class Mul(Expr):
 
 
 @c_class("ffi.std.CDiv")
-class CDiv(Expr):
+class CDiv(Expr, mnemonic="std.CDiv"):
     """C-style division.
 
     For integer operands, ``CDiv`` means ``truncdiv``: the quotient is
     truncated toward zero.  For floating-point operands, ``CDiv`` means
     C-style division.  Use ``FloorDiv`` only for integer floor division.
     """
-
-    __ffi_dialect_mnemonic__: ClassVar[DialectMnemonic] = ("std", "CDiv")
 
     # tvm-ffi-stubgen(begin): object/ffi.std.CDiv
     # fmt: off
@@ -754,15 +719,13 @@ class CDiv(Expr):
 
 
 @c_class("ffi.std.FloorDiv")
-class FloorDiv(Expr):
+class FloorDiv(Expr, mnemonic="std.FloorDiv"):
     """Integer floor division.
 
     ``FloorDiv`` only works for integer operands.  It always computes
     ``floor(a / b)``, unlike ``CDiv`` which means ``truncdiv`` for integer
     operands and C-style division for floating-point operands.
     """
-
-    __ffi_dialect_mnemonic__: ClassVar[DialectMnemonic] = ("std", "FloorDiv")
 
     # tvm-ffi-stubgen(begin): object/ffi.std.FloorDiv
     # fmt: off
@@ -779,15 +742,13 @@ class FloorDiv(Expr):
 
 
 @c_class("ffi.std.FloorMod")
-class FloorMod(Expr):
+class FloorMod(Expr, mnemonic="std.FloorMod"):
     """Integer floor modulo.
 
     ``FloorMod`` only works for integer operands.  It is paired with
     ``FloorDiv`` and always uses ``floor(a / b)``.  Use ``CMod`` for
     integer ``truncmod`` behavior or floating-point C-style modulo.
     """
-
-    __ffi_dialect_mnemonic__: ClassVar[DialectMnemonic] = ("std", "FloorMod")
 
     # tvm-ffi-stubgen(begin): object/ffi.std.FloorMod
     # fmt: off
@@ -804,15 +765,13 @@ class FloorMod(Expr):
 
 
 @c_class("ffi.std.CMod")
-class CMod(Expr):
+class CMod(Expr, mnemonic="std.CMod"):
     """C-style modulo.
 
     For integer operands, ``CMod`` means ``truncmod`` and is paired with
     ``CDiv``.  For floating-point operands, ``CMod`` means C-style modulo.
     Use ``FloorMod`` only for integer floor modulo.
     """
-
-    __ffi_dialect_mnemonic__: ClassVar[DialectMnemonic] = ("std", "CMod")
 
     # tvm-ffi-stubgen(begin): object/ffi.std.CMod
     # fmt: off
@@ -829,10 +788,8 @@ class CMod(Expr):
 
 
 @c_class("ffi.std.Pow")
-class Pow(Expr):
+class Pow(Expr, mnemonic="std.Pow"):
     """Exponentiation."""
-
-    __ffi_dialect_mnemonic__: ClassVar[DialectMnemonic] = ("std", "Pow")
 
     # tvm-ffi-stubgen(begin): object/ffi.std.Pow
     # fmt: off
@@ -849,10 +806,8 @@ class Pow(Expr):
 
 
 @c_class("ffi.std.LShift")
-class LShift(Expr):
+class LShift(Expr, mnemonic="std.LShift"):
     """Left shift."""
-
-    __ffi_dialect_mnemonic__: ClassVar[DialectMnemonic] = ("std", "LShift")
 
     # tvm-ffi-stubgen(begin): object/ffi.std.LShift
     # fmt: off
@@ -869,10 +824,8 @@ class LShift(Expr):
 
 
 @c_class("ffi.std.RShift")
-class RShift(Expr):
+class RShift(Expr, mnemonic="std.RShift"):
     """Right shift."""
-
-    __ffi_dialect_mnemonic__: ClassVar[DialectMnemonic] = ("std", "RShift")
 
     # tvm-ffi-stubgen(begin): object/ffi.std.RShift
     # fmt: off
@@ -889,10 +842,8 @@ class RShift(Expr):
 
 
 @c_class("ffi.std.BitwiseAnd")
-class BitwiseAnd(Expr):
+class BitwiseAnd(Expr, mnemonic="std.BitwiseAnd"):
     """Bitwise and."""
-
-    __ffi_dialect_mnemonic__: ClassVar[DialectMnemonic] = ("std", "BitwiseAnd")
 
     # tvm-ffi-stubgen(begin): object/ffi.std.BitwiseAnd
     # fmt: off
@@ -909,10 +860,8 @@ class BitwiseAnd(Expr):
 
 
 @c_class("ffi.std.BitwiseOr")
-class BitwiseOr(Expr):
+class BitwiseOr(Expr, mnemonic="std.BitwiseOr"):
     """Bitwise or."""
-
-    __ffi_dialect_mnemonic__: ClassVar[DialectMnemonic] = ("std", "BitwiseOr")
 
     # tvm-ffi-stubgen(begin): object/ffi.std.BitwiseOr
     # fmt: off
@@ -929,10 +878,8 @@ class BitwiseOr(Expr):
 
 
 @c_class("ffi.std.BitwiseXor")
-class BitwiseXor(Expr):
+class BitwiseXor(Expr, mnemonic="std.BitwiseXor"):
     """Bitwise exclusive or."""
-
-    __ffi_dialect_mnemonic__: ClassVar[DialectMnemonic] = ("std", "BitwiseXor")
 
     # tvm-ffi-stubgen(begin): object/ffi.std.BitwiseXor
     # fmt: off
@@ -949,10 +896,8 @@ class BitwiseXor(Expr):
 
 
 @c_class("ffi.std.Min")
-class Min(Expr):
+class Min(Expr, mnemonic="std.Min"):
     """Minimum."""
-
-    __ffi_dialect_mnemonic__: ClassVar[DialectMnemonic] = ("std", "Min")
 
     # tvm-ffi-stubgen(begin): object/ffi.std.Min
     # fmt: off
@@ -969,10 +914,8 @@ class Min(Expr):
 
 
 @c_class("ffi.std.Max")
-class Max(Expr):
+class Max(Expr, mnemonic="std.Max"):
     """Maximum."""
-
-    __ffi_dialect_mnemonic__: ClassVar[DialectMnemonic] = ("std", "Max")
 
     # tvm-ffi-stubgen(begin): object/ffi.std.Max
     # fmt: off
@@ -989,10 +932,8 @@ class Max(Expr):
 
 
 @c_class("ffi.std.Eq")
-class Eq(Expr):
+class Eq(Expr, mnemonic="std.Eq"):
     """Equality comparison."""
-
-    __ffi_dialect_mnemonic__: ClassVar[DialectMnemonic] = ("std", "Eq")
 
     # tvm-ffi-stubgen(begin): object/ffi.std.Eq
     # fmt: off
@@ -1009,10 +950,8 @@ class Eq(Expr):
 
 
 @c_class("ffi.std.Ne")
-class Ne(Expr):
+class Ne(Expr, mnemonic="std.Ne"):
     """Inequality comparison."""
-
-    __ffi_dialect_mnemonic__: ClassVar[DialectMnemonic] = ("std", "Ne")
 
     # tvm-ffi-stubgen(begin): object/ffi.std.Ne
     # fmt: off
@@ -1029,10 +968,8 @@ class Ne(Expr):
 
 
 @c_class("ffi.std.Le")
-class Le(Expr):
+class Le(Expr, mnemonic="std.Le"):
     """Less-than-or-equal comparison."""
-
-    __ffi_dialect_mnemonic__: ClassVar[DialectMnemonic] = ("std", "Le")
 
     # tvm-ffi-stubgen(begin): object/ffi.std.Le
     # fmt: off
@@ -1049,10 +986,8 @@ class Le(Expr):
 
 
 @c_class("ffi.std.Ge")
-class Ge(Expr):
+class Ge(Expr, mnemonic="std.Ge"):
     """Greater-than-or-equal comparison."""
-
-    __ffi_dialect_mnemonic__: ClassVar[DialectMnemonic] = ("std", "Ge")
 
     # tvm-ffi-stubgen(begin): object/ffi.std.Ge
     # fmt: off
@@ -1069,10 +1004,8 @@ class Ge(Expr):
 
 
 @c_class("ffi.std.Gt")
-class Gt(Expr):
+class Gt(Expr, mnemonic="std.Gt"):
     """Greater-than comparison."""
-
-    __ffi_dialect_mnemonic__: ClassVar[DialectMnemonic] = ("std", "Gt")
 
     # tvm-ffi-stubgen(begin): object/ffi.std.Gt
     # fmt: off
@@ -1089,10 +1022,8 @@ class Gt(Expr):
 
 
 @c_class("ffi.std.Lt")
-class Lt(Expr):
+class Lt(Expr, mnemonic="std.Lt"):
     """Less-than comparison."""
-
-    __ffi_dialect_mnemonic__: ClassVar[DialectMnemonic] = ("std", "Lt")
 
     # tvm-ffi-stubgen(begin): object/ffi.std.Lt
     # fmt: off
@@ -1109,10 +1040,8 @@ class Lt(Expr):
 
 
 @c_class("ffi.std.And")
-class And(Expr):
+class And(Expr, mnemonic="std.And"):
     """Logical and."""
-
-    __ffi_dialect_mnemonic__: ClassVar[DialectMnemonic] = ("std", "And")
 
     # tvm-ffi-stubgen(begin): object/ffi.std.And
     # fmt: off
@@ -1129,10 +1058,8 @@ class And(Expr):
 
 
 @c_class("ffi.std.Or")
-class Or(Expr):
+class Or(Expr, mnemonic="std.Or"):
     """Logical or."""
-
-    __ffi_dialect_mnemonic__: ClassVar[DialectMnemonic] = ("std", "Or")
 
     # tvm-ffi-stubgen(begin): object/ffi.std.Or
     # fmt: off
@@ -1149,10 +1076,8 @@ class Or(Expr):
 
 
 @c_class("ffi.std.Not")
-class Not(Expr):
+class Not(Expr, mnemonic="std.Not"):
     """Logical not."""
-
-    __ffi_dialect_mnemonic__: ClassVar[DialectMnemonic] = ("std", "Not")
 
     # tvm-ffi-stubgen(begin): object/ffi.std.Not
     # fmt: off
@@ -1168,10 +1093,8 @@ class Not(Expr):
 
 
 @c_class("ffi.std.BitwiseNot")
-class BitwiseNot(Expr):
+class BitwiseNot(Expr, mnemonic="std.BitwiseNot"):
     """Bitwise not."""
-
-    __ffi_dialect_mnemonic__: ClassVar[DialectMnemonic] = ("std", "BitwiseNot")
 
     # tvm-ffi-stubgen(begin): object/ffi.std.BitwiseNot
     # fmt: off
@@ -1187,10 +1110,8 @@ class BitwiseNot(Expr):
 
 
 @c_class("ffi.std.Abs")
-class Abs(Expr):
+class Abs(Expr, mnemonic="std.Abs"):
     """Absolute value."""
-
-    __ffi_dialect_mnemonic__: ClassVar[DialectMnemonic] = ("std", "Abs")
 
     # tvm-ffi-stubgen(begin): object/ffi.std.Abs
     # fmt: off
@@ -1206,10 +1127,8 @@ class Abs(Expr):
 
 
 @c_class("ffi.std.IfExpr")
-class IfExpr(Expr):
+class IfExpr(Expr, mnemonic="std.IfExpr"):
     """Ternary expression."""
-
-    __ffi_dialect_mnemonic__: ClassVar[DialectMnemonic] = ("std", "IfExpr")
 
     # tvm-ffi-stubgen(begin): object/ffi.std.IfExpr
     # fmt: off
@@ -1234,10 +1153,8 @@ class IfExpr(Expr):
 
 
 @c_class("ffi.std.Load")
-class Load(Expr):
+class Load(Expr, mnemonic="std.Load"):
     """Indexed load."""
-
-    __ffi_dialect_mnemonic__: ClassVar[DialectMnemonic] = ("std", "Load")
 
     # tvm-ffi-stubgen(begin): object/ffi.std.Load
     # fmt: off
@@ -1263,10 +1180,8 @@ class Load(Expr):
 
 
 @c_class("ffi.std.Cast")
-class Cast(Expr):
+class Cast(Expr, mnemonic="std.Cast"):
     """Type cast."""
-
-    __ffi_dialect_mnemonic__: ClassVar[DialectMnemonic] = ("std", "Cast")
 
     # tvm-ffi-stubgen(begin): object/ffi.std.Cast
     # fmt: off
@@ -1286,10 +1201,8 @@ class Cast(Expr):
 
 
 @c_class("ffi.std.Call")
-class Call(Expr):
+class Call(Expr, mnemonic="std.Call"):
     """Function call expression."""
-
-    __ffi_dialect_mnemonic__: ClassVar[DialectMnemonic] = ("std", "Call")
 
     # tvm-ffi-stubgen(begin): object/ffi.std.Call
     # fmt: off
@@ -1326,10 +1239,8 @@ class Call(Expr):
 
 
 @c_class("ffi.std.IfStmt")
-class IfStmt(Stmt):
+class IfStmt(Stmt, mnemonic="std.IfStmt"):
     """If/else statement."""
-
-    __ffi_dialect_mnemonic__: ClassVar[DialectMnemonic] = ("std", "IfStmt")
 
     # tvm-ffi-stubgen(begin): object/ffi.std.IfStmt
     # fmt: off
@@ -1362,10 +1273,8 @@ class IfStmt(Stmt):
 
 
 @c_class("ffi.std.Scope")
-class Scope(Stmt):
+class Scope(Stmt, mnemonic="std.Scope"):
     """A scoped statement block."""
-
-    __ffi_dialect_mnemonic__: ClassVar[DialectMnemonic] = ("std", "Scope")
 
     # tvm-ffi-stubgen(begin): object/ffi.std.Scope
     # fmt: off
@@ -1389,10 +1298,8 @@ class Scope(Stmt):
 
 
 @c_class("ffi.std.For")
-class For(Stmt):
+class For(Stmt, mnemonic="std.For"):
     """For loop."""
-
-    __ffi_dialect_mnemonic__: ClassVar[DialectMnemonic] = ("std", "For")
 
     # tvm-ffi-stubgen(begin): object/ffi.std.For
     # fmt: off
@@ -1436,10 +1343,8 @@ class For(Stmt):
 
 
 @c_class("ffi.std.While")
-class While(Stmt):
+class While(Stmt, mnemonic="std.While"):
     """While loop."""
-
-    __ffi_dialect_mnemonic__: ClassVar[DialectMnemonic] = ("std", "While")
 
     # tvm-ffi-stubgen(begin): object/ffi.std.While
     # fmt: off
@@ -1474,10 +1379,8 @@ class While(Stmt):
 
 
 @c_class("ffi.std.BindExpr")
-class BindExpr(Stmt):
+class BindExpr(Stmt, mnemonic="std.BindExpr"):
     """Binding that defines variables from an expression."""
-
-    __ffi_dialect_mnemonic__: ClassVar[DialectMnemonic] = ("std", "BindExpr")
 
     # tvm-ffi-stubgen(begin): object/ffi.std.BindExpr
     # fmt: off
@@ -1498,10 +1401,8 @@ class BindExpr(Stmt):
 
 
 @c_class("ffi.std.VarDef")
-class VarDef(Stmt):
+class VarDef(Stmt, mnemonic="std.VarDef"):
     """Binding that defines variables without a source expression."""
-
-    __ffi_dialect_mnemonic__: ClassVar[DialectMnemonic] = ("std", "VarDef")
 
     # tvm-ffi-stubgen(begin): object/ffi.std.VarDef
     # fmt: off
@@ -1522,10 +1423,8 @@ class VarDef(Stmt):
 
 
 @c_class("ffi.std.Store")
-class Store(Stmt):
+class Store(Stmt, mnemonic="std.Store"):
     """Indexed store."""
-
-    __ffi_dialect_mnemonic__: ClassVar[DialectMnemonic] = ("std", "Store")
 
     # tvm-ffi-stubgen(begin): object/ffi.std.Store
     # fmt: off
@@ -1547,10 +1446,8 @@ class Store(Stmt):
 
 
 @c_class("ffi.std.Assert")
-class Assert(Stmt):
+class Assert(Stmt, mnemonic="std.Assert"):
     """Assertion statement."""
-
-    __ffi_dialect_mnemonic__: ClassVar[DialectMnemonic] = ("std", "Assert")
 
     # tvm-ffi-stubgen(begin): object/ffi.std.Assert
     # fmt: off
@@ -1570,10 +1467,8 @@ class Assert(Stmt):
 
 
 @c_class("ffi.std.Return")
-class Return(Stmt):
+class Return(Stmt, mnemonic="std.Return"):
     """Return statement."""
-
-    __ffi_dialect_mnemonic__: ClassVar[DialectMnemonic] = ("std", "Return")
 
     # tvm-ffi-stubgen(begin): object/ffi.std.Return
     # fmt: off
@@ -1593,10 +1488,8 @@ class Return(Stmt):
 
 
 @c_class("ffi.std.Yield")
-class Yield(Stmt):
+class Yield(Stmt, mnemonic="std.Yield"):
     """Yield statement."""
-
-    __ffi_dialect_mnemonic__: ClassVar[DialectMnemonic] = ("std", "Yield")
 
     # tvm-ffi-stubgen(begin): object/ffi.std.Yield
     # fmt: off
@@ -1616,10 +1509,8 @@ class Yield(Stmt):
 
 
 @c_class("ffi.std.Break")
-class Break(Stmt):
+class Break(Stmt, mnemonic="std.Break"):
     """Break statement."""
-
-    __ffi_dialect_mnemonic__: ClassVar[DialectMnemonic] = ("std", "Break")
 
     # tvm-ffi-stubgen(begin): object/ffi.std.Break
     # fmt: off
@@ -1638,10 +1529,8 @@ class Break(Stmt):
 
 
 @c_class("ffi.std.Continue")
-class Continue(Stmt):
+class Continue(Stmt, mnemonic="std.Continue"):
     """Continue statement."""
-
-    __ffi_dialect_mnemonic__: ClassVar[DialectMnemonic] = ("std", "Continue")
 
     # tvm-ffi-stubgen(begin): object/ffi.std.Continue
     # fmt: off
@@ -1660,10 +1549,8 @@ class Continue(Stmt):
 
 
 @c_class("ffi.std.DictAttrs")
-class DictAttrs(Attrs):
+class DictAttrs(Attrs, mnemonic="std.DictAttrs"):
     """Dictionary-backed attributes."""
-
-    __ffi_dialect_mnemonic__: ClassVar[DialectMnemonic] = ("std", "DictAttrs")
 
     # tvm-ffi-stubgen(begin): object/ffi.std.DictAttrs
     # fmt: off
