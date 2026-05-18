@@ -288,28 +288,30 @@ struct Module : public Node {
   /// \endcond
 };
 
-/*! \brief Data object for a half-open iteration or indexing range. */
+/*! \brief Data object for a start/extent iteration or indexing range. */
 struct RangeObj : public AggregateObj {
   /*! \brief Optional range start. */
   Optional<Expr> start;
-  /*! \brief Optional range stop. */
-  Optional<Expr> stop;
+  /*! \brief Range extent. */
+  Expr extent;
   /*! \brief Optional range step. */
   Optional<Expr> step;
 
   /// \cond Doxygen_Suppress
   RangeObj() = default;
-  explicit RangeObj(Optional<Expr> start, Optional<Expr> stop = {}, Optional<Expr> step = {});
+  explicit RangeObj(Optional<Expr> start, Expr extent, Optional<Expr> step = {});
 
   TVM_FFI_DECLARE_OBJECT_INFO("ffi.std.Range", RangeObj, AggregateObj);
   /// \endcond
 };
 
-/*! \brief Reference wrapper for a half-open iteration or indexing range. */
+/*! \brief Reference wrapper for a start/extent iteration or indexing range. */
 struct Range : public Aggregate {
-  /*! \brief Construct a half-open range. */
-  explicit Range(Optional<Expr> start, Optional<Expr> stop = {}, Optional<Expr> step = {})
-      : Range(make_object<RangeObj>(std::move(start), std::move(stop), std::move(step))) {}
+  /*! \brief Construct a start/extent range. */
+  explicit Range(Optional<Expr> start, Expr extent, Optional<Expr> step = {})
+      : Range(make_object<RangeObj>(std::move(start), std::move(extent), std::move(step))) {}
+  /*! \brief Construct a range that starts at zero with the given extent. */
+  explicit Range(Expr extent) : Range(Optional<Expr>(), std::move(extent), Optional<Expr>()) {}
   /*! \brief Convert a general FFI value into a range. */
   static Range FromAny(AnyView src);
 
@@ -442,7 +444,7 @@ TVM_FFI_EXTRA_CXX_API void CheckLogicalUnaryTy(const char* node_name, const Ty& 
 TVM_FFI_EXTRA_CXX_API void CheckIfExprTy(const Ty& result_ty, const Expr& cond,
                                          const Expr& then_expr, const Expr& else_expr);
 TVM_FFI_EXTRA_CXX_API void CheckRangeDTypes(const char* node_name, const Optional<Expr>& start,
-                                            const Optional<Expr>& stop, const Optional<Expr>& step);
+                                            const Expr& extent, const Optional<Expr>& step);
 TVM_FFI_EXTRA_CXX_API void CheckLoadTy(const Ty& result_ty, const Expr& lhs,
                                        const List<Range>& indices);
 TVM_FFI_EXTRA_CXX_API void CheckStoreTy(const Expr& lhs, const List<Range>& indices,
@@ -917,8 +919,8 @@ struct Scope : public Stmt {
 struct ForObj : public StmtObj {
   /*! \brief Optional loop range start. */
   Optional<Expr> start;
-  /*! \brief Optional loop range stop. */
-  Optional<Expr> stop;
+  /*! \brief Loop range extent. */
+  Expr extent;
   /*! \brief Optional loop range step. */
   Optional<Expr> step;
   /*! \brief Loop variables introduced by the header. */
@@ -928,19 +930,19 @@ struct ForObj : public StmtObj {
 
   /// \cond Doxygen_Suppress
   ForObj() = default;
-  ForObj(Optional<Expr> start, Optional<Expr> stop, Optional<Expr> step, Optional<Attrs> attrs,
+  ForObj(Optional<Expr> start, Expr extent, Optional<Expr> step, Optional<Attrs> attrs,
          List<Var> vars, List<Stmt> body)
       : StmtObj(std::move(attrs)),
         start(std::move(start)),
-        stop(std::move(stop)),
+        extent(std::move(extent)),
         step(std::move(step)),
         vars(std::move(vars)),
         body(std::move(body)) {
-    details::CheckRangeDTypes("For", this->start, this->stop, this->step);
+    details::CheckRangeDTypes("For", this->start, this->extent, this->step);
   }
-  ForObj(Optional<Expr> start, Optional<Expr> stop, Optional<Expr> step, List<Var> vars,
-         List<Stmt> body, Optional<Attrs> attrs = {})
-      : ForObj(std::move(start), std::move(stop), std::move(step), std::move(attrs),
+  ForObj(Optional<Expr> start, Expr extent, Optional<Expr> step, List<Var> vars, List<Stmt> body,
+         Optional<Attrs> attrs = {})
+      : ForObj(std::move(start), std::move(extent), std::move(step), std::move(attrs),
                std::move(vars), std::move(body)) {}
 
   TVM_FFI_DECLARE_OBJECT_INFO("ffi.std.For", ForObj, StmtObj);
@@ -950,9 +952,9 @@ struct ForObj : public StmtObj {
 /*! \brief Reference wrapper for a for loop. */
 struct For : public Stmt {
   /*! \brief Construct a for loop. */
-  For(Optional<Expr> start, Optional<Expr> stop, Optional<Expr> step, Optional<Attrs> attrs,
-      List<Var> vars, List<Stmt> body)
-      : For(make_object<ForObj>(std::move(start), std::move(stop), std::move(step),
+  For(Optional<Expr> start, Expr extent, Optional<Expr> step, Optional<Attrs> attrs, List<Var> vars,
+      List<Stmt> body)
+      : For(make_object<ForObj>(std::move(start), std::move(extent), std::move(step),
                                 std::move(attrs), std::move(vars), std::move(body))) {}
   /// \cond Doxygen_Suppress
   TVM_FFI_DEFINE_OBJECT_REF_METHODS_NULLABLE(For, Stmt, ForObj);
@@ -1229,14 +1231,15 @@ inline std::optional<std_::Range> TypeTraits<std_::Range>::TryCastFromAnyView(
   }
   if (std::optional<std_::Expr> expr =
           ObjectRefTypeTraitsBase<std_::Expr>::TryCastFromAnyView(src)) {
-    return std_::Range(*std::move(expr));
+    return std_::Range(*std::move(expr), std_::IntImm(std_::AnyTy(), 1));
   }
   if (std::optional<int64_t> value = TypeTraits<int64_t>::TryCastFromAnyView(src)) {
-    return std_::Range(std_::IntImm(std_::AnyTy(), *value));
+    return std_::Range(std_::IntImm(std_::AnyTy(), *value), std_::IntImm(std_::AnyTy(), 1));
   }
   if (src->type_index == TypeIndex::kTVMFFIFloat) {
     return std_::Range(
-        std_::FloatImm(std_::AnyTy(), TypeTraits<double>::CopyFromAnyViewAfterCheck(src)));
+        std_::FloatImm(std_::AnyTy(), TypeTraits<double>::CopyFromAnyViewAfterCheck(src)),
+        std_::IntImm(std_::AnyTy(), 1));
   }
   return std::nullopt;
 }
@@ -1293,9 +1296,9 @@ inline Not Not::FromAny(AnyView src) {
 }
 
 /// \cond Doxygen_Suppress
-inline RangeObj::RangeObj(Optional<Expr> start, Optional<Expr> stop, Optional<Expr> step)
-    : start(std::move(start)), stop(std::move(stop)), step(std::move(step)) {
-  details::CheckRangeDTypes("Range", this->start, this->stop, this->step);
+inline RangeObj::RangeObj(Optional<Expr> start, Expr extent, Optional<Expr> step)
+    : start(std::move(start)), extent(std::move(extent)), step(std::move(step)) {
+  details::CheckRangeDTypes("Range", this->start, this->extent, this->step);
 }
 /// \endcond
 

@@ -226,17 +226,19 @@ class ForFactory(Frame):
     def __init__(
         self,
         start: TypingAny | None,
-        stop: TypingAny | None,
-        step: TypingAny | None,
+        extent: TypingAny | None,
         *,
+        step: TypingAny | None = None,
         ty: std.TyLike | None = None,
         **attrs: TypingAny,
     ) -> None:
         """Create a loop frame with a placeholder induction variable."""
+        if extent is None:
+            raise TypeError("range missing required extent")
         self.start = start
-        self.stop = stop
+        self.extent = extent
         self.step = step
-        for value in (start, stop, step):
+        for value in (start, extent, step):
             if value is None or isinstance(value, int):
                 continue
             if not isinstance(value, std.Expr):
@@ -271,10 +273,10 @@ class ForFactory(Frame):
         """Build a ``std.For`` after the target name and body are known."""
         return std.For(
             start=self.start,
-            stop=self.stop,
-            step=self.step,
+            extent=self.extent,
             vars=self.vars,
             body=self.body,
+            step=self.step,
             attrs=self.attrs or None,
         )
 
@@ -411,17 +413,19 @@ class Std:
     abs = std.abs
 
     @staticmethod
-    def range(*args: TypingAny, **attrs: TypingAny) -> ForFactory:
+    def range(
+        *args: TypingAny,
+        step: TypingAny | None = None,
+        **attrs: TypingAny,
+    ) -> ForFactory:
         """Create a loop frame for parser-visible Python range loops."""
         if len(args) == 1:
-            start, stop, step = None, args[0], None
+            start, extent = None, args[0]
         elif len(args) == 2:
-            start, stop, step = args[0], args[1], None
-        elif len(args) == 3:
-            start, stop, step = args
+            start, extent = args
         else:
-            raise TypeError("range expects 1 to 3 positional arguments")
-        return ForFactory(start, stop, step, **attrs)
+            raise TypeError("range expects 1 or 2 positional arguments")
+        return ForFactory(start, extent, step=step, **attrs)
 
     @staticmethod
     def scope(*binds: TypingAny, **kwargs: TypingAny) -> ScopeFactory:
@@ -432,8 +436,8 @@ class Std:
     def for_(range_: TypingAny = None, **kwargs: TypingAny) -> ForFactory:
         """Create the parser frame used by explicit ``std.for_(...)`` loop headers."""
         if isinstance(range_, std.Range):
-            return ForFactory(range_.start, range_.stop, range_.step, **kwargs)
-        return ForFactory(None, range_, None, **kwargs)
+            return ForFactory(range_.start, range_.extent, step=range_.step, **kwargs)
+        return ForFactory(None, range_, **kwargs)
 
 
 def _normalize_binds(values: Sequence[TypingAny]) -> list[std.Stmt]:
@@ -524,6 +528,17 @@ def _make_call(callee: TypingAny, *args: TypingAny) -> std.Call:
     return std.Call(callee, *args, ty=std.AnyTy())
 
 
+def _make_slice(
+    start: TypingAny | None,
+    extent: TypingAny | None,
+    step: TypingAny | None,
+) -> std.Range:
+    """Build a range from parser slice syntax."""
+    if extent is None:
+        raise TypeError("Range missing required extent")
+    return std.Range(start, extent, step=step)
+
+
 def _make_floordiv(lhs: TypingAny, rhs: TypingAny) -> std.Expr:
     """Build integer floor division from the parser ``//`` generic."""
     result = std.floordiv(lhs, rhs)
@@ -581,7 +596,7 @@ Std.__ffi_generics__ = {
     "__pos__": lambda x: x,
     "__if_then_else__": std.if_then_else,
     "__load__": std.Load,
-    "__slice__": std.Range,
+    "__slice__": _make_slice,
     "__cast__": std.cast,
     "__call__": _make_call,
     "__store__": std.Store,

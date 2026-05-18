@@ -23,7 +23,7 @@ from typing import Any, ClassVar
 import pytest
 import tvm_ffi
 from tvm_ffi import std
-from tvm_ffi._pyast_parser import parse, register_dialect
+from tvm_ffi._pyast_parser import ParserError, parse, register_dialect
 
 ################################################################################
 # Helpers
@@ -680,7 +680,7 @@ class TestParseLoad:
         x = std.Var(I32, "x")
         _assert_parse_equal(
             "x[-1]",
-            std.Load(x, std.Range(start=std.IntImm(I64, -1))),
+            std.Load(x, std.Range(std.IntImm(I64, -1), std.IntImm(ANY, 1))),
             extra_vars={"x": x},
         )
 
@@ -727,12 +727,10 @@ class TestParseLoad:
         with pytest.raises(TypeError, match="base must be an expression"):
             parse("1[2]")
 
-    def test_full_slice(self) -> None:
+    def test_full_slice_rejected_without_extent(self) -> None:
         x = std.Var(I32, "x")
-        parsed = parse("x[:]", extra_vars={"x": x})
-        idx = next(iter(parsed.indices))
-        assert isinstance(idx, std.Range)
-        assert idx.start is None and idx.stop is None and idx.step is None
+        with pytest.raises(TypeError, match="Range missing required extent"):
+            parse("x[:]", extra_vars={"x": x})
 
     def test_ellipsis_indexing_rejected(self) -> None:
         x = std.Var(I32, "x")
@@ -742,11 +740,11 @@ class TestParseLoad:
     def test_slice_with_var_bounds(self) -> None:
         x = std.Var(I32, "x")
         parsed = parse(
-            "x[start:stop:step]",
+            "x[start:extent:step]",
             extra_vars={
                 "x": x,
                 "start": std.Var(I32, "start"),
-                "stop": std.Var(I32, "stop"),
+                "extent": std.Var(I32, "extent"),
                 "step": std.Var(I32, "step"),
             },
         )
@@ -757,7 +755,7 @@ class TestParseLoad:
         x = std.Var(I32, "x")
         _assert_roundtrip(std.Load(x, 1, ty=I32), extra_vars={"x": x})
         _assert_roundtrip(
-            std.Load(x, std.Range(1, 2), std.Range(1, 2, 3), ty=I32),
+            std.Load(x, std.Range(1, 2), std.Range(1, 2, step=3), ty=I32),
             extra_vars={"x": x},
         )
 
@@ -788,7 +786,7 @@ class TestParseStore:
 
     def test_store_tuple_rhs_fails(self) -> None:
         with pytest.raises(TypeError, match=r"Expected `ffi.std.Expr` but got `ffi.Array`"):
-            parse("@std.func\ndef f(x: std.i32):\n  x[:] = (1, 2)")
+            parse("@std.func\ndef f(x: std.i32):\n  x[:1] = (1, 2)")
 
     def test_store_into_anyty(self) -> None:
         result = parse("@std.func\ndef f(a: std.Any):\n  a[1] = 2")
@@ -845,47 +843,39 @@ class TestGenericsDispatchMetadata:
 
 class TestParseRange:
     def test_full(self) -> None:
-        _assert_parse_equal("1:10:2", std.Range(1, 10, 2))
+        _assert_parse_equal("1:10:2", std.Range(1, 10, step=2))
 
     def test_negative(self) -> None:
         _assert_parse_equal(
             "-1:-3:-1",
-            std.Range(std.IntImm(I64, -1), std.IntImm(I64, -3), std.IntImm(I64, -1)),
+            std.Range(std.IntImm(I64, -1), std.IntImm(I64, -3), step=std.IntImm(I64, -1)),
         )
 
-    def test_start_stop(self) -> None:
+    def test_start_extent(self) -> None:
         _assert_parse_equal("1:10", std.Range(1, 10))
 
-    def test_start_only_via_slice(self) -> None:
-        # NB: the printer collapses Range(start=1) to "1"; the slice form below
-        # is the explicit way to write "Range(start=1) with no stop/step".
-        _assert_parse_equal("1::", std.Range(start=1))
-
-    def test_stop_only(self) -> None:
-        _assert_parse_equal(":10", std.Range(stop=10))
-
-    def test_step_only(self) -> None:
-        _assert_parse_equal("::2", std.Range(step=2))
+    def test_extent_only(self) -> None:
+        _assert_parse_equal(":10", std.Range(10))
 
     def test_no_start(self) -> None:
-        _assert_parse_equal(":10:2", std.Range(None, 10, 2))
+        _assert_parse_equal(":10:2", std.Range(None, 10, step=2))
 
-    def test_no_stop(self) -> None:
-        _assert_parse_equal("1::2", std.Range(start=1, step=2))
-
-    def test_empty(self) -> None:
-        _assert_parse_equal(":", std.Range())
+    def test_missing_extent_is_rejected(self) -> None:
+        for text in ["1::", "::2", "1::2", ":"]:
+            with pytest.raises(ParserError, match="Range missing required extent"):
+                parse(text)
 
     def test_explicit_factory(self) -> None:
-        _assert_parse_equal("std.Range(1, 10, 2)", std.Range(1, 10, 2))
+        _assert_parse_equal("std.Range(1, 10, step=2)", std.Range(1, 10, step=2))
+
+    def test_explicit_factory_rejects_positional_step(self) -> None:
+        with pytest.raises(TypeError, match="Range expects at most 2 positional arguments"):
+            parse("std.Range(1, 10, 2)")
 
     def test_factory_positional(self) -> None:
         _assert_parse_equal("std.Range(10)", std.Range(None, 10))
         _assert_parse_equal("std.Range(1, 10)", std.Range(1, 10))
-        _assert_parse_equal("std.Range(1, None)", std.Range(start=1))
         _assert_parse_equal("std.Range(None, 10)", std.Range(None, 10))
-        _assert_parse_equal("std.Range(None, None, 2)", std.Range(None, None, 2))
-        _assert_parse_equal("std.Range()", std.Range())
 
     def test_range_rejects_non_integer_bound(self) -> None:
         n = std.Var(I64, "n")
@@ -893,21 +883,17 @@ class TestParseRange:
             TypeError, match=r"range expects Python integers or integer expressions"
         ):
             parse(
-                "@std.func\ndef f():\n  for i in range(0.5, n, 2):\n    pass",
+                "@std.func\ndef f():\n  for i in range(0.5, n, step=2):\n    pass",
                 extra_vars={"n": n},
             )
 
     def test_round_trip(self) -> None:
         for node in [
             std.Range(1),
-            std.Range(1, None),
             std.Range(1, 10),
-            std.Range(1, 10, 2),
-            std.Range(1, None, 2),
+            std.Range(1, 10, step=2),
             std.Range(None, 10),
-            std.Range(None, 10, 2),
-            std.Range(None, None, 2),
-            std.Range(),
+            std.Range(None, 10, step=2),
         ]:
             _assert_roundtrip(node)
 
@@ -1646,7 +1632,7 @@ class TestParseFor:
         x = std.Var(I64, "x")
         expected = std.For(
             start=1,
-            stop=2,
+            extent=2,
             step=None,
             body=[std.Store(x, 2, 1)],
             vars=[x],
@@ -1657,7 +1643,7 @@ class TestParseFor:
         x = std.Var(I64, "x")
         expected = std.For(
             start=1,
-            stop=2,
+            extent=2,
             step=None,
             body=[std.Store(x, 2, 1)],
             vars=[x],
@@ -1672,23 +1658,27 @@ class TestParseFor:
         i = std.Var(I64, "i")
         expected = std.For(
             start=None,
-            stop=10,
+            extent=10,
             step=None,
             body=[],
             vars=[i],
         )
         _assert_parse_equal("for i in range(10):\n  pass", expected)
 
-    def test_with_three_arg_range(self) -> None:
+    def test_with_step_range(self) -> None:
         i = std.Var(I64, "i")
         expected = std.For(
             start=0,
-            stop=10,
+            extent=10,
             step=2,
             body=[],
             vars=[i],
         )
-        _assert_parse_equal("for i in range(0, 10, 2):\n  pass", expected)
+        _assert_parse_equal("for i in range(0, 10, step=2):\n  pass", expected)
+
+    def test_range_rejects_positional_step(self) -> None:
+        with pytest.raises(TypeError, match="range expects 1 or 2 positional arguments"):
+            parse("@std.func\ndef f():\n  for i in range(0, 10, 2):\n    pass")
 
     def test_non_frame_iterator_fails(self) -> None:
         with pytest.raises(TypeError, match="expected parser frame"):
@@ -1702,21 +1692,21 @@ class TestParseFor:
         a = parse("@std.func\ndef f():\n  for i in range(10):\n    pass")
         b = parse("@std.func\ndef f():\n  for i in std.range(10):\n    pass")
         assert _equal(a.body[0].start, b.body[0].start)
-        assert _equal(a.body[0].stop, b.body[0].stop)
+        assert _equal(a.body[0].extent, b.body[0].extent)
         assert _equal(a.body[0].step, b.body[0].step)
 
     def test_explicit_for_factory(self) -> None:
         i = std.Var(ANY, "i")
         expected = std.For(
             start=1,
-            stop=10,
+            extent=10,
             step=2,
             body=[],
             vars=[i],
             attrs={"tag": "demo"},
         )
         _assert_parse_equal(
-            'for i in std.for_(std.Range(1, 10, 2), tag="demo"):\n  pass',
+            'for i in std.for_(std.Range(1, 10, step=2), tag="demo"):\n  pass',
             expected,
         )
 
@@ -1738,7 +1728,7 @@ class TestParseFor:
         underscore = std.Var(I64, "_")
         expected = std.For(
             start=None,
-            stop=10,
+            extent=10,
             step=None,
             body=[],
             vars=[underscore],
@@ -1750,12 +1740,12 @@ class TestParseFor:
         j = std.Var(I64, "j")
         expected = std.For(
             start=None,
-            stop=10,
+            extent=10,
             step=None,
             body=[
                 std.For(
                     start=None,
-                    stop=10,
+                    extent=10,
                     step=None,
                     body=[],
                     vars=[j],
@@ -1773,7 +1763,7 @@ class TestParseFor:
         _assert_roundtrip(
             std.For(
                 start=1,
-                stop=2,
+                extent=2,
                 step=None,
                 body=[std.Store(x, 2, 1)],
                 vars=[x],
@@ -1782,7 +1772,7 @@ class TestParseFor:
         _assert_roundtrip(
             std.For(
                 start=1,
-                stop=2,
+                extent=2,
                 step=None,
                 body=[std.Store(x, 2, 1)],
                 vars=[x],
@@ -1790,25 +1780,17 @@ class TestParseFor:
             )
         )
 
-    def test_round_trip_sparse_range_fields(self) -> None:
+    def test_round_trip_with_step(self) -> None:
         x = std.Var(I64, "x")
-        for node in [
+        _assert_roundtrip(
             std.For(
                 start=1,
-                stop=None,
-                step=None,
-                body=[],
-                vars=[x],
-            ),
-            std.For(
-                start=None,
-                stop=None,
+                extent=8,
                 step=2,
                 body=[],
                 vars=[x],
-            ),
-        ]:
-            _assert_roundtrip(node)
+            )
+        )
 
 
 ################################################################################
@@ -1969,13 +1951,14 @@ class TestParseSliceTop:
     """
 
     def test_full(self) -> None:
-        _assert_parse_equal("1:10:2", std.Range(1, 10, 2))
+        _assert_parse_equal("1:10:2", std.Range(1, 10, step=2))
 
     def test_partial(self) -> None:
         _assert_parse_equal("1:10", std.Range(1, 10))
 
-    def test_empty(self) -> None:
-        _assert_parse_equal(":", std.Range())
+    def test_empty_rejected_without_extent(self) -> None:
+        with pytest.raises(ParserError, match="Range missing required extent"):
+            parse(":")
 
 
 ################################################################################
@@ -2165,14 +2148,14 @@ class TestRoundtripFromTestStd:
         for node in [
             std.For(
                 start=1,
-                stop=2,
+                extent=2,
                 step=None,
                 body=[std.Store(x, 2, 1)],
                 vars=[x],
             ),
             std.For(
                 start=1,
-                stop=2,
+                extent=2,
                 step=None,
                 body=[std.Store(x, 2, 1)],
                 vars=[x],
