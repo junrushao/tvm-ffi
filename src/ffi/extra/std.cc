@@ -85,6 +85,10 @@ std::optional<DLDataType> DTypeFromExpr(const char* node_name, const char* opera
 }
 
 Ty IndexedTy(Ty ty, const List<Range>& indices) {
+  auto is_unit_extent = [](const Expr& extent) {
+    const IntImmObj* static_extent = extent.as<IntImmObj>();
+    return static_extent != nullptr && static_extent->value == 1;
+  };
   for (int64_t i = 0, n = static_cast<int64_t>(indices.size()); i < n;) {
     if (ty.as<AnyTyObj>() != nullptr) {
       return AnyTy();
@@ -106,7 +110,7 @@ Ty IndexedTy(Ty ty, const List<Range>& indices) {
       return ty;
     }
     const Range& index = indices[i];
-    if (!index->start.has_value() || index->stop.has_value() || index->step.has_value()) {
+    if (!index->start.has_value() || !is_unit_extent(index->extent) || index->step.has_value()) {
       return AnyTy();
     }
     const IntImmObj* static_index = index->start.value().as<IntImmObj>();
@@ -303,8 +307,8 @@ void CheckIfExprTy(const Ty& result_ty, const Expr& cond, const Expr& then_expr,
                         else_expr->ty);
 }
 
-void CheckRangeDTypes(const char* node_name, const Optional<Expr>& start,
-                      const Optional<Expr>& stop, const Optional<Expr>& step) {
+void CheckRangeDTypes(const char* node_name, const Optional<Expr>& start, const Expr& extent,
+                      const Optional<Expr>& step) {
   std::optional<DLDataType> expected_dtype;
   auto check = [&](const Optional<Expr>& expr, const char* operand_name) {
     if (expr.has_value()) {
@@ -317,8 +321,11 @@ void CheckRangeDTypes(const char* node_name, const Optional<Expr>& start,
       }
     }
   };
+  std::optional<DLDataType> extent_dtype = DTypeFromExpr(node_name, "extent", extent);
+  if (extent_dtype.has_value()) {
+    expected_dtype = *extent_dtype;
+  }
   check(start, "start");
-  check(stop, "stop");
   check(step, "step");
 }
 
@@ -326,7 +333,7 @@ void CheckRangeList(const char* node_name, const List<Range>& indices) {
   for (int32_t i = 0, n = static_cast<int32_t>(indices.size()); i < n; ++i) {
     TVM_FFI_CHECK(indices[i].defined(), TypeError)
         << node_name << " index range `" << i << "` must be defined";
-    CheckRangeDTypes(node_name, indices[i]->start, indices[i]->stop, indices[i]->step);
+    CheckRangeDTypes(node_name, indices[i]->start, indices[i]->extent, indices[i]->step);
   }
 }
 
@@ -608,52 +615,48 @@ text::NodeAST TextPrint(const Cast& obj, const text::IRPrinter& printer, const P
 
 text::ExprAST TextPrintSlice(const Range& obj, const text::IRPrinter& printer, const Path& path) {
   Optional<text::ExprAST> start;
-  Optional<text::ExprAST> stop;
   Optional<text::ExprAST> step;
   if (obj->start.has_value()) {
     start = printer->ToExpr(*obj->start, path->Attr("start"));
   }
-  if (obj->stop.has_value()) {
-    stop = printer->ToExpr(*obj->stop, path->Attr("stop"));
-  }
+  text::ExprAST extent = printer->ToExpr(obj->extent, path->Attr("extent"));
   if (obj->step.has_value()) {
     step = printer->ToExpr(*obj->step, path->Attr("step"));
   }
-  if (start.has_value() && !stop.has_value() && !step.has_value()) {
-    return *start;
+  if (start.has_value() && !obj->step.has_value()) {
+    if (const IntImmObj* static_extent = obj->extent.as<IntImmObj>();
+        static_extent != nullptr && static_extent->value == 1) {
+      return *start;
+    }
   }
-  return text::SliceAST(std::move(start), std::move(stop), std::move(step));
+  if (!start.has_value() && !step.has_value()) {
+    return text::SliceAST({}, std::move(extent), {});
+  }
+  if (start.has_value() && !step.has_value()) {
+    return text::SliceAST(std::move(start), std::move(extent), {});
+  }
+  if (!start.has_value()) {
+    return text::SliceAST({}, std::move(extent), std::move(step));
+  }
+  return text::SliceAST(std::move(start), std::move(extent), std::move(step));
 }
 
 text::NodeAST TextPrint(const Range& obj, const text::IRPrinter& printer, const Path& path) {
   List<text::ExprAST> args;
-  auto maybe_append_operand = [&](const Optional<Expr>& operand, const char* name) {
-    if (operand.has_value()) {
-      args.push_back(printer->ToExpr(*operand, path->Attr(name)));
-    } else {
-      args.push_back(text::LiteralAST::Null({path->Attr(name)}));
-    }
-  };
+  List<String> kwargs_keys;
+  List<text::ExprAST> kwargs_values;
   if (obj->start.has_value()) {
     args.push_back(printer->ToExpr(*obj->start, path->Attr("start")));
-    maybe_append_operand(obj->stop, "stop");
-    if (obj->step.has_value()) {
-      args.push_back(printer->ToExpr(*obj->step, path->Attr("step")));
-    }
-  } else if (obj->stop.has_value()) {
-    if (obj->step.has_value()) {
-      args.push_back(text::LiteralAST::Null({path->Attr("start")}));
-      args.push_back(printer->ToExpr(*obj->stop, path->Attr("stop")));
-      args.push_back(printer->ToExpr(*obj->step, path->Attr("step")));
-    } else {
-      args.push_back(printer->ToExpr(*obj->stop, path->Attr("stop")));
-    }
-  } else if (obj->step.has_value()) {
-    args.push_back(text::LiteralAST::Null({path->Attr("start")}));
-    args.push_back(text::LiteralAST::Null({path->Attr("stop")}));
-    args.push_back(printer->ToExpr(*obj->step, path->Attr("step")));
+    args.push_back(printer->ToExpr(obj->extent, path->Attr("extent")));
+  } else {
+    args.push_back(printer->ToExpr(obj->extent, path->Attr("extent")));
   }
-  return CallMnemonic(printer->cfg, obj)->Call(std::move(args));
+  if (obj->step.has_value()) {
+    kwargs_keys.push_back("step");
+    kwargs_values.push_back(printer->ToExpr(*obj->step, path->Attr("step")));
+  }
+  return CallMnemonic(printer->cfg, obj)
+      ->CallKw(std::move(args), std::move(kwargs_keys), std::move(kwargs_values));
 }
 
 text::NodeAST TextPrint(const DictAttrs& obj, const text::IRPrinter& printer, const Path& path) {
@@ -1064,31 +1067,15 @@ text::NodeAST TextPrint(const For& obj, const text::IRPrinter& printer, const Pa
   ScopeBuilder ctx("range", "", printer->cfg);
   ctx.AddTargets(printer, obj->vars);
   // ----------- "range" section ----------- //
-  auto maybe_append_operand = [&](const Optional<Expr>& operand, const char* name) {
-    if (operand.has_value()) {
-      ctx.operands.push_back(printer->ToExpr(*operand, path->Attr(name)));
-    } else {
-      ctx.operands.push_back(text::LiteralAST::Null({path->Attr(name)}));
-    }
-  };
   if (obj->start.has_value()) {
     ctx.operands.push_back(printer->ToExpr(*obj->start, path->Attr("start")));
-    maybe_append_operand(obj->stop, "stop");
-    if (obj->step.has_value()) {
-      ctx.operands.push_back(printer->ToExpr(*obj->step, path->Attr("step")));
-    }
-  } else if (obj->stop.has_value()) {
-    if (obj->step.has_value()) {
-      ctx.operands.push_back(text::LiteralAST::Null({path->Attr("start")}));
-      ctx.operands.push_back(printer->ToExpr(*obj->stop, path->Attr("stop")));
-      ctx.operands.push_back(printer->ToExpr(*obj->step, path->Attr("step")));
-    } else {
-      ctx.operands.push_back(printer->ToExpr(*obj->stop, path->Attr("stop")));
-    }
-  } else if (obj->step.has_value()) {
-    ctx.operands.push_back(text::LiteralAST::Null({path->Attr("start")}));
-    ctx.operands.push_back(text::LiteralAST::Null({path->Attr("stop")}));
-    ctx.operands.push_back(printer->ToExpr(*obj->step, path->Attr("step")));
+    ctx.operands.push_back(printer->ToExpr(obj->extent, path->Attr("extent")));
+  } else {
+    ctx.operands.push_back(printer->ToExpr(obj->extent, path->Attr("extent")));
+  }
+  if (obj->step.has_value()) {
+    ctx.kwargs_keys.push_back("step");
+    ctx.kwargs_values.push_back(printer->ToExpr(*obj->step, path->Attr("step")));
   }
   // --------------------------------------- //
   ctx.AddAttrs(printer, obj->attrs, path->Attr("attrs"));
@@ -2056,10 +2043,10 @@ TVM_FFI_STATIC_INIT_BLOCK() {
   TVM_FFI_STD_OBJECT_DEF(ModuleObj, Module, "Module").def_rw("funcs", &ModuleObj::funcs);
   TVM_FFI_STD_OBJECT_DEF(RangeObj, Range, "Range")
       .def_convert<Range>()
-      .def(refl::init<Optional<Expr>, Optional<Expr>, Optional<Expr>>())
+      .def(refl::init<Optional<Expr>, Expr, Optional<Expr>>())
       .def_rw("start", &RangeObj::start, refl::default_value(nullptr))
-      .def_rw("stop", &RangeObj::stop, refl::default_value(nullptr))
-      .def_rw("step", &RangeObj::step, refl::default_value(nullptr));
+      .def_rw("extent", &RangeObj::extent)
+      .def_rw("step", &RangeObj::step, refl::kw_only(true), refl::default_value(nullptr));
   TVM_FFI_STD_OBJECT_DEF(AnyTyObj, AnyTy, "Any");
   TVM_FFI_STD_OBJECT_DEF(PrimTyObj, PrimTy, "Prim").def_rw("dtype", &PrimTyObj::dtype);
   TVM_FFI_STD_OBJECT_DEF(TupleTyObj, TupleTy, "Tuple").def_rw("fields", &TupleTyObj::fields);
@@ -2145,11 +2132,11 @@ TVM_FFI_STATIC_INIT_BLOCK() {
       .def_rw("binds", &ScopeObj::binds, refl::AttachFieldFlag::SEqHashDefRecursive())
       .def_rw("body", &ScopeObj::body);
   TVM_FFI_STD_OBJECT_DEF(ForObj, For, "For")
-      .def(refl::init<Optional<Expr>, Optional<Expr>, Optional<Expr>, List<Var>, List<Stmt>,
+      .def(refl::init<Optional<Expr>, Expr, Optional<Expr>, List<Var>, List<Stmt>,
                       Optional<Attrs>>())
       .def_rw("start", &ForObj::start, refl::default_value(nullptr))
-      .def_rw("stop", &ForObj::stop, refl::default_value(nullptr))
-      .def_rw("step", &ForObj::step, refl::default_value(nullptr))
+      .def_rw("extent", &ForObj::extent)
+      .def_rw("step", &ForObj::step, refl::kw_only(true), refl::default_value(nullptr))
       .def_rw("vars", &ForObj::vars, refl::AttachFieldFlag::SEqHashDefRecursive())
       .def_rw("body", &ForObj::body);
   TVM_FFI_STD_OBJECT_DEF(WhileObj, While, "While")

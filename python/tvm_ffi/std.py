@@ -38,13 +38,13 @@ from collections.abc import (
     MutableSequence,
     Sequence,
 )
-from typing import Any, ClassVar
+from typing import Any, ClassVar, overload
 from typing import cast as _typing_cast
 
 from typing_extensions import Never, Protocol, TypeAlias
 
 from tvm_ffi import dtype
-from tvm_ffi.core import MISSING, Object
+from tvm_ffi.core import Object
 from tvm_ffi.dataclasses import c_class, field
 from tvm_ffi.pyast import PrinterConfig
 
@@ -423,58 +423,55 @@ class Module(Node, mnemonic="std.Module"):
 
 @c_class("ffi.std.Range")
 class Range(Aggregate, mnemonic="std.Range"):
-    """A half-open range or slice."""
+    """A start/extent range or slice."""
 
     # tvm-ffi-stubgen(begin): object/ffi.std.Range
     # fmt: off
     start: Expr | None
-    stop: Expr | None
+    extent: Expr
     step: Expr | None
     if TYPE_CHECKING:
-        def __init__(self, start: Expr | None = ..., stop: Expr | None = ..., step: Expr | None = ...) -> None: ...
-        def __ffi_init__(self, start: Expr | None = ..., stop: Expr | None = ..., step: Expr | None = ...) -> None: ...  # ty: ignore[invalid-method-override]
+        @overload
+        def __init__(self, extent: Expr, *, step: Expr | None = ...) -> None: ...
+        @overload
+        def __init__(self, start: Expr | None, extent: Expr, *, step: Expr | None = ...) -> None: ...
+        def __ffi_init__(self, start: Expr | None, extent: Expr, step: Expr | None = ...) -> None: ...  # ty: ignore[invalid-method-override]
     # fmt: on
     # tvm-ffi-stubgen(end)
 
     start = field(default=None)
-    stop = field(default=None)
+    extent = field()
     step = field(default=None)
 
     if TYPE_CHECKING:
 
+        @overload
+        def __init__(self, extent: ExprLike, *, step: ExprLike | None = ...) -> None: ...
+
+        @overload
         def __init__(
-            self,
-            start: ExprLike | None = ...,
-            stop: ExprLike | None = ...,
-            step: ExprLike | None = ...,
+            self, start: ExprLike | None, extent: ExprLike, *, step: ExprLike | None = ...
         ) -> None: ...
 
     def __init__(
         self,
         *args: ExprLike | None,
-        start: ExprLike | None | object = MISSING,
-        stop: ExprLike | None | object = MISSING,
-        step: ExprLike | None | object = MISSING,
+        step: ExprLike | None = None,
     ) -> None:
-        has_keywords = not MISSING.is_(start) or not MISSING.is_(stop) or not MISSING.is_(step)
-        if args and has_keywords:
-            raise TypeError("Range cannot mix positional arguments with start/stop/step keywords")
-        if len(args) > 3:
-            raise TypeError(f"Range expects at most 3 positional arguments, but got {len(args)}")
+        if len(args) > 2:
+            raise TypeError(f"Range expects at most 2 positional arguments, but got {len(args)}")
         if len(args) == 0:
-            start_value = None if MISSING.is_(start) else start
-            stop_value = None if MISSING.is_(stop) else stop
-            step_value = None if MISSING.is_(step) else step
+            raise TypeError("Range missing required extent")
         elif len(args) == 1:
+            if args[0] is None:
+                raise TypeError("Range missing required extent")
             start_value = None
-            stop_value = args[0]
-            step_value = None
+            extent_value = args[0]
         elif len(args) == 2:
-            start_value, stop_value = args
-            step_value = None
-        else:
-            start_value, stop_value, step_value = args
-        self.__ffi_init__(start_value, stop_value, step_value)  # type: ignore[call-arg]
+            if args[1] is None:
+                raise TypeError("Range missing required extent")
+            start_value, extent_value = args
+        self.__ffi_init__(start_value, extent_value, step)  # type: ignore[call-arg]
 
 
 @c_class("ffi.std.AnyTy")
@@ -1304,13 +1301,13 @@ class For(Stmt, mnemonic="std.For"):
     # tvm-ffi-stubgen(begin): object/ffi.std.For
     # fmt: off
     start: Expr | None
-    stop: Expr | None
+    extent: Expr
     step: Expr | None
     vars: MutableSequence[Var]
     body: MutableSequence[Stmt]
     if TYPE_CHECKING:
-        def __init__(self, start: Expr | None, stop: Expr | None, step: Expr | None, vars: MutableSequence[Var], body: MutableSequence[Stmt], *, attrs: Attrs | None = ...) -> None: ...
-        def __ffi_init__(self, start: Expr | None, stop: Expr | None, step: Expr | None, vars: MutableSequence[Var], body: MutableSequence[Stmt], *, attrs: Attrs | None = ...) -> None: ...  # ty: ignore[invalid-method-override]
+        def __init__(self, start: Expr | None, extent: Expr, vars: MutableSequence[Var], body: MutableSequence[Stmt], *, step: Expr | None = ..., attrs: Attrs | None = ...) -> None: ...
+        def __ffi_init__(self, start: Expr | None, extent: Expr, step: Expr | None, vars: MutableSequence[Var], body: MutableSequence[Stmt], *, attrs: Attrs | None = ...) -> None: ...  # ty: ignore[invalid-method-override]
     # fmt: on
     # tvm-ffi-stubgen(end)
 
@@ -1319,11 +1316,11 @@ class For(Stmt, mnemonic="std.For"):
         def __init__(
             self,
             start: ExprLike | None,
-            stop: ExprLike | None,
-            step: ExprLike | None,
+            extent: ExprLike,
             vars: MutableSequence[Var],
             body: MutableSequence[Stmt],
             *,
+            step: ExprLike | None = ...,
             attrs: AttrsLike = ...,
         ) -> None: ...
 
@@ -1332,14 +1329,14 @@ class For(Stmt, mnemonic="std.For"):
     def __init__(
         self,
         start: ExprLike | None,
-        stop: ExprLike | None,
-        step: ExprLike | None,
+        extent: ExprLike,
         *,
+        step: ExprLike | None = None,
         vars: MutableSequence[Var],
         body: MutableSequence[Stmt],
         attrs: AttrsLike = None,
     ) -> None:
-        self.__ffi_init__(start, stop, step, list(vars), list(body), attrs)
+        self.__ffi_init__(start, extent, step, list(vars), list(body), attrs)
 
 
 @c_class("ffi.std.While")

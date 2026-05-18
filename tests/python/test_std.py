@@ -106,7 +106,7 @@ class TestAttrs:
 
 class TestAggregate:
     def test_range_is_aggregate(self) -> None:
-        node = std.Range(start=1)
+        node = std.Range(1)
 
         assert isinstance(node, std.Aggregate)
         assert issubclass(std.Range, std.Aggregate)
@@ -491,37 +491,37 @@ class TestModule:
 
 class TestRange:
     def test_constructor(self) -> None:
-        node = std.Range(start=1, stop=2, step=3)
+        node = std.Range(1, 2, step=3)
 
         assert isinstance(node, std.Range)
-        assert tuple(field.name for field in fields(std.Range)) == ("start", "stop", "step")
+        assert tuple(field.name for field in fields(std.Range)) == ("start", "extent", "step")
         assert isinstance(node.start, std.IntImm)
-        assert isinstance(node.stop, std.IntImm)
+        assert isinstance(node.extent, std.IntImm)
         assert isinstance(node.step, std.IntImm)
         assert node.start.value == 1
-        assert node.stop.value == 2
+        assert node.extent.value == 2
         assert node.step.value == 3
 
     def test_constructor_without_start(self) -> None:
-        node = std.Range(start=None, stop=2, step=3)
+        node = std.Range(2, step=3)
 
         assert isinstance(node, std.Range)
         assert node.start is None
-        assert isinstance(node.stop, std.IntImm)
+        assert isinstance(node.extent, std.IntImm)
         assert isinstance(node.step, std.IntImm)
-        assert node.stop.value == 2
+        assert node.extent.value == 2
         assert node.step.value == 3
 
-    def test_constructor_single_positional_arg_is_stop(self) -> None:
+    def test_constructor_single_positional_arg_is_extent(self) -> None:
         node = std.Range(10)
 
         assert node.start is None
-        assert isinstance(node.stop, std.IntImm)
-        assert node.stop.value == 10
+        assert isinstance(node.extent, std.IntImm)
+        assert node.extent.value == 10
         assert node.step is None
         assert node.text() == "std.Range(10)"
 
-    def test_stop_only_text_format_is_canonical(self) -> None:
+    def test_extent_only_text_format_is_canonical(self) -> None:
         lhs = std.Range(10)
         rhs = std.Range(None, 10)
 
@@ -535,89 +535,79 @@ class TestRange:
         assert isinstance(node, std.Range)
         assert isinstance(node.start, std.IntImm)
         assert node.start.value == 7
-        assert node.stop is None
+        assert isinstance(node.extent, std.IntImm)
+        assert node.extent.value == 1
         assert node.step is None
-        assert node.text() == "std.Range(7, None)"
+        assert node.text() == "std.Range(7, 1)"
 
     def test_text_format(self) -> None:
-        node = std.Range(start=1, stop=2, step=3)
+        node = std.Range(1, 2, step=3)
 
-        assert node.text() == "std.Range(1, 2, 3)"
-
-    def test_text_format_without_stop_or_step(self) -> None:
-        node = std.Range(start=1)
-
-        assert node.text() == "std.Range(1, None)"
+        assert node.text() == "std.Range(1, 2, step=3)"
 
     def test_text_format_without_step(self) -> None:
-        node = std.Range(start=1, stop=2)
+        node = std.Range(1, 2)
 
         assert node.text() == "std.Range(1, 2)"
 
-    def test_text_format_without_stop(self) -> None:
-        node = std.Range(start=1, step=3)
-
-        assert node.text() == "std.Range(1, None, 3)"
-
     def test_text_format_without_start(self) -> None:
-        node = std.Range(start=None, stop=2, step=3)
+        node = std.Range(None, 2, step=3)
 
-        assert node.text() == "std.Range(None, 2, 3)"
+        assert node.text() == "std.Range(2, step=3)"
 
     def test_text_format_without_start_or_step(self) -> None:
-        node = std.Range(start=None, stop=2)
+        node = std.Range(None, 2)
 
         assert node.text() == "std.Range(2)"
 
-    def test_text_format_without_start_or_stop(self) -> None:
-        node = std.Range(start=None, step=3)
+    def test_constructor_rejects_missing_extent(self) -> None:
+        range_ctor = cast(Any, std.Range)
+        with pytest.raises(TypeError, match="missing required extent"):
+            range_ctor()
+        with pytest.raises(TypeError, match="missing required extent"):
+            range_ctor(None)
+        with pytest.raises(TypeError, match="missing required extent"):
+            range_ctor(1, None)
+        with pytest.raises(TypeError, match="missing required extent"):
+            range_ctor(None, None, step=2)
 
-        assert node.text() == "std.Range(None, None, 3)"
-
-    def test_text_format_without_any_part(self) -> None:
-        node = std.Range()
-
-        assert node.text() == "std.Range()"
+    def test_constructor_rejects_positional_step(self) -> None:
+        range_ctor = cast(Any, std.Range)
+        with pytest.raises(TypeError, match="at most 2 positional arguments"):
+            range_ctor(1, 2, 3)
 
     def test_structural_equality(self) -> None:
-        lhs = std.Range(start=1, stop=2, step=3)
-        rhs = std.Range(start=1, stop=2, step=3)
-        different = std.Range(start=1, stop=2)
+        lhs = std.Range(1, 2, step=3)
+        rhs = std.Range(1, 2, step=3)
+        different = std.Range(1, 2)
 
         assert tvm_ffi.structural_equal(lhs, rhs)
         assert tvm_ffi.structural_hash(lhs) == tvm_ffi.structural_hash(rhs)
         assert not tvm_ffi.structural_equal(lhs, different)
 
     def test_structural_equality_without_start(self) -> None:
-        lhs = std.Range(start=None, stop=2, step=3)
-        rhs = std.Range(start=None, stop=2, step=3)
-        different = std.Range(start=1, stop=2, step=3)
+        lhs = std.Range(None, 2, step=3)
+        rhs = std.Range(None, 2, step=3)
+        different = std.Range(1, 2, step=3)
 
         assert tvm_ffi.structural_equal(lhs, rhs)
         assert tvm_ffi.structural_hash(lhs) == tvm_ffi.structural_hash(rhs)
         assert not tvm_ffi.structural_equal(lhs, different)
-
-    def test_default_arguments(self) -> None:
-        node = std.Range()
-
-        assert node.start is None
-        assert node.stop is None
-        assert node.step is None
 
     def test_rejects_mismatched_concrete_dtypes(self) -> None:
         i32 = std.PrimTy("int32")
         f32 = std.PrimTy("float32")
 
         with pytest.raises(TypeError, match="does not match previous range operand"):
-            std.Range(start=std.IntImm(i32, 1), stop=std.FloatImm(f32, 2.0))
+            std.Range(std.IntImm(i32, 1), std.FloatImm(f32, 2.0))
 
     def test_allows_any_typed_operands(self) -> None:
         any_ty = std.AnyTy()
         f32 = std.PrimTy("float32")
-        node = std.Range(start=std.IntImm(any_ty, 1), stop=std.FloatImm(f32, 2.0))
+        node = std.Range(std.IntImm(any_ty, 1), std.FloatImm(f32, 2.0))
 
         assert isinstance(node.start, std.IntImm)
-        assert isinstance(node.stop, std.FloatImm)
+        assert isinstance(node.extent, std.FloatImm)
 
 
 class TestIntImm:
@@ -1832,12 +1822,8 @@ class TestLoad:
     def test_constructor(self) -> None:
         i32 = std.PrimTy("int32")
         x = std.Var(ty=i32, name="x")
-        first = std.Range(start=1, stop=2)
-        second = std.Range(
-            start=1,
-            stop=2,
-            step=3,
-        )
+        first = std.Range(1, 2)
+        second = std.Range(1, 2, step=3)
         node = std.Load(x, first, second)
 
         assert isinstance(node, std.Load)
@@ -1854,15 +1840,8 @@ class TestLoad:
         i32 = std.PrimTy("int32")
         node = std.Load(
             std.Var(ty=i32, name="x"),
-            std.Range(
-                start=1,
-                stop=2,
-            ),
-            std.Range(
-                start=1,
-                stop=2,
-                step=3,
-            ),
+            std.Range(1, 2),
+            std.Range(1, 2, step=3),
             ty=i32,
         )
 
@@ -1879,57 +1858,28 @@ class TestLoad:
 
         slice_without_step = std.Load(
             std.Var(ty=i32, name="x"),
-            std.Range(
-                start=1,
-                stop=2,
-            ),
+            std.Range(1, 2),
         )
         assert slice_without_step.text() == "x[1:2]"
 
         slice_without_start = std.Load(
             std.Var(ty=i32, name="x"),
-            std.Range(
-                start=None,
-                stop=2,
-            ),
+            std.Range(None, 2),
         )
         assert slice_without_start.text() == "x[:2]"
-
-        slice_without_stop = std.Load(
-            std.Var(ty=i32, name="x"),
-            std.Range(
-                start=1,
-                step=3,
-            ),
-        )
-        assert slice_without_stop.text() == "x[1::3]"
 
     def test_structural_equality(self) -> None:
         i32 = std.PrimTy("int32")
         lhs = std.Load(
             std.Var(ty=i32, name="x"),
-            std.Range(
-                start=1,
-                stop=2,
-            ),
-            std.Range(
-                start=1,
-                stop=2,
-                step=3,
-            ),
+            std.Range(1, 2),
+            std.Range(1, 2, step=3),
             ty=i32,
         )
         rhs = std.Load(
             std.Var(ty=i32, name="x"),
-            std.Range(
-                start=1,
-                stop=2,
-            ),
-            std.Range(
-                start=1,
-                stop=2,
-                step=3,
-            ),
+            std.Range(1, 2),
+            std.Range(1, 2, step=3),
             ty=i32,
         )
         different = std.Load(std.Var(ty=i32, name="x"), 2, ty=i32)
@@ -2204,14 +2154,12 @@ class TestFor:
     def test_constructor(self) -> None:
         i32 = std.PrimTy("int32")
         x = std.Var(ty=i32, name="x")
-        range_node = std.Range(
-            start=1,
-            stop=2,
-        )
+        range_node = std.Range(1, 2)
+        range_extent = range_node.extent
         body = [std.Store(x, 2, 1)]
         node = std.For(
             start=range_node.start,
-            stop=range_node.stop,
+            extent=range_extent,
             step=range_node.step,
             attrs={"tag": "demo"},
             body=body,
@@ -2224,13 +2172,13 @@ class TestFor:
         assert tuple(field.name for field in fields(std.For)) == (
             "attrs",
             "start",
-            "stop",
+            "extent",
             "step",
             "vars",
             "body",
         )
         assert node.start == range_node.start
-        assert node.stop == range_node.stop
+        assert node.extent == range_node.extent
         assert node.step == range_node.step
         assert node.attrs is not None
         assert list(node.vars) == [x]
@@ -2239,15 +2187,13 @@ class TestFor:
     def test_attrs_field_accepts_dict_attrs_and_none(self) -> None:
         i32 = std.PrimTy("int32")
         x = std.Var(ty=i32, name="x")
-        cond_range = std.Range(
-            start=1,
-            stop=2,
-        )
+        cond_range = std.Range(1, 2)
+        cond_extent = cond_range.extent
         body = [std.Store(x, 2, 1)]
         attrs = {"pragma": "unroll"}
         with_attrs = std.For(
             start=cond_range.start,
-            stop=cond_range.stop,
+            extent=cond_extent,
             step=cond_range.step,
             attrs=attrs,
             body=body,
@@ -2255,14 +2201,14 @@ class TestFor:
         )
         without_attrs = std.For(
             start=cond_range.start,
-            stop=cond_range.stop,
+            extent=cond_extent,
             step=cond_range.step,
             body=body,
             vars=[x],
         )
         with_empty_attrs = std.For(
             start=cond_range.start,
-            stop=cond_range.stop,
+            extent=cond_extent,
             step=cond_range.step,
             attrs={},
             body=body,
@@ -2281,7 +2227,7 @@ class TestFor:
         x = std.Var(ty=i32, name="x")
         node = std.For(
             start=1,
-            stop=2,
+            extent=2,
             step=None,
             attrs={"tag": "demo"},
             body=[std.Store(x, 2, 1)],
@@ -2295,7 +2241,7 @@ class TestFor:
         x = std.Var(ty=i32, name="x")
         node = std.For(
             start=1,
-            stop=2,
+            extent=2,
             step=None,
             attrs={"z": 3, "a": 1},
             body=[std.Store(x, 2, 1)],
@@ -2304,32 +2250,24 @@ class TestFor:
 
         assert node.text() == "for x in range(1, 2, a=1, z=3):\n  x[1] = 2"
 
-    def test_text_format_preserves_sparse_range_fields(self) -> None:
+    def test_text_format_with_step_keyword(self) -> None:
         i32 = std.PrimTy("int32")
         x = std.Var(ty=i32, name="x")
-        start_only = std.For(
+        node = std.For(
             start=1,
-            stop=None,
-            step=None,
+            extent=4,
             body=[],
             vars=[x],
-        )
-        step_only = std.For(
-            start=None,
-            stop=None,
             step=2,
-            body=[],
-            vars=[x],
         )
 
-        assert start_only.text() == "for x in range(1, None):\n  pass"
-        assert step_only.text() == "for x in range(None, None, 2):\n  pass"
+        assert node.text() == "for x in range(1, 4, step=2):\n  pass"
 
     def test_structural_equality(self) -> None:
         i32 = std.PrimTy("int32")
         lhs = std.For(
             start=1,
-            stop=2,
+            extent=2,
             step=None,
             attrs={"tag": "demo"},
             body=[std.Store(std.Var(ty=i32, name="x"), 2, 1)],
@@ -2337,7 +2275,7 @@ class TestFor:
         )
         rhs = std.For(
             start=1,
-            stop=2,
+            extent=2,
             step=None,
             attrs={"tag": "demo"},
             body=[std.Store(std.Var(ty=i32, name="x"), 2, 1)],
@@ -2345,7 +2283,7 @@ class TestFor:
         )
         different = std.For(
             start=1,
-            stop=3,
+            extent=3,
             step=None,
             attrs={"tag": "demo"},
             body=[std.Store(std.Var(ty=i32, name="x"), 2, 1)],
@@ -2826,30 +2764,21 @@ class TestStore:
         slice_without_step = std.Store(
             std.Var(ty=i32, name="x"),
             3,
-            std.Range(
-                start=1,
-                stop=2,
-            ),
+            std.Range(1, 2),
         )
         assert slice_without_step.text() == "x[1:2] = 3"
 
         slice_without_start = std.Store(
             std.Var(ty=i32, name="x"),
             3,
-            std.Range(
-                start=None,
-                stop=2,
-            ),
+            std.Range(None, 2),
         )
         assert slice_without_start.text() == "x[:2] = 3"
 
         mixed_indices = std.Store(
             std.Var(ty=i32, name="x"),
             4,
-            std.Range(
-                start=1,
-                stop=2,
-            ),
+            std.Range(1, 2),
             3,
         )
         assert mixed_indices.text() == "x[1:2, 3] = 4"
@@ -3316,7 +3245,7 @@ class TestDialectMnemonic:
             (i32, std.PrimTy),
             (x, std.Var),
             (std.BoolImm(std.PrimTy("bool"), True), std.BoolImm),
-            (std.Range(start=0, stop=4), std.Range),
+            (std.Range(0, 4), std.Range),
             (std.Add(x, one, ty=i32), std.Add),
             (std.CDiv(x, one, ty=i32), std.CDiv),
             (std.Call("callee", x, tag="demo", ty=i32), std.Call),
@@ -3518,7 +3447,7 @@ class TestDialectPrintMap:
         x = std.Var(ty=i32, name="x")
         node = std.For(
             start=1,
-            stop=2,
+            extent=2,
             step=None,
             body=[std.Store(x, 2, 1)],
             vars=[x],
@@ -3532,7 +3461,7 @@ class TestDialectPrintMap:
         x = std.Var(ty=i32, name="x")
         node = std.For(
             start=1,
-            stop=2,
+            extent=2,
             step=None,
             body=[std.Store(x, 2, 1)],
             vars=[x],
