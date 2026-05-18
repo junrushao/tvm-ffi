@@ -390,6 +390,45 @@ text::ExprAST CallMnemonic(const text::PrinterConfig& cfg, const ObjectRef& obj)
 
 String DialectName(const AnyView& obj) { return DialectMnemonic(obj.type_index())[0]; }
 
+Path DialectFieldsPath(const Path& path) { return path->Attr("__ffi_dialect_field_collector__"); }
+
+text::ExprAST HeaderName(const text::PrinterConfig& cfg, const ObjectRef& obj,
+                         const char* std_mnemonic, String generic_dialect,
+                         String generic_mnemonic) {
+  Array<String> dialect_mnemonic = DialectMnemonic(obj->type_index());
+  if (dialect_mnemonic[0] == "std" && dialect_mnemonic[1] == std_mnemonic) {
+    return GetPrintedName(cfg, std::move(generic_dialect), std::move(generic_mnemonic));
+  }
+  return CallMnemonic(cfg, obj);
+}
+
+FieldCollectionResult EmptyFieldCollection() {
+  return FieldCollectionResult(List<Any>{}, DictAttrs(Dict<String, Any>{}), List<Var>{},
+                               List<Node>{});
+}
+
+FieldCollectionResult CollectDialectFields(const ObjectRef& obj) {
+  static refl::TypeAttrColumn field_collector_col(refl::type_attr::kDialectFieldCollector);
+  AnyView func_view = field_collector_col[obj->type_index()];
+  if (func_view == nullptr) {
+    return EmptyFieldCollection();
+  }
+  Function func = func_view.cast<Function>();
+  Any ret;
+  AnyView args[1] = {obj};
+  func.CallPacked(args, 1, &ret);
+  if (ret == nullptr) {
+    TVM_FFI_THROW(ValueError) << "__ffi_dialect_field_collector__ of type '"
+                              << String(TVMFFIGetTypeInfo(obj->type_index())->type_key)
+                              << "' returned None; it must return FieldCollectionResult";
+  }
+  return ret.cast<FieldCollectionResult>();
+}
+
+bool HasCollectedArgsOrAttrs(const FieldCollectionResult& fields) {
+  return !fields->args.empty() || !fields->attrs->values.empty();
+}
+
 text::ExprAST DefineVar(const text::IRPrinter& printer, const Var& var) {
   // Convert a std.Var object into its textual identifier and register it with
   // the printer if this is the first occurrence.  For example, the first visit
@@ -458,6 +497,17 @@ struct ExprBuilder {
     TVM_FFI_THROW(ValueError) << "ffi.std.Attrs text printer must return CallAST";
   }
 
+  void AddDialectFields(const text::IRPrinter& printer, const FieldCollectionResult& fields,
+                        const Path& path) {
+    Path args_path = DialectFieldsPath(path)->Attr("args");
+    int64_t n = static_cast<int64_t>(fields->args.size());
+    operands.reserve(static_cast<int64_t>(operands.size()) + n);
+    for (int64_t i = 0; i < n; ++i) {
+      AddOperand(printer, fields->args[i], args_path->ArrayItem(i));
+    }
+    AddAttrs(printer, Optional<Attrs>(fields->attrs), DialectFieldsPath(path)->Attr("attrs"));
+  }
+
   bool ExprDerivable() const {
     // Checks C1 (no attr) & C2 (same dialect)
     return kwargs_keys.empty() && this->dialects.size() &&
@@ -518,6 +568,17 @@ struct ScopeBuilder {
     TVM_FFI_THROW(ValueError) << "ffi.std.Attrs text printer must return CallAST";
   }
 
+  void AddDialectArgsAttrs(const text::IRPrinter& printer, const FieldCollectionResult& fields,
+                           const Path& path) {
+    Path args_path = DialectFieldsPath(path)->Attr("args");
+    int64_t n = static_cast<int64_t>(fields->args.size());
+    operands.reserve(static_cast<int64_t>(operands.size()) + n);
+    for (int64_t i = 0; i < n; ++i) {
+      operands.push_back(printer->ToExpr(fields->args[i], args_path->ArrayItem(i)));
+    }
+    AddAttrs(printer, Optional<Attrs>(fields->attrs), DialectFieldsPath(path)->Attr("attrs"));
+  }
+
   void AddTargets(const text::IRPrinter& printer, const List<Var>& vars) {
     int64_t n = static_cast<int64_t>(vars.size());
     targets.reserve(static_cast<int64_t>(targets.size()) + n);
@@ -573,6 +634,7 @@ TVM_FFI_TEXT_PRINT_DISALLOW(Stmt)
 TVM_FFI_TEXT_PRINT_DISALLOW(Attrs)
 TVM_FFI_TEXT_PRINT_DISALLOW(Aggregate)
 TVM_FFI_TEXT_PRINT_DISALLOW(Expr)
+TVM_FFI_TEXT_PRINT_DISALLOW(FieldCollectionResult)
 #undef TVM_FFI_TEXT_PRINT_DISALLOW
 
 /************************************************************************/
@@ -733,8 +795,10 @@ text::NodeAST PrintBinaryOp(const T& obj, const text::IRPrinter& printer, const 
   ExprBuilder ctx;
   ctx.AddOperand(printer, obj->a, path->Attr("a"));
   ctx.AddOperand(printer, obj->b, path->Attr("b"));
+  FieldCollectionResult fields = CollectDialectFields(obj);
+  ctx.AddDialectFields(printer, fields, path);
   if constexpr (op_kind != text::OperationASTObj::kUndefined) {
-    if (ctx.ExprDerivable()) {
+    if (!HasCollectedArgsOrAttrs(fields) && ctx.ExprDerivable()) {
       return text::OperationAST(static_cast<int64_t>(op_kind), std::move(ctx.operands));
     }
   }
@@ -793,7 +857,9 @@ text::NodeAST TextPrint(const CMod& obj, const text::IRPrinter& printer, const P
 text::NodeAST TextPrint(const Not& obj, const text::IRPrinter& printer, const Path& path) {
   ExprBuilder ctx;
   ctx.AddOperand(printer, obj->operand, path->Attr("operand"));
-  if (ctx.ExprDerivable()) {
+  FieldCollectionResult fields = CollectDialectFields(obj);
+  ctx.AddDialectFields(printer, fields, path);
+  if (!HasCollectedArgsOrAttrs(fields) && ctx.ExprDerivable()) {
     return text::OperationAST(static_cast<int64_t>(text::OperationASTObj::kNot),
                               std::move(ctx.operands));
   }
@@ -805,7 +871,9 @@ text::NodeAST TextPrint(const Not& obj, const text::IRPrinter& printer, const Pa
 text::NodeAST TextPrint(const BitwiseNot& obj, const text::IRPrinter& printer, const Path& path) {
   ExprBuilder ctx;
   ctx.AddOperand(printer, obj->operand, path->Attr("operand"));
-  if (ctx.ExprDerivable()) {
+  FieldCollectionResult fields = CollectDialectFields(obj);
+  ctx.AddDialectFields(printer, fields, path);
+  if (!HasCollectedArgsOrAttrs(fields) && ctx.ExprDerivable()) {
     return text::OperationAST(static_cast<int64_t>(text::OperationASTObj::kInvert),
                               std::move(ctx.operands));
   }
@@ -817,7 +885,9 @@ text::NodeAST TextPrint(const BitwiseNot& obj, const text::IRPrinter& printer, c
 text::NodeAST TextPrint(const Abs& obj, const text::IRPrinter& printer, const Path& path) {
   ExprBuilder ctx;
   ctx.AddOperand(printer, obj->operand, path->Attr("operand"));
-  if (ctx.ExprDerivable()) {
+  FieldCollectionResult fields = CollectDialectFields(obj);
+  ctx.AddDialectFields(printer, fields, path);
+  if (!HasCollectedArgsOrAttrs(fields) && ctx.ExprDerivable()) {
     return text::IdAST("abs")->Call(std::move(ctx.operands));
   }
   ctx.AddTy(printer, obj->ty, path->Attr("ty"));
@@ -830,7 +900,9 @@ text::NodeAST TextPrint(const IfExpr& obj, const text::IRPrinter& printer, const
   ctx.AddOperand(printer, obj->cond, path->Attr("cond"));
   ctx.AddOperand(printer, obj->then_expr, path->Attr("then_expr"));
   ctx.AddOperand(printer, obj->else_expr, path->Attr("else_expr"));
-  if (ctx.ExprDerivable()) {
+  FieldCollectionResult fields = CollectDialectFields(obj);
+  ctx.AddDialectFields(printer, fields, path);
+  if (!HasCollectedArgsOrAttrs(fields) && ctx.ExprDerivable()) {
     return text::OperationAST(static_cast<int64_t>(text::OperationASTObj::kIfThenElse),
                               std::move(ctx.operands));
   }
@@ -850,7 +922,9 @@ text::NodeAST TextPrint(const Load& obj, const text::IRPrinter& printer, const P
   for (size_t i = 0; i < obj->indices.size(); ++i) {
     ctx.operands.push_back(TextPrintSlice(obj->indices[i], printer, indices_path->ArrayItem(i)));
   }
-  if (ctx.ExprDerivable()) {  // Always true
+  FieldCollectionResult fields = CollectDialectFields(obj);
+  ctx.AddDialectFields(printer, fields, path);
+  if (!HasCollectedArgsOrAttrs(fields) && ctx.ExprDerivable()) {
     return text::IndexAST(ctx.operands[0], {ctx.operands.begin() + 1, ctx.operands.end()});
   } else {
     ctx.AddTy(printer, obj->ty, path->Attr("ty"));
@@ -868,7 +942,9 @@ text::NodeAST TextPrint(const Store& obj, const text::IRPrinter& printer, const 
     ctx.operands.push_back(TextPrintSlice(obj->indices[i], printer, indices_path->ArrayItem(i)));
   }
   ctx.AddAttrs(printer, obj->attrs, path->Attr("attrs"));
-  if (ctx.ExprDerivable()) {
+  FieldCollectionResult fields = CollectDialectFields(obj);
+  ctx.AddDialectFields(printer, fields, path);
+  if (!HasCollectedArgsOrAttrs(fields) && ctx.ExprDerivable()) {
     return text::AssignAST(text::IndexAST(ctx.operands[0],  //
                                           {ctx.operands.begin() + 2, ctx.operands.end()}),
                            ctx.operands[1]);
@@ -897,7 +973,10 @@ text::NodeAST TextPrint(const Assert& obj, const text::IRPrinter& printer, const
   ExprBuilder ctx;
   ctx.AddOperand(printer, obj->cond, path->Attr("cond"));
   ctx.AddAttrs(printer, obj->attrs, path->Attr("attrs"));
-  if (ctx.ExprDerivable() || (ctx.dialects.empty() && ctx.StmtDerivable(printer, obj))) {
+  FieldCollectionResult fields = CollectDialectFields(obj);
+  ctx.AddDialectFields(printer, fields, path);
+  if (!HasCollectedArgsOrAttrs(fields) &&
+      (ctx.ExprDerivable() || (ctx.dialects.empty() && ctx.StmtDerivable(printer, obj)))) {
     return text::AssertAST(ctx.operands[0]);
   }
   return ctx.StmtCall(printer, obj);
@@ -907,7 +986,10 @@ text::NodeAST TextPrint(const Return& obj, const text::IRPrinter& printer, const
   ExprBuilder ctx;
   ctx.AddOperands(printer, obj->exprs, path->Attr("exprs"));
   ctx.AddAttrs(printer, obj->attrs, path->Attr("attrs"));
-  if (ctx.ExprDerivable() || (ctx.dialects.empty() && ctx.StmtDerivable(printer, obj))) {
+  FieldCollectionResult fields = CollectDialectFields(obj);
+  ctx.AddDialectFields(printer, fields, path);
+  if (!HasCollectedArgsOrAttrs(fields) &&
+      (ctx.ExprDerivable() || (ctx.dialects.empty() && ctx.StmtDerivable(printer, obj)))) {
     return text::ReturnAST(StmtValue(std::move(ctx.operands)));
   }
   return ctx.StmtCall(printer, obj);
@@ -917,7 +999,10 @@ text::NodeAST TextPrint(const Yield_& obj, const text::IRPrinter& printer, const
   ExprBuilder ctx;
   ctx.AddOperands(printer, obj->exprs, path->Attr("exprs"));
   ctx.AddAttrs(printer, obj->attrs, path->Attr("attrs"));
-  if (ctx.ExprDerivable() || (ctx.dialects.empty() && ctx.StmtDerivable(printer, obj))) {
+  FieldCollectionResult fields = CollectDialectFields(obj);
+  ctx.AddDialectFields(printer, fields, path);
+  if (!HasCollectedArgsOrAttrs(fields) &&
+      (ctx.ExprDerivable() || (ctx.dialects.empty() && ctx.StmtDerivable(printer, obj)))) {
     return text::ExprStmtAST(text::YieldAST(StmtValue(std::move(ctx.operands))));
   }
   return ctx.StmtCall(printer, obj);
@@ -926,13 +1011,21 @@ text::NodeAST TextPrint(const Yield_& obj, const text::IRPrinter& printer, const
 text::NodeAST TextPrint(const Break& obj, const text::IRPrinter& printer, const Path& path) {
   ExprBuilder ctx;
   ctx.AddAttrs(printer, obj->attrs, path->Attr("attrs"));
-  return ctx.StmtDerivable(printer, obj) ? text::BreakAST() : ctx.StmtCall(printer, obj);
+  FieldCollectionResult fields = CollectDialectFields(obj);
+  ctx.AddDialectFields(printer, fields, path);
+  return !HasCollectedArgsOrAttrs(fields) && ctx.StmtDerivable(printer, obj)
+             ? text::BreakAST()
+             : ctx.StmtCall(printer, obj);
 }
 
 text::NodeAST TextPrint(const Continue& obj, const text::IRPrinter& printer, const Path& path) {
   ExprBuilder ctx;
   ctx.AddAttrs(printer, obj->attrs, path->Attr("attrs"));
-  return ctx.StmtDerivable(printer, obj) ? text::ContinueAST() : ctx.StmtCall(printer, obj);
+  FieldCollectionResult fields = CollectDialectFields(obj);
+  ctx.AddDialectFields(printer, fields, path);
+  return !HasCollectedArgsOrAttrs(fields) && ctx.StmtDerivable(printer, obj)
+             ? text::ContinueAST()
+             : ctx.StmtCall(printer, obj);
 }
 
 /***************************************************************/
@@ -966,9 +1059,11 @@ text::NodeAST TextPrint(const Call& obj, const text::IRPrinter& printer, const P
 
   ctx.AddOperands(printer, obj->args, path->Attr("args"));
   ctx.AddAttrs(printer, obj->attr, path->Attr("attr"));
+  FieldCollectionResult fields = CollectDialectFields(obj);
+  ctx.AddDialectFields(printer, fields, path);
 
   bool use_native =
-      obj->ty.as<AnyTyObj>() != nullptr &&
+      !HasCollectedArgsOrAttrs(fields) && obj->ty.as<AnyTyObj>() != nullptr &&
       (ctx.ExprDerivable() || (ctx.dialects.empty() && ctx.StmtDerivable(printer, obj)));
   if (use_native) {
     return callee->Call(std::move(ctx.operands));
@@ -1005,22 +1100,42 @@ text::NodeAST TextPrint(const BindExpr& obj, const text::IRPrinter& printer, con
   ExprBuilder ctx;
   ctx.AddOperand(printer, obj->expr, path->Attr("expr"));
   ctx.AddAttrs(printer, obj->attrs, path->Attr("attrs"));
-  text::ExprAST rhs = ctx.kwargs_keys.empty()
+  FieldCollectionResult fields = CollectDialectFields(obj);
+  ctx.AddDialectFields(printer, fields, path);
+  List<Var> vars;
+  vars.reserve(static_cast<int64_t>(obj->vars.size() + fields->var_def.size()));
+  for (const Var& var : obj->vars) {
+    vars.push_back(var);
+  }
+  for (const Var& var : fields->var_def) {
+    vars.push_back(var);
+  }
+  text::ExprAST rhs = ctx.kwargs_keys.empty() && !HasCollectedArgsOrAttrs(fields)
                           ? ctx.operands[0]
                           : CallMnemonic(printer->cfg, obj)
                                 ->CallKw(std::move(ctx.operands), std::move(ctx.kwargs_keys),
                                          std::move(ctx.kwargs_values));
-  if (obj->vars.empty()) {
+  if (vars.empty()) {
     return text::ExprStmtAST(std::move(rhs));
   }
-  return text::AssignAST(DefineVarTuple(printer, obj->vars), std::move(rhs));
+  return text::AssignAST(DefineVarTuple(printer, vars), std::move(rhs));
 }
 
 text::NodeAST TextPrint(const VarDef& obj, const text::IRPrinter& printer, const Path& path) {
   ExprBuilder ctx;
   ctx.AddVarDefTypes(printer, obj->vars, path->Attr("vars"));
   ctx.AddAttrs(printer, obj->attrs, path->Attr("attrs"));
-  if (obj->vars.empty()) {
+  FieldCollectionResult fields = CollectDialectFields(obj);
+  ctx.AddDialectFields(printer, fields, path);
+  List<Var> vars;
+  vars.reserve(static_cast<int64_t>(obj->vars.size() + fields->var_def.size()));
+  for (const Var& var : obj->vars) {
+    vars.push_back(var);
+  }
+  for (const Var& var : fields->var_def) {
+    vars.push_back(var);
+  }
+  if (vars.empty()) {
     if (ctx.kwargs_keys.empty()) {
       return text::ExprStmtAST(text::IdAST("pass"));
     }
@@ -1031,7 +1146,7 @@ text::NodeAST TextPrint(const VarDef& obj, const text::IRPrinter& printer, const
                           : CallMnemonic(printer->cfg, obj)
                                 ->CallKw(std::move(ctx.operands), std::move(ctx.kwargs_keys),
                                          std::move(ctx.kwargs_values));
-  return text::AssignAST(DefineVarTuple(printer, obj->vars), std::move(rhs));
+  return text::AssignAST(DefineVarTuple(printer, vars), std::move(rhs));
 }
 
 /*****************************************************************/
@@ -1040,32 +1155,58 @@ text::NodeAST TextPrint(const VarDef& obj, const text::IRPrinter& printer, const
 
 text::NodeAST TextPrint(const Module& obj, const text::IRPrinter& printer, const Path& path) {
   ScopeBuilder ctx("module", DialectName(obj), printer->cfg);
+  ctx.scope_call = HeaderName(printer->cfg, obj, "Module", DialectName(obj), "module");
+  FieldCollectionResult fields = CollectDialectFields(obj);
+  ctx.AddDialectArgsAttrs(printer, fields, path);
   ctx.AddBodyStmts(printer, obj->funcs, path->Attr("funcs"));
-  return text::ClassAST(text::IdAST("MyModule"), {}, {ctx.scope_call}, std::move(ctx.body));
+  ctx.AddBodyStmts(printer, fields->body, DialectFieldsPath(path)->Attr("body"));
+  return text::ClassAST(text::IdAST("MyModule"), {}, {ctx.StmtCall(true)}, std::move(ctx.body));
 }
 
 text::NodeAST TextPrint(const IfStmt& obj, const text::IRPrinter& printer, const Path& path) {
-  return text::IfAST(printer->ToExpr(obj->cond, path->Attr("cond")),
-                     PrintList<text::StmtAST>(printer, obj->then_body, path->Attr("then_body")),
+  FieldCollectionResult fields = CollectDialectFields(obj);
+  ScopeBuilder ctx("if_", DialectName(obj), printer->cfg);
+  ctx.scope_call = HeaderName(printer->cfg, obj, "IfStmt", DialectName(obj), "if_");
+  ctx.AddDialectArgsAttrs(printer, fields, path);
+  text::ExprAST cond = printer->ToExpr(obj->cond, path->Attr("cond"));
+  if (HasCollectedArgsOrAttrs(fields)) {
+    ctx.operands.insert(ctx.operands.begin(), cond);
+    cond = ctx.StmtCall(false);
+  }
+  List<text::StmtAST> then_body =
+      PrintList<text::StmtAST>(printer, obj->then_body, path->Attr("then_body"));
+  Path body_path = DialectFieldsPath(path)->Attr("body");
+  for (int64_t i = 0, n = static_cast<int64_t>(fields->body.size()); i < n; ++i) {
+    then_body.push_back(printer->operator()(fields->body[i], body_path->ArrayItem(i))
+                            .template cast<text::StmtAST>());
+  }
+  return text::IfAST(std::move(cond), std::move(then_body),
                      PrintList<text::StmtAST>(printer, obj->else_body, path->Attr("else_body")));
 }
 
 text::NodeAST TextPrint(const While& obj, const text::IRPrinter& printer, const Path& path) {
   ScopeBuilder ctx("while_", DialectName(obj), printer->cfg);
+  ctx.scope_call = HeaderName(printer->cfg, obj, "While", DialectName(obj), "while_");
   ctx.AddAttrs(printer, obj->attrs, path->Attr("attrs"));
+  FieldCollectionResult fields = CollectDialectFields(obj);
   ctx.AddBodyStmts(printer, obj->body, path->Attr("body"));
+  ctx.AddBodyStmts(printer, fields->body, DialectFieldsPath(path)->Attr("body"));
   text::ExprAST cond = printer->ToExpr(obj->cond, path->Attr("cond"));
-  if (ctx.kwargs_keys.empty()) {
+  if (ctx.kwargs_keys.empty() && !HasCollectedArgsOrAttrs(fields)) {
     return text::WhileAST(std::move(cond), std::move(ctx.body));
   } else {
     ctx.operands.push_back(cond);
+    ctx.AddDialectArgsAttrs(printer, fields, path);
     return text::WithAST({}, ctx.StmtCall(false), std::move(ctx.body));
   }
 }
 
 text::NodeAST TextPrint(const For& obj, const text::IRPrinter& printer, const Path& path) {
   ScopeBuilder ctx("range", "", printer->cfg);
+  ctx.scope_call = HeaderName(printer->cfg, obj, "For", "", "range");
   ctx.AddTargets(printer, obj->vars);
+  FieldCollectionResult fields = CollectDialectFields(obj);
+  ctx.AddTargets(printer, fields->var_def);
   // ----------- "range" section ----------- //
   Ty inferred_ty = PrimTy(kDefaultIntLiteralType);
   if (obj->start.has_value()) {
@@ -1094,7 +1235,9 @@ text::NodeAST TextPrint(const For& obj, const text::IRPrinter& printer, const Pa
   }
   // --------------------------------------- //
   ctx.AddAttrs(printer, obj->attrs, path->Attr("attrs"));
+  ctx.AddDialectArgsAttrs(printer, fields, path);
   ctx.AddBodyStmts(printer, obj->body, path->Attr("body"));
+  ctx.AddBodyStmts(printer, fields->body, DialectFieldsPath(path)->Attr("body"));
   text::ExprAST lhs = *ctx.Target(/*create_placeholder_for_none=*/true);
   text::ExprAST rhs = ctx.StmtCall(false);
   return text::ForAST(std::move(lhs), std::move(rhs), std::move(ctx.body));
@@ -1103,7 +1246,10 @@ text::NodeAST TextPrint(const For& obj, const text::IRPrinter& printer, const Pa
 text::NodeAST TextPrint(const Func& obj, const text::IRPrinter& printer, const Path& path) {
   // TODO(@junrushao): Handle dynamic shape, where a VarDef may contain other variable definition.
   ScopeBuilder ctx("func", DialectName(obj), printer->cfg);
+  ctx.scope_call = HeaderName(printer->cfg, obj, "Func", DialectName(obj), "func");
   ctx.AddAttrs(printer, obj->attrs, path->Attr("attrs"));
+  FieldCollectionResult fields = CollectDialectFields(obj);
+  ctx.AddDialectArgsAttrs(printer, fields, path);
   // ----------- "args" section ----------- //
   List<text::AssignAST> args;
   int64_t n = static_cast<int64_t>(obj->args.size());
@@ -1116,6 +1262,7 @@ text::NodeAST TextPrint(const Func& obj, const text::IRPrinter& printer, const P
   }
   // -------------------------------------- //
   ctx.AddBodyStmts(printer, obj->body, path->Attr("body"));
+  ctx.AddBodyStmts(printer, fields->body, DialectFieldsPath(path)->Attr("body"));
   Optional<text::ExprAST> ret_type;
   if (obj->ret_type.has_value()) {
     ret_type = printer->ToExpr(*obj->ret_type, path->Attr("ret_type"));
@@ -1126,7 +1273,9 @@ text::NodeAST TextPrint(const Func& obj, const text::IRPrinter& printer, const P
 
 text::NodeAST TextPrint(const Scope& obj, const text::IRPrinter& printer, const Path& path) {
   ScopeBuilder ctx("scope", DialectName(obj), printer->cfg);
+  ctx.scope_call = HeaderName(printer->cfg, obj, "Scope", DialectName(obj), "scope");
   ctx.AddAttrs(printer, obj->attrs, path->Attr("attrs"));
+  FieldCollectionResult fields = CollectDialectFields(obj);
   int64_t n = static_cast<int64_t>(obj->binds.size());
   ctx.operands.reserve(n);
   Path binds_path = path->Attr("binds");
@@ -1153,7 +1302,10 @@ text::NodeAST TextPrint(const Scope& obj, const text::IRPrinter& printer, const 
                                               bind_ctx.kwargs_values));
     ctx.AddTargets(printer, *vars);
   }
+  ctx.AddDialectArgsAttrs(printer, fields, path);
+  ctx.AddTargets(printer, fields->var_def);
   ctx.AddBodyStmts(printer, obj->body, path->Attr("body"));
+  ctx.AddBodyStmts(printer, fields->body, DialectFieldsPath(path)->Attr("body"));
   if (ctx.operands.empty() && ctx.kwargs_keys.empty()) {
     return text::StmtBlockAST(std::move(ctx.body));
   }
@@ -2172,6 +2324,12 @@ TVM_FFI_STATIC_INIT_BLOCK() {
   TVM_FFI_STD_OBJECT_DEF(ContinueObj, Continue, "Continue");
   TVM_FFI_STD_OBJECT_DEF(DictAttrsObj, DictAttrs, "DictAttrs")
       .def_rw("values", &DictAttrsObj::values);
+  TVM_FFI_STD_OBJECT_DEF(FieldCollectionResultObj, FieldCollectionResult, "FieldCollectionResult")
+      .def_rw("args", &FieldCollectionResultObj::args)
+      .def_rw("attrs", &FieldCollectionResultObj::attrs)
+      .def_rw("var_def", &FieldCollectionResultObj::var_def,
+              refl::AttachFieldFlag::SEqHashDefRecursive())
+      .def_rw("body", &FieldCollectionResultObj::body);
 
 #undef TVM_FFI_STD_OBJECT_DEF
 #undef TVM_FFI_STD_OBJECT_DEF_CUSTOM_INIT

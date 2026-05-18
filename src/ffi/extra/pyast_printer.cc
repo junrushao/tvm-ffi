@@ -1878,6 +1878,7 @@ TVM_FFI_STATIC_INIT_BLOCK() {
   // Ensure __ffi_text_print__ type attribute column exists
   refl::EnsureTypeAttrColumn(refl::type_attr::kTextPrint);
   refl::EnsureTypeAttrColumn(refl::type_attr::kDialectMnemonic);
+  refl::EnsureTypeAttrColumn(refl::type_attr::kDialectFieldCollector);
   // PrinterConfig
   refl::ObjectDef<text::PrinterConfigObj>()
       .def_rw("def_free_var", &text::PrinterConfigObj::def_free_var)

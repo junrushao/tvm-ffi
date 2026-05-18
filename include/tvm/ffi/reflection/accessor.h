@@ -393,6 +393,17 @@ inline constexpr const char* kTextPrint = "__ffi_text_print__";
  */
 inline constexpr const char* kDialectMnemonic = "__ffi_dialect_mnemonic__";
 /*!
+ * \brief Generated collector for language-relevant fields on std-derived dialect nodes.
+ *
+ * The hook returns a ``std::FieldCollectionResult`` containing positional
+ * arguments, keyword attributes, variables defined by the node, and body
+ * statements. It is used by text printers that inherit std syntax but need
+ * subclass-defined operands, attributes, targets, or bodies.
+ *
+ * Signature: ``(TSelf self) -> ffi.std.FieldCollectionResult``.
+ */
+inline constexpr const char* kDialectFieldCollector = "__ffi_dialect_field_collector__";
+/*!
  * \brief Custom recursive hash hook.
  *
  * If registered, ``RecursiveHash`` (Python ``hash()``) calls this instead

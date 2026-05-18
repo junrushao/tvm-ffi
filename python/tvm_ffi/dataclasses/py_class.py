@@ -346,6 +346,10 @@ def _validate_type_attr_value(cls: type, name: str, value: Any) -> None:
                 "tuple[str, str], "
                 f"got {type(value).__name__}.",
             )
+    elif name == "__ffi_dialect_field_collector__" and not callable(value):
+        raise TypeError(
+            f"@py_class({cls.__name__!r}): {name!r} must be callable, got {type(value).__name__}."
+        )
 
 
 def _collect_py_methods(cls: type) -> list[tuple[str, Any, bool]] | None:
@@ -398,6 +402,109 @@ def _collect_py_methods(cls: type) -> list[tuple[str, Any, bool]] | None:
         func = value.__func__ if is_static else value
         methods.append((name, func, is_static))
     return methods if methods else None
+
+
+def _make_dialect_field_collector() -> Callable[[Any], Any]:  # noqa: PLR0915
+    """Create a generated collector for fields marked with ``lang_kind``."""
+
+    def collect(obj: Any) -> Any:  # noqa: PLR0912
+        from collections.abc import Mapping, Sequence  # noqa: PLC0415
+
+        from tvm_ffi import dataclasses as dc  # noqa: PLC0415
+        from tvm_ffi import std  # noqa: PLC0415
+
+        args: list[Any] = []
+        attrs: dict[str, Any] = {}
+        var_def: list[std.Var] = []
+        body: list[std.Node] = []
+
+        def extend_values(target: list[Any], value: Any) -> None:
+            if value is None:
+                return
+            if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+                target.extend(value)
+            else:
+                target.append(value)
+
+        def extend_var_def(value: Any) -> None:
+            if value is None:
+                return
+            if isinstance(value, std.Var):
+                var_def.append(value)
+                return
+            if isinstance(value, (std.BindExpr, std.VarDef)):
+                var_def.extend(value.vars)
+                return
+            if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+                for item in value:
+                    extend_var_def(item)
+                return
+            collector = getattr(type(value), "__ffi_dialect_field_collector__", None)
+            if callable(collector):
+                var_def.extend(collector(value).var_def)
+
+        for f in dc.fields(obj):
+            lang_kind = getattr(f, "lang_kind", None)
+            if lang_kind is None:
+                continue
+            assert f.name is not None
+            value = getattr(obj, f.name)
+            if lang_kind == "arg":
+                extend_values(args, value)
+            elif lang_kind == "attr":
+                if value is None:
+                    continue
+                if f.name == "attrs":
+                    if isinstance(value, std.DictAttrs):
+                        attrs.update(value.values)
+                    elif isinstance(value, Mapping):
+                        attrs.update(value)
+                    else:
+                        attrs[f.name] = value
+                else:
+                    attrs[f.name] = value
+            elif lang_kind == "var_def":
+                extend_var_def(value)
+            elif lang_kind == "body":
+                extend_values(typing.cast(list[Any], body), value)
+            else:
+                raise ValueError(f"unsupported lang_kind: {lang_kind!r}")
+
+        return std.FieldCollectionResult(args, std.DictAttrs(**attrs), var_def, body)
+
+    return collect
+
+
+def _maybe_add_generated_dialect_field_collector(
+    cls: type,
+    own_fields: list[Field],
+    py_methods: list[tuple[str, Any, bool]],
+) -> None:
+    """Register the generated dialect field collector when fields request it."""
+    if not any(f.lang_kind is not None for f in own_fields):
+        return
+    if "__ffi_dialect_field_collector__" in cls.__dict__:
+        raise TypeError(
+            f"@py_class({cls.__name__!r}): __ffi_dialect_field_collector__ "
+            "is generated from field(lang_kind=...) and cannot be defined manually"
+        )
+    py_methods.append(("__ffi_dialect_field_collector__", _make_dialect_field_collector(), True))
+
+
+def _maybe_add_inherited_text_print(cls: type, py_methods: list[tuple[str, Any, bool]]) -> None:
+    """Mirror parent text-print hooks onto std-derived Python subclasses."""
+    if "__ffi_text_print__" in cls.__dict__:
+        return
+    if getattr(cls, "__ffi_dialect_mnemonic__", None) is None:
+        return
+    for parent in cls.__mro__[1:]:
+        type_info = getattr(parent, "__tvm_ffi_type_info__", None)
+        if type_info is None:
+            continue
+        text_print = core._lookup_type_attr(type_info.type_index, "__ffi_text_print__")
+        if callable(text_print):
+            py_methods.append(("__ffi_text_print__", text_print, True))
+            return
 
 
 def _build_localns(cls: type, *, cross_module: bool = False) -> dict[str, Any]:
@@ -512,7 +619,9 @@ def _register_fields_into_type(
             assert f.name is not None
             fields_map[f.name] = f
     own_fields = list(fields_map.values())
-    py_methods = _collect_py_methods(cls)
+    py_methods = _collect_py_methods(cls) or []
+    _maybe_add_generated_dialect_field_collector(cls, own_fields, py_methods)
+    _maybe_add_inherited_text_print(cls, py_methods)
 
     # Register fields and type-level structural eq/hash kind with the C layer.
     structure_kind = _STRUCTURE_KIND_MAP.get(params.get("structural_eq"))
@@ -526,7 +635,7 @@ def _register_fields_into_type(
     # Register user-defined dunder methods and read back system-generated ones.
     # Non-callable entries whose names are in _FFI_TYPE_ATTR_NAMES are routed
     # to TVMFFITypeRegisterAttr by the Cython layer.
-    type_info._register_py_methods(py_methods, type_attr_names=_FFI_TYPE_ATTR_NAMES)
+    type_info._register_py_methods(py_methods or None, type_attr_names=_FFI_TYPE_ATTR_NAMES)
     _add_class_attrs(cls, type_info, type_attr_names=_FFI_TYPE_ATTR_NAMES)
 
     # Remove deferred __init__ and restore user-defined __init__ if saved
@@ -678,6 +787,7 @@ _FFI_TYPE_ATTR_NAMES: frozenset[str] = frozenset(
         "__ffi_text_print__",
         # IR dialect metadata
         "__ffi_dialect_mnemonic__",
+        "__ffi_dialect_field_collector__",
     }
 )
 

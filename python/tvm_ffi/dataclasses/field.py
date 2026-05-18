@@ -115,6 +115,7 @@ class Field:
         "hash",
         "init",
         "kw_only",
+        "lang_kind",
         "name",
         "repr",
         "structural_eq",
@@ -131,6 +132,7 @@ class Field:
     hash: bool | None
     compare: bool
     kw_only: bool | None
+    lang_kind: str | None
     structural_eq: str | None
     doc: str | None
 
@@ -141,6 +143,10 @@ class Field:
     #: ``SEqHashDef`` API.
     _VALID_STRUCTURAL_EQ_VALUES: ClassVar[frozenset[str | None]] = frozenset(
         {None, "ignore", "def", "def-recursive", "def-non-recursive"}
+    )
+    #: Valid values for the *lang_kind* parameter.
+    _VALID_LANG_KIND_VALUES: ClassVar[frozenset[str | None]] = frozenset(
+        {None, "arg", "attr", "var_def", "body"}
     )
 
     def __init__(  # noqa: PLR0913
@@ -156,6 +162,7 @@ class Field:
         hash: bool | None = True,
         compare: bool = False,
         kw_only: bool | None = False,
+        lang_kind: str | None = None,
         structural_eq: str | None = None,
         doc: str | None = None,
     ) -> None:
@@ -175,6 +182,11 @@ class Field:
                 f"{sorted(Field._VALID_STRUCTURAL_EQ_VALUES, key=str)}, "
                 f"got {structural_eq!r}"
             )
+        if lang_kind not in Field._VALID_LANG_KIND_VALUES:
+            raise ValueError(
+                f"lang_kind must be one of {sorted(Field._VALID_LANG_KIND_VALUES, key=str)}, "
+                f"got {lang_kind!r}"
+            )
         self.name = name
         self._ty_schema = _ty_schema
         self.type = None
@@ -186,11 +198,12 @@ class Field:
         self.hash = hash
         self.compare = compare
         self.kw_only = kw_only
+        self.lang_kind = lang_kind
         self.structural_eq = structural_eq
         self.doc = doc
 
 
-def field(
+def field(  # noqa: PLR0913
     *,
     default: object = MISSING,
     default_factory: Callable[[], object] | None = MISSING,  # type: ignore[assignment]
@@ -200,6 +213,7 @@ def field(
     hash: bool | None = None,
     compare: bool = True,
     kw_only: bool | None = None,
+    lang_kind: str | None = None,
     structural_eq: str | None = None,
     doc: str | None = None,
 ) -> Any:
@@ -237,6 +251,10 @@ def field(
     kw_only
         Whether this field is keyword-only in ``__init__``.
         ``None`` means "inherit from the decorator-level ``kw_only`` flag".
+    lang_kind
+        Optional text-format role for ``std.Node`` dialect subclasses.
+        Supported values are ``"arg"``, ``"attr"``, ``"var_def"``, and
+        ``"body"``. The value is metadata only and is not a reflected field.
     structural_eq
         Structural equality/hashing annotation. ``None`` (default) means
         the field participates normally. ``"ignore"`` excludes the field
@@ -280,6 +298,7 @@ def field(
         hash=hash,
         compare=compare,
         kw_only=kw_only,
+        lang_kind=lang_kind,
         structural_eq=structural_eq,
         doc=doc,
     )

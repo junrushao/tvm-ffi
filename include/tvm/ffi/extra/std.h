@@ -30,6 +30,7 @@
  * |   `-- TensorTy
  * |-- Attrs
  * |   `-- DictAttrs
+ * |-- FieldCollectionResult
  * |-- Aggregate
  * |   `-- Range
  * |-- Module
@@ -1151,6 +1152,40 @@ struct DictAttrs : public Attrs {
       : DictAttrs(make_object<DictAttrsObj>(std::move(values))) {}
   /// \cond Doxygen_Suppress
   TVM_FFI_DEFINE_OBJECT_REF_METHODS_NULLABLE(DictAttrs, Attrs, DictAttrsObj);
+  /// \endcond
+};
+
+/*! \brief Collected language fields for std-derived dialect text printing. */
+struct FieldCollectionResultObj : public NodeObj {
+  /*! \brief Positional operands or header arguments. */
+  List<Any> args;
+  /*! \brief Compile-time attributes printed as keyword arguments. */
+  DictAttrs attrs;
+  /*! \brief Variables introduced by this node. */
+  List<Var> var_def;
+  /*! \brief Body nodes owned by this node. */
+  List<Node> body;
+
+  /// \cond Doxygen_Suppress
+  FieldCollectionResultObj() = default;
+  FieldCollectionResultObj(List<Any> args, DictAttrs attrs, List<Var> var_def, List<Node> body)
+      : args(std::move(args)),
+        attrs(std::move(attrs)),
+        var_def(std::move(var_def)),
+        body(std::move(body)) {}
+
+  TVM_FFI_DECLARE_OBJECT_INFO("ffi.std.FieldCollectionResult", FieldCollectionResultObj, NodeObj);
+  /// \endcond
+};
+
+/*! \brief Reference wrapper for collected dialect text-format fields. */
+struct FieldCollectionResult : public Node {
+  /*! \brief Construct a field collection result. */
+  FieldCollectionResult(List<Any> args, DictAttrs attrs, List<Var> var_def, List<Node> body)
+      : FieldCollectionResult(make_object<FieldCollectionResultObj>(
+            std::move(args), std::move(attrs), std::move(var_def), std::move(body))) {}
+  /// \cond Doxygen_Suppress
+  TVM_FFI_DEFINE_OBJECT_REF_METHODS_NULLABLE(FieldCollectionResult, Node, FieldCollectionResultObj);
   /// \endcond
 };
 

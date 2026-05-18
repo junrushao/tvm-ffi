@@ -17,13 +17,21 @@
 
 from __future__ import annotations
 
+import itertools
 from typing import Any, cast
 
 import pytest
 import tvm_ffi
 from tvm_ffi import core, pyast, std
+from tvm_ffi import dataclasses as dc
 from tvm_ffi.access_path import AccessPath
 from tvm_ffi.dataclasses import fields
+
+_dialect_counter = itertools.count()
+
+
+def _unique_dialect_key(base: str) -> str:
+    return f"testing.std_dialect.{base}_{next(_dialect_counter)}"
 
 
 class TestAnyTy:
@@ -3063,6 +3071,60 @@ class TestDictAttrs:
         assert not tvm_ffi.structural_equal(lhs, different)
 
 
+class TestDialectFieldCollection:
+    def test_ext_for_prints_collected_attrs_with_subclass_mnemonic(self) -> None:
+        @dc.py_class(_unique_dialect_key("ExtFor"))
+        class ExtFor(std.For, mnemonic="toy.For"):
+            loop_kind: str = dc.field(lang_kind="attr")
+
+        i = std.Var("int64", "i")
+        node = ExtFor(
+            start=std.IntImm(std.PrimTy("int64"), 0),
+            stop=std.IntImm(std.PrimTy("int64"), 4),
+            step=None,
+            vars=[i],
+            body=[std.Break()],
+            attrs=None,
+            loop_kind="unrolled",
+        )
+
+        assert node.text() == 'for i in toy.For(0, 4, loop_kind="unrolled"):\n  break'
+        collected = cast(Any, type(node)).__ffi_dialect_field_collector__(node)
+        assert isinstance(collected, std.FieldCollectionResult)
+        assert dict(collected.attrs.values) == {"loop_kind": "unrolled"}
+
+    def test_vardef_subclass_collects_args_attrs_and_defined_vars(self) -> None:
+        @dc.py_class(_unique_dialect_key("MatmulOp"))
+        class MatmulOp(std.VarDef, mnemonic="toy.Matmul"):
+            x: std.Var = dc.field(lang_kind="arg")
+            y: std.Var = dc.field(lang_kind="arg")
+            out: std.Var = dc.field(lang_kind="var_def")
+            tag: str = dc.field(lang_kind="attr")
+
+        x = std.Var("int32", "x")
+        y = std.Var("int32", "y")
+        out = std.Var("int32", "out")
+        node = MatmulOp(vars=[], attrs=None, x=x, y=y, out=out, tag="tensorcore")
+
+        assert node.text() == 'out = toy.Matmul(x, y, tag="tensorcore")'
+        collected = cast(Any, type(node)).__ffi_dialect_field_collector__(node)
+        assert list(collected.args) == [x, y]
+        assert list(collected.var_def) == [out]
+        assert dict(collected.attrs.values) == {"tag": "tensorcore"}
+
+    def test_module_subclass_collects_body_nodes(self) -> None:
+        @dc.py_class(_unique_dialect_key("ExtModule"))
+        class ExtModule(std.Module, mnemonic="toy.Module"):
+            extra: std.Func = dc.field(lang_kind="body")
+
+        func = std.Func("f", [], None, [std.Return()])
+        node = ExtModule(funcs=[], extra=func)
+
+        assert node.text() == "@toy.Module\nclass MyModule:\n  @std.func\n  def f():\n    return"
+        collected = cast(Any, type(node)).__ffi_dialect_field_collector__(node)
+        assert list(collected.body) == [func]
+
+
 class TestDialectMnemonic:
     def test_subclass_keyword_sets_python_dialect_mnemonic(self) -> None:
         class ToyNode(std.Node, mnemonic="toy.Node"):
@@ -3100,6 +3162,7 @@ class TestDialectMnemonic:
             (std.TensorTy, ("std", "Tensor")),
             (std.Range, ("std", "Range")),
             (std.DictAttrs, ("std", "DictAttrs")),
+            (std.FieldCollectionResult, ("std", "FieldCollectionResult")),
             (std.Var, ("std", "Var")),
             (std.Func, ("std", "Func")),
             (std.Module, ("std", "Module")),
@@ -3169,7 +3232,7 @@ class TestDialectMnemonic:
             if isinstance(cls, type) and issubclass(cls, std.Node) and cls not in abstract:
                 concrete_classes.append(cls)
 
-        assert len(concrete_classes) == 55
+        assert len(concrete_classes) == 56
         for cls in concrete_classes:
             cls_any = cast(Any, cls)
             info = cls_any.__tvm_ffi_type_info__

@@ -1586,6 +1586,40 @@ class DictAttrs(Attrs, mnemonic="std.DictAttrs"):
         return self.values.items()
 
 
+@c_class("ffi.std.FieldCollectionResult")
+class FieldCollectionResult(Node, mnemonic="std.FieldCollectionResult"):
+    """Collected language fields for std-derived dialect text printing."""
+
+    # tvm-ffi-stubgen(begin): object/ffi.std.FieldCollectionResult
+    # fmt: off
+    args: MutableSequence[Any]
+    attrs: DictAttrs
+    var_def: MutableSequence[Var]
+    body: MutableSequence[Node]
+    if TYPE_CHECKING:
+        def __init__(self, args: MutableSequence[Any], attrs: DictAttrs, var_def: MutableSequence[Var], body: MutableSequence[Node]) -> None: ...
+        def __ffi_init__(self, args: MutableSequence[Any], attrs: DictAttrs, var_def: MutableSequence[Var], body: MutableSequence[Node]) -> None: ...  # ty: ignore[invalid-method-override]
+    # fmt: on
+    # tvm-ffi-stubgen(end)
+
+    if TYPE_CHECKING:
+
+        def __ffi_init__(self, *args: Any, **kwargs: Any) -> None: ...
+
+    def __init__(
+        self,
+        args: MutableSequence[Any] | None = None,
+        attrs: AttrsLike = None,
+        var_def: MutableSequence[Var] | None = None,
+        body: MutableSequence[Node] | None = None,
+    ) -> None:
+        if attrs is None:
+            attrs = DictAttrs()
+        elif isinstance(attrs, Mapping):
+            attrs = DictAttrs(**_typing_cast(Mapping[str, Any], attrs))
+        self.__ffi_init__(list(args or []), attrs, list(var_def or []), list(body or []))
+
+
 def cast(ty: TyLike, value: ExprLike) -> Expr:
     """Cast an expression to a standard dialect type."""
     return _typing_cast(Expr, _std_api.cast(_normalize_ty(ty), value))
@@ -1804,6 +1838,7 @@ __all__ = [
     "DictAttrs",
     "Eq",
     "Expr",
+    "FieldCollectionResult",
     "FloatImm",
     "FloorDiv",
     "FloorMod",
