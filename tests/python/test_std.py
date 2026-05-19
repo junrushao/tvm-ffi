@@ -2218,9 +2218,9 @@ class TestFor:
         assert isinstance(with_attrs.attrs, std.DictAttrs)
         assert dict(with_attrs.attrs.values) == attrs
         assert without_attrs.attrs is None
-        assert with_attrs.text() == 'for x in range(1, 2, pragma="unroll"):\n  x[1] = 2'
-        assert without_attrs.text() == "for x in range(1, 2):\n  x[1] = 2"
-        assert with_empty_attrs.text() == "for x in range(1, 2):\n  x[1] = 2"
+        assert with_attrs.text() == 'for x in range(1, 2, ty=std.i32, pragma="unroll"):\n  x[1] = 2'
+        assert without_attrs.text() == "for x in range(1, 2, ty=std.i32):\n  x[1] = 2"
+        assert with_empty_attrs.text() == "for x in range(1, 2, ty=std.i32):\n  x[1] = 2"
 
     def test_text_format(self) -> None:
         i32 = std.PrimTy("int32")
@@ -2234,7 +2234,7 @@ class TestFor:
             vars=[x],
         )
 
-        assert node.text() == 'for x in range(1, 2, tag="demo"):\n  x[1] = 2'
+        assert node.text() == 'for x in range(1, 2, ty=std.i32, tag="demo"):\n  x[1] = 2'
 
     def test_text_format_with_sorted_attrs(self) -> None:
         i32 = std.PrimTy("int32")
@@ -2248,7 +2248,7 @@ class TestFor:
             vars=[x],
         )
 
-        assert node.text() == "for x in range(1, 2, a=1, z=3):\n  x[1] = 2"
+        assert node.text() == "for x in range(1, 2, ty=std.i32, a=1, z=3):\n  x[1] = 2"
 
     def test_text_format_with_step_keyword(self) -> None:
         i32 = std.PrimTy("int32")
@@ -2261,7 +2261,7 @@ class TestFor:
             step=2,
         )
 
-        assert node.text() == "for x in range(1, 4, step=2):\n  pass"
+        assert node.text() == "for x in range(1, 4, step=2, ty=std.i32):\n  pass"
 
     def test_structural_equality(self) -> None:
         i32 = std.PrimTy("int32")
@@ -3454,7 +3454,7 @@ class TestDialectPrintMap:
         )
         cfg = pyast.PrinterConfig(dialect_print_map={"": "core"})
 
-        assert node.text(cfg) == "for x in core.range(1, 2):\n  x[1] = 2"
+        assert node.text(cfg) == "for x in core.range(1, 2, ty=std.i32):\n  x[1] = 2"
 
     def test_full_mnemonic_applies_to_for_range_mnemonic(self) -> None:
         i32 = std.PrimTy("int32")
@@ -3468,7 +3468,7 @@ class TestDialectPrintMap:
         )
         cfg = pyast.PrinterConfig(dialect_print_map={"$range": "ffi.range"})
 
-        assert node.text(cfg) == "for x in ffi.range(1, 2):\n  x[1] = 2"
+        assert node.text(cfg) == "for x in ffi.range(1, 2, ty=std.i32):\n  x[1] = 2"
 
 
 def test_std_base_classes_cannot_be_constructed_directly() -> None:

@@ -24,7 +24,7 @@ from typing import Callable, ClassVar, cast
 
 from tvm_ffi.structural import structural_equal
 
-from . import dtype, std
+from . import std
 from ._pyast_parser import (
     Factory,
     Frame,
@@ -128,9 +128,20 @@ class FuncFactory(Frame):
         self.ret_type: std.Ty | None = None
         self.body: list[TypingAny] = []
 
-    def make_arg(self, name: str, ty: std.Ty) -> std.Var:
-        """Create a function argument variable from a parameter annotation."""
-        return std.Var(normalize_ty(ty), name)
+    def parse_args(self, args: list[tuple[str, TypingAny]]) -> list[std.Var]:
+        """Convert function parameters and annotations into dialect variables.
+
+        Called only for ``@std.func`` function definitions.  Missing
+        annotations default to ``std.Any``; default argument values are rejected.
+        """
+        self.args = [
+            std.Var(
+                ty=normalize_ty(ty or std.AnyTy()),
+                name=name,
+            )
+            for name, ty in args
+        ]
+        return self.args
 
     def to_dialect(self) -> std.Func:
         """Build the final ``std.Func`` after the parser has filled the frame body."""
@@ -232,12 +243,17 @@ class ForFactory(Frame):
         ty: std.TyLike | None = None,
         **attrs: TypingAny,
     ) -> None:
-        """Create a loop frame with a placeholder induction variable."""
+        """Create a loop frame with a placeholder induction variable.
+
+        When provided, ``ty`` explicitly sets the induction variable type.
+        Otherwise, the type is inferred from non-literal integer range operands.
+        """
         if extent is None:
             raise TypeError("range missing required extent")
         self.start = start
         self.extent = extent
         self.step = step
+        ty = normalize_ty(ty) if ty is not None else None
         for value in (start, extent, step):
             if value is None or isinstance(value, int):
                 continue
@@ -245,10 +261,17 @@ class ForFactory(Frame):
                 raise TypeError(
                     f"range expects Python integers or integer expressions, got {type(value).__name__}"
                 )
-            if isinstance(value.ty, (std.AnyTy, std.PrimTy)):
-                ty = value.ty
-            elif isinstance(value, str) and dtype.is_dtype(value):
-                ty = std.PrimTy(value)
+            if isinstance(value.ty, std.PrimTy):
+                if not value.ty.dtype.is_integer:
+                    raise TypeError(
+                        "Range expression must have a Python integer or an std.Expr "
+                        f"with integer type, got {value.ty.text()}"
+                    )
+                if ty is None:
+                    ty = value.ty
+            elif isinstance(value.ty, std.AnyTy):
+                if ty is None:
+                    ty = value.ty
             else:
                 raise TypeError(
                     f"Range expression must have a Python integer or an std.Expr with integer type, got {value.ty.text()}"
@@ -416,16 +439,21 @@ class Std:
     def range(
         *args: TypingAny,
         step: TypingAny | None = None,
+        ty: std.TyLike | None = None,
         **attrs: TypingAny,
     ) -> ForFactory:
-        """Create a loop frame for parser-visible Python range loops."""
+        """Create a loop frame for parser-visible Python range loops.
+
+        ``ty=`` controls the loop induction variable type; other keyword
+        arguments are preserved as range attributes.
+        """
         if len(args) == 1:
             start, extent = None, args[0]
         elif len(args) == 2:
             start, extent = args
         else:
             raise TypeError("range expects 1 or 2 positional arguments")
-        return ForFactory(start, extent, step=step, **attrs)
+        return ForFactory(start, extent, step=step, ty=ty, **attrs)
 
     @staticmethod
     def scope(*binds: TypingAny, **kwargs: TypingAny) -> ScopeFactory:

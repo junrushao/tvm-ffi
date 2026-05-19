@@ -1067,15 +1067,30 @@ text::NodeAST TextPrint(const For& obj, const text::IRPrinter& printer, const Pa
   ScopeBuilder ctx("range", "", printer->cfg);
   ctx.AddTargets(printer, obj->vars);
   // ----------- "range" section ----------- //
+  Ty inferred_ty = PrimTy(kDefaultIntLiteralType);
   if (obj->start.has_value()) {
     ctx.operands.push_back(printer->ToExpr(*obj->start, path->Attr("start")));
     ctx.operands.push_back(printer->ToExpr(obj->extent, path->Attr("extent")));
+    if ((*obj->start).as<IntImmObj>() == nullptr || (*obj->start)->ty.as<AnyTyObj>() == nullptr) {
+      inferred_ty = (*obj->start)->ty;
+    }
   } else {
     ctx.operands.push_back(printer->ToExpr(obj->extent, path->Attr("extent")));
+  }
+  if (obj->extent.as<IntImmObj>() == nullptr || obj->extent->ty.as<AnyTyObj>() == nullptr) {
+    inferred_ty = obj->extent->ty;
   }
   if (obj->step.has_value()) {
     ctx.kwargs_keys.push_back("step");
     ctx.kwargs_values.push_back(printer->ToExpr(*obj->step, path->Attr("step")));
+    if ((*obj->step).as<IntImmObj>() == nullptr || (*obj->step)->ty.as<AnyTyObj>() == nullptr) {
+      inferred_ty = (*obj->step)->ty;
+    }
+  }
+  if (obj->vars.size() == 1 && !StructuralEqual::Equal(obj->vars[0]->ty, inferred_ty)) {
+    ctx.kwargs_keys.push_back("ty");
+    ctx.kwargs_values.push_back(
+        printer->ToExpr(obj->vars[0]->ty, path->Attr("vars")->ArrayItem(0)->Attr("ty")));
   }
   // --------------------------------------- //
   ctx.AddAttrs(printer, obj->attrs, path->Attr("attrs"));
