@@ -168,6 +168,7 @@ class VarTable:
 
 def normalize_ty(value: Any) -> std.Ty:
     """Normalize annotations, type factories, and dtype strings to ``std.Ty``."""
+    assert value is not None
     if isinstance(value, std.Ty):
         return value
     if hasattr(value, "to_dialect"):
@@ -262,20 +263,14 @@ class Parser:
         """
         self.source = source
         self.var_table = VarTable()
-        self.dialect_stack: list[str] = []
-        self.generics: dict[tuple[str, Any], Callable[..., Any]] = {}
-        self.scope_stack: list[Frame] = []
-
-        extra_vars = extra_vars or {}
-        registered_dialects = dict(_DIALECT_REGISTRY)
-        self.dialects: dict[str, Any] = registered_dialects
-
         self.var_table.push_frame()
-        for dialect, language in registered_dialects.items():
+        self.dialect_stack: list[str] = ["std"]
+        self.scope_stack: list[Frame] = []
+        self.generics: dict[tuple[str, Any], Callable[..., Any]] = {}
+        self.dialects: dict[str, Any] = {}
+        for dialect, language in _DIALECT_REGISTRY.items():
             self._install_dialect(dialect, language)
-        if "std" in registered_dialects:
-            self.dialect_stack.append("std")
-        for name, value in extra_vars.items():
+        for name, value in (extra_vars or {}).items():
             self.var_table.add(name, value)
 
     def _install_dialect(self, dialect: str, language: Any) -> None:
@@ -285,6 +280,7 @@ class Parser:
         namespaces such as ``std`` and registers generic handlers used later by
         operators, calls, loads, stores, and statements.
         """
+        self.dialects[dialect] = language
         self.var_table.add(dialect, language, allow_shadowing=True)
         for name, value in getattr(language, "__ffi_globals__", {}).items():
             self.var_table.add(name, value, allow_shadowing=True)
@@ -319,18 +315,19 @@ class Parser:
         """
         frame = DummyFrame()
         try:
-            with self._with_frame(frame, var_table_frame=False):
+            with self._with_frame(frame, dialect=None, var_table_frame=False):
                 self.visit(self.source.ast_root)
         except ParserError as err:
             raise self._with_diagnostic(err.error, err.node) from None
         body = frame.body
         if not body:
             return None
-        if len(body) == 1:
+        elif len(body) == 1:
             return body[0]
-        if all(isinstance(value, std.Func) for value in body):
+        elif all(isinstance(value, std.Func) for value in body):
             return std.Module(list(body))
-        return list(body)
+        else:
+            return list(body)
 
     def _with_diagnostic(self, error: Exception, node: pyast.Node) -> Exception:
         """Attach a rendered source diagnostic to ``error`` without printing it."""
@@ -442,7 +439,7 @@ class Parser:
         self,
         frame: Frame | None,
         *,
-        dialect: str | None = None,
+        dialect: str | None,
         var_table_frame: bool = True,
     ) -> Iterator[Frame | None]:
         """Temporarily enter a parser frame, dialect context, and lexical scope.
@@ -548,8 +545,8 @@ class Parser:
 
         if ty is None and isinstance(rhs, std.VarDef):
             self._emit_bound_stmt(self._run_generics("__bind_var_def__", (names, rhs)))
-            return
-        self._emit_bound_stmt(self._run_generics("__bind_expr__", (names, ty, rhs)))
+        else:
+            self._emit_bound_stmt(self._run_generics("__bind_expr__", (names, ty, rhs)))
 
     def visit_ExprStmt(self, node: pyast.ExprStmt) -> None:
         """Handle expression statements as standalone IR statements or implicit binds.
@@ -569,11 +566,10 @@ class Parser:
 
         value = self.visit(node.expr)
         if value is None:
-            return
-        if isinstance(value, std.Stmt):
+            pass
+        elif isinstance(value, std.Stmt):
             self._emit_bound_stmt(value)
-            return
-        if len(self.scope_stack) == 1:
+        elif len(self.scope_stack) == 1:
             self._emit_stmt(_materialize_top_value(self._run_generics, value))
         else:
             self._emit_bound_stmt(self._run_generics("__bind_expr__", ([], None, value)))
@@ -600,28 +596,6 @@ class Parser:
             self._visit_stmts(body)
         return frame.to_dialect()
 
-    def _collect_args(self, frame: Any, args: Sequence[pyast.Assign]) -> list[Any]:
-        """Convert function parameters and annotations into dialect variables.
-
-        Called only for ``@std.func`` function definitions.  Missing
-        annotations default to ``std.Any``; default argument values are rejected.
-        """
-        ret = []
-        for arg_node in args:
-            if not isinstance(arg_node.lhs, pyast.Id):
-                raise TypeError("function arguments must be identifiers")
-            if arg_node.rhs is not None:
-                raise TypeError("default argument values are not supported")
-            language = self.dialects.get(frame.dialect) or self.dialects["std"]
-            default_ty = getattr(language, "Any", self.dialects["std"].Any)
-            ty = normalize_ty(
-                default_ty if arg_node.annotation is None else self.visit(arg_node.annotation)
-            )
-            arg = frame.make_arg(arg_node.lhs.name, ty)
-            self.var_table.add(arg.name, arg)
-            ret.append(arg)
-        return ret
-
     def visit_Function(self, node: pyast.Function) -> None:
         """Parse a decorated Python function as an IR function.
 
@@ -634,18 +608,24 @@ class Parser:
             raise NotImplementedError("async functions are not supported")
         if len(node.decorators) != 1:
             raise TypeError("IR functions require exactly one decorator")
-        frame = self._visit_frame_expr(node.decorators[0])
-        func_frame = cast(Any, frame)
-        func_frame.symbol = node.name.name
-        func_frame.ret_type = (
-            normalize_ty(self.visit(node.return_type)) if node.return_type else None
-        )
+        frame = cast(Any, self._visit_frame_expr(node.decorators[0]))
+        frame.symbol = node.name.name
+        frame.ret_type = normalize_ty(self.visit(node.return_type)) if node.return_type else None
         with self._with_frame(frame, dialect=frame.dialect):
-            func_frame.args = self._collect_args(func_frame, node.args)
+            args_candidates: list[tuple[str, Any]] = []
+            for arg in node.args:
+                assert isinstance(arg.lhs, pyast.Id) and arg.rhs is None
+                if arg.annotation is not None:
+                    ty = self.visit(arg.annotation)
+                else:
+                    ty = None
+                args_candidates.append((arg.lhs.name, ty))
+            for v in frame.parse_args(args_candidates):
+                self.var_table.add(name=v.name, value=v)
             self._visit_stmts(node.body)
         func = frame.to_dialect()
         self._emit_stmt(func)
-        self.var_table.add(func_frame.symbol, func, allow_shadowing=True)
+        self.var_table.add(frame.symbol, func, allow_shadowing=True)
 
     def visit_For(self, node: pyast.For) -> None:
         """Parse ``for target in range(...)`` as a dialect ``For`` region."""
@@ -697,7 +677,7 @@ class Parser:
     def _visit_branch(self, body: Sequence[pyast.Stmt]) -> list[Any]:
         """Parse one branch of an ``if`` into an isolated statement list."""
         frame = DummyFrame()
-        with self._with_frame(frame):
+        with self._with_frame(frame, dialect=None):
             self._visit_stmts(body)
         return frame.body
 

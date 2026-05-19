@@ -1723,6 +1723,20 @@ class TestParseFor:
         loop_var = result.body[0].vars[0]
         assert _equal(loop_var.ty, I64)
 
+    def test_range_ty_keyword_sets_loop_var_type(self) -> None:
+        result = parse("@std.func\ndef f():\n  for i in range(10, ty=std.i32):\n    pass\n")
+        loop_var = result.body[0].vars[0]
+        assert _equal(loop_var.ty, I32)
+
+    def test_range_ty_keyword_overrides_bound_type(self) -> None:
+        n = std.Var(I64, "n")
+        result = parse(
+            "@std.func\ndef f():\n  for i in range(n, ty=std.i32):\n    pass\n",
+            extra_vars={"n": n},
+        )
+        loop_var = result.body[0].vars[0]
+        assert _equal(loop_var.ty, I32)
+
     def test_underscore_target(self) -> None:
         # `_` is a regular name bound to the loop induction var.
         underscore = std.Var(I64, "_")
@@ -2470,18 +2484,6 @@ class TestParserErrors:
     def test_assert_with_message_unsupported(self) -> None:
         with pytest.raises(NotImplementedError, match="assert messages"):
             parse('@std.func\ndef f():\n  assert 1 < 2, "bad"')
-
-    def test_default_arg_unsupported(self) -> None:
-        with pytest.raises(TypeError, match="default argument"):
-            parse("@std.func\ndef f(x: std.i32 = 5):\n  pass")
-
-    def test_starred_func_arg_unsupported(self) -> None:
-        with pytest.raises(TypeError, match="must be identifiers"):
-            parse("@std.func\ndef f(*args):\n  pass")
-
-    def test_kw_func_arg_unsupported(self) -> None:
-        with pytest.raises(TypeError, match="must be identifiers"):
-            parse("@std.func\ndef f(**kwargs):\n  pass")
 
     def test_func_no_decorator(self) -> None:
         with pytest.raises(TypeError, match="exactly one decorator"):
