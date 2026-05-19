@@ -254,6 +254,7 @@ class TestFunc:
         )
 
         assert isinstance(node, std.Func)
+        assert isinstance(node, std.BaseFunc)
         assert tuple(field.name for field in fields(std.Func)) == (
             "attrs",
             "symbol",
@@ -406,6 +407,88 @@ class TestFunc:
         )
         assert with_empty_attrs.text() == "@std.func\ndef main(x: std.i32) -> std.i32:\n  return x"
         assert without_attrs.text() == "@std.func\ndef main(x: std.i32) -> std.i32:\n  return x"
+
+
+class TestStatementBaseHierarchy:
+    def test_base_statement_classes_have_expected_inheritance_and_fields(self) -> None:
+        cases = [
+            (
+                std.BaseFunc,
+                std.Stmt,
+                ("attrs", "symbol", "args", "ret_type"),
+                ("std", "BaseFunc"),
+            ),
+            (std.BaseScope, std.Stmt, ("attrs",), ("std", "BaseScope")),
+            (
+                std.BaseFor,
+                std.Stmt,
+                ("attrs", "extent", "var"),
+                ("std", "BaseFor"),
+            ),
+            (std.BaseWhile, std.Stmt, ("attrs", "cond"), ("std", "BaseWhile")),
+            (
+                std.BaseBindExpr,
+                std.Stmt,
+                ("attrs", "expr"),
+                ("std", "BaseBindExpr"),
+            ),
+            (std.BaseVarDef, std.Stmt, ("attrs",), ("std", "BaseVarDef")),
+        ]
+
+        for cls, parent, field_names, dialect_mnemonic in cases:
+            cls_any = cast(Any, cls)
+            info = cls_any.__tvm_ffi_type_info__
+
+            assert issubclass(cls, parent)
+            assert issubclass(cls, std.Stmt)
+            assert tuple(field.name for field in fields(cls)) == field_names
+            assert cls_any.__ffi_dialect_mnemonic__ == dialect_mnemonic
+            assert (
+                tuple(core._lookup_type_attr(info.type_index, "__ffi_dialect_mnemonic__"))
+                == dialect_mnemonic
+            )
+
+    def test_concrete_statement_subclasses_have_expected_bases_and_fields(self) -> None:
+        cases = [
+            (
+                std.Func,
+                std.BaseFunc,
+                ("attrs", "symbol", "args", "ret_type", "body"),
+                ("std", "Func"),
+            ),
+            (
+                std.Scope,
+                std.BaseScope,
+                ("attrs", "binds", "body"),
+                ("std", "Scope"),
+            ),
+            (
+                std.For,
+                std.BaseFor,
+                ("attrs", "extent", "var", "start", "step", "body"),
+                ("std", "For"),
+            ),
+            (std.While, std.BaseWhile, ("attrs", "cond", "body"), ("std", "While")),
+            (
+                std.BindExpr,
+                std.BaseBindExpr,
+                ("attrs", "expr", "vars"),
+                ("std", "BindExpr"),
+            ),
+            (std.VarDef, std.BaseVarDef, ("attrs", "vars"), ("std", "VarDef")),
+        ]
+
+        for cls, parent, field_names, dialect_mnemonic in cases:
+            cls_any = cast(Any, cls)
+            info = cls_any.__tvm_ffi_type_info__
+
+            assert issubclass(cls, parent)
+            assert tuple(field.name for field in fields(cls)) == field_names
+            assert cls_any.__ffi_dialect_mnemonic__ == dialect_mnemonic
+            assert (
+                tuple(core._lookup_type_attr(info.type_index, "__ffi_dialect_mnemonic__"))
+                == dialect_mnemonic
+            )
 
 
 class TestModule:
@@ -2163,25 +2246,25 @@ class TestFor:
             step=range_node.step,
             attrs={"tag": "demo"},
             body=body,
-            vars=[x],
+            var=x,
         )
 
         assert isinstance(node, std.For)
-        assert not isinstance(node, std.Scope)
-        assert not issubclass(std.For, std.Scope)
+        assert isinstance(node, std.BaseFor)
+        assert issubclass(std.For, std.BaseFor)
         assert tuple(field.name for field in fields(std.For)) == (
             "attrs",
-            "start",
             "extent",
+            "var",
+            "start",
             "step",
-            "vars",
             "body",
         )
         assert node.start == range_node.start
         assert node.extent == range_node.extent
         assert node.step == range_node.step
         assert node.attrs is not None
-        assert list(node.vars) == [x]
+        assert node.var == x
         assert list(node.body) == body
 
     def test_attrs_field_accepts_dict_attrs_and_none(self) -> None:
@@ -2197,14 +2280,14 @@ class TestFor:
             step=cond_range.step,
             attrs=attrs,
             body=body,
-            vars=[x],
+            var=x,
         )
         without_attrs = std.For(
             start=cond_range.start,
             extent=cond_extent,
             step=cond_range.step,
             body=body,
-            vars=[x],
+            var=x,
         )
         with_empty_attrs = std.For(
             start=cond_range.start,
@@ -2212,7 +2295,7 @@ class TestFor:
             step=cond_range.step,
             attrs={},
             body=body,
-            vars=[x],
+            var=x,
         )
 
         assert isinstance(with_attrs.attrs, std.DictAttrs)
@@ -2231,7 +2314,7 @@ class TestFor:
             step=None,
             attrs={"tag": "demo"},
             body=[std.Store(x, 2, 1)],
-            vars=[x],
+            var=x,
         )
 
         assert node.text() == 'for x in range(1, 2, ty=std.i32, tag="demo"):\n  x[1] = 2'
@@ -2245,7 +2328,7 @@ class TestFor:
             step=None,
             attrs={"z": 3, "a": 1},
             body=[std.Store(x, 2, 1)],
-            vars=[x],
+            var=x,
         )
 
         assert node.text() == "for x in range(1, 2, ty=std.i32, a=1, z=3):\n  x[1] = 2"
@@ -2257,7 +2340,7 @@ class TestFor:
             start=1,
             extent=4,
             body=[],
-            vars=[x],
+            var=x,
             step=2,
         )
 
@@ -2271,7 +2354,7 @@ class TestFor:
             step=None,
             attrs={"tag": "demo"},
             body=[std.Store(std.Var(ty=i32, name="x"), 2, 1)],
-            vars=[std.Var(ty=i32, name="x")],
+            var=std.Var(ty=i32, name="x"),
         )
         rhs = std.For(
             start=1,
@@ -2279,7 +2362,7 @@ class TestFor:
             step=None,
             attrs={"tag": "demo"},
             body=[std.Store(std.Var(ty=i32, name="x"), 2, 1)],
-            vars=[std.Var(ty=i32, name="x")],
+            var=std.Var(ty=i32, name="x"),
         )
         different = std.For(
             start=1,
@@ -2287,7 +2370,7 @@ class TestFor:
             step=None,
             attrs={"tag": "demo"},
             body=[std.Store(std.Var(ty=i32, name="x"), 2, 1)],
-            vars=[std.Var(ty=i32, name="x")],
+            var=std.Var(ty=i32, name="x"),
         )
 
         assert tvm_ffi.structural_equal(lhs, rhs)
@@ -2309,8 +2392,8 @@ class TestWhile:
         )
 
         assert isinstance(node, std.While)
-        assert not isinstance(node, std.Scope)
-        assert not issubclass(std.While, std.Scope)
+        assert isinstance(node, std.BaseWhile)
+        assert issubclass(std.While, std.BaseWhile)
         assert tuple(field.name for field in fields(std.While)) == (
             "attrs",
             "cond",
@@ -2464,6 +2547,8 @@ class TestScope:
         )
 
         assert isinstance(node, std.Scope)
+        assert isinstance(node, std.BaseScope)
+        assert issubclass(std.Scope, std.BaseScope)
         assert tuple(field.name for field in fields(std.Scope)) == (
             "attrs",
             "binds",
@@ -2562,7 +2647,9 @@ class TestBindExpr:
         node = std.BindExpr(expr, var, **attrs)
 
         assert isinstance(node, std.BindExpr)
-        assert tuple(field.name for field in fields(std.BindExpr)) == ("attrs", "vars", "expr")
+        assert isinstance(node, std.BaseBindExpr)
+        assert issubclass(std.BindExpr, std.BaseBindExpr)
+        assert tuple(field.name for field in fields(std.BindExpr)) == ("attrs", "expr", "vars")
         assert list(node.vars) == [var]
         assert isinstance(node.attrs, std.DictAttrs)
         assert dict(node.attrs.values) == attrs
@@ -2659,6 +2746,8 @@ class TestVarDef:
         node = std.VarDef(var, tag="demo")
 
         assert isinstance(node, std.VarDef)
+        assert isinstance(node, std.BaseVarDef)
+        assert issubclass(std.VarDef, std.BaseVarDef)
         assert tuple(field.name for field in fields(std.VarDef)) == ("attrs", "vars")
         assert list(node.vars) == [var]
         assert isinstance(node.attrs, std.DictAttrs)
@@ -3064,6 +3153,17 @@ class TestDictAttrs:
 
 
 class TestDialectMnemonic:
+    @staticmethod
+    def _abstract_node_classes() -> set[type[Any]]:
+        return {
+            std.Node,
+            std.Ty,
+            std.Stmt,
+            std.Expr,
+            std.Attrs,
+            std.Aggregate,
+        }
+
     def test_subclass_keyword_sets_python_dialect_mnemonic(self) -> None:
         class ToyNode(std.Node, mnemonic="toy.Node"):
             pass
@@ -3101,6 +3201,7 @@ class TestDialectMnemonic:
             (std.Range, ("std", "Range")),
             (std.DictAttrs, ("std", "DictAttrs")),
             (std.Var, ("std", "Var")),
+            (std.BaseFunc, ("std", "BaseFunc")),
             (std.Func, ("std", "Func")),
             (std.Module, ("std", "Module")),
             (std.BoolImm, ("std", "BoolImm")),
@@ -3138,10 +3239,15 @@ class TestDialectMnemonic:
             (std.Cast, ("std", "Cast")),
             (std.Call, ("std", "Call")),
             (std.IfStmt, ("std", "IfStmt")),
+            (std.BaseScope, ("std", "BaseScope")),
             (std.Scope, ("std", "Scope")),
+            (std.BaseFor, ("std", "BaseFor")),
             (std.For, ("std", "For")),
+            (std.BaseWhile, ("std", "BaseWhile")),
             (std.While, ("std", "While")),
+            (std.BaseBindExpr, ("std", "BaseBindExpr")),
             (std.BindExpr, ("std", "BindExpr")),
+            (std.BaseVarDef, ("std", "BaseVarDef")),
             (std.VarDef, ("std", "VarDef")),
             (std.Store, ("std", "Store")),
             (std.Assert, ("std", "Assert")),
@@ -3162,14 +3268,14 @@ class TestDialectMnemonic:
             )
 
     def test_every_exported_concrete_node_has_registered_dialect_mnemonic(self) -> None:
-        abstract = {std.Node, std.Ty, std.Stmt, std.Expr, std.Attrs, std.Aggregate}
+        abstract = self._abstract_node_classes()
         concrete_classes = []
         for name in std.__all__:
             cls = getattr(std, name)
             if isinstance(cls, type) and issubclass(cls, std.Node) and cls not in abstract:
                 concrete_classes.append(cls)
 
-        assert len(concrete_classes) == 55
+        assert len(concrete_classes) == 61
         for cls in concrete_classes:
             cls_any = cast(Any, cls)
             info = cls_any.__tvm_ffi_type_info__
@@ -3188,7 +3294,7 @@ class TestDialectMnemonic:
             assert info.type_key == f"ffi.std.{cls.__name__}"
 
     def test_dialect_mnemonics_are_unique_and_well_formed(self) -> None:
-        abstract = {std.Node, std.Ty, std.Stmt, std.Expr, std.Attrs, std.Aggregate}
+        abstract = self._abstract_node_classes()
         dialect_mnemonics = []
         for name in std.__all__:
             cls = getattr(std, name)
@@ -3208,7 +3314,7 @@ class TestDialectMnemonic:
             assert name.isidentifier()
 
     def test_dialect_mnemonics_are_classvars_not_reflected_fields(self) -> None:
-        abstract = {std.Node, std.Ty, std.Stmt, std.Expr, std.Attrs, std.Aggregate}
+        abstract = self._abstract_node_classes()
         for name in std.__all__:
             cls = getattr(std, name)
             if isinstance(cls, type) and issubclass(cls, std.Node) and cls not in abstract:
@@ -3219,7 +3325,17 @@ class TestDialectMnemonic:
                 assert "__ffi_text_generics__" not in cls.__dict__
 
     def test_text_print_hooks_and_dialect_mnemonics_are_independent_type_attrs(self) -> None:
-        for cls in [std.Node, std.Expr, std.AnyTy, std.Var, std.Add, std.Func, std.DictAttrs]:
+        for cls in [
+            std.Node,
+            std.Expr,
+            std.BaseScope,
+            std.BaseFor,
+            std.AnyTy,
+            std.Var,
+            std.Add,
+            std.Func,
+            std.DictAttrs,
+        ]:
             cls_any = cast(Any, cls)
             info = cls_any.__tvm_ffi_type_info__
             text_print = core._lookup_type_attr(info.type_index, "__ffi_text_print__")
@@ -3244,6 +3360,10 @@ class TestDialectMnemonic:
         cases = [
             (i32, std.PrimTy),
             (x, std.Var),
+            (std.Func(symbol="f", args=[], ret_type=None, body=[]), std.Func),
+            (std.Scope([], [std.Return(x)]), std.Scope),
+            (std.For(start=0, extent=4, step=None, var=x, body=[]), std.For),
+            (std.While(std.BoolImm(std.PrimTy("bool"), True), []), std.While),
             (std.BoolImm(std.PrimTy("bool"), True), std.BoolImm),
             (std.Range(0, 4), std.Range),
             (std.Add(x, one, ty=i32), std.Add),
@@ -3276,7 +3396,7 @@ class TestDialectMnemonic:
             assert dialect_mnemonic[:2] == expected_mnemonic
 
     def test_all_concrete_classes_have_two_element_dialect_mnemonics(self) -> None:
-        abstract = {std.Node, std.Ty, std.Stmt, std.Expr, std.Attrs, std.Aggregate}
+        abstract = self._abstract_node_classes()
         for name in std.__all__:
             cls = getattr(std, name)
             if isinstance(cls, type) and issubclass(cls, std.Node) and cls not in abstract:
@@ -3450,7 +3570,7 @@ class TestDialectPrintMap:
             extent=2,
             step=None,
             body=[std.Store(x, 2, 1)],
-            vars=[x],
+            var=x,
         )
         cfg = pyast.PrinterConfig(dialect_print_map={"": "core"})
 
@@ -3464,7 +3584,7 @@ class TestDialectPrintMap:
             extent=2,
             step=None,
             body=[std.Store(x, 2, 1)],
-            vars=[x],
+            var=x,
         )
         cfg = pyast.PrinterConfig(dialect_print_map={"$range": "ffi.range"})
 

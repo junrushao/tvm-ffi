@@ -378,15 +378,67 @@ class Var(Expr, mnemonic="std.Var"):
         self.__ffi_init__(name, ty=_normalize_ty(ty))
 
 
-@c_class("ffi.std.Func")
-class Func(Stmt, mnemonic="std.Func"):
-    """A standard dialect function."""
+@c_class("ffi.std.BaseScope")
+class BaseScope(Stmt, mnemonic="std.BaseScope"):
+    """Base class for scoped statement blocks."""
 
-    # tvm-ffi-stubgen(begin): object/ffi.std.Func
+    # tvm-ffi-stubgen(begin): object/ffi.std.BaseScope
+    # fmt: off
+    if TYPE_CHECKING:
+        def __init__(self, *, attrs: Attrs | None = ...) -> None: ...
+        def __ffi_init__(self, *, attrs: Attrs | None = ...) -> None: ...  # ty: ignore[invalid-method-override]
+    # fmt: on
+    # tvm-ffi-stubgen(end)
+
+    def __init__(
+        self,
+        *,
+        attrs: AttrsLike = None,
+    ) -> None:
+        self.__ffi_init__(attrs=_typing_cast(Attrs | None, attrs))
+
+
+@c_class("ffi.std.BaseFunc")
+class BaseFunc(Stmt, mnemonic="std.BaseFunc"):
+    """Base class for standard dialect functions."""
+
+    # tvm-ffi-stubgen(begin): object/ffi.std.BaseFunc
     # fmt: off
     symbol: str
     args: MutableSequence[Var]
     ret_type: Ty | None
+    if TYPE_CHECKING:
+        def __init__(self, symbol: str, args: MutableSequence[Var], ret_type: Ty | None, *, attrs: Attrs | None = ...) -> None: ...
+        def __ffi_init__(self, symbol: str, args: MutableSequence[Var], ret_type: Ty | None, *, attrs: Attrs | None = ...) -> None: ...  # ty: ignore[invalid-method-override]
+    # fmt: on
+    # tvm-ffi-stubgen(end)
+
+    if TYPE_CHECKING:
+
+        def __ffi_init__(self, *args: Any, **kwargs: Any) -> None: ...
+
+    def __init__(
+        self,
+        symbol: str,
+        args: Sequence[Var],
+        ret_type: TyLike | None,
+        *,
+        attrs: AttrsLike = None,
+    ) -> None:
+        self.__ffi_init__(
+            symbol,
+            list(args),
+            _normalize_ty(ret_type) if ret_type is not None else None,
+            attrs=attrs,
+        )
+
+
+@c_class("ffi.std.Func")
+class Func(BaseFunc, mnemonic="std.Func"):
+    """A standard dialect function."""
+
+    # tvm-ffi-stubgen(begin): object/ffi.std.Func
+    # fmt: off
     body: MutableSequence[Stmt]
     if TYPE_CHECKING:
         def __init__(self, symbol: str, args: MutableSequence[Var], ret_type: Ty | None, body: MutableSequence[Stmt], *, attrs: Attrs | None = ...) -> None: ...
@@ -406,6 +458,25 @@ class Func(Stmt, mnemonic="std.Func"):
             attrs: AttrsLike = ...,
         ) -> None: ...
 
+        def __ffi_init__(self, *args: Any, **kwargs: Any) -> None: ...
+
+    def __init__(
+        self,
+        symbol: str,
+        args: Sequence[Var],
+        ret_type: TyLike | None,
+        body: Sequence[Stmt],
+        *,
+        attrs: AttrsLike = None,
+    ) -> None:
+        self.__ffi_init__(
+            symbol,
+            list(args),
+            _normalize_ty(ret_type) if ret_type is not None else None,
+            list(body),
+            attrs,
+        )
+
 
 @c_class("ffi.std.Module")
 class Module(Node, mnemonic="std.Module"):
@@ -413,10 +484,10 @@ class Module(Node, mnemonic="std.Module"):
 
     # tvm-ffi-stubgen(begin): object/ffi.std.Module
     # fmt: off
-    funcs: MutableSequence[Func]
+    funcs: MutableSequence[BaseFunc]
     if TYPE_CHECKING:
-        def __init__(self, funcs: MutableSequence[Func]) -> None: ...
-        def __ffi_init__(self, funcs: MutableSequence[Func]) -> None: ...  # ty: ignore[invalid-method-override]
+        def __init__(self, funcs: MutableSequence[BaseFunc]) -> None: ...
+        def __ffi_init__(self, funcs: MutableSequence[BaseFunc]) -> None: ...  # ty: ignore[invalid-method-override]
     # fmt: on
     # tvm-ffi-stubgen(end)
 
@@ -1227,7 +1298,7 @@ class Call(Expr, mnemonic="std.Call"):
     ) -> None:
         if isinstance(callee, Var):
             callee = callee.name
-        elif not isinstance(callee, (str, Expr, Func)):
+        elif not isinstance(callee, (str, Expr, BaseFunc)):
             raise TypeError(
                 "std.Call callee must be a name, expression, or function, "
                 f"got {type(callee).__name__}"
@@ -1270,8 +1341,8 @@ class IfStmt(Stmt, mnemonic="std.IfStmt"):
 
 
 @c_class("ffi.std.Scope")
-class Scope(Stmt, mnemonic="std.Scope"):
-    """A scoped statement block."""
+class Scope(BaseScope, mnemonic="std.Scope"):
+    """A scoped statement block with lexical bindings."""
 
     # tvm-ffi-stubgen(begin): object/ffi.std.Scope
     # fmt: off
@@ -1285,29 +1356,58 @@ class Scope(Stmt, mnemonic="std.Scope"):
 
     if TYPE_CHECKING:
 
-        def __init__(
-            self,
-            binds: MutableSequence[Stmt],
-            body: MutableSequence[Stmt],
-            *,
-            attrs: AttrsLike = ...,
-        ) -> None: ...
+        def __ffi_init__(self, *args: Any, **kwargs: Any) -> None: ...
+
+    def __init__(
+        self,
+        binds: Sequence[Stmt],
+        body: Sequence[Stmt],
+        *,
+        attrs: AttrsLike = None,
+    ) -> None:
+        self.__ffi_init__(list(binds), list(body), attrs)
+
+
+@c_class("ffi.std.BaseFor")
+class BaseFor(Stmt, mnemonic="std.BaseFor"):
+    """Base class for standard dialect for loops."""
+
+    # tvm-ffi-stubgen(begin): object/ffi.std.BaseFor
+    # fmt: off
+    extent: Expr
+    var: Var
+    if TYPE_CHECKING:
+        def __init__(self, extent: Expr, var: Var, *, attrs: Attrs | None = ...) -> None: ...
+        def __ffi_init__(self, extent: Expr, var: Var, *, attrs: Attrs | None = ...) -> None: ...  # ty: ignore[invalid-method-override]
+    # fmt: on
+    # tvm-ffi-stubgen(end)
+
+    if TYPE_CHECKING:
+
+        def __ffi_init__(self, *args: Any, **kwargs: Any) -> None: ...
+
+    def __init__(
+        self,
+        extent: ExprLike,
+        var: Var,
+        *,
+        attrs: AttrsLike = None,
+    ) -> None:
+        self.__ffi_init__(extent, var, attrs=attrs)
 
 
 @c_class("ffi.std.For")
-class For(Stmt, mnemonic="std.For"):
+class For(BaseFor, mnemonic="std.For"):
     """For loop."""
 
     # tvm-ffi-stubgen(begin): object/ffi.std.For
     # fmt: off
     start: Expr | None
-    extent: Expr
     step: Expr | None
-    vars: MutableSequence[Var]
     body: MutableSequence[Stmt]
     if TYPE_CHECKING:
-        def __init__(self, start: Expr | None, extent: Expr, vars: MutableSequence[Var], body: MutableSequence[Stmt], *, step: Expr | None = ..., attrs: Attrs | None = ...) -> None: ...
-        def __ffi_init__(self, start: Expr | None, extent: Expr, step: Expr | None, vars: MutableSequence[Var], body: MutableSequence[Stmt], *, attrs: Attrs | None = ...) -> None: ...  # ty: ignore[invalid-method-override]
+        def __init__(self, start: Expr | None, extent: Expr, var: Var, body: MutableSequence[Stmt], *, step: Expr | None = ..., attrs: Attrs | None = ...) -> None: ...
+        def __ffi_init__(self, start: Expr | None, extent: Expr, step: Expr | None, var: Var, body: MutableSequence[Stmt], attrs: Attrs | None = ...) -> None: ...  # ty: ignore[invalid-method-override]
     # fmt: on
     # tvm-ffi-stubgen(end)
 
@@ -1317,7 +1417,7 @@ class For(Stmt, mnemonic="std.For"):
             self,
             start: ExprLike | None,
             extent: ExprLike,
-            vars: MutableSequence[Var],
+            var: Var,
             body: MutableSequence[Stmt],
             *,
             step: ExprLike | None = ...,
@@ -1330,22 +1430,58 @@ class For(Stmt, mnemonic="std.For"):
         self,
         start: ExprLike | None,
         extent: ExprLike,
-        *,
+        *args: Any,
         step: ExprLike | None = None,
-        vars: MutableSequence[Var],
-        body: MutableSequence[Stmt],
+        var: Var | None = None,
+        body: Sequence[Stmt] | None = None,
         attrs: AttrsLike = None,
     ) -> None:
-        self.__ffi_init__(start, extent, step, list(vars), list(body), attrs)
+        if len(args) > 2:
+            raise TypeError(f"For expects at most 4 positional arguments, but got {len(args) + 2}")
+        if args:
+            if var is not None:
+                raise TypeError("For got loop variable both positionally and by keyword")
+            if not isinstance(args[0], Var):
+                raise TypeError(f"For expected a loop variable, got {type(args[0]).__name__}")
+            var = args[0]
+        if len(args) == 2:
+            if body is not None:
+                raise TypeError("For got body both positionally and by keyword")
+            body = args[1]
+        if body is None:
+            raise TypeError("For missing required body")
+        if var is None:
+            raise TypeError("For missing required var")
+        self.__ffi_init__(start, extent, step, var, list(body), attrs)
+
+
+@c_class("ffi.std.BaseWhile")
+class BaseWhile(Stmt, mnemonic="std.BaseWhile"):
+    """Base class for standard dialect while loops."""
+
+    # tvm-ffi-stubgen(begin): object/ffi.std.BaseWhile
+    # fmt: off
+    cond: Expr
+    if TYPE_CHECKING:
+        def __init__(self, cond: Expr, *, attrs: Attrs | None = ...) -> None: ...
+        def __ffi_init__(self, cond: Expr, *, attrs: Attrs | None = ...) -> None: ...  # ty: ignore[invalid-method-override]
+    # fmt: on
+    # tvm-ffi-stubgen(end)
+
+    if TYPE_CHECKING:
+
+        def __ffi_init__(self, *args: Any, **kwargs: Any) -> None: ...
+
+    def __init__(self, cond: ExprLike, *, attrs: AttrsLike = None) -> None:
+        self.__ffi_init__(cond, attrs=attrs)
 
 
 @c_class("ffi.std.While")
-class While(Stmt, mnemonic="std.While"):
+class While(BaseWhile, mnemonic="std.While"):
     """While loop."""
 
     # tvm-ffi-stubgen(begin): object/ffi.std.While
     # fmt: off
-    cond: Expr
     body: MutableSequence[Stmt]
     if TYPE_CHECKING:
         def __init__(self, cond: Expr, body: MutableSequence[Stmt], *, attrs: Attrs | None = ...) -> None: ...
@@ -1375,14 +1511,34 @@ class While(Stmt, mnemonic="std.While"):
         self.__ffi_init__(cond, list(body), attrs)
 
 
+@c_class("ffi.std.BaseBindExpr")
+class BaseBindExpr(Stmt, mnemonic="std.BaseBindExpr"):
+    """Base class for expression bindings."""
+
+    # tvm-ffi-stubgen(begin): object/ffi.std.BaseBindExpr
+    # fmt: off
+    expr: Expr
+    if TYPE_CHECKING:
+        def __init__(self, expr: Expr, *, attrs: Attrs | None = ...) -> None: ...
+        def __ffi_init__(self, expr: Expr, *, attrs: Attrs | None = ...) -> None: ...  # ty: ignore[invalid-method-override]
+    # fmt: on
+    # tvm-ffi-stubgen(end)
+
+    if TYPE_CHECKING:
+
+        def __ffi_init__(self, *args: Any, **kwargs: Any) -> None: ...
+
+    def __init__(self, expr: ExprLike, **kwargs: Any) -> None:
+        self.__ffi_init__(_normalize_expr(expr), attrs=kwargs or None)
+
+
 @c_class("ffi.std.BindExpr")
-class BindExpr(Stmt, mnemonic="std.BindExpr"):
+class BindExpr(BaseBindExpr, mnemonic="std.BindExpr"):
     """Binding that defines variables from an expression."""
 
     # tvm-ffi-stubgen(begin): object/ffi.std.BindExpr
     # fmt: off
     vars: MutableSequence[Var]
-    expr: Expr
     if TYPE_CHECKING:
         def __init__(self, vars: MutableSequence[Var], expr: Expr, *, attrs: Attrs | None = ...) -> None: ...
         def __ffi_init__(self, vars: MutableSequence[Var], expr: Expr, *, attrs: Attrs | None = ...) -> None: ...  # ty: ignore[invalid-method-override]
@@ -1394,11 +1550,31 @@ class BindExpr(Stmt, mnemonic="std.BindExpr"):
         def __ffi_init__(self, *args: Any, **kwargs: Any) -> None: ...
 
     def __init__(self, expr: ExprLike, *args: Var, **kwargs: Any) -> None:
-        self.__ffi_init__(list(args), _normalize_expr(expr), attrs=kwargs or None)
+        self.__ffi_init__(list(args), _normalize_expr(expr), kwargs or None)
+
+
+@c_class("ffi.std.BaseVarDef")
+class BaseVarDef(Stmt, mnemonic="std.BaseVarDef"):
+    """Base class for variable definitions."""
+
+    # tvm-ffi-stubgen(begin): object/ffi.std.BaseVarDef
+    # fmt: off
+    if TYPE_CHECKING:
+        def __init__(self, *, attrs: Attrs | None = ...) -> None: ...
+        def __ffi_init__(self, *, attrs: Attrs | None = ...) -> None: ...  # ty: ignore[invalid-method-override]
+    # fmt: on
+    # tvm-ffi-stubgen(end)
+
+    if TYPE_CHECKING:
+
+        def __ffi_init__(self, *args: Any, **kwargs: Any) -> None: ...
+
+    def __init__(self, **kwargs: Any) -> None:
+        self.__ffi_init__(attrs=kwargs or None)
 
 
 @c_class("ffi.std.VarDef")
-class VarDef(Stmt, mnemonic="std.VarDef"):
+class VarDef(BaseVarDef, mnemonic="std.VarDef"):
     """Binding that defines variables without a source expression."""
 
     # tvm-ffi-stubgen(begin): object/ffi.std.VarDef
@@ -1789,6 +1965,12 @@ __all__ = [
     "AnyTy",
     "Assert",
     "Attrs",
+    "BaseBindExpr",
+    "BaseFor",
+    "BaseFunc",
+    "BaseScope",
+    "BaseVarDef",
+    "BaseWhile",
     "BindExpr",
     "BitwiseAnd",
     "BitwiseNot",

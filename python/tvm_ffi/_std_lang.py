@@ -20,7 +20,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from typing import Any as TypingAny
-from typing import Callable, ClassVar, cast
+from typing import Callable, ClassVar
 
 from tvm_ffi.structural import structural_equal
 
@@ -169,19 +169,25 @@ class ModuleFactory(Frame):
         Used by the module printer form where modules are represented as a
         decorated class containing ``@std.func`` methods.
         """
-        funcs = [stmt for stmt in self.body if isinstance(stmt, std.Func)]
+        func_bases = tuple(
+            cls for cls in (std.Func, getattr(std, "BaseFunc", None)) if cls is not None
+        )
+        funcs = [stmt for stmt in self.body if isinstance(stmt, func_bases)]
         if len(funcs) != len(self.body):
-            bad = next(stmt for stmt in self.body if not isinstance(stmt, std.Func))
+            bad = next(stmt for stmt in self.body if not isinstance(stmt, func_bases))
             raise TypeError(
                 f"std.Module body can only contain std.Func definitions, got {type(bad).__name__}"
             )
         return std.Module(funcs)
 
 
+_SCOPE_CLS: TypingAny = std.Scope
+
+
 class RegionFactory(Frame):
     """Base frame for body-bearing region statements with optional bindings."""
 
-    node_cls: TypingAny = std.Scope
+    node_cls: TypingAny = _SCOPE_CLS
 
     def __init__(self, binds: Sequence[std.Stmt] | None = None, **attrs: TypingAny) -> None:
         """Create a region frame from placeholder binds and attributes."""
@@ -191,30 +197,37 @@ class RegionFactory(Frame):
 
     def bind_names(self, names: Sequence[str]) -> None:
         """Rename placeholder bind variables to match ``for`` or ``with as`` targets."""
-        num_bind_vars = sum(len(cast(TypingAny, bind).vars) for bind in self.binds)
+        bind_var_lists: list[Sequence[std.Var]] = []
+        for bind in self.binds:
+            if not isinstance(bind, (std.BindExpr, std.VarDef)):
+                raise TypeError(f"unsupported bind type: {type(bind).__name__}")
+            bind_var_lists.append(bind.vars)
+        num_bind_vars = sum(len(bind_vars) for bind_vars in bind_var_lists)
         if len(names) != num_bind_vars:
             raise TypeError(f"expected {num_bind_vars} binding target(s), got {len(names)}")
 
         rebuilt: list[std.Stmt] = []
         offset = 0
-        for bind in self.binds:
-            bind_vars = cast(TypingAny, bind).vars
+        for bind, bind_vars in zip(self.binds, bind_var_lists):
             count = len(bind_vars)
             new_vars = [std.Var(bind_vars[i].ty, names[offset + i]) for i in range(count)]
             offset += count
             if isinstance(bind, std.BindExpr):
-                attrs = cast(TypingAny, bind.attrs)
-                rebuilt.append(std.BindExpr(bind.expr, *new_vars, **(attrs or {})))
+                rebuilt.append(std.BindExpr(bind.expr, *new_vars, **(bind.attrs or {})))
             elif isinstance(bind, std.VarDef):
-                attrs = cast(TypingAny, bind.attrs)
-                rebuilt.append(std.VarDef(*new_vars, **(attrs or {})))
+                rebuilt.append(std.VarDef(*new_vars, **(bind.attrs or {})))
             else:
                 raise TypeError(f"unsupported bind type: {type(bind).__name__}")
         self.binds = rebuilt
 
     def bound_vars(self) -> list[std.Var]:
         """Return variables introduced by the region header."""
-        return [var for bind in self.binds for var in cast(TypingAny, bind).vars]
+        return [
+            var
+            for bind in self.binds
+            if isinstance(bind, (std.BindExpr, std.VarDef))
+            for var in bind.vars
+        ]
 
     def to_dialect(self) -> std.Stmt:
         """Build the concrete region statement after its body has been parsed."""
@@ -228,7 +241,7 @@ class RegionFactory(Frame):
 class ScopeFactory(RegionFactory):
     """Parser frame for ``std.scope`` and ``with std.scope(...)`` syntax."""
 
-    node_cls = std.Scope
+    node_cls = _SCOPE_CLS
 
 
 class ForFactory(Frame):
@@ -279,25 +292,25 @@ class ForFactory(Frame):
         if ty is None:
             ty = std.PrimTy("int64")
         self.attrs = dict(attrs)
-        self.vars: list[std.Var] = [std.Var(ty, "")]
+        self.var = std.Var(ty, "")
         self.body: list[TypingAny] = []
 
     def bind_names(self, names: Sequence[str]) -> None:
         """Rename placeholder loop variables to match the ``for`` target."""
-        if len(names) != len(self.vars):
-            raise TypeError(f"expected {len(self.vars)} binding target(s), got {len(names)}")
-        self.vars = [std.Var(var.ty, name) for var, name in zip(self.vars, names)]
+        if len(names) != 1:
+            raise TypeError(f"expected 1 binding target(s), got {len(names)}")
+        self.var = std.Var(self.var.ty, names[0])
 
     def bound_vars(self) -> list[std.Var]:
         """Return variables introduced by the loop header."""
-        return list(self.vars)
+        return [self.var]
 
     def to_dialect(self) -> std.For:
         """Build a ``std.For`` after the target name and body are known."""
         return std.For(
             start=self.start,
             extent=self.extent,
-            vars=self.vars,
+            var=self.var,
             body=self.body,
             step=self.step,
             attrs=self.attrs or None,
@@ -418,6 +431,7 @@ class Std:
     Cast = std.Cast
     Call = std.Call
     IfStmt = std.IfStmt
+    BaseScope = std.BaseScope
     Scope = std.Scope
     For = std.For
     While = std.While
@@ -493,7 +507,7 @@ def _normalize_binds(values: Sequence[TypingAny]) -> list[std.Stmt]:
 def _bind_expr_from_names(
     names: Sequence[str],
     ty: std.TyLike | None,
-    expr: std.ExprLike | std.BindExpr,
+    expr: TypingAny,
 ) -> std.BindExpr:
     """Build assignment bindings once the left-hand names are known."""
 
@@ -510,9 +524,9 @@ def _bind_expr_from_names(
 
     attrs = None
     if isinstance(expr, std.BindExpr):
-        if expr.vars:
+        if getattr(expr, "vars", ()):
             raise TypeError("std.BindExpr RHS must not already define vars")
-        attrs = cast(TypingAny, expr.attrs)
+        attrs = expr.attrs
         expr = expr.expr
 
     if ty is None:
@@ -540,11 +554,11 @@ def _bind_var_def_from_names(names: Sequence[str], *tys: TypingAny) -> std.VarDe
     """Build annotated variable definitions from left-hand names and types."""
     if len(tys) == 1 and isinstance(tys[0], std.VarDef):
         bind = tys[0]
-        if len(bind.vars) != len(names):
-            raise TypeError(f"expected {len(bind.vars)} binding target(s), got {len(names)}")
-        vars = [std.Var(var.ty, name) for var, name in zip(bind.vars, names)]
-        attrs = cast(TypingAny, bind.attrs)
-        return std.VarDef(*vars, **(attrs or {}))
+        bind_vars = getattr(bind, "vars", ())
+        if len(bind_vars) != len(names):
+            raise TypeError(f"expected {len(bind_vars)} binding target(s), got {len(names)}")
+        vars = [std.Var(var.ty, name) for var, name in zip(bind_vars, names)]
+        return std.VarDef(*vars, **(bind.attrs or {}))
     if len(names) != len(tys):
         raise TypeError(f"expected {len(tys)} binding target(s), got {len(names)}")
     vars = [std.Var(normalize_ty(ty), name) for name, ty in zip(names, tys)]

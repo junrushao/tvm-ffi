@@ -75,7 +75,6 @@ _NATIVE_GENERICS: dict[str, Callable[..., Any]] = {
     "__logical_and__": lambda lhs, rhs: lhs and rhs,
     "__logical_or__": lambda lhs, rhs: lhs or rhs,
 }
-
 _DIALECT_REGISTRY: dict[str, Any] = {}
 _OP_GENERICS: dict[int, str] = {
     OperationKind.USub: "__neg__",

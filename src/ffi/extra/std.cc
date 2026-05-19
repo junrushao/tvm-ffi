@@ -952,7 +952,7 @@ text::NodeAST TextPrint(const Call& obj, const text::IRPrinter& printer, const P
   text::ExprAST callee;
   if (std::optional<String> symbol = obj->callee.as<String>()) {
     callee = text::IdAST(*symbol);
-  } else if (std::optional<Func> func = obj->callee.as<Func>()) {
+  } else if (std::optional<BaseFunc> func = obj->callee.as<BaseFunc>()) {
     callee = text::IdAST((*func)->symbol);
     ctx.dialects.push_back(DialectName(*func));
   } else if (std::optional<Expr> expr = obj->callee.as<Expr>()) {
@@ -998,6 +998,13 @@ text::ExprAST DefineVarTuple(const text::IRPrinter& printer, const List<Var>& va
   return text::TupleAST(std::move(lhs_vars));
 }
 
+text::NodeAST TextPrint(const BaseBindExpr& obj, const text::IRPrinter& printer, const Path& path) {
+  ExprBuilder ctx;
+  ctx.AddOperand(printer, obj->expr, path->Attr("expr"));
+  ctx.AddAttrs(printer, obj->attrs, path->Attr("attrs"));
+  return ctx.StmtCall(printer, obj);
+}
+
 text::NodeAST TextPrint(const BindExpr& obj, const text::IRPrinter& printer, const Path& path) {
   // Binding expressions keep literal type annotations on the RHS, unlike
   // arithmetic/operator sugar where typed immediates collapse to Python
@@ -1014,6 +1021,12 @@ text::NodeAST TextPrint(const BindExpr& obj, const text::IRPrinter& printer, con
     return text::ExprStmtAST(std::move(rhs));
   }
   return text::AssignAST(DefineVarTuple(printer, obj->vars), std::move(rhs));
+}
+
+text::NodeAST TextPrint(const BaseVarDef& obj, const text::IRPrinter& printer, const Path& path) {
+  ExprBuilder ctx;
+  ctx.AddAttrs(printer, obj->attrs, path->Attr("attrs"));
+  return ctx.StmtCall(printer, obj);
 }
 
 text::NodeAST TextPrint(const VarDef& obj, const text::IRPrinter& printer, const Path& path) {
@@ -1050,6 +1063,13 @@ text::NodeAST TextPrint(const IfStmt& obj, const text::IRPrinter& printer, const
                      PrintList<text::StmtAST>(printer, obj->else_body, path->Attr("else_body")));
 }
 
+text::NodeAST TextPrint(const BaseWhile& obj, const text::IRPrinter& printer, const Path& path) {
+  ExprBuilder ctx;
+  ctx.AddOperand(printer, obj->cond, path->Attr("cond"));
+  ctx.AddAttrs(printer, obj->attrs, path->Attr("attrs"));
+  return ctx.StmtCall(printer, obj);
+}
+
 text::NodeAST TextPrint(const While& obj, const text::IRPrinter& printer, const Path& path) {
   ScopeBuilder ctx("while_", DialectName(obj), printer->cfg);
   ctx.AddAttrs(printer, obj->attrs, path->Attr("attrs"));
@@ -1063,9 +1083,17 @@ text::NodeAST TextPrint(const While& obj, const text::IRPrinter& printer, const 
   }
 }
 
+text::NodeAST TextPrint(const BaseFor& obj, const text::IRPrinter& printer, const Path& path) {
+  ExprBuilder ctx;
+  ctx.AddOperand(printer, obj->extent, path->Attr("extent"));
+  ctx.operands.push_back(DefineVar(printer, obj->var));
+  ctx.AddAttrs(printer, obj->attrs, path->Attr("attrs"));
+  return ctx.StmtCall(printer, obj);
+}
+
 text::NodeAST TextPrint(const For& obj, const text::IRPrinter& printer, const Path& path) {
   ScopeBuilder ctx("range", "", printer->cfg);
-  ctx.AddTargets(printer, obj->vars);
+  ctx.AddTargets(printer, {obj->var});
   // ----------- "range" section ----------- //
   Ty inferred_ty = PrimTy(kDefaultIntLiteralType);
   if (obj->start.has_value()) {
@@ -1087,10 +1115,9 @@ text::NodeAST TextPrint(const For& obj, const text::IRPrinter& printer, const Pa
       inferred_ty = (*obj->step)->ty;
     }
   }
-  if (obj->vars.size() == 1 && !StructuralEqual::Equal(obj->vars[0]->ty, inferred_ty)) {
+  if (!StructuralEqual::Equal(obj->var->ty, inferred_ty)) {
     ctx.kwargs_keys.push_back("ty");
-    ctx.kwargs_values.push_back(
-        printer->ToExpr(obj->vars[0]->ty, path->Attr("vars")->ArrayItem(0)->Attr("ty")));
+    ctx.kwargs_values.push_back(printer->ToExpr(obj->var->ty, path->Attr("var")->Attr("ty")));
   }
   // --------------------------------------- //
   ctx.AddAttrs(printer, obj->attrs, path->Attr("attrs"));
@@ -1098,6 +1125,32 @@ text::NodeAST TextPrint(const For& obj, const text::IRPrinter& printer, const Pa
   text::ExprAST lhs = *ctx.Target(/*create_placeholder_for_none=*/true);
   text::ExprAST rhs = ctx.StmtCall(false);
   return text::ForAST(std::move(lhs), std::move(rhs), std::move(ctx.body));
+}
+
+text::NodeAST TextPrint(const BaseFunc& obj, const text::IRPrinter& printer, const Path& path) {
+  List<text::ExprAST> args;
+  args.reserve(static_cast<int64_t>(obj->args.size()));
+  for (const Var& arg : obj->args) {
+    args.push_back(DefineVar(printer, arg));
+  }
+  List<String> kwargs_keys;
+  List<text::ExprAST> kwargs_values;
+  if (obj->ret_type.has_value()) {
+    kwargs_keys.push_back("ret_type");
+    kwargs_values.push_back(printer->ToExpr(*obj->ret_type, path->Attr("ret_type")));
+  }
+  if (obj->attrs.has_value()) {
+    ExprBuilder attrs_ctx;
+    attrs_ctx.AddAttrs(printer, obj->attrs, path->Attr("attrs"));
+    for (int64_t i = 0; i < static_cast<int64_t>(attrs_ctx.kwargs_keys.size()); ++i) {
+      kwargs_keys.push_back(attrs_ctx.kwargs_keys[i]);
+      kwargs_values.push_back(attrs_ctx.kwargs_values[i]);
+    }
+  }
+  return text::ExprStmtAST(
+      CallMnemonic(printer->cfg, obj)
+          ->CallKw({text::LiteralAST(obj->symbol), text::ListAST(std::move(args))},
+                   std::move(kwargs_keys), std::move(kwargs_values)));
 }
 
 text::NodeAST TextPrint(const Func& obj, const text::IRPrinter& printer, const Path& path) {
@@ -1122,6 +1175,12 @@ text::NodeAST TextPrint(const Func& obj, const text::IRPrinter& printer, const P
   }
   return text::FunctionAST(text::IdAST(obj->symbol), std::move(args), {ctx.StmtCall(true)},
                            std::move(ret_type), std::move(ctx.body));
+}
+
+text::NodeAST TextPrint(const BaseScope& obj, const text::IRPrinter& printer, const Path& path) {
+  ExprBuilder ctx;
+  ctx.AddAttrs(printer, obj->attrs, path->Attr("attrs"));
+  return ctx.StmtCall(printer, obj);
 }
 
 text::NodeAST TextPrint(const Scope& obj, const text::IRPrinter& printer, const Path& path) {
@@ -2031,6 +2090,12 @@ TVM_FFI_STATIC_INIT_BLOCK() {
       .def_type_attr(refl::type_attr::kDialectMnemonic,                     \
                      Array<String>{String("std"), String(Name)})
 
+#define TVM_FFI_STD_OBJECT_DEF_INIT(ObjType, RefType, Name, ...)            \
+  refl::ObjectDef<ObjType>(__VA_ARGS__)                                     \
+      .def_type_attr(refl::type_attr::kTextPrint, TextPrintHook<RefType>()) \
+      .def_type_attr(refl::type_attr::kDialectMnemonic,                     \
+                     Array<String>{String("std"), String(Name)})
+
 #define TVM_FFI_STD_OBJECT_DEF_CUSTOM_INIT(ObjType, RefType, Name, InitFunc) \
   refl::ObjectDef<ObjType>(refl::init(false))                                \
       .def_type_attr(refl::type_attr::kTextPrint, TextPrintHook<RefType>())  \
@@ -2050,10 +2115,12 @@ TVM_FFI_STATIC_INIT_BLOCK() {
       .def_rw("ty", &ExprObj::ty, refl::kw_only(true));
   TVM_FFI_STD_OBJECT_DEF(VarObj, Var, "Var")
       .def_rw("name", &VarObj::name, refl::AttachFieldFlag::SEqHashIgnore());
+  TVM_FFI_STD_OBJECT_DEF(BaseFuncObj, BaseFunc, "BaseFunc")
+      .def_rw("symbol", &BaseFuncObj::symbol)
+      .def_rw("args", &BaseFuncObj::args, refl::AttachFieldFlag::SEqHashDefRecursive())
+      .def_rw("ret_type", &BaseFuncObj::ret_type);
   TVM_FFI_STD_OBJECT_DEF(FuncObj, Func, "Func")
-      .def_rw("symbol", &FuncObj::symbol)
-      .def_rw("args", &FuncObj::args, refl::AttachFieldFlag::SEqHashDefRecursive())
-      .def_rw("ret_type", &FuncObj::ret_type)
+      .def(refl::init<String, List<Var>, Optional<Ty>, List<Stmt>, Optional<Attrs>>())
       .def_rw("body", &FuncObj::body);
   TVM_FFI_STD_OBJECT_DEF(ModuleObj, Module, "Module").def_rw("funcs", &ModuleObj::funcs);
   TVM_FFI_STD_OBJECT_DEF(RangeObj, Range, "Range")
@@ -2138,25 +2205,30 @@ TVM_FFI_STATIC_INIT_BLOCK() {
       .def_rw("cond", &IfStmtObj::cond)
       .def_rw("then_body", &IfStmtObj::then_body)
       .def_rw("else_body", &IfStmtObj::else_body);
+  TVM_FFI_STD_OBJECT_DEF(BaseBindExprObj, BaseBindExpr, "BaseBindExpr")
+      .def_rw("expr", &BaseBindExprObj::expr);
   TVM_FFI_STD_OBJECT_DEF(BindExprObj, BindExpr, "BindExpr")
-      .def_rw("vars", &BindExprObj::vars, refl::AttachFieldFlag::SEqHashDefRecursive())
-      .def_rw("expr", &BindExprObj::expr);
+      .def(refl::init<List<Var>, Expr, Optional<Attrs>>())
+      .def_rw("vars", &BindExprObj::vars, refl::AttachFieldFlag::SEqHashDefRecursive());
+  TVM_FFI_STD_OBJECT_DEF(BaseVarDefObj, BaseVarDef, "BaseVarDef");
   TVM_FFI_STD_OBJECT_DEF(VarDefObj, VarDef, "VarDef")
       .def_rw("vars", &VarDefObj::vars, refl::AttachFieldFlag::SEqHashDefRecursive());
+  TVM_FFI_STD_OBJECT_DEF(BaseScopeObj, BaseScope, "BaseScope");
   TVM_FFI_STD_OBJECT_DEF(ScopeObj, Scope, "Scope")
+      .def(refl::init<List<Stmt>, List<Stmt>, Optional<Attrs>>())
       .def_rw("binds", &ScopeObj::binds, refl::AttachFieldFlag::SEqHashDefRecursive())
       .def_rw("body", &ScopeObj::body);
+  TVM_FFI_STD_OBJECT_DEF(BaseForObj, BaseFor, "BaseFor")
+      .def_rw("extent", &BaseForObj::extent)
+      .def_rw("var", &BaseForObj::var, refl::AttachFieldFlag::SEqHashDefRecursive());
   TVM_FFI_STD_OBJECT_DEF(ForObj, For, "For")
-      .def(refl::init<Optional<Expr>, Expr, Optional<Expr>, List<Var>, List<Stmt>,
-                      Optional<Attrs>>())
+      .def(refl::init<Optional<Expr>, Expr, Optional<Expr>, Var, List<Stmt>, Optional<Attrs>>())
       .def_rw("start", &ForObj::start, refl::default_value(nullptr))
-      .def_rw("extent", &ForObj::extent)
       .def_rw("step", &ForObj::step, refl::kw_only(true), refl::default_value(nullptr))
-      .def_rw("vars", &ForObj::vars, refl::AttachFieldFlag::SEqHashDefRecursive())
       .def_rw("body", &ForObj::body);
+  TVM_FFI_STD_OBJECT_DEF(BaseWhileObj, BaseWhile, "BaseWhile").def_rw("cond", &BaseWhileObj::cond);
   TVM_FFI_STD_OBJECT_DEF(WhileObj, While, "While")
       .def(refl::init<Expr, List<Stmt>, Optional<Attrs>>())
-      .def_rw("cond", &WhileObj::cond)
       .def_rw("body", &WhileObj::body);
   TVM_FFI_STD_OBJECT_DEF(StoreObj, Store, "Store")
       .def(refl::init<Expr, List<Range>, Expr, Optional<Attrs>>())
@@ -2174,6 +2246,7 @@ TVM_FFI_STATIC_INIT_BLOCK() {
       .def_rw("values", &DictAttrsObj::values);
 
 #undef TVM_FFI_STD_OBJECT_DEF
+#undef TVM_FFI_STD_OBJECT_DEF_INIT
 #undef TVM_FFI_STD_OBJECT_DEF_CUSTOM_INIT
 #undef TVM_FFI_STD_OBJECT_DEF_BASE
 #undef TVM_FFI_STD_OBJECT_DEF_BASE_INIT

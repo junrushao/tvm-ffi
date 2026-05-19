@@ -1635,7 +1635,7 @@ class TestParseFor:
             extent=2,
             step=None,
             body=[std.Store(x, 2, 1)],
-            vars=[x],
+            var=x,
         )
         _assert_parse_equal("for x in range(1, 2):\n  x[1] = 2", expected)
 
@@ -1646,7 +1646,7 @@ class TestParseFor:
             extent=2,
             step=None,
             body=[std.Store(x, 2, 1)],
-            vars=[x],
+            var=x,
             attrs={"tag": "demo"},
         )
         _assert_parse_equal(
@@ -1661,7 +1661,7 @@ class TestParseFor:
             extent=10,
             step=None,
             body=[],
-            vars=[i],
+            var=i,
         )
         _assert_parse_equal("for i in range(10):\n  pass", expected)
 
@@ -1672,7 +1672,7 @@ class TestParseFor:
             extent=10,
             step=2,
             body=[],
-            vars=[i],
+            var=i,
         )
         _assert_parse_equal("for i in range(0, 10, step=2):\n  pass", expected)
 
@@ -1702,7 +1702,7 @@ class TestParseFor:
             extent=10,
             step=2,
             body=[],
-            vars=[i],
+            var=i,
             attrs={"tag": "demo"},
         )
         _assert_parse_equal(
@@ -1720,12 +1720,12 @@ class TestParseFor:
             "@std.func\ndef f():\n  for i in range(n):\n    pass\n",
             extra_vars={"n": n},
         )
-        loop_var = result.body[0].vars[0]
+        loop_var = result.body[0].var
         assert _equal(loop_var.ty, I64)
 
     def test_range_ty_keyword_sets_loop_var_type(self) -> None:
         result = parse("@std.func\ndef f():\n  for i in range(10, ty=std.i32):\n    pass\n")
-        loop_var = result.body[0].vars[0]
+        loop_var = result.body[0].var
         assert _equal(loop_var.ty, I32)
 
     def test_range_ty_keyword_overrides_bound_type(self) -> None:
@@ -1734,7 +1734,7 @@ class TestParseFor:
             "@std.func\ndef f():\n  for i in range(n, ty=std.i32):\n    pass\n",
             extra_vars={"n": n},
         )
-        loop_var = result.body[0].vars[0]
+        loop_var = result.body[0].var
         assert _equal(loop_var.ty, I32)
 
     def test_underscore_target(self) -> None:
@@ -1745,7 +1745,7 @@ class TestParseFor:
             extent=10,
             step=None,
             body=[],
-            vars=[underscore],
+            var=underscore,
         )
         _assert_parse_equal("for _ in range(10):\n  pass", expected)
 
@@ -1762,10 +1762,10 @@ class TestParseFor:
                     extent=10,
                     step=None,
                     body=[],
-                    vars=[j],
+                    var=j,
                 )
             ],
-            vars=[i],
+            var=i,
         )
         _assert_parse_equal(
             "for i in range(10):\n  for j in range(10):\n    pass",
@@ -1780,7 +1780,7 @@ class TestParseFor:
                 extent=2,
                 step=None,
                 body=[std.Store(x, 2, 1)],
-                vars=[x],
+                var=x,
             )
         )
         _assert_roundtrip(
@@ -1789,7 +1789,7 @@ class TestParseFor:
                 extent=2,
                 step=None,
                 body=[std.Store(x, 2, 1)],
-                vars=[x],
+                var=x,
                 attrs={"tag": "demo"},
             )
         )
@@ -1802,7 +1802,7 @@ class TestParseFor:
                 extent=8,
                 step=2,
                 body=[],
-                vars=[x],
+                var=x,
             )
         )
 
@@ -1877,6 +1877,7 @@ class TestParseScope:
     def test_with_scope_no_as(self) -> None:
         result = parse("@std.func\ndef f():\n  with std.scope():\n    pass")
         assert isinstance(result.body[0], std.Scope)
+        assert isinstance(result.body[0], std.BaseScope)
         assert list(result.body[0].binds) == []
 
     def test_with_one_bind(self) -> None:
@@ -1942,7 +1943,9 @@ class TestParseScope:
         )
         outer = result.body[0]
         assert isinstance(outer, std.Scope)
+        assert isinstance(outer, std.BaseScope)
         assert isinstance(outer.body[0], std.Scope)
+        assert isinstance(outer.body[0], std.BaseScope)
 
     def test_round_trip(self) -> None:
         x = std.Var(I32, "x")
@@ -2136,6 +2139,91 @@ class TestRoundtripFromTestStd:
         ]:
             _assert_roundtrip(node)
 
+    def test_base_statement_round_trip(self) -> None:
+        x = std.Var(I32, "x")
+        y = std.Var(I32, "y")
+        cases = [
+            (
+                std.Func(
+                    symbol="base_func",
+                    args=[x],
+                    ret_type=I32,
+                    body=[std.Return(x)],
+                ),
+                std.BaseFunc,
+                {},
+            ),
+            (
+                std.Scope([std.VarDef(x)], [std.Return(x)]),
+                std.BaseScope,
+                {},
+            ),
+            (
+                std.For(
+                    start=1,
+                    extent=4,
+                    step=None,
+                    var=x,
+                    body=[std.Store(x, 2, 1)],
+                ),
+                std.BaseFor,
+                {},
+            ),
+            (
+                std.While(
+                    cond=std.Lt(x, 2, ty=BOOL),
+                    body=[std.BindExpr(std.IntImm(I32, 2), y)],
+                ),
+                std.BaseWhile,
+                {"extra_vars": {"x": x, "y": y}},
+            ),
+            (
+                std.BindExpr(std.IntImm(I32, 1), x, tag="demo"),
+                std.BaseBindExpr,
+                {},
+            ),
+            (
+                std.VarDef(x, tag="demo"),
+                std.BaseVarDef,
+                {},
+            ),
+        ]
+
+        for node, base_cls, kwargs in cases:
+            assert isinstance(node, base_cls)
+            _assert_roundtrip(node, **kwargs)
+
+    def test_concrete_statement_subclass_round_trip(self) -> None:
+        x = std.Var(I32, "x")
+        y = std.Var(I32, "y")
+        _assert_roundtrip(
+            std.Func(
+                symbol="concrete",
+                args=[x],
+                ret_type=I32,
+                body=[std.Return(x)],
+            )
+        )
+        _assert_roundtrip(std.Scope([std.VarDef(x)], [std.Return(x)]))
+        _assert_roundtrip(
+            std.For(
+                start=1,
+                extent=4,
+                step=None,
+                var=x,
+                body=[std.Store(x, 2, 1)],
+            )
+        )
+        _assert_roundtrip(
+            std.While(
+                cond=std.Lt(x, 2, ty=BOOL),
+                body=[std.BindExpr(std.IntImm(I32, 2), y)],
+            ),
+            extra_vars={"x": x, "y": y},
+        )
+        _assert_roundtrip(std.BindExpr(std.IntImm(I32, 1), x, tag="demo"))
+        _assert_roundtrip(std.VarDef(x, tag="demo"))
+
     def test_module_round_trip(self) -> None:
         x = std.Var(I32, "x")
         node = std.Module(
@@ -2165,20 +2253,20 @@ class TestRoundtripFromTestStd:
                 extent=2,
                 step=None,
                 body=[std.Store(x, 2, 1)],
-                vars=[x],
+                var=x,
             ),
             std.For(
                 start=1,
                 extent=2,
                 step=None,
                 body=[std.Store(x, 2, 1)],
-                vars=[x],
+                var=x,
                 attrs={"tag": "demo"},
             ),
         ]:
             _assert_roundtrip(node)
 
-    def test_scope_round_trip(self) -> None:
+    def test_scope_block_round_trip(self) -> None:
         x = std.Var(I32, "x")
         node = std.Scope(
             [std.VarDef(x)],
@@ -2309,13 +2397,13 @@ class TestTypeInference:
             extra_vars={"x": x},
         )
         for_stmt = result.body[0]
-        loop_var = for_stmt.vars[0]
+        loop_var = for_stmt.var
         assert _equal(loop_var.ty, I64)
 
     def test_for_default_int_when_all_literal(self) -> None:
         result = parse("@std.func\ndef f():\n  for i in range(0, 10):\n    pass")
         for_stmt = result.body[0]
-        loop_var = for_stmt.vars[0]
+        loop_var = for_stmt.var
         assert _equal(loop_var.ty, I64)
 
 

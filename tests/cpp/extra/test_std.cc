@@ -21,6 +21,7 @@
 #include <tvm/ffi/extra/pyast.h>
 #include <tvm/ffi/extra/std.h>
 #include <tvm/ffi/reflection/access_path.h>
+#include <tvm/ffi/reflection/accessor.h>
 
 #include <set>
 #include <string>
@@ -34,6 +35,34 @@ namespace stdir = tvm::ffi::std_;
 namespace text = tvm::ffi::pyast;
 namespace refl = tvm::ffi::reflection;
 
+std::string Render(const stdir::Node& node) {
+  text::IRPrinter printer{text::PrinterConfig()};
+  text::NodeAST ast = printer->operator()(node, refl::AccessPath::Root()).cast<text::NodeAST>();
+  return ast->ToPython(text::PrinterConfig());
+}
+
+std::string ToStdString(TVMFFIByteArray bytes) { return std::string(bytes.data, bytes.size); }
+
+std::vector<std::string> FieldNames(const ffi::TypeInfo* type_info) {
+  std::vector<std::string> result;
+  refl::ForEachFieldInfo(type_info, [&](const TVMFFIFieldInfo* field_info) {
+    result.push_back(ToStdString(field_info->name));
+  });
+  return result;
+}
+
+void ExpectFieldsAndNoDuplicates(const ffi::TypeInfo* type_info,
+                                 const std::vector<std::string>& expected) {
+  std::vector<std::string> actual = FieldNames(type_info);
+  EXPECT_EQ(actual, expected) << ToStdString(type_info->type_key);
+
+  std::set<std::string> seen;
+  for (const std::string& field_name : actual) {
+    EXPECT_TRUE(seen.insert(field_name).second) << "duplicate reflected field `" << field_name
+                                                << "` in " << ToStdString(type_info->type_key);
+  }
+}
+
 TEST(StdDialect, ConstructAndAccessFields) {
   stdir::PrimTy i32(ffi::StringToDLDataType("int32"));
   stdir::IntImm one(i32, 1);
@@ -45,6 +74,48 @@ TEST(StdDialect, ConstructAndAccessFields) {
   EXPECT_EQ(x->name, "x");
   EXPECT_TRUE(add->a.as<stdir::Var>().has_value());
   EXPECT_TRUE(add->b.as<stdir::IntImm>().has_value());
+}
+
+TEST(StdDialect, BaseStatementRuntimeInheritanceAndCasts) {
+  stdir::PrimTy i32(ffi::StringToDLDataType("int32"));
+  stdir::PrimTy bool_ty(ffi::StringToDLDataType("bool"));
+  stdir::Var x(i32, "x");
+  stdir::Var y(i32, "y");
+  stdir::IntImm one(i32, 1);
+  stdir::IntImm two(i32, 2);
+  stdir::Lt cond(bool_ty, x, two);
+
+  stdir::Func func("main", ffi::Optional<stdir::Attrs>(), {x}, ffi::Optional<stdir::Ty>(i32),
+                   {stdir::Return({x})});
+  EXPECT_NE(func.as<stdir::BaseFuncObj>(), nullptr);
+  EXPECT_TRUE(func.as<stdir::BaseFunc>().has_value());
+  EXPECT_EQ(func.as<stdir::BaseScopeObj>(), nullptr);
+  EXPECT_FALSE(func.as<stdir::BaseScope>().has_value());
+
+  stdir::For for_loop(ffi::Optional<stdir::Expr>(one), two, ffi::Optional<stdir::Expr>(), x,
+                      {stdir::Continue()}, ffi::Optional<stdir::Attrs>());
+  EXPECT_NE(for_loop.as<stdir::BaseForObj>(), nullptr);
+  EXPECT_TRUE(for_loop.as<stdir::BaseFor>().has_value());
+  EXPECT_EQ(for_loop.as<stdir::BaseScopeObj>(), nullptr);
+  EXPECT_FALSE(for_loop.as<stdir::BaseScope>().has_value());
+
+  stdir::While while_loop(cond, ffi::Optional<stdir::Attrs>(), {stdir::Break()});
+  EXPECT_NE(while_loop.as<stdir::BaseWhileObj>(), nullptr);
+  EXPECT_TRUE(while_loop.as<stdir::BaseWhile>().has_value());
+  EXPECT_EQ(while_loop.as<stdir::BaseScopeObj>(), nullptr);
+  EXPECT_FALSE(while_loop.as<stdir::BaseScope>().has_value());
+
+  stdir::BindExpr bind({y}, ffi::Optional<stdir::Attrs>(), one);
+  EXPECT_NE(bind.as<stdir::BaseBindExprObj>(), nullptr);
+  EXPECT_TRUE(bind.as<stdir::BaseBindExpr>().has_value());
+
+  stdir::VarDef var_def({y}, ffi::Optional<stdir::Attrs>());
+  EXPECT_NE(var_def.as<stdir::BaseVarDefObj>(), nullptr);
+  EXPECT_TRUE(var_def.as<stdir::BaseVarDef>().has_value());
+
+  stdir::Scope scope_block(ffi::Optional<stdir::Attrs>(), {var_def}, {stdir::Return({y})});
+  EXPECT_NE(scope_block.as<stdir::ScopeObj>(), nullptr);
+  EXPECT_TRUE(scope_block.as<stdir::Scope>().has_value());
 }
 
 TEST(StdDialect, TextPrintFunction) {
@@ -67,6 +138,51 @@ TEST(StdDialect, TextPrintFunction) {
   EXPECT_NE(rendered.find("def main"), std::string::npos);
   EXPECT_NE(rendered.find("x + std.i32(1)"), std::string::npos);
   EXPECT_NE(rendered.find("return y"), std::string::npos);
+}
+
+TEST(StdDialect, BaseStatementTextPrintSmoke) {
+  stdir::PrimTy i32(ffi::StringToDLDataType("int32"));
+  stdir::PrimTy bool_ty(ffi::StringToDLDataType("bool"));
+  stdir::Var x(i32, "x");
+  stdir::Var y(i32, "y");
+  stdir::IntImm one(i32, 1);
+  stdir::IntImm two(i32, 2);
+  stdir::Lt cond(bool_ty, x, two);
+
+  stdir::BaseFunc base_func("base", {x}, ffi::Optional<stdir::Ty>(i32));
+  std::string base_func_rendered = Render(base_func);
+  EXPECT_NE(base_func_rendered.find("std.BaseFunc"), std::string::npos);
+  EXPECT_NE(base_func_rendered.find("\"base\""), std::string::npos);
+  EXPECT_NE(base_func_rendered.find("ret_type=std.i32"), std::string::npos);
+
+  std::string func_rendered =
+      Render(stdir::Func("main", ffi::Optional<stdir::Attrs>(), {x}, ffi::Optional<stdir::Ty>(i32),
+                         {stdir::Return({x})}));
+  EXPECT_NE(func_rendered.find("@std.func"), std::string::npos);
+  EXPECT_NE(func_rendered.find("def main"), std::string::npos);
+
+  std::string for_rendered =
+      Render(stdir::For(ffi::Optional<stdir::Expr>(one), two, ffi::Optional<stdir::Expr>(), x,
+                        {stdir::Continue()}, ffi::Optional<stdir::Attrs>()));
+  EXPECT_NE(for_rendered.find("for x in range"), std::string::npos);
+  EXPECT_NE(for_rendered.find("continue"), std::string::npos);
+
+  std::string while_rendered =
+      Render(stdir::While(cond, ffi::Optional<stdir::Attrs>(), {stdir::Break()}));
+  EXPECT_NE(while_rendered.find("while x < std.i32(2)"), std::string::npos);
+  EXPECT_NE(while_rendered.find("break"), std::string::npos);
+
+  std::string bind_rendered = Render(stdir::BindExpr({y}, ffi::Optional<stdir::Attrs>(), one));
+  EXPECT_NE(bind_rendered.find("y ="), std::string::npos);
+
+  std::string var_def_rendered = Render(stdir::VarDef({y}, ffi::Optional<stdir::Attrs>()));
+  EXPECT_NE(var_def_rendered.find("std.VarDef"), std::string::npos);
+
+  std::string scope_block_rendered = Render(
+      stdir::Scope(ffi::Optional<stdir::Attrs>(),
+                   {stdir::VarDef({y}, ffi::Optional<stdir::Attrs>())}, {stdir::Return({y})}));
+  EXPECT_NE(scope_block_rendered.find("std.scope"), std::string::npos);
+  EXPECT_NE(scope_block_rendered.find("return y"), std::string::npos);
 }
 
 TEST(StdDialect, TextPrintVarDef) {
@@ -145,6 +261,7 @@ TEST(StdDialect, DialectMnemonics) {
       {stdir::RangeObj::RuntimeTypeIndex(), {"std", "Range"}},
       {stdir::DictAttrsObj::RuntimeTypeIndex(), {"std", "DictAttrs"}},
       {stdir::VarObj::RuntimeTypeIndex(), {"std", "Var"}},
+      {stdir::BaseFuncObj::RuntimeTypeIndex(), {"std", "BaseFunc"}},
       {stdir::FuncObj::RuntimeTypeIndex(), {"std", "Func"}},
       {stdir::ModuleObj::RuntimeTypeIndex(), {"std", "Module"}},
       {stdir::IntImmObj::RuntimeTypeIndex(), {"std", "IntImm"}},
@@ -181,8 +298,13 @@ TEST(StdDialect, DialectMnemonics) {
       {stdir::CastObj::RuntimeTypeIndex(), {"std", "Cast"}},
       {stdir::CallObj::RuntimeTypeIndex(), {"std", "Call"}},
       {stdir::IfStmtObj::RuntimeTypeIndex(), {"std", "IfStmt"}},
+      {stdir::BaseBindExprObj::RuntimeTypeIndex(), {"std", "BaseBindExpr"}},
+      {stdir::BaseVarDefObj::RuntimeTypeIndex(), {"std", "BaseVarDef"}},
+      {stdir::BaseScopeObj::RuntimeTypeIndex(), {"std", "BaseScope"}},
       {stdir::ScopeObj::RuntimeTypeIndex(), {"std", "Scope"}},
+      {stdir::BaseForObj::RuntimeTypeIndex(), {"std", "BaseFor"}},
       {stdir::ForObj::RuntimeTypeIndex(), {"std", "For"}},
+      {stdir::BaseWhileObj::RuntimeTypeIndex(), {"std", "BaseWhile"}},
       {stdir::WhileObj::RuntimeTypeIndex(), {"std", "While"}},
       {stdir::BindExprObj::RuntimeTypeIndex(), {"std", "BindExpr"}},
       {stdir::VarDefObj::RuntimeTypeIndex(), {"std", "VarDef"}},
@@ -195,7 +317,7 @@ TEST(StdDialect, DialectMnemonics) {
   };
   std::set<std::string> seen_mnemonics;
 
-  EXPECT_EQ(cases.size(), 54);
+  EXPECT_EQ(cases.size(), 60);
   for (const auto& [type_index, expected] : cases) {
     ffi::AnyView value = dialect_mnemonic_col[type_index];
 
@@ -207,6 +329,44 @@ TEST(StdDialect, DialectMnemonics) {
     }
     EXPECT_TRUE(seen_mnemonics.insert(expected[0] + "$" + expected[1]).second);
   }
+}
+
+TEST(StdDialect, BaseStatementFieldsAreOwnedOnce) {
+  ExpectFieldsAndNoDuplicates(TVMFFIGetTypeInfo(stdir::BaseFuncObj::RuntimeTypeIndex()),
+                              {"attrs", "symbol", "args", "ret_type"});
+  ExpectFieldsAndNoDuplicates(TVMFFIGetTypeInfo(stdir::FuncObj::RuntimeTypeIndex()),
+                              {"attrs", "symbol", "args", "ret_type", "body"});
+  EXPECT_EQ(TVMFFIGetTypeInfo(stdir::FuncObj::RuntimeTypeIndex())->num_fields, 1);
+
+  ExpectFieldsAndNoDuplicates(TVMFFIGetTypeInfo(stdir::BaseScopeObj::RuntimeTypeIndex()),
+                              {"attrs"});
+  EXPECT_EQ(TVMFFIGetTypeInfo(stdir::BaseScopeObj::RuntimeTypeIndex())->num_fields, 0);
+  ExpectFieldsAndNoDuplicates(TVMFFIGetTypeInfo(stdir::ScopeObj::RuntimeTypeIndex()),
+                              {"attrs", "binds", "body"});
+
+  ExpectFieldsAndNoDuplicates(TVMFFIGetTypeInfo(stdir::BaseForObj::RuntimeTypeIndex()),
+                              {"attrs", "extent", "var"});
+  ExpectFieldsAndNoDuplicates(TVMFFIGetTypeInfo(stdir::ForObj::RuntimeTypeIndex()),
+                              {"attrs", "extent", "var", "start", "step", "body"});
+  EXPECT_EQ(TVMFFIGetTypeInfo(stdir::ForObj::RuntimeTypeIndex())->num_fields, 3);
+
+  ExpectFieldsAndNoDuplicates(TVMFFIGetTypeInfo(stdir::BaseWhileObj::RuntimeTypeIndex()),
+                              {"attrs", "cond"});
+  ExpectFieldsAndNoDuplicates(TVMFFIGetTypeInfo(stdir::WhileObj::RuntimeTypeIndex()),
+                              {"attrs", "cond", "body"});
+  EXPECT_EQ(TVMFFIGetTypeInfo(stdir::WhileObj::RuntimeTypeIndex())->num_fields, 1);
+
+  ExpectFieldsAndNoDuplicates(TVMFFIGetTypeInfo(stdir::BaseBindExprObj::RuntimeTypeIndex()),
+                              {"attrs", "expr"});
+  ExpectFieldsAndNoDuplicates(TVMFFIGetTypeInfo(stdir::BindExprObj::RuntimeTypeIndex()),
+                              {"attrs", "expr", "vars"});
+  EXPECT_EQ(TVMFFIGetTypeInfo(stdir::BindExprObj::RuntimeTypeIndex())->num_fields, 1);
+
+  ExpectFieldsAndNoDuplicates(TVMFFIGetTypeInfo(stdir::BaseVarDefObj::RuntimeTypeIndex()),
+                              {"attrs"});
+  ExpectFieldsAndNoDuplicates(TVMFFIGetTypeInfo(stdir::VarDefObj::RuntimeTypeIndex()),
+                              {"attrs", "vars"});
+  EXPECT_EQ(TVMFFIGetTypeInfo(stdir::VarDefObj::RuntimeTypeIndex())->num_fields, 1);
 }
 
 TEST(StdDialect, TextSugarPreservesTypedImmediateOperands) {
