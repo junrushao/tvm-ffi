@@ -18,12 +18,13 @@
 from __future__ import annotations
 
 import itertools
-from typing import Any, List, Optional, cast
+from typing import Any, ClassVar, List, Optional, cast
 
 import pytest
 import tvm_ffi
 import tvm_ffi.dataclasses as dc
 from tvm_ffi import core, pyast, std
+from tvm_ffi._pyast_parser import parse, register_dialect
 from tvm_ffi.access_path import AccessPath
 from tvm_ffi.dataclasses import fields
 
@@ -255,7 +256,6 @@ class TestFunc:
         x = std.Var(ty=i32, name="x")
         node = std.Func(
             symbol="main",
-            attrs={"tag": "demo"},
             args=[x],
             ret_type=i32,
             body=[std.Return(x)],
@@ -264,33 +264,29 @@ class TestFunc:
         assert isinstance(node, std.Func)
         assert isinstance(node, std.BaseFunc)
         assert tuple(field.name for field in fields(std.Func)) == (
-            "attrs",
             "symbol",
             "args",
             "ret_type",
             "body",
+            "attrs",
         )
         assert node.symbol == "main"
-        assert isinstance(node.attrs, std.DictAttrs)
-        assert dict(node.attrs.values) == {"tag": "demo"}
         assert list(node.args) == [x]
         assert node.ret_type == i32
         assert len(node.body) == 1
+        assert node.attrs is None
 
     def test_text_format(self) -> None:
         i32 = std.PrimTy("int32")
         x = std.Var(ty=i32, name="x")
         node = std.Func(
             symbol="main",
-            attrs={"tag": "demo"},
             args=[x],
             ret_type=i32,
             body=[std.Return(x)],
         )
 
-        assert node.text() == (
-            '@std.func(tag="demo")\ndef main(x: std.i32) -> std.i32:\n  return x'
-        )
+        assert node.text() == "@std.func\ndef main(x: std.i32) -> std.i32:\n  return x"
 
     def test_text_format_without_return_type(self) -> None:
         i32 = std.PrimTy("int32")
@@ -329,21 +325,18 @@ class TestFunc:
         other_x = std.Var(ty=i32, name="x")
         lhs = std.Func(
             symbol="main",
-            attrs={"tag": "demo"},
             args=[lhs_x],
             ret_type=i32,
             body=[std.Return(lhs_x)],
         )
         rhs = std.Func(
             symbol="main",
-            attrs={"tag": "demo"},
             args=[rhs_x],
             ret_type=i32,
             body=[std.Return(rhs_x)],
         )
         different = std.Func(
             symbol="other",
-            attrs={"tag": "demo"},
             args=[other_x],
             ret_type=i32,
             body=[std.Return(other_x)],
@@ -353,94 +346,55 @@ class TestFunc:
         assert tvm_ffi.structural_hash(lhs) == tvm_ffi.structural_hash(rhs)
         assert not tvm_ffi.structural_equal(lhs, different)
 
-    def test_attrs_defaults_to_none_and_ret_type_is_required(self) -> None:
+    def test_ret_type_is_required(self) -> None:
         i32 = std.PrimTy("int32")
         x = std.Var(ty=i32, name="x")
         func_ctor = cast(Any, std.Func)
 
-        without_attrs = func_ctor(symbol="main", args=[x], ret_type=i32, body=[])
-        assert without_attrs.attrs is None
+        node = func_ctor(symbol="main", args=[x], ret_type=i32, body=[])
+        assert node.ret_type == i32
 
         with pytest.raises(TypeError):
             func_ctor(symbol="main", args=[x], body=[])
 
         func = std.Func(symbol="main", args=[x], ret_type=None, body=[])
-        assert func.attrs is None
         assert func.ret_type is None
 
-    def test_attrs_field_accepts_dict_attrs_and_none(self) -> None:
+    def test_attrs_field(self) -> None:
         i32 = std.PrimTy("int32")
         x = std.Var(ty=i32, name="x")
-        attrs = {"tag": "demo"}
-        with_attrs = std.Func(
-            symbol="main",
-            attrs=attrs,
-            args=[x],
-            ret_type=i32,
-            body=[std.Return(x)],
-        )
-        with_plain_dict_attrs = std.Func(
-            symbol="main",
-            attrs={"tag": "demo"},
-            args=[x],
-            ret_type=i32,
-            body=[std.Return(x)],
-        )
-        with_empty_attrs = std.Func(
-            symbol="main",
-            attrs={},
-            args=[x],
-            ret_type=i32,
-            body=[std.Return(x)],
-        )
-        without_attrs = std.Func(
-            symbol="main",
-            args=[x],
-            ret_type=i32,
-            body=[std.Return(x)],
-        )
+        node = std.Func(symbol="main", attrs={"tag": "demo"}, args=[x], ret_type=i32, body=[])
 
-        assert isinstance(with_attrs.attrs, std.DictAttrs)
-        assert dict(with_attrs.attrs.values) == attrs
-        assert isinstance(with_plain_dict_attrs.attrs, std.DictAttrs)
-        assert dict(with_plain_dict_attrs.attrs.values) == {"tag": "demo"}
-        assert isinstance(with_empty_attrs.attrs, std.DictAttrs)
-        assert without_attrs.attrs is None
-        assert with_attrs.text() == (
-            '@std.func(tag="demo")\ndef main(x: std.i32) -> std.i32:\n  return x'
-        )
-        assert (
-            with_plain_dict_attrs.text()
-            == '@std.func(tag="demo")\ndef main(x: std.i32) -> std.i32:\n  return x'
-        )
-        assert with_empty_attrs.text() == "@std.func\ndef main(x: std.i32) -> std.i32:\n  return x"
-        assert without_attrs.text() == "@std.func\ndef main(x: std.i32) -> std.i32:\n  return x"
+        assert isinstance(node.attrs, std.DictAttrs)
+        assert dict(node.attrs.values) == {"tag": "demo"}
+        assert node.text() == '@std.func(tag="demo")\ndef main(x: std.i32) -> std.i32:\n  pass'
 
 
 class TestStatementBaseHierarchy:
     def test_base_statement_classes_have_expected_inheritance_and_fields(self) -> None:
+        assert tuple(field.name for field in fields(std.Stmt)) == ()
         cases = [
             (
                 std.BaseFunc,
                 std.Stmt,
-                ("attrs", "symbol", "args", "ret_type"),
+                ("symbol", "args", "ret_type"),
                 ("std", "BaseFunc"),
             ),
-            (std.BaseScope, std.Stmt, ("attrs",), ("std", "BaseScope")),
+            (std.BaseScope, std.Stmt, (), ("std", "BaseScope")),
             (
                 std.BaseFor,
                 std.Stmt,
-                ("attrs", "extent", "var"),
+                ("extent", "var"),
                 ("std", "BaseFor"),
             ),
-            (std.BaseWhile, std.Stmt, ("attrs", "cond"), ("std", "BaseWhile")),
+            (std.BaseWhile, std.Stmt, ("cond",), ("std", "BaseWhile")),
             (
                 std.BaseBindExpr,
                 std.Stmt,
-                ("attrs", "expr"),
+                ("expr",),
                 ("std", "BaseBindExpr"),
             ),
-            (std.BaseVarDef, std.Stmt, ("attrs",), ("std", "BaseVarDef")),
+            (std.BaseVarDef, std.Stmt, (), ("std", "BaseVarDef")),
         ]
 
         for cls, parent, field_names, dialect_mnemonic in cases:
@@ -461,29 +415,29 @@ class TestStatementBaseHierarchy:
             (
                 std.Func,
                 std.BaseFunc,
-                ("attrs", "symbol", "args", "ret_type", "body"),
+                ("symbol", "args", "ret_type", "body", "attrs"),
                 ("std", "Func"),
             ),
             (
                 std.Scope,
                 std.BaseScope,
-                ("attrs", "binds", "body"),
+                ("binds", "body", "attrs"),
                 ("std", "Scope"),
             ),
             (
                 std.For,
                 std.BaseFor,
-                ("attrs", "extent", "var", "start", "step", "body"),
+                ("extent", "var", "start", "step", "body", "attrs"),
                 ("std", "For"),
             ),
-            (std.While, std.BaseWhile, ("attrs", "cond", "body"), ("std", "While")),
+            (std.While, std.BaseWhile, ("cond", "body", "attrs"), ("std", "While")),
             (
                 std.BindExpr,
                 std.BaseBindExpr,
-                ("attrs", "expr", "vars"),
+                ("expr", "vars"),
                 ("std", "BindExpr"),
             ),
-            (std.VarDef, std.BaseVarDef, ("attrs", "vars"), ("std", "VarDef")),
+            (std.VarDef, std.BaseVarDef, ("vars",), ("std", "VarDef")),
         ]
 
         for cls, parent, field_names, dialect_mnemonic in cases:
@@ -505,7 +459,6 @@ class TestModule:
         x = std.Var(ty=i32, name="x")
         func = std.Func(
             symbol="main",
-            attrs={"tag": "demo"},
             args=[x],
             ret_type=i32,
             body=[std.Return(x)],
@@ -523,7 +476,6 @@ class TestModule:
             funcs=[
                 std.Func(
                     symbol="main",
-                    attrs={"tag": "demo"},
                     args=[x],
                     ret_type=i32,
                     body=[std.Return(x)],
@@ -532,7 +484,7 @@ class TestModule:
         )
 
         assert node.text() == (
-            '@std.module\nclass MyModule:\n  @std.func(tag="demo")\n'
+            "@std.module\nclass MyModule:\n  @std.func\n"
             "  def main(x: std.i32) -> std.i32:\n    return x"
         )
 
@@ -545,7 +497,6 @@ class TestModule:
             funcs=[
                 std.Func(
                     symbol="main",
-                    attrs={"tag": "demo"},
                     args=[lhs_x],
                     ret_type=i32,
                     body=[std.Return(lhs_x)],
@@ -556,7 +507,6 @@ class TestModule:
             funcs=[
                 std.Func(
                     symbol="main",
-                    attrs={"tag": "demo"},
                     args=[rhs_x],
                     ret_type=i32,
                     body=[std.Return(rhs_x)],
@@ -567,7 +517,6 @@ class TestModule:
             funcs=[
                 std.Func(
                     symbol="other",
-                    attrs={"tag": "demo"},
                     args=[other_x],
                     ret_type=i32,
                     body=[std.Return(other_x)],
@@ -2158,24 +2107,21 @@ class TestIfStmt:
 
         assert isinstance(node, std.IfStmt)
         assert tuple(field.name for field in fields(std.IfStmt)) == (
-            "attrs",
             "cond",
             "then_body",
             "else_body",
         )
-        assert node.attrs is None
         assert node.cond == cond
         assert list(node.then_body) == then_body
         assert list(node.else_body) == else_body
 
-        with_attrs = std.IfStmt(
-            cond=cond,
-            then_body=then_body,
-            else_body=else_body,
-            tag="demo",
-        )
-        assert isinstance(with_attrs.attrs, std.DictAttrs)
-        assert dict(with_attrs.attrs.values) == {"tag": "demo"}
+        with pytest.raises(TypeError):
+            std.IfStmt(
+                cond=cond,
+                then_body=then_body,
+                else_body=else_body,
+                tag="demo",  # ty: ignore[unknown-argument]
+            )
 
     def test_text_format(self) -> None:
         i32 = std.PrimTy("int32")
@@ -2252,7 +2198,6 @@ class TestFor:
             start=range_node.start,
             extent=range_extent,
             step=range_node.step,
-            attrs={"tag": "demo"},
             body=body,
             var=x,
         )
@@ -2261,57 +2206,39 @@ class TestFor:
         assert isinstance(node, std.BaseFor)
         assert issubclass(std.For, std.BaseFor)
         assert tuple(field.name for field in fields(std.For)) == (
-            "attrs",
             "extent",
             "var",
             "start",
             "step",
             "body",
+            "attrs",
         )
         assert node.start == range_node.start
         assert node.extent == range_node.extent
         assert node.step == range_node.step
-        assert node.attrs is not None
         assert node.var == x
         assert list(node.body) == body
+        assert node.attrs is None
 
-    def test_attrs_field_accepts_dict_attrs_and_none(self) -> None:
+    def test_attrs_field(self) -> None:
         i32 = std.PrimTy("int32")
         x = std.Var(ty=i32, name="x")
         cond_range = std.Range(1, 2)
         cond_extent = cond_range.extent
         body = [std.Store(x, 2, 1)]
-        attrs = {"pragma": "unroll"}
-        with_attrs = std.For(
+
+        node = std.For(
             start=cond_range.start,
             extent=cond_extent,
             step=cond_range.step,
-            attrs=attrs,
-            body=body,
-            var=x,
-        )
-        without_attrs = std.For(
-            start=cond_range.start,
-            extent=cond_extent,
-            step=cond_range.step,
-            body=body,
-            var=x,
-        )
-        with_empty_attrs = std.For(
-            start=cond_range.start,
-            extent=cond_extent,
-            step=cond_range.step,
-            attrs={},
+            attrs={"pragma": "unroll"},
             body=body,
             var=x,
         )
 
-        assert isinstance(with_attrs.attrs, std.DictAttrs)
-        assert dict(with_attrs.attrs.values) == attrs
-        assert without_attrs.attrs is None
-        assert with_attrs.text() == 'for x in range(1, 2, ty=std.i32, pragma="unroll"):\n  x[1] = 2'
-        assert without_attrs.text() == "for x in range(1, 2, ty=std.i32):\n  x[1] = 2"
-        assert with_empty_attrs.text() == "for x in range(1, 2, ty=std.i32):\n  x[1] = 2"
+        assert isinstance(node.attrs, std.DictAttrs)
+        assert dict(node.attrs.values) == {"pragma": "unroll"}
+        assert node.text() == 'for x in range(1, 2, ty=std.i32, pragma="unroll"):\n  x[1] = 2'
 
     def test_text_format(self) -> None:
         i32 = std.PrimTy("int32")
@@ -2320,26 +2247,11 @@ class TestFor:
             start=1,
             extent=2,
             step=None,
-            attrs={"tag": "demo"},
             body=[std.Store(x, 2, 1)],
             var=x,
         )
 
-        assert node.text() == 'for x in range(1, 2, ty=std.i32, tag="demo"):\n  x[1] = 2'
-
-    def test_text_format_with_sorted_attrs(self) -> None:
-        i32 = std.PrimTy("int32")
-        x = std.Var(ty=i32, name="x")
-        node = std.For(
-            start=1,
-            extent=2,
-            step=None,
-            attrs={"z": 3, "a": 1},
-            body=[std.Store(x, 2, 1)],
-            var=x,
-        )
-
-        assert node.text() == "for x in range(1, 2, ty=std.i32, a=1, z=3):\n  x[1] = 2"
+        assert node.text() == "for x in range(1, 2, ty=std.i32):\n  x[1] = 2"
 
     def test_text_format_with_step_keyword(self) -> None:
         i32 = std.PrimTy("int32")
@@ -2360,7 +2272,6 @@ class TestFor:
             start=1,
             extent=2,
             step=None,
-            attrs={"tag": "demo"},
             body=[std.Store(std.Var(ty=i32, name="x"), 2, 1)],
             var=std.Var(ty=i32, name="x"),
         )
@@ -2368,7 +2279,6 @@ class TestFor:
             start=1,
             extent=2,
             step=None,
-            attrs={"tag": "demo"},
             body=[std.Store(std.Var(ty=i32, name="x"), 2, 1)],
             var=std.Var(ty=i32, name="x"),
         )
@@ -2376,7 +2286,6 @@ class TestFor:
             start=1,
             extent=3,
             step=None,
-            attrs={"tag": "demo"},
             body=[std.Store(std.Var(ty=i32, name="x"), 2, 1)],
             var=std.Var(ty=i32, name="x"),
         )
@@ -2395,7 +2304,6 @@ class TestWhile:
         body = [std.BindExpr(std.IntImm(std.PrimTy("int64"), 2), y)]
         node = std.While(
             cond=cond,
-            attrs={"tag": "demo"},
             body=body,
         )
 
@@ -2403,49 +2311,32 @@ class TestWhile:
         assert isinstance(node, std.BaseWhile)
         assert issubclass(std.While, std.BaseWhile)
         assert tuple(field.name for field in fields(std.While)) == (
-            "attrs",
             "cond",
             "body",
+            "attrs",
         )
         assert node.cond == cond
-        assert node.attrs is not None
         assert list(node.body) == body
+        assert node.attrs is None
 
-    def test_attrs_field_accepts_dict_attrs_and_none(self) -> None:
+    def test_attrs_field(self) -> None:
         i32 = std.PrimTy("int32")
         x = std.Var(ty=i32, name="x")
         y = std.Var(ty=i32, name="y")
         cond = std.Lt(ty=std.PrimTy("bool"), a=x, b=2)
         body = [std.BindExpr(std.IntImm(std.PrimTy("int64"), 2), y)]
-        attrs = {"pragma": "pipeline"}
-        with_attrs = std.While(
-            cond=cond,
-            attrs=attrs,
-            body=body,
-        )
-        without_attrs = std.While(
-            cond=cond,
-            body=body,
-        )
-        with_empty_attrs = std.While(
-            cond=cond,
-            attrs={},
-            body=body,
-        )
 
-        assert isinstance(with_attrs.attrs, std.DictAttrs)
-        assert dict(with_attrs.attrs.values) == attrs
-        assert without_attrs.attrs is None
-        assert with_attrs.text() == 'with std.while_(x < std.i32(2), pragma="pipeline"):\n  y = 2'
-        assert without_attrs.text() == "while x < std.i32(2):\n  y = 2"
-        assert with_empty_attrs.text() == "while x < std.i32(2):\n  y = 2"
+        node = std.While(cond=cond, attrs={"pragma": "pipeline"}, body=body)
+
+        assert isinstance(node.attrs, std.DictAttrs)
+        assert dict(node.attrs.values) == {"pragma": "pipeline"}
+        assert node.text() == 'with std.while_(x < std.i32(2), pragma="pipeline"):\n  y = 2'
 
     def test_text_format(self) -> None:
         i32 = std.PrimTy("int32")
         x = std.Var(ty=i32, name="x")
         node = std.While(
             cond=std.Lt(ty=std.PrimTy("bool"), a=x, b=2),
-            attrs={"tag": "demo"},
             body=[
                 std.BindExpr(
                     std.IntImm(std.PrimTy("int64"), 2),
@@ -2454,7 +2345,7 @@ class TestWhile:
             ],
         )
 
-        assert node.text() == 'with std.while_(x < std.i32(2), tag="demo"):\n  y = 2'
+        assert node.text() == "while x < std.i32(2):\n  y = 2"
 
     def test_text_format_with_simple_while(self) -> None:
         i32 = std.PrimTy("int32")
@@ -2471,22 +2362,6 @@ class TestWhile:
 
         assert node.text() == "while x < std.i32(2):\n  y = 2"
 
-    def test_text_format_with_sorted_attrs(self) -> None:
-        i32 = std.PrimTy("int32")
-        x = std.Var(ty=i32, name="x")
-        node = std.While(
-            cond=std.Lt(ty=std.PrimTy("bool"), a=x, b=2),
-            attrs={"z": 3, "a": 1},
-            body=[
-                std.BindExpr(
-                    std.IntImm(std.PrimTy("int64"), 2),
-                    std.Var(ty=i32, name="y"),
-                )
-            ],
-        )
-
-        assert node.text() == "with std.while_(x < std.i32(2), a=1, z=3):\n  y = 2"
-
     def test_structural_equality(self) -> None:
         i32 = std.PrimTy("int32")
         lhs = std.While(
@@ -2495,7 +2370,6 @@ class TestWhile:
                 a=std.Var(ty=i32, name="x"),
                 b=2,
             ),
-            attrs={"tag": "demo"},
             body=[
                 std.BindExpr(
                     std.IntImm(std.PrimTy("int64"), 2),
@@ -2509,7 +2383,6 @@ class TestWhile:
                 a=std.Var(ty=i32, name="x"),
                 b=2,
             ),
-            attrs={"tag": "demo"},
             body=[
                 std.BindExpr(
                     std.IntImm(std.PrimTy("int64"), 2),
@@ -2523,7 +2396,6 @@ class TestWhile:
                 a=std.Var(ty=i32, name="x"),
                 b=2,
             ),
-            attrs={"tag": "demo"},
             body=[
                 std.BindExpr(
                     std.IntImm(std.PrimTy("int64"), 2),
@@ -2549,7 +2421,6 @@ class TestScope:
         x = std.Var(ty=i32, name="x")
         body = [std.Return(x)]
         node = std.Scope(
-            attrs={"tag": "demo"},
             binds=[std.VarDef(x)],
             body=body,
         )
@@ -2558,34 +2429,25 @@ class TestScope:
         assert isinstance(node, std.BaseScope)
         assert issubclass(std.Scope, std.BaseScope)
         assert tuple(field.name for field in fields(std.Scope)) == (
-            "attrs",
             "binds",
             "body",
+            "attrs",
         )
-        assert node.attrs is not None
         assert isinstance(node.binds[0], std.VarDef)
         assert list(node.binds[0].vars) == [x]
         assert list(node.body) == body
+        assert node.attrs is None
 
-    def test_attrs_field_accepts_dict_attrs_and_none(self) -> None:
+    def test_attrs_field(self) -> None:
         i32 = std.PrimTy("int32")
         x = std.Var(ty=i32, name="x")
         body = [std.Return(x)]
-        attrs = {"pragma": "scope"}
-        with_attrs = std.Scope(attrs=attrs, binds=[], body=body)
-        without_attrs = std.Scope(binds=[], body=body)
-        with_empty_attrs = std.Scope(
-            attrs={},
-            binds=[],
-            body=body,
-        )
 
-        assert isinstance(with_attrs.attrs, std.DictAttrs)
-        assert dict(with_attrs.attrs.values) == attrs
-        assert without_attrs.attrs is None
-        assert with_attrs.text() == 'with std.scope(pragma="scope"):\n  return x'
-        assert without_attrs.text() == "return x"
-        assert with_empty_attrs.text() == "return x"
+        node = std.Scope(attrs={"pragma": "scope"}, binds=[], body=body)
+
+        assert isinstance(node.attrs, std.DictAttrs)
+        assert dict(node.attrs.values) == {"pragma": "scope"}
+        assert node.text() == 'with std.scope(pragma="scope"):\n  return x'
 
     def test_text_format(self) -> None:
         i32 = std.PrimTy("int32")
@@ -2604,12 +2466,11 @@ class TestScope:
 
         assert node.text() == "return x"
 
-    def test_text_format_with_sorted_attrs_and_vars(self) -> None:
+    def test_text_format_with_multiple_vars(self) -> None:
         i32 = std.PrimTy("int32")
         x = std.Var(ty=i32, name="x")
         state = std.Var(ty=i32, name="state")
         node = std.Scope(
-            attrs={"z": 3, "a": 1},
             binds=[
                 std.VarDef(x),
                 std.VarDef(state),
@@ -2618,26 +2479,23 @@ class TestScope:
         )
 
         assert (
-            node.text() == "with std.scope(std.VarDef(std.i32), std.VarDef(std.i32), "
-            "a=1, z=3) as (x, state):\n  return x"
+            node.text()
+            == "with std.scope(std.VarDef(std.i32), std.VarDef(std.i32)) as (x, state):\n  return x"
         )
 
     def test_structural_equality(self) -> None:
         i32 = std.PrimTy("int32")
         lhs = std.Scope(
-            attrs={"tag": "demo"},
             binds=[std.VarDef(std.Var(ty=i32, name="x"))],
             body=[std.Return(std.Var(ty=i32, name="x"))],
         )
         rhs = std.Scope(
-            attrs={"tag": "demo"},
             binds=[std.VarDef(std.Var(ty=i32, name="x"))],
             body=[std.Return(std.Var(ty=i32, name="x"))],
         )
         different = std.Scope(
-            attrs={"tag": "other"},
             binds=[std.VarDef(std.Var(ty=i32, name="x"))],
-            body=[std.Return(std.Var(ty=i32, name="x"))],
+            body=[std.Return(std.Var(ty=i32, name="x")), std.Break()],
         )
 
         assert tvm_ffi.structural_equal(lhs, rhs)
@@ -2650,17 +2508,14 @@ class TestBindExpr:
         i32 = std.PrimTy("int32")
         value = 1
         expr = std.IntImm(std.PrimTy("int64"), value)
-        attrs = {"tag": "demo"}
         var = std.Var(ty=i32, name="y")
-        node = std.BindExpr(expr, var, **attrs)
+        node = std.BindExpr(expr, var)
 
         assert isinstance(node, std.BindExpr)
         assert isinstance(node, std.BaseBindExpr)
         assert issubclass(std.BindExpr, std.BaseBindExpr)
-        assert tuple(field.name for field in fields(std.BindExpr)) == ("attrs", "expr", "vars")
+        assert tuple(field.name for field in fields(std.BindExpr)) == ("expr", "vars")
         assert list(node.vars) == [var]
-        assert isinstance(node.attrs, std.DictAttrs)
-        assert dict(node.attrs.values) == attrs
         assert isinstance(node.expr, std.IntImm)
         assert node.expr.value == value
 
@@ -2686,61 +2541,42 @@ class TestBindExpr:
         assert tvm_ffi.structural_equal(str_bind.expr.ty, std.AnyTy())
         assert str_bind.expr.value == "x"
 
-    def test_attrs_field_accepts_dict_attrs_and_none(self) -> None:
+    def test_attrs_field_is_not_builtin(self) -> None:
         i32 = std.PrimTy("int32")
         i64 = std.PrimTy("int64")
         var = std.Var(ty=i32, name="y")
-        with_attrs = std.BindExpr(std.IntImm(i64, 1), var, tag="demo")
-        with_empty_attrs = std.BindExpr(std.IntImm(i64, 1), var)
-        without_attrs = std.BindExpr(std.IntImm(i64, 1), var)
 
-        assert isinstance(with_attrs.attrs, std.DictAttrs)
-        assert dict(with_attrs.attrs.values) == {"tag": "demo"}
-        assert with_empty_attrs.attrs is None
-        assert without_attrs.attrs is None
-        assert with_attrs.text() == 'y = std.BindExpr(1, tag="demo")'
-        assert with_empty_attrs.text() == "y = 1"
-        assert without_attrs.text() == "y = 1"
+        with pytest.raises(TypeError):
+            std.BindExpr(std.IntImm(i64, 1), var, tag="demo")  # ty: ignore[unknown-argument]
 
     def test_text_format_without_vars(self) -> None:
         i64 = std.PrimTy("int64")
-        assert std.BindExpr(std.IntImm(i64, 1), tag="demo").text() == 'std.BindExpr(1, tag="demo")'
         assert std.BindExpr(std.IntImm(i64, 1)).text() == "1"
 
     def test_text_format_with_single_var(self) -> None:
         i32 = std.PrimTy("int32")
         i64 = std.PrimTy("int64")
-        with_attrs = std.BindExpr(std.IntImm(i64, 1), std.Var(ty=i32, name="y"), tag="demo")
-        without_attrs = std.BindExpr(std.IntImm(i64, 1), std.Var(ty=i32, name="y"))
+        node = std.BindExpr(std.IntImm(i64, 1), std.Var(ty=i32, name="y"))
 
-        assert with_attrs.text() == 'y = std.BindExpr(1, tag="demo")'
-        assert without_attrs.text() == "y = 1"
+        assert node.text() == "y = 1"
 
     def test_text_format_with_multiple_vars(self) -> None:
         i32 = std.PrimTy("int32")
         i64 = std.PrimTy("int64")
-        with_attrs = std.BindExpr(
-            std.IntImm(i64, 1),
-            std.Var(ty=i32, name="y"),
-            std.Var(ty=i32, name="z"),
-            z=2,
-            a=1,
-        )
-        without_attrs = std.BindExpr(
+        node = std.BindExpr(
             std.IntImm(i64, 1),
             std.Var(ty=i32, name="y"),
             std.Var(ty=i32, name="z"),
         )
 
-        assert with_attrs.text() == "y, z = std.BindExpr(1, a=1, z=2)"
-        assert without_attrs.text() == "y, z = 1"
+        assert node.text() == "y, z = 1"
 
     def test_structural_equality(self) -> None:
         i32 = std.PrimTy("int32")
         i64 = std.PrimTy("int64")
-        lhs = std.BindExpr(std.IntImm(i64, 1), std.Var(ty=i32, name="y"), tag="demo")
-        rhs = std.BindExpr(std.IntImm(i64, 1), std.Var(ty=i32, name="renamed"), tag="demo")
-        different = std.BindExpr(std.IntImm(i64, 2), std.Var(ty=i32, name="y"), tag="demo")
+        lhs = std.BindExpr(std.IntImm(i64, 1), std.Var(ty=i32, name="y"))
+        rhs = std.BindExpr(std.IntImm(i64, 1), std.Var(ty=i32, name="renamed"))
+        different = std.BindExpr(std.IntImm(i64, 2), std.Var(ty=i32, name="y"))
 
         assert tvm_ffi.structural_equal(lhs, rhs)
         assert tvm_ffi.structural_hash(lhs) == tvm_ffi.structural_hash(rhs)
@@ -2751,15 +2587,13 @@ class TestVarDef:
     def test_constructor(self) -> None:
         i32 = std.PrimTy("int32")
         var = std.Var(ty=i32, name="y")
-        node = std.VarDef(var, tag="demo")
+        node = std.VarDef(var)
 
         assert isinstance(node, std.VarDef)
         assert isinstance(node, std.BaseVarDef)
         assert issubclass(std.VarDef, std.BaseVarDef)
-        assert tuple(field.name for field in fields(std.VarDef)) == ("attrs", "vars")
+        assert tuple(field.name for field in fields(std.VarDef)) == ("vars",)
         assert list(node.vars) == [var]
-        assert isinstance(node.attrs, std.DictAttrs)
-        assert dict(node.attrs.values) == {"tag": "demo"}
 
     def test_constructor_normalizes_types_to_unnamed_vars(self) -> None:
         i32 = std.PrimTy("int32")
@@ -2772,44 +2606,36 @@ class TestVarDef:
         assert tvm_ffi.structural_equal(node.vars[1].ty, std.PrimTy("float32"))
         assert node.text() == "v, v_1 = std.VarDef(std.i32, std.f32)"
 
-    def test_text_format_without_attrs(self) -> None:
+    def test_text_format(self) -> None:
         i32 = std.PrimTy("int32")
         node = std.VarDef(std.Var(ty=i32, name="y"))
 
         assert node.text() == "y = std.VarDef(std.i32)"
 
-    def test_text_format_with_attrs(self) -> None:
+    def test_attrs_field_is_not_builtin(self) -> None:
         i32 = std.PrimTy("int32")
-        node = std.VarDef(std.Var(ty=i32, name="y"), tag="demo")
 
-        assert node.text() == 'y = std.VarDef(std.i32, tag="demo")'
-        assert std.VarDef(std.Var(ty=i32, name="y")).text() == "y = std.VarDef(std.i32)"
+        with pytest.raises(TypeError):
+            std.VarDef(std.Var(ty=i32, name="y"), tag="demo")  # ty: ignore[unknown-argument]
 
     def test_text_format_with_multiple_vars(self) -> None:
         i32 = std.PrimTy("int32")
         bf16_3x12 = std.TensorTy(shape=[3, 12], dtype="bfloat16")
-        with_attrs = std.VarDef(
-            std.Var(ty=i32, name="y"),
-            std.Var(ty=bf16_3x12, name="z"),
-            tag="demo",
-        )
-        without_attrs = std.VarDef(
+        node = std.VarDef(
             std.Var(ty=i32, name="y"),
             std.Var(ty=bf16_3x12, name="z"),
         )
 
-        assert with_attrs.text() == 'y, z = std.VarDef(std.i32, std.bf16[3, 12], tag="demo")'
-        assert without_attrs.text() == "y, z = std.VarDef(std.i32, std.bf16[3, 12])"
+        assert node.text() == "y, z = std.VarDef(std.i32, std.bf16[3, 12])"
 
     def test_text_format_without_vars(self) -> None:
         assert std.VarDef().text() == "pass"
-        assert std.VarDef(tag="demo").text() == 'std.VarDef(tag="demo")'
 
     def test_structural_equality(self) -> None:
         i32 = std.PrimTy("int32")
-        lhs = std.VarDef(std.Var(ty=i32, name="y"), tag="demo")
-        rhs = std.VarDef(std.Var(ty=i32, name="renamed"), tag="demo")
-        different = std.VarDef(std.Var(ty=i32, name="y"), tag="other")
+        lhs = std.VarDef(std.Var(ty=i32, name="y"))
+        rhs = std.VarDef(std.Var(ty=i32, name="renamed"))
+        different = std.VarDef(std.Var(ty=std.PrimTy("float32"), name="y"))
 
         assert tvm_ffi.structural_equal(lhs, rhs)
         assert tvm_ffi.structural_hash(lhs) == tvm_ffi.structural_hash(rhs)
@@ -2826,12 +2652,10 @@ class TestStore:
 
         assert isinstance(node, std.Store)
         assert tuple(field.name for field in fields(std.Store)) == (
-            "attrs",
             "lhs",
             "indices",
             "rhs",
         )
-        assert node.attrs is None
         assert node.lhs == x
         indices = list(node.indices)
         assert isinstance(indices[0], std.Range)
@@ -2840,17 +2664,14 @@ class TestStore:
         assert isinstance(node.rhs, std.IntImm)
         assert node.rhs.value == rhs
 
-        with_attrs = std.Store(x, rhs, index, tag="demo")
-        assert isinstance(with_attrs.attrs, std.DictAttrs)
-        assert dict(with_attrs.attrs.values) == {"tag": "demo"}
+        with pytest.raises(TypeError):
+            std.Store(x, rhs, index, tag="demo")  # ty: ignore[unknown-argument]
 
     def test_text_format(self) -> None:
         i32 = std.PrimTy("int32")
         node = std.Store(std.Var(ty=i32, name="x"), 2, 1)
-        with_attrs = std.Store(std.Var(ty=i32, name="x"), 2, 1, tag="demo")
 
         assert node.text() == "x[1] = 2"
-        assert with_attrs.text() == 'std.Store(x, 2, 1, tag="demo")'
 
     def test_text_format_index_variants(self) -> None:
         i32 = std.PrimTy("int32")
@@ -2916,13 +2737,11 @@ class TestAssert:
         node = std.Assert(cond=cond)
 
         assert isinstance(node, std.Assert)
-        assert tuple(field.name for field in fields(std.Assert)) == ("attrs", "cond")
-        assert node.attrs is None
+        assert tuple(field.name for field in fields(std.Assert)) == ("cond",)
         assert node.cond == cond
 
-        with_attrs = std.Assert(cond, tag="demo")
-        assert isinstance(with_attrs.attrs, std.DictAttrs)
-        assert dict(with_attrs.attrs.values) == {"tag": "demo"}
+        with pytest.raises(TypeError):
+            std.Assert(cond, tag="demo")  # ty: ignore[unknown-argument]
 
     def test_text_format(self) -> None:
         i32 = std.PrimTy("int32")
@@ -2931,10 +2750,6 @@ class TestAssert:
         assert (
             std.Assert(std.Lt(ty=std.PrimTy("bool"), a=x, b=std.IntImm(i32, 2))).text()
             == "assert x < std.i32(2)"
-        )
-        assert (
-            std.Assert(std.Lt(ty=std.PrimTy("bool"), a=x, b=std.IntImm(i32, 2)), tag="demo").text()
-            == 'std.Assert(x < std.i32(2), tag="demo")'
         )
 
     def test_constructor_converts_python_cond(self) -> None:
@@ -2952,15 +2767,9 @@ class TestAssert:
 
     def test_structural_equality(self) -> None:
         i32 = std.PrimTy("int32")
-        lhs = std.Assert(
-            std.Lt(ty=std.PrimTy("bool"), a=std.Var(ty=i32, name="x"), b=2), tag="demo"
-        )
-        rhs = std.Assert(
-            std.Lt(ty=std.PrimTy("bool"), a=std.Var(ty=i32, name="renamed"), b=2), tag="demo"
-        )
-        different = std.Assert(
-            std.Lt(ty=std.PrimTy("bool"), a=std.Var(ty=i32, name="x"), b=3), tag="demo"
-        )
+        lhs = std.Assert(std.Lt(ty=std.PrimTy("bool"), a=std.Var(ty=i32, name="x"), b=2))
+        rhs = std.Assert(std.Lt(ty=std.PrimTy("bool"), a=std.Var(ty=i32, name="renamed"), b=2))
+        different = std.Assert(std.Lt(ty=std.PrimTy("bool"), a=std.Var(ty=i32, name="x"), b=3))
 
         assert tvm_ffi.structural_equal(lhs, rhs)
         assert tvm_ffi.structural_hash(lhs) == tvm_ffi.structural_hash(rhs)
@@ -2975,21 +2784,17 @@ class TestReturn:
         node = std.Return(x, y)
 
         assert isinstance(node, std.Return)
-        assert tuple(field.name for field in fields(std.Return)) == ("attrs", "exprs")
-        assert node.attrs is None
+        assert tuple(field.name for field in fields(std.Return)) == ("exprs",)
         assert list(node.exprs) == [x, y]
 
-        with_attrs = std.Return(x, y, tag="demo")
-        assert isinstance(with_attrs.attrs, std.DictAttrs)
-        assert dict(with_attrs.attrs.values) == {"tag": "demo"}
+        with pytest.raises(TypeError):
+            std.Return(x, y, tag="demo")  # ty: ignore[unknown-argument]
 
     def test_text_format(self) -> None:
         i32 = std.PrimTy("int32")
         node = std.Return(std.Var(ty=i32, name="x"), std.Var(ty=i32, name="y"))
-        with_attrs = std.Return(std.Var(ty=i32, name="x"), tag="demo")
 
         assert node.text() == "return (x, y)"
-        assert with_attrs.text() == 'std.Return(x, tag="demo")'
 
     def test_structural_equality(self) -> None:
         i32 = std.PrimTy("int32")
@@ -3009,20 +2814,16 @@ class TestYield:
         node = std.Yield(x, y)
 
         assert isinstance(node, std.Yield)
-        assert tuple(field.name for field in fields(std.Yield)) == ("attrs", "exprs")
-        assert node.attrs is None
+        assert tuple(field.name for field in fields(std.Yield)) == ("exprs",)
         assert list(node.exprs) == [x, y]
 
-        with_attrs = std.Yield(x, y, tag="demo")
-        assert isinstance(with_attrs.attrs, std.DictAttrs)
-        assert dict(with_attrs.attrs.values) == {"tag": "demo"}
+        with pytest.raises(TypeError):
+            std.Yield(x, y, tag="demo")  # ty: ignore[unknown-argument]
 
     def test_text_format(self) -> None:
         node = std.Yield(std.Var(ty=std.PrimTy("int32"), name="x"))
-        with_attrs = std.Yield(std.Var(ty=std.PrimTy("int32"), name="x"), tag="demo")
 
         assert node.text() == "yield x"
-        assert with_attrs.text() == 'std.Yield(x, tag="demo")'
 
     def test_text_format_with_multiple_vars(self) -> None:
         i32 = std.PrimTy("int32")
@@ -3051,19 +2852,15 @@ class TestBreak:
         node = std.Break()
 
         assert isinstance(node, std.Break)
-        assert tuple(field.name for field in fields(std.Break)) == ("attrs",)
-        assert node.attrs is None
+        assert tuple(field.name for field in fields(std.Break)) == ()
 
-        with_attrs = std.Break(tag="demo")
-        assert isinstance(with_attrs.attrs, std.DictAttrs)
-        assert dict(with_attrs.attrs.values) == {"tag": "demo"}
+        with pytest.raises(TypeError):
+            std.Break(tag="demo")  # ty: ignore[unknown-argument]
 
     def test_text_format(self) -> None:
         node = std.Break()
-        with_attrs = std.Break(tag="demo")
 
         assert node.text() == "break"
-        assert with_attrs.text() == 'std.Break(tag="demo")'
 
     def test_structural_equality(self) -> None:
         lhs = std.Break()
@@ -3080,19 +2877,15 @@ class TestContinue:
         node = std.Continue()
 
         assert isinstance(node, std.Continue)
-        assert tuple(field.name for field in fields(std.Continue)) == ("attrs",)
-        assert node.attrs is None
+        assert tuple(field.name for field in fields(std.Continue)) == ()
 
-        with_attrs = std.Continue(tag="demo")
-        assert isinstance(with_attrs.attrs, std.DictAttrs)
-        assert dict(with_attrs.attrs.values) == {"tag": "demo"}
+        with pytest.raises(TypeError):
+            std.Continue(tag="demo")  # ty: ignore[unknown-argument]
 
     def test_text_format(self) -> None:
         node = std.Continue()
-        with_attrs = std.Continue(tag="demo")
 
         assert node.text() == "continue"
-        assert with_attrs.text() == 'std.Continue(tag="demo")'
 
     def test_structural_equality(self) -> None:
         lhs = std.Continue()
@@ -3233,7 +3026,231 @@ class TestDialectFieldCollector:
         assert dict(collected.attrs.values) == {"scope": "shared"}
         assert list(collected.var_def) == [buf]
         assert list(collected.body) == []
-        assert node.text() == 'buf = testing.ExtVarDef(16, scope="shared")'
+        assert node.text() == 'buf: std.i32 = testing.ExtVarDef(16, scope="shared")'
+
+    def test_generic_collector_printer_handles_plain_node_and_stmt(self) -> None:
+        @dc.py_class(_unique_std_key("ExtPlainNode"), structural_eq="tree")
+        class ExtPlainNode(std.Node, mnemonic="testing.ExtPlainNode"):
+            value: int = dc.field(lang_kind="arg")
+            tag: Optional[str] = dc.field(default=None, lang_kind="attr")  # noqa: UP045
+
+        @dc.py_class(_unique_std_key("ExtPlainStmt"), structural_eq="tree")
+        class ExtPlainStmt(std.Stmt, mnemonic="testing.ExtPlainStmt"):
+            value: int = dc.field(lang_kind="arg")
+            attrs: Optional[std.Attrs] = dc.field(default=None, kw_only=True)  # noqa: UP045
+
+        node = ExtPlainNode(value=1, tag="demo")
+        stmt = ExtPlainStmt(value=2)
+
+        assert node.text() == 'testing.ExtPlainNode(1, tag="demo")'
+        assert stmt.text() == "testing.ExtPlainStmt(2)"
+
+        stmt_with_attrs = ExtPlainStmt(value=3, attrs=std.DictAttrs(tag="demo"))
+        assert stmt_with_attrs.text() == 'testing.ExtPlainStmt(3, attrs=std.DictAttrs(tag="demo"))'
+
+    def test_parser_round_trips_plain_generic_node_and_stmt(self) -> None:
+        @dc.py_class(_unique_std_key("ExtPlainNodeParse"), structural_eq="tree")
+        class ExtPlainNode(std.Node, mnemonic="testing.ExtPlainNodeParse"):
+            value: int = dc.field(lang_kind="arg")
+            tag: Optional[str] = dc.field(default=None, lang_kind="attr")  # noqa: UP045
+
+        @dc.py_class(_unique_std_key("ExtPlainStmtParse"), structural_eq="tree")
+        class ExtPlainStmt(std.Stmt, mnemonic="testing.ExtPlainStmtParse"):
+            value: int = dc.field(lang_kind="arg")
+            attrs: Optional[std.Attrs] = dc.field(default=None, kw_only=True)  # noqa: UP045
+
+        class Testing:
+            __ffi_globals__: ClassVar[dict[str, Any]] = {}
+            __ffi_generics__: ClassVar[dict[str, Any]] = {}
+
+        setattr(Testing, "ExtPlainNodeParse", ExtPlainNode)
+        setattr(Testing, "ExtPlainStmtParse", ExtPlainStmt)
+        register_dialect("testing", Testing)
+
+        for node in [
+            ExtPlainNode(value=1, tag="demo"),
+            ExtPlainStmt(value=2),
+            ExtPlainStmt(value=3, attrs=std.DictAttrs(tag="demo")),
+        ]:
+            assert tvm_ffi.structural_equal(parse(node.text()), node)
+
+    def test_generic_collector_printer_honors_dialect_print_map(self) -> None:
+        @dc.py_class(_unique_std_key("ExtPrintMapBinding"), structural_eq="tree")
+        class ExtPrintMapBinding(std.Node, mnemonic="testing.ExtPrintMapBinding"):
+            value: int = dc.field(lang_kind="arg")
+            target: std.Var = dc.field(
+                lang_kind="var_def",
+                structural_eq="def-recursive",
+            )
+            note: str = dc.field(default="demo", lang_kind="attr")
+
+        x = std.Var(std.PrimTy("int32"), "x")
+        node = ExtPrintMapBinding(value=1, target=x)
+
+        assert node.text(pyast.PrinterConfig(dialect_print_map={"testing": "toy"})) == (
+            'x: std.i32 = toy.ExtPrintMapBinding(1, note="demo")'
+        )
+        assert (
+            node.text(
+                pyast.PrinterConfig(
+                    dialect_print_map={"std": "*", "testing$ExtPrintMapBinding": "*"}
+                )
+            )
+            == 'x: i32 = ExtPrintMapBinding(1, note="demo")'
+        )
+
+    def test_generic_collector_printer_handles_plain_var_def(self) -> None:
+        @dc.py_class(_unique_std_key("ExtPlainBinding"), structural_eq="tree")
+        class ExtPlainBinding(std.Node, mnemonic="testing.ExtPlainBinding"):
+            target: std.Var = dc.field(
+                lang_kind="var_def",
+                structural_eq="def-recursive",
+            )
+            value: int = dc.field(lang_kind="arg")
+
+        i32 = std.PrimTy("int32")
+        x = std.Var(i32, "x")
+        node = ExtPlainBinding(target=x, value=1)
+
+        assert node.text() == "x: std.i32 = testing.ExtPlainBinding(1)"
+
+        class Testing:
+            __ffi_globals__: ClassVar[dict[str, Any]] = {}
+            __ffi_generics__: ClassVar[dict[str, Any]] = {}
+
+        setattr(Testing, "ExtPlainBinding", ExtPlainBinding)
+        register_dialect("testing", Testing)
+        assert tvm_ffi.structural_equal(parse(node.text()), node)
+
+    def test_generic_collector_printer_rejects_body_var_def_nodes(self) -> None:
+        @dc.py_class(_unique_std_key("ExtBodyBinding"), structural_eq="tree")
+        class ExtBodyBinding(std.Node, mnemonic="testing.ExtBodyBinding"):
+            target: std.Var = dc.field(lang_kind="var_def")
+            body: List[std.Stmt] = dc.field(default_factory=list, lang_kind="body")  # noqa: UP006
+
+        i32 = std.PrimTy("int32")
+        x = std.Var(i32, "x")
+        node = ExtBodyBinding(target=x, body=[std.Return(x)])
+
+        with pytest.raises(TypeError, match="does not support body fields"):
+            node.text()
+
+    def test_generic_collector_printer_rejects_multi_var_def_assignment(self) -> None:
+        @dc.py_class(_unique_std_key("ExtMultiBinding"), structural_eq="tree")
+        class ExtMultiBinding(std.Node, mnemonic="testing.ExtMultiBinding"):
+            value: int = dc.field(lang_kind="arg")
+            targets: List[std.Var] = dc.field(default_factory=list, lang_kind="var_def")  # noqa: UP006
+
+        i32 = std.PrimTy("int32")
+        x = std.Var(i32, "x")
+        y = std.Var(i32, "y")
+        node = ExtMultiBinding(value=1, targets=[x, y])
+
+        with pytest.raises(TypeError, match="requires exactly one var_def target"):
+            node.text()
+
+    def test_parser_supports_annotated_constructor_var_def_and_rejects_unannotated(
+        self,
+    ) -> None:
+        @dc.py_class(_unique_std_key("ExtParseVarDef"), structural_eq="tree")
+        class ExtVarDef(std.BaseVarDef, mnemonic="testing.ExtParseVarDef"):
+            size: int = dc.field(lang_kind="arg")
+            target: std.Var = dc.field(lang_kind="var_def")
+            scope: str = dc.field(default="local", lang_kind="attr")
+
+        class Testing:
+            __ffi_globals__: ClassVar[dict[str, Any]] = {}
+            __ffi_generics__: ClassVar[dict[str, Any]] = {}
+
+        setattr(Testing, "ExtParseVarDef", ExtVarDef)
+        register_dialect("testing", Testing)
+
+        parsed = parse('buf: std.i32 = testing.ExtParseVarDef(16, scope="shared")')
+        assert isinstance(parsed, ExtVarDef)
+        assert parsed.size == 16
+        assert parsed.scope == "shared"
+        assert parsed.target.name == "buf"
+        assert tvm_ffi.structural_equal(parsed.target.ty, std.PrimTy("int32"))
+
+        with pytest.raises(TypeError, match="requires a type annotation"):
+            parse('buf = testing.ExtParseVarDef(16, scope="shared")')
+
+    def test_parser_round_trips_annotated_constructor_sequence_var_def(self) -> None:
+        @dc.py_class(_unique_std_key("ExtSeqParseVarDef"), structural_eq="tree")
+        class ExtVarDef(std.BaseVarDef, mnemonic="testing.ExtSeqParseVarDef"):
+            size: std.Expr = dc.field(lang_kind="arg")
+            targets: List[std.Var] = dc.field(  # noqa: UP006
+                default_factory=list,
+                lang_kind="var_def",
+                structural_eq="def-recursive",
+            )
+
+        class Testing:
+            __ffi_globals__: ClassVar[dict[str, Any]] = {}
+            __ffi_generics__: ClassVar[dict[str, Any]] = {}
+
+        setattr(Testing, "ExtSeqParseVarDef", ExtVarDef)
+        register_dialect("testing", Testing)
+
+        parsed = parse("buf: std.i32 = testing.ExtSeqParseVarDef(16)")
+
+        assert isinstance(parsed, ExtVarDef)
+        assert len(parsed.targets) == 1
+        assert parsed.targets[0].name == "buf"
+        assert tvm_ffi.structural_equal(parsed.targets[0].ty, std.PrimTy("int32"))
+        assert tvm_ffi.structural_equal(parse(parsed.text()), parsed)
+
+    def test_parser_rejects_constructor_var_def_with_multiple_missing_fields(self) -> None:
+        @dc.py_class(_unique_std_key("ExtAmbiguousParseVarDef"), structural_eq="tree")
+        class ExtVarDef(std.BaseVarDef, mnemonic="testing.ExtAmbiguousParseVarDef"):
+            size: int = dc.field(lang_kind="arg")
+            lhs: std.Var = dc.field(lang_kind="var_def")
+            rhs: std.Var = dc.field(lang_kind="var_def")
+
+        class Testing:
+            __ffi_globals__: ClassVar[dict[str, Any]] = {}
+            __ffi_generics__: ClassVar[dict[str, Any]] = {}
+
+        setattr(Testing, "ExtAmbiguousParseVarDef", ExtVarDef)
+        register_dialect("testing", Testing)
+
+        with pytest.raises(TypeError, match="requires exactly one omitted var_def field"):
+            parse("buf: std.i32 = testing.ExtAmbiguousParseVarDef(16)")
+
+    def test_parser_reports_constructor_var_def_call_shape_errors(self) -> None:
+        @dc.py_class(_unique_std_key("ExtCtorVarDefError"), structural_eq="tree")
+        class ExtVarDef(std.BaseVarDef, mnemonic="testing.ExtCtorVarDefError"):
+            size: int = dc.field(lang_kind="arg")
+            target: std.Var = dc.field(lang_kind="var_def")
+
+        @dc.py_class(_unique_std_key("ExtCtorBindError"), structural_eq="tree")
+        class ExtBindExpr(std.BaseBindExpr, mnemonic="testing.ExtCtorBindError"):
+            target: std.Var = dc.field(lang_kind="var_def")
+
+        class Testing:
+            __ffi_globals__: ClassVar[dict[str, Any]] = {}
+            __ffi_generics__: ClassVar[dict[str, Any]] = {}
+
+        setattr(Testing, "ExtCtorVarDefError", ExtVarDef)
+        setattr(Testing, "ExtCtorBindError", ExtBindExpr)
+        register_dialect("testing", Testing)
+
+        for source, match in [
+            (
+                "x, y = testing.ExtCtorBindError(1)",
+                "supports exactly one binding target",
+            ),
+            (
+                "buf: std.i32 = testing.ExtCtorVarDefError(16, 32)",
+                "too many positional arguments",
+            ),
+            (
+                "buf: std.i32 = testing.ExtCtorVarDefError(16, size=32)",
+                "multiple values for constructor field 'size'",
+            ),
+        ]:
+            with pytest.raises(TypeError, match=match):
+                parse(source)
 
     def test_concrete_base_subclasses_register_field_collectors(self) -> None:
         i32 = std.PrimTy("int32")
@@ -3331,7 +3348,7 @@ class TestDialectFieldCollector:
 
         assert node.text() == 'with testing.ChildScope("region") as x:\n  return x'
 
-    def test_base_var_def_subclass_printer_handles_tuple_and_no_target(self) -> None:
+    def test_base_var_def_subclass_printer_uses_annotated_single_target(self) -> None:
         @dc.py_class(_unique_std_key("ExtVarDefTuple"))
         class ExtVarDef(std.BaseVarDef, mnemonic="testing.ExtVarDef"):
             size: std.Expr = dc.field(lang_kind="arg")
@@ -3342,10 +3359,11 @@ class TestDialectFieldCollector:
         x = std.Var(i32, "x")
         y = std.Var(i32, "y")
 
-        assert (
-            ExtVarDef(size=std.IntImm(i64, 16), targets=[x, y]).text()
-            == "x, y = testing.ExtVarDef(16)"
+        assert ExtVarDef(size=std.IntImm(i64, 16), targets=[x]).text() == (
+            "x: std.i32 = testing.ExtVarDef(16)"
         )
+        with pytest.raises(TypeError, match="requires exactly one var_def target"):
+            ExtVarDef(size=std.IntImm(i64, 16), targets=[x, y]).text()
         assert ExtVarDef(size=std.IntImm(i64, 16)).text() == "testing.ExtVarDef(16)"
 
     def test_base_bind_expr_subclass_printer_preserves_subclass_call(self) -> None:
@@ -3358,6 +3376,27 @@ class TestDialectFieldCollector:
         node = ExtBindExpr(expr=std.IntImm(i64, 1), target=x)
 
         assert node.text() == "x = testing.ExtBindExpr(1)"
+
+    def test_base_bind_expr_subclass_round_trips_unannotated_assignment(self) -> None:
+        @dc.py_class(_unique_std_key("ExtBindExprParse"), structural_eq="tree")
+        class ExtBindExpr(std.BaseBindExpr, mnemonic="testing.ExtBindExpr"):
+            target: std.Var = dc.field(
+                lang_kind="var_def",
+                structural_eq="def-recursive",
+            )
+
+        class Testing:
+            __ffi_globals__: ClassVar[dict[str, Any]] = {}
+            __ffi_generics__: ClassVar[dict[str, Any]] = {}
+
+        setattr(Testing, "ExtBindExpr", ExtBindExpr)
+        register_dialect("testing", Testing)
+
+        i64 = std.PrimTy("int64")
+        x = std.Var(i64, "x")
+        node = ExtBindExpr(expr=std.IntImm(i64, 1), target=x)
+
+        assert tvm_ffi.structural_equal(parse(node.text()), node)
 
     def test_base_bind_expr_subclass_can_bind_inside_scope(self) -> None:
         @dc.py_class(_unique_std_key("ExtScopedBindExpr"))
@@ -3414,6 +3453,74 @@ class TestDialectFieldCollector:
         )
 
         assert node.text() == "with std.scope(testing.ExtVarDef(16)) as x:\n  return x"
+
+    def test_parser_round_trips_collector_scope_binding(self) -> None:
+        @dc.py_class(_unique_std_key("ExtScopedVarDefParse"), structural_eq="tree")
+        class ExtVarDef(std.BaseVarDef, mnemonic="testing.ExtScopedVarDefParse"):
+            ty: std.Ty = dc.field(lang_kind="arg")
+            targets: List[std.Var] = dc.field(  # noqa: UP006
+                default_factory=list,
+                lang_kind="var_def",
+                structural_eq="def-recursive",
+            )
+
+        class Testing:
+            __ffi_globals__: ClassVar[dict[str, Any]] = {}
+            __ffi_generics__: ClassVar[dict[str, Any]] = {}
+
+        setattr(Testing, "ExtScopedVarDefParse", ExtVarDef)
+        register_dialect("testing", Testing)
+
+        source = "with std.scope(testing.ExtScopedVarDefParse(std.i32)) as buf:\n  return buf"
+        parsed = parse(source)
+
+        assert isinstance(parsed, std.Scope)
+        assert isinstance(parsed.binds[0], ExtVarDef)
+        assert isinstance(parsed.body[0], std.Return)
+        assert parsed.body[0].exprs[0].same_as(parsed.binds[0].targets[0])
+        assert parsed.text() == source
+        assert tvm_ffi.structural_equal(parse(parsed.text()), parsed)
+
+    def test_parser_round_trips_nested_collector_stmt_and_value_fields(self) -> None:
+        @dc.py_class(_unique_std_key("ExtNestedValue"), structural_eq="tree")
+        class ExtValue(std.Node, mnemonic="testing.ExtNestedValue"):
+            value: int = dc.field(lang_kind="arg")
+
+        @dc.py_class(_unique_std_key("ExtNestedStmt"), structural_eq="tree")
+        class ExtStmt(std.Stmt, mnemonic="testing.ExtNestedStmt"):
+            value: int = dc.field(lang_kind="arg")
+
+        @dc.py_class(_unique_std_key("ExtNestedOuter"), structural_eq="tree")
+        class ExtOuter(std.Node, mnemonic="testing.ExtNestedOuter"):
+            arg_value: std.Node = dc.field(lang_kind="arg")
+            arg_stmt: std.Stmt = dc.field(lang_kind="arg")
+            attr_value: std.Node = dc.field(lang_kind="attr")
+            attr_stmt: std.Stmt = dc.field(lang_kind="attr")
+
+        class Testing:
+            __ffi_globals__: ClassVar[dict[str, Any]] = {}
+            __ffi_generics__: ClassVar[dict[str, Any]] = {}
+
+        setattr(Testing, "ExtNestedValue", ExtValue)
+        setattr(Testing, "ExtNestedStmt", ExtStmt)
+        setattr(Testing, "ExtNestedOuter", ExtOuter)
+        register_dialect("testing", Testing)
+
+        node = ExtOuter(
+            ExtValue(1),
+            ExtStmt(2),
+            attr_value=ExtValue(3),
+            attr_stmt=ExtStmt(4),
+        )
+
+        assert node.text() == (
+            "testing.ExtNestedOuter("
+            "testing.ExtNestedValue(1), "
+            "testing.ExtNestedStmt(2), "
+            "attr_stmt=testing.ExtNestedStmt(4), "
+            "attr_value=testing.ExtNestedValue(3))"
+        )
+        assert tvm_ffi.structural_equal(parse(node.text()), node)
 
 
 class TestDialectMnemonic:
@@ -3635,7 +3742,7 @@ class TestDialectMnemonic:
             (std.CDiv(x, one, ty=i32), std.CDiv),
             (std.Call("callee", x, tag="demo", ty=i32), std.Call),
             (std.BindExpr(one, x), std.BindExpr),
-            (std.VarDef(x, tag="demo"), std.VarDef),
+            (std.VarDef(x), std.VarDef),
             (std.Store(x, one), std.Store),
             (std.Assert(std.BoolImm(std.PrimTy("bool"), True)), std.Assert),
             (std.Return(x), std.Return),
@@ -3686,21 +3793,21 @@ class TestTextSugar:
 
         assert printer(node, AccessPath.root()).to_python() == "break"
 
-    def test_explicit_forms_preserve_attrs(self) -> None:
+    def test_explicit_bind_forms_without_attrs(self) -> None:
         i32 = std.PrimTy("int32")
         printer = pyast.IRPrinter()
 
         bind_expr = printer(
-            std.BindExpr(std.IntImm(i32, 1), tag="demo"),
+            std.BindExpr(std.IntImm(i32, 1)),
             AccessPath.root(),
         )
         bind_var_def = printer(
-            std.VarDef(tag="demo"),
+            std.VarDef(),
             AccessPath.root(),
         )
 
-        assert bind_expr.to_python() == 'std.BindExpr(std.i32(1), tag="demo")'
-        assert bind_var_def.to_python() == 'std.VarDef(tag="demo")'
+        assert bind_expr.to_python() == "std.i32(1)"
+        assert bind_var_def.to_python() == "pass"
 
     def test_operation_sugar_uses_named_operands(self) -> None:
         i32 = std.PrimTy("int32")
@@ -3788,16 +3895,13 @@ class TestDialectPrintMap:
         x = std.Var(ty=i32, name="x")
         node = std.Func(
             symbol="main",
-            attrs={"tag": "demo"},
             args=[x],
             ret_type=i32,
             body=[std.Return(x)],
         )
         cfg = pyast.PrinterConfig(dialect_print_map={"std$func": "ffi_func"})
 
-        assert (
-            node.text(cfg) == '@ffi_func(tag="demo")\ndef main(x: std.i32) -> std.i32:\n  return x'
-        )
+        assert node.text(cfg) == "@ffi_func\ndef main(x: std.i32) -> std.i32:\n  return x"
 
     def test_dialect_prefix_applies_to_call_and_cast_helpers(self) -> None:
         i32 = std.PrimTy("int32")

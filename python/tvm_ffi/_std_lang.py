@@ -22,6 +22,7 @@ from collections.abc import Sequence
 from typing import Any as TypingAny
 from typing import Callable, ClassVar
 
+from tvm_ffi.dataclasses import fields, replace
 from tvm_ffi.structural import structural_equal
 
 from . import std
@@ -121,7 +122,7 @@ class FuncFactory(Frame):
     """Parser frame for ``@std.func`` function definitions."""
 
     def __init__(self, **attrs: TypingAny) -> None:
-        """Create an empty function frame with optional function attributes."""
+        """Create an empty function frame."""
         self.attrs = dict(attrs)
         self.symbol = ""
         self.args: list[std.Var] = []
@@ -190,18 +191,14 @@ class RegionFactory(Frame):
     node_cls: TypingAny = _SCOPE_CLS
 
     def __init__(self, binds: Sequence[std.Stmt] | None = None, **attrs: TypingAny) -> None:
-        """Create a region frame from placeholder binds and attributes."""
+        """Create a region frame from placeholder binds."""
         self.attrs = dict(attrs)
         self.binds: list[std.Stmt] = list(binds or [])
         self.body: list[TypingAny] = []
 
     def bind_names(self, names: Sequence[str]) -> None:
         """Rename placeholder bind variables to match ``for`` or ``with as`` targets."""
-        bind_var_lists: list[Sequence[std.Var]] = []
-        for bind in self.binds:
-            if not isinstance(bind, (std.BindExpr, std.VarDef)):
-                raise TypeError(f"unsupported bind type: {type(bind).__name__}")
-            bind_var_lists.append(bind.vars)
+        bind_var_lists = [_bind_vars(bind) for bind in self.binds]
         num_bind_vars = sum(len(bind_vars) for bind_vars in bind_var_lists)
         if len(names) != num_bind_vars:
             raise TypeError(f"expected {num_bind_vars} binding target(s), got {len(names)}")
@@ -212,22 +209,12 @@ class RegionFactory(Frame):
             count = len(bind_vars)
             new_vars = [std.Var(bind_vars[i].ty, names[offset + i]) for i in range(count)]
             offset += count
-            if isinstance(bind, std.BindExpr):
-                rebuilt.append(std.BindExpr(bind.expr, *new_vars, **(bind.attrs or {})))
-            elif isinstance(bind, std.VarDef):
-                rebuilt.append(std.VarDef(*new_vars, **(bind.attrs or {})))
-            else:
-                raise TypeError(f"unsupported bind type: {type(bind).__name__}")
+            rebuilt.append(_replace_bind_vars(bind, new_vars))
         self.binds = rebuilt
 
     def bound_vars(self) -> list[std.Var]:
         """Return variables introduced by the region header."""
-        return [
-            var
-            for bind in self.binds
-            if isinstance(bind, (std.BindExpr, std.VarDef))
-            for var in bind.vars
-        ]
+        return [var for bind in self.binds for var in _bind_vars(bind)]
 
     def to_dialect(self) -> std.Stmt:
         """Build the concrete region statement after its body has been parsed."""
@@ -325,7 +312,7 @@ class WhileFactory(Frame):
         cond: TypingAny,
         **attrs: TypingAny,
     ) -> None:
-        """Create a while frame with a condition and optional attributes."""
+        """Create a while frame with a condition."""
         self.attrs = dict(attrs)
         self.cond = cond
         self.body: list[TypingAny] = []
@@ -491,17 +478,64 @@ def _normalize_binds(values: Sequence[TypingAny]) -> list[std.Stmt]:
     """
     binds: list[std.Stmt] = []
     for value in values:
-        if isinstance(value, (std.BindExpr, std.VarDef)):
-            binds.append(value)
-        elif isinstance(value, std.Ty) or hasattr(value, "to_dialect"):
-            ty = normalize_ty(value)
+        bind_value = value
+        if hasattr(value, "__ffi_scope_bind__"):
+            bind_value = value.__ffi_scope_bind__()
+        if isinstance(bind_value, (std.BaseBindExpr, std.BaseVarDef)):
+            binds.append(bind_value)
+        elif isinstance(bind_value, std.Ty) or hasattr(bind_value, "to_dialect"):
+            ty = normalize_ty(bind_value)
             binds.append(std.VarDef(std.Var(ty, "")))
-        elif isinstance(value, std.Expr) or isinstance(value, (bool, int, float, str)):
-            literal = std.Expr.literal(value)
+        elif isinstance(bind_value, std.Expr) or isinstance(bind_value, (bool, int, float, str)):
+            literal = std.Expr.literal(bind_value)
             binds.append(std.BindExpr(literal, std.Var(literal.ty, "")))
         else:
-            raise TypeError(f"expected bind initializer, got {type(value).__name__}")
+            raise TypeError(f"expected bind initializer, got {type(bind_value).__name__}")
     return binds
+
+
+def _bind_vars(bind: std.Stmt) -> list[std.Var]:
+    """Return variables introduced by a concrete or collector-backed bind."""
+    collector = getattr(type(bind), "__ffi_dialect_field_collector__", None)
+    if collector is None:
+        raise TypeError(f"unsupported bind type: {type(bind).__name__}")
+    if not (bind_vars := list(collector(bind).var_def)):
+        raise TypeError(f"unsupported bind type: {type(bind).__name__}")
+    return bind_vars
+
+
+def _replace_bind_vars(bind: std.Stmt, new_vars: Sequence[std.Var]) -> std.Stmt:
+    """Return ``bind`` with its bound variables renamed."""
+    expected_vars = len(_bind_vars(bind))
+    if len(new_vars) != expected_vars:
+        raise TypeError(
+            f"expected {expected_vars} replacement bind variable(s), got {len(new_vars)}"
+        )
+
+    if isinstance(bind, std.BindExpr):
+        return std.BindExpr(bind.expr, *new_vars)
+    if isinstance(bind, std.VarDef):
+        return std.VarDef(*new_vars)
+
+    var_def_fields = [
+        (field.name, getattr(bind, field.name))
+        for field in fields(type(bind))
+        if field.lang_kind == "var_def" and field.name is not None
+    ]
+    if not var_def_fields:
+        raise TypeError(f"unsupported bind type: {type(bind).__name__}")
+
+    changes: dict[str, TypingAny] = {}
+    offset = 0
+    for field_name, value in var_def_fields:
+        if isinstance(value, std.Var):
+            changes[field_name] = new_vars[offset]
+            count = 1
+        else:
+            count = len(value)
+            changes[field_name] = list(new_vars[offset : offset + count])
+        offset += count
+    return replace(bind, **changes)
 
 
 def _bind_expr_from_names(
@@ -522,11 +556,9 @@ def _bind_expr_from_names(
                 return literal
         return std.Expr.literal(value)
 
-    attrs = None
     if isinstance(expr, std.BindExpr):
         if getattr(expr, "vars", ()):
             raise TypeError("std.BindExpr RHS must not already define vars")
-        attrs = expr.attrs
         expr = expr.expr
 
     if ty is None:
@@ -547,7 +579,7 @@ def _bind_expr_from_names(
             )
 
     vars = [std.Var(bind_ty, name) for name in names]
-    return std.BindExpr(expr, *vars, **(attrs or {}))
+    return std.BindExpr(expr, *vars)
 
 
 def _bind_var_def_from_names(names: Sequence[str], *tys: TypingAny) -> std.VarDef:
@@ -558,7 +590,7 @@ def _bind_var_def_from_names(names: Sequence[str], *tys: TypingAny) -> std.VarDe
         if len(bind_vars) != len(names):
             raise TypeError(f"expected {len(bind_vars)} binding target(s), got {len(names)}")
         vars = [std.Var(var.ty, name) for var, name in zip(bind_vars, names)]
-        return std.VarDef(*vars, **(bind.attrs or {}))
+        return std.VarDef(*vars)
     if len(names) != len(tys):
         raise TypeError(f"expected {len(tys)} binding target(s), got {len(names)}")
     vars = [std.Var(normalize_ty(ty), name) for name, ty in zip(names, tys)]

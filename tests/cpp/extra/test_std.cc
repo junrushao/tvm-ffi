@@ -85,35 +85,34 @@ TEST(StdDialect, BaseStatementRuntimeInheritanceAndCasts) {
   stdir::IntImm two(i32, 2);
   stdir::Lt cond(bool_ty, x, two);
 
-  stdir::Func func("main", ffi::Optional<stdir::Attrs>(), {x}, ffi::Optional<stdir::Ty>(i32),
-                   {stdir::Return({x})});
+  stdir::Func func("main", {x}, ffi::Optional<stdir::Ty>(i32), {stdir::Return({x})});
   EXPECT_NE(func.as<stdir::BaseFuncObj>(), nullptr);
   EXPECT_TRUE(func.as<stdir::BaseFunc>().has_value());
   EXPECT_EQ(func.as<stdir::BaseScopeObj>(), nullptr);
   EXPECT_FALSE(func.as<stdir::BaseScope>().has_value());
 
   stdir::For for_loop(ffi::Optional<stdir::Expr>(one), two, ffi::Optional<stdir::Expr>(), x,
-                      {stdir::Continue()}, ffi::Optional<stdir::Attrs>());
+                      {stdir::Continue()});
   EXPECT_NE(for_loop.as<stdir::BaseForObj>(), nullptr);
   EXPECT_TRUE(for_loop.as<stdir::BaseFor>().has_value());
   EXPECT_EQ(for_loop.as<stdir::BaseScopeObj>(), nullptr);
   EXPECT_FALSE(for_loop.as<stdir::BaseScope>().has_value());
 
-  stdir::While while_loop(cond, ffi::Optional<stdir::Attrs>(), {stdir::Break()});
+  stdir::While while_loop(cond, {stdir::Break()});
   EXPECT_NE(while_loop.as<stdir::BaseWhileObj>(), nullptr);
   EXPECT_TRUE(while_loop.as<stdir::BaseWhile>().has_value());
   EXPECT_EQ(while_loop.as<stdir::BaseScopeObj>(), nullptr);
   EXPECT_FALSE(while_loop.as<stdir::BaseScope>().has_value());
 
-  stdir::BindExpr bind({y}, ffi::Optional<stdir::Attrs>(), one);
+  stdir::BindExpr bind({y}, one);
   EXPECT_NE(bind.as<stdir::BaseBindExprObj>(), nullptr);
   EXPECT_TRUE(bind.as<stdir::BaseBindExpr>().has_value());
 
-  stdir::VarDef var_def({y}, ffi::Optional<stdir::Attrs>());
+  stdir::VarDef var_def({y});
   EXPECT_NE(var_def.as<stdir::BaseVarDefObj>(), nullptr);
   EXPECT_TRUE(var_def.as<stdir::BaseVarDef>().has_value());
 
-  stdir::Scope scope_block(ffi::Optional<stdir::Attrs>(), {var_def}, {stdir::Return({y})});
+  stdir::Scope scope_block({var_def}, {stdir::Return({y})});
   EXPECT_NE(scope_block.as<stdir::ScopeObj>(), nullptr);
   EXPECT_TRUE(scope_block.as<stdir::Scope>().has_value());
 }
@@ -124,10 +123,9 @@ TEST(StdDialect, TextPrintFunction) {
   stdir::Var y(i32, "y");
   stdir::IntImm one(i32, 1);
   stdir::Add add(i32, x, one);
-  stdir::BindExpr bind({y}, ffi::Optional<stdir::Attrs>(), add);
+  stdir::BindExpr bind({y}, add);
   stdir::Return ret({y});
-  stdir::Func func("main", ffi::Optional<stdir::Attrs>(), {x}, ffi::Optional<stdir::Ty>(i32),
-                   {bind, ret});
+  stdir::Func func("main", {x}, ffi::Optional<stdir::Ty>(i32), {bind, ret});
   stdir::Module mod({func});
 
   text::IRPrinter printer{text::PrinterConfig()};
@@ -156,31 +154,27 @@ TEST(StdDialect, BaseStatementTextPrintSmoke) {
   EXPECT_NE(base_func_rendered.find("ret_type=std.i32"), std::string::npos);
 
   std::string func_rendered =
-      Render(stdir::Func("main", ffi::Optional<stdir::Attrs>(), {x}, ffi::Optional<stdir::Ty>(i32),
-                         {stdir::Return({x})}));
+      Render(stdir::Func("main", {x}, ffi::Optional<stdir::Ty>(i32), {stdir::Return({x})}));
   EXPECT_NE(func_rendered.find("@std.func"), std::string::npos);
   EXPECT_NE(func_rendered.find("def main"), std::string::npos);
 
-  std::string for_rendered =
-      Render(stdir::For(ffi::Optional<stdir::Expr>(one), two, ffi::Optional<stdir::Expr>(), x,
-                        {stdir::Continue()}, ffi::Optional<stdir::Attrs>()));
+  std::string for_rendered = Render(stdir::For(
+      ffi::Optional<stdir::Expr>(one), two, ffi::Optional<stdir::Expr>(), x, {stdir::Continue()}));
   EXPECT_NE(for_rendered.find("for x in range"), std::string::npos);
   EXPECT_NE(for_rendered.find("continue"), std::string::npos);
 
-  std::string while_rendered =
-      Render(stdir::While(cond, ffi::Optional<stdir::Attrs>(), {stdir::Break()}));
+  std::string while_rendered = Render(stdir::While(cond, {stdir::Break()}));
   EXPECT_NE(while_rendered.find("while x < std.i32(2)"), std::string::npos);
   EXPECT_NE(while_rendered.find("break"), std::string::npos);
 
-  std::string bind_rendered = Render(stdir::BindExpr({y}, ffi::Optional<stdir::Attrs>(), one));
+  std::string bind_rendered = Render(stdir::BindExpr({y}, one));
   EXPECT_NE(bind_rendered.find("y ="), std::string::npos);
 
-  std::string var_def_rendered = Render(stdir::VarDef({y}, ffi::Optional<stdir::Attrs>()));
+  std::string var_def_rendered = Render(stdir::VarDef({y}));
   EXPECT_NE(var_def_rendered.find("std.VarDef"), std::string::npos);
 
-  std::string scope_block_rendered = Render(
-      stdir::Scope(ffi::Optional<stdir::Attrs>(),
-                   {stdir::VarDef({y}, ffi::Optional<stdir::Attrs>())}, {stdir::Return({y})}));
+  std::string scope_block_rendered =
+      Render(stdir::Scope({stdir::VarDef({y})}, {stdir::Return({y})}));
   EXPECT_NE(scope_block_rendered.find("std.scope"), std::string::npos);
   EXPECT_NE(scope_block_rendered.find("return y"), std::string::npos);
 }
@@ -188,7 +182,7 @@ TEST(StdDialect, BaseStatementTextPrintSmoke) {
 TEST(StdDialect, TextPrintVarDef) {
   stdir::PrimTy i32(ffi::StringToDLDataType("int32"));
   stdir::Var y(i32, "y");
-  stdir::VarDef def({y}, ffi::Optional<stdir::Attrs>());
+  stdir::VarDef def({y});
 
   text::IRPrinter printer{text::PrinterConfig()};
   text::NodeAST ast = printer->operator()(def, refl::AccessPath::Root()).cast<text::NodeAST>();
@@ -333,39 +327,35 @@ TEST(StdDialect, DialectMnemonics) {
 
 TEST(StdDialect, BaseStatementFieldsAreOwnedOnce) {
   ExpectFieldsAndNoDuplicates(TVMFFIGetTypeInfo(stdir::BaseFuncObj::RuntimeTypeIndex()),
-                              {"attrs", "symbol", "args", "ret_type"});
+                              {"symbol", "args", "ret_type"});
   ExpectFieldsAndNoDuplicates(TVMFFIGetTypeInfo(stdir::FuncObj::RuntimeTypeIndex()),
-                              {"attrs", "symbol", "args", "ret_type", "body"});
-  EXPECT_EQ(TVMFFIGetTypeInfo(stdir::FuncObj::RuntimeTypeIndex())->num_fields, 1);
+                              {"symbol", "args", "ret_type", "body", "attrs"});
+  EXPECT_EQ(TVMFFIGetTypeInfo(stdir::FuncObj::RuntimeTypeIndex())->num_fields, 2);
 
-  ExpectFieldsAndNoDuplicates(TVMFFIGetTypeInfo(stdir::BaseScopeObj::RuntimeTypeIndex()),
-                              {"attrs"});
+  ExpectFieldsAndNoDuplicates(TVMFFIGetTypeInfo(stdir::BaseScopeObj::RuntimeTypeIndex()), {});
   EXPECT_EQ(TVMFFIGetTypeInfo(stdir::BaseScopeObj::RuntimeTypeIndex())->num_fields, 0);
   ExpectFieldsAndNoDuplicates(TVMFFIGetTypeInfo(stdir::ScopeObj::RuntimeTypeIndex()),
-                              {"attrs", "binds", "body"});
+                              {"binds", "body", "attrs"});
 
   ExpectFieldsAndNoDuplicates(TVMFFIGetTypeInfo(stdir::BaseForObj::RuntimeTypeIndex()),
-                              {"attrs", "extent", "var"});
+                              {"extent", "var"});
   ExpectFieldsAndNoDuplicates(TVMFFIGetTypeInfo(stdir::ForObj::RuntimeTypeIndex()),
-                              {"attrs", "extent", "var", "start", "step", "body"});
-  EXPECT_EQ(TVMFFIGetTypeInfo(stdir::ForObj::RuntimeTypeIndex())->num_fields, 3);
+                              {"extent", "var", "start", "step", "body", "attrs"});
+  EXPECT_EQ(TVMFFIGetTypeInfo(stdir::ForObj::RuntimeTypeIndex())->num_fields, 4);
 
-  ExpectFieldsAndNoDuplicates(TVMFFIGetTypeInfo(stdir::BaseWhileObj::RuntimeTypeIndex()),
-                              {"attrs", "cond"});
+  ExpectFieldsAndNoDuplicates(TVMFFIGetTypeInfo(stdir::BaseWhileObj::RuntimeTypeIndex()), {"cond"});
   ExpectFieldsAndNoDuplicates(TVMFFIGetTypeInfo(stdir::WhileObj::RuntimeTypeIndex()),
-                              {"attrs", "cond", "body"});
-  EXPECT_EQ(TVMFFIGetTypeInfo(stdir::WhileObj::RuntimeTypeIndex())->num_fields, 1);
+                              {"cond", "body", "attrs"});
+  EXPECT_EQ(TVMFFIGetTypeInfo(stdir::WhileObj::RuntimeTypeIndex())->num_fields, 2);
 
   ExpectFieldsAndNoDuplicates(TVMFFIGetTypeInfo(stdir::BaseBindExprObj::RuntimeTypeIndex()),
-                              {"attrs", "expr"});
+                              {"expr"});
   ExpectFieldsAndNoDuplicates(TVMFFIGetTypeInfo(stdir::BindExprObj::RuntimeTypeIndex()),
-                              {"attrs", "expr", "vars"});
+                              {"expr", "vars"});
   EXPECT_EQ(TVMFFIGetTypeInfo(stdir::BindExprObj::RuntimeTypeIndex())->num_fields, 1);
 
-  ExpectFieldsAndNoDuplicates(TVMFFIGetTypeInfo(stdir::BaseVarDefObj::RuntimeTypeIndex()),
-                              {"attrs"});
-  ExpectFieldsAndNoDuplicates(TVMFFIGetTypeInfo(stdir::VarDefObj::RuntimeTypeIndex()),
-                              {"attrs", "vars"});
+  ExpectFieldsAndNoDuplicates(TVMFFIGetTypeInfo(stdir::BaseVarDefObj::RuntimeTypeIndex()), {});
+  ExpectFieldsAndNoDuplicates(TVMFFIGetTypeInfo(stdir::VarDefObj::RuntimeTypeIndex()), {"vars"});
   EXPECT_EQ(TVMFFIGetTypeInfo(stdir::VarDefObj::RuntimeTypeIndex())->num_fields, 1);
 }
 
@@ -401,27 +391,20 @@ TEST(StdDialect, TextSugarUsesNativeReturnAndYield) {
   EXPECT_EQ(yield->ToPython(text::PrinterConfig()), "yield");
 }
 
-TEST(StdDialect, TextSugarPreservesBindAttrs) {
-  ffi::Dict<ffi::String, ffi::Any> values;
-  values.Set("tag", ffi::String("demo"));
-  stdir::DictAttrs attrs(values);
+TEST(StdDialect, TextSugarUsesBindCallsWithoutAttrs) {
   stdir::PrimTy i32(ffi::StringToDLDataType("int32"));
 
   text::IRPrinter printer{text::PrinterConfig()};
 
-  text::NodeAST bind_expr = printer
-                                ->operator()(stdir::BindExpr({}, ffi::Optional<stdir::Attrs>(attrs),
-                                                             stdir::IntImm(i32, 1)),
-                                             refl::AccessPath::Root())
-                                .cast<text::NodeAST>();
-  EXPECT_EQ(bind_expr->ToPython(text::PrinterConfig()), "std.BindExpr(std.i32(1), tag=\"demo\")");
+  text::NodeAST bind_expr =
+      printer->operator()(stdir::BindExpr({}, stdir::IntImm(i32, 1)), refl::AccessPath::Root())
+          .cast<text::NodeAST>();
+  EXPECT_EQ(bind_expr->ToPython(text::PrinterConfig()), "std.i32(1)");
 
   text::NodeAST bind_var_def =
-      printer
-          ->operator()(stdir::VarDef({}, ffi::Optional<stdir::Attrs>(attrs)),
-                       refl::AccessPath::Root())
+      printer->operator()(stdir::VarDef(ffi::List<stdir::Var>{}), refl::AccessPath::Root())
           .cast<text::NodeAST>();
-  EXPECT_EQ(bind_var_def->ToPython(text::PrinterConfig()), "std.VarDef(tag=\"demo\")");
+  EXPECT_EQ(bind_var_def->ToPython(text::PrinterConfig()), "pass");
 }
 
 TEST(StdDialect, TextSugarUsesNamedOperands) {

@@ -515,7 +515,7 @@ def test_callback_rawstr_and_bytearrayptr_args() -> None:
 
     # --- kTVMFFIRawStr path ---
     str_received: list[Any] = []
-    str_cb = tvm_ffi.convert(lambda x: str_received.append(x))
+    str_cb = tvm_ffi.convert(str_received.append)
     mod.invoke_with_raw_str(str_cb)
     assert len(str_received) == 1
     assert isinstance(str_received[0], str), f"expected str, got {type(str_received[0])}"
@@ -523,7 +523,7 @@ def test_callback_rawstr_and_bytearrayptr_args() -> None:
 
     # --- kTVMFFIByteArrayPtr path ---
     bytes_received: list[Any] = []
-    bytes_cb = tvm_ffi.convert(lambda x: bytes_received.append(x))
+    bytes_cb = tvm_ffi.convert(bytes_received.append)
     mod.invoke_with_byte_array_ptr(bytes_cb)
     assert len(bytes_received) == 1
     assert isinstance(bytes_received[0], bytes), f"expected bytes, got {type(bytes_received[0])}"

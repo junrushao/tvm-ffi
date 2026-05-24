@@ -43,7 +43,7 @@ from typing import cast as _typing_cast
 
 from typing_extensions import Never, Protocol, TypeAlias
 
-from tvm_ffi import Array, List, dtype
+from tvm_ffi import Array, Dict, List, Map, dtype
 from tvm_ffi.core import Object
 from tvm_ffi.dataclasses import Field, c_class, field, fields
 from tvm_ffi.pyast import PrinterConfig
@@ -119,6 +119,128 @@ def _std_collect_dialect_fields(obj: Any) -> FieldCollectionResult:
     return FieldCollectionResult(args, attrs, var_def, body)
 
 
+def _std_dialect_callee(config: Any, dialect: str, mnemonic: str) -> Any:
+    """Build the printed callee for a dialect mnemonic."""
+    from tvm_ffi import pyast  # noqa: PLC0415
+
+    def dotted_name(name: str) -> Any:
+        parts = name.split(".")
+        ret = pyast.Id(parts[0])
+        for part in parts[1:]:
+            ret = ret.attr(part)
+        return ret
+
+    dialect_map = getattr(config, "dialect_print_map", None)
+    if dialect_map:
+        for key in (f"{dialect}${mnemonic}", dialect):
+            mapped = dialect_map.get(key)
+            if mapped is None:
+                continue
+            if mapped == "*":
+                return pyast.Id(mnemonic)
+            return dotted_name(mapped).attr(mnemonic) if key == dialect else dotted_name(mapped)
+    if not dialect:
+        return pyast.Id(mnemonic)
+    return dotted_name(dialect).attr(mnemonic)
+
+
+def _std_print_var_def(printer: Any, var: Var) -> Any:
+    """Print or define a variable for generic dialect binding syntax."""
+    if not printer.var_is_defined(var):
+        return printer.var_def(var.name, var, None)
+    ret = printer.var_get(var)
+    if ret is None:
+        raise ValueError(f"ffi.std.Var printer failed to fetch variable {var.name}")
+    return ret
+
+
+def _std_print_var_tuple(printer: Any, vars: Sequence[Var]) -> Any:
+    """Print one or more variables as a Python assignment target."""
+    from tvm_ffi import pyast  # noqa: PLC0415
+
+    if len(vars) == 1:
+        return _std_print_var_def(printer, vars[0])
+    return pyast.Tuple([_std_print_var_def(printer, var) for var in vars])
+
+
+def _std_print_dialect_value(printer: Any, value: Any, path: Any) -> Any:
+    """Print dialect field values, preserving FFI containers as Python literals."""
+    from tvm_ffi import pyast  # noqa: PLC0415
+
+    if isinstance(value, (Array, List)):
+        return pyast.List(
+            [printer(item, path.array_item(index)) for index, item in enumerate(value)]
+        )
+    if isinstance(value, (Dict, Map)):
+        return pyast.Dict(
+            [printer(key, path.map_item(key)) for key in value],
+            [printer(value[key], path.map_item(key)) for key in value],
+        )
+    collector = getattr(type(value), "__ffi_dialect_field_collector__", None)
+    if collector is not None and isinstance(value, Stmt):
+        fields = collector(value)
+        if not fields.var_def and not fields.body:
+            return _std_generic_dialect_call(value, printer, path)
+    return printer(value, path)
+
+
+def _std_generic_dialect_call(obj: Any, printer: Any, path: Any) -> Any:
+    """Print the constructor call for a collector-backed dialect object."""
+    from tvm_ffi import pyast  # noqa: PLC0415
+
+    dialect, mnemonic = type(obj).__ffi_dialect_mnemonic__
+    fields = type(obj).__ffi_dialect_field_collector__(obj)
+    args_path = path.attr("args")
+    attrs_path = path.attr("attrs")
+    attrs = dict(fields.attrs)
+    obj_attrs = getattr(obj, "attrs", None)
+    if isinstance(obj, Stmt) and obj_attrs is not None and "attrs" not in attrs:
+        attrs["attrs"] = obj_attrs
+
+    args = [
+        _std_print_dialect_value(printer, value, args_path.array_item(index))
+        for index, value in enumerate(fields.args)
+    ]
+    kwargs_keys: list[str] = []
+    kwargs_values: list[Any] = []
+    for key in sorted(attrs):
+        value = attrs[key]
+        kwargs_keys.append(key)
+        kwargs_values.append(_std_print_dialect_value(printer, value, attrs_path.attr(key)))
+    return pyast.Call(
+        _std_dialect_callee(printer.cfg, dialect, mnemonic),
+        args,
+        kwargs_keys,
+        kwargs_values,
+    )
+
+
+def _std_generic_dialect_text_print(obj: Any, printer: Any, path: Any) -> Any:
+    """Print collector-backed std dialect subclasses."""
+    from tvm_ffi import pyast  # noqa: PLC0415
+
+    fields = type(obj).__ffi_dialect_field_collector__(obj)
+    var_def_path = path.attr("var_def")
+    call = _std_generic_dialect_call(obj, printer, path)
+
+    var_def = list(fields.var_def)
+    if fields.body:
+        raise TypeError(
+            f"{type(obj).__name__} generic collector text printer does not support body fields"
+        )
+    if var_def:
+        if len(var_def) != 1:
+            raise TypeError(
+                f"{type(obj).__name__} generic collector text printer requires exactly one "
+                f"var_def target, got {len(var_def)}"
+            )
+        annotation = printer(var_def[0].ty, var_def_path.array_item(0).attr("ty"))
+        return pyast.Assign(_std_print_var_tuple(printer, var_def), call, annotation)
+    if isinstance(obj, Stmt):
+        return pyast.ExprStmt(call)
+    return call
+
+
 def _normalize_ty(value: TyLike) -> Ty:
     """Normalize parser-side type factories and dtype strings to ``std.Ty``."""
     if isinstance(value, Ty):
@@ -135,6 +257,15 @@ def _normalize_expr(value: ExprLike) -> Expr:
     if isinstance(value, Expr):
         return value
     return Expr.literal(value)
+
+
+def _normalize_attrs(value: AttrsLike) -> Attrs | None:
+    """Normalize mapping attributes to ``std.Attrs``."""
+    if value is None or isinstance(value, Attrs):
+        return value
+    if isinstance(value, Mapping):
+        return DictAttrs(**dict(value))
+    raise TypeError(f"expected std attrs, got {type(value).__name__}")
 
 
 def _binary_expr_ffi_init(self: Any, a: ExprLike, b: ExprLike, *, ty: TyLike) -> None:
@@ -194,6 +325,21 @@ class Node(Object):
             cls.__ffi_dialect_field_collector__ = staticmethod(_std_collect_dialect_fields)
 
         if "__ffi_text_print__" not in cls.__dict__:
+            inherited_text_print_owner = None
+            for parent in cls.__mro__[1:]:
+                if "__ffi_text_print__" in parent.__dict__:
+                    inherited_text_print_owner = parent
+                    break
+            if (
+                inherited_text_print_owner is not None
+                and inherited_text_print_owner is not Node
+                and inherited_text_print_owner.__module__ != __name__
+                and inherited_text_print_owner not in _STD_BASE_PRINTER_CLASSES
+                and inherited_text_print_owner not in _STD_CONCRETE_PRINTER_CLASSES
+            ):
+                cls.__ffi_text_print__ = staticmethod(inherited_text_print_owner.__ffi_text_print__)
+
+        if "__ffi_text_print__" not in cls.__dict__:
             mro = cls.__mro__
             for base in _STD_BASE_PRINTER_CLASSES:
                 if base not in mro:
@@ -204,6 +350,11 @@ class Node(Object):
                 ):
                     cls.__ffi_text_print__ = staticmethod(base.__ffi_text_print__)
                     break
+            if (
+                "__ffi_text_print__" not in cls.__dict__
+                and getattr(cls, "__ffi_dialect_field_collector__", None) is not None
+            ):
+                cls.__ffi_text_print__ = staticmethod(_std_generic_dialect_text_print)
 
     def text(self, config: PrinterConfig | None = None) -> str:
         """Render this standard dialect node with the FFI text printer."""
@@ -248,11 +399,8 @@ class Stmt(Node, mnemonic="std.Stmt"):
 
     # tvm-ffi-stubgen(begin): object/ffi.std.Stmt
     # fmt: off
-    attrs: Attrs | None
     # fmt: on
     # tvm-ffi-stubgen(end)
-
-    attrs = field(default=None, kw_only=True)
 
 
 @c_class("ffi.std.Aggregate", init=False)
@@ -468,17 +616,13 @@ class BaseScope(Stmt, mnemonic="std.BaseScope"):
     # tvm-ffi-stubgen(begin): object/ffi.std.BaseScope
     # fmt: off
     if TYPE_CHECKING:
-        def __init__(self, *, attrs: Attrs | None = ...) -> None: ...
-        def __ffi_init__(self, *, attrs: Attrs | None = ...) -> None: ...  # ty: ignore[invalid-method-override]
+        def __init__(self) -> None: ...
+        def __ffi_init__(self) -> None: ...  # ty: ignore[invalid-method-override]
     # fmt: on
     # tvm-ffi-stubgen(end)
 
-    def __init__(
-        self,
-        *,
-        attrs: AttrsLike = None,
-    ) -> None:
-        self.__ffi_init__(attrs=_typing_cast(Attrs | None, attrs))
+    def __init__(self) -> None:
+        self.__ffi_init__()
 
 
 @c_class("ffi.std.BaseFunc")
@@ -491,8 +635,8 @@ class BaseFunc(Stmt, mnemonic="std.BaseFunc"):
     args: MutableSequence[Var]
     ret_type: Ty | None
     if TYPE_CHECKING:
-        def __init__(self, symbol: str, args: MutableSequence[Var], ret_type: Ty | None, *, attrs: Attrs | None = ...) -> None: ...
-        def __ffi_init__(self, symbol: str, args: MutableSequence[Var], ret_type: Ty | None, *, attrs: Attrs | None = ...) -> None: ...  # ty: ignore[invalid-method-override]
+        def __init__(self, symbol: str, args: MutableSequence[Var], ret_type: Ty | None) -> None: ...
+        def __ffi_init__(self, symbol: str, args: MutableSequence[Var], ret_type: Ty | None) -> None: ...  # ty: ignore[invalid-method-override]
     # fmt: on
     # tvm-ffi-stubgen(end)
 
@@ -505,14 +649,11 @@ class BaseFunc(Stmt, mnemonic="std.BaseFunc"):
         symbol: str,
         args: Sequence[Var],
         ret_type: TyLike | None,
-        *,
-        attrs: AttrsLike = None,
     ) -> None:
         self.__ffi_init__(
             symbol,
             list(args),
             _normalize_ty(ret_type) if ret_type is not None else None,
-            attrs=attrs,
         )
 
 
@@ -523,9 +664,10 @@ class Func(BaseFunc, mnemonic="std.Func"):
     # tvm-ffi-stubgen(begin): object/ffi.std.Func
     # fmt: off
     body: MutableSequence[Stmt]
+    attrs: Attrs | None
     if TYPE_CHECKING:
-        def __init__(self, symbol: str, args: MutableSequence[Var], ret_type: Ty | None, body: MutableSequence[Stmt], *, attrs: Attrs | None = ...) -> None: ...
-        def __ffi_init__(self, symbol: str, args: MutableSequence[Var], ret_type: Ty | None, body: MutableSequence[Stmt], *, attrs: Attrs | None = ...) -> None: ...  # ty: ignore[invalid-method-override]
+        def __init__(self, symbol: str, args: MutableSequence[Var], ret_type: Ty | None, body: MutableSequence[Stmt], attrs: Attrs | None) -> None: ...
+        def __ffi_init__(self, symbol: str, args: MutableSequence[Var], ret_type: Ty | None, body: MutableSequence[Stmt], attrs: Attrs | None) -> None: ...  # ty: ignore[invalid-method-override]
     # fmt: on
     # tvm-ffi-stubgen(end)
 
@@ -538,7 +680,7 @@ class Func(BaseFunc, mnemonic="std.Func"):
             ret_type: Ty | None,
             body: MutableSequence[Stmt],
             *,
-            attrs: AttrsLike = ...,
+            attrs: AttrsLike = None,
         ) -> None: ...
 
         def __ffi_init__(self, *args: Any, **kwargs: Any) -> None: ...
@@ -557,7 +699,7 @@ class Func(BaseFunc, mnemonic="std.Func"):
             list(args),
             _normalize_ty(ret_type) if ret_type is not None else None,
             list(body),
-            attrs,
+            _normalize_attrs(attrs),
         )
 
 
@@ -1399,8 +1541,8 @@ class IfStmt(Stmt, mnemonic="std.IfStmt"):
     then_body: MutableSequence[Stmt]
     else_body: MutableSequence[Stmt]
     if TYPE_CHECKING:
-        def __init__(self, cond: Expr, then_body: MutableSequence[Stmt], else_body: MutableSequence[Stmt], *, attrs: Attrs | None = ...) -> None: ...
-        def __ffi_init__(self, cond: Expr, then_body: MutableSequence[Stmt], else_body: MutableSequence[Stmt], *, attrs: Attrs | None = ...) -> None: ...  # ty: ignore[invalid-method-override]
+        def __init__(self, cond: Expr, then_body: MutableSequence[Stmt], else_body: MutableSequence[Stmt]) -> None: ...
+        def __ffi_init__(self, cond: Expr, then_body: MutableSequence[Stmt], else_body: MutableSequence[Stmt]) -> None: ...  # ty: ignore[invalid-method-override]
     # fmt: on
     # tvm-ffi-stubgen(end)
 
@@ -1413,13 +1555,11 @@ class IfStmt(Stmt, mnemonic="std.IfStmt"):
         cond: ExprLike,
         then_body: Sequence[Stmt],
         else_body: Sequence[Stmt],
-        **kwargs: Any,
     ) -> None:
         self.__ffi_init__(
             cond,
             list(then_body),
             list(else_body),
-            kwargs or None,
         )
 
 
@@ -1431,9 +1571,10 @@ class Scope(BaseScope, mnemonic="std.Scope"):
     # fmt: off
     binds: MutableSequence[Stmt]
     body: MutableSequence[Stmt]
+    attrs: Attrs | None
     if TYPE_CHECKING:
-        def __init__(self, binds: MutableSequence[Stmt], body: MutableSequence[Stmt], *, attrs: Attrs | None = ...) -> None: ...
-        def __ffi_init__(self, binds: MutableSequence[Stmt], body: MutableSequence[Stmt], *, attrs: Attrs | None = ...) -> None: ...  # ty: ignore[invalid-method-override]
+        def __init__(self, binds: MutableSequence[Stmt], body: MutableSequence[Stmt], attrs: Attrs | None) -> None: ...
+        def __ffi_init__(self, binds: MutableSequence[Stmt], body: MutableSequence[Stmt], attrs: Attrs | None) -> None: ...  # ty: ignore[invalid-method-override]
     # fmt: on
     # tvm-ffi-stubgen(end)
 
@@ -1448,7 +1589,7 @@ class Scope(BaseScope, mnemonic="std.Scope"):
         *,
         attrs: AttrsLike = None,
     ) -> None:
-        self.__ffi_init__(list(binds), list(body), attrs)
+        self.__ffi_init__(list(binds), list(body), _normalize_attrs(attrs))
 
 
 @c_class("ffi.std.BaseFor")
@@ -1460,8 +1601,8 @@ class BaseFor(Stmt, mnemonic="std.BaseFor"):
     extent: Expr
     var: Var
     if TYPE_CHECKING:
-        def __init__(self, extent: Expr, var: Var, *, attrs: Attrs | None = ...) -> None: ...
-        def __ffi_init__(self, extent: Expr, var: Var, *, attrs: Attrs | None = ...) -> None: ...  # ty: ignore[invalid-method-override]
+        def __init__(self, extent: Expr, var: Var) -> None: ...
+        def __ffi_init__(self, extent: Expr, var: Var) -> None: ...  # ty: ignore[invalid-method-override]
     # fmt: on
     # tvm-ffi-stubgen(end)
 
@@ -1473,10 +1614,8 @@ class BaseFor(Stmt, mnemonic="std.BaseFor"):
         self,
         extent: ExprLike,
         var: Var,
-        *,
-        attrs: AttrsLike = None,
     ) -> None:
-        self.__ffi_init__(extent, var, attrs=attrs)
+        self.__ffi_init__(extent, var)
 
 
 @c_class("ffi.std.For")
@@ -1488,9 +1627,10 @@ class For(BaseFor, mnemonic="std.For"):
     start: Expr | None
     step: Expr | None
     body: MutableSequence[Stmt]
+    attrs: Attrs | None
     if TYPE_CHECKING:
         def __init__(self, start: Expr | None, extent: Expr, var: Var, body: MutableSequence[Stmt], *, step: Expr | None = ..., attrs: Attrs | None = ...) -> None: ...
-        def __ffi_init__(self, start: Expr | None, extent: Expr, step: Expr | None, var: Var, body: MutableSequence[Stmt], attrs: Attrs | None = ...) -> None: ...  # ty: ignore[invalid-method-override]
+        def __ffi_init__(self, start: Expr | None, extent: Expr, step: Expr | None, var: Var, body: MutableSequence[Stmt], attrs: Attrs | None) -> None: ...  # ty: ignore[invalid-method-override]
     # fmt: on
     # tvm-ffi-stubgen(end)
 
@@ -1535,7 +1675,7 @@ class For(BaseFor, mnemonic="std.For"):
             raise TypeError("For missing required body")
         if var is None:
             raise TypeError("For missing required var")
-        self.__ffi_init__(start, extent, step, var, list(body), attrs)
+        self.__ffi_init__(start, extent, step, var, list(body), _normalize_attrs(attrs))
 
 
 @c_class("ffi.std.BaseWhile")
@@ -1546,8 +1686,8 @@ class BaseWhile(Stmt, mnemonic="std.BaseWhile"):
     # fmt: off
     cond: Expr
     if TYPE_CHECKING:
-        def __init__(self, cond: Expr, *, attrs: Attrs | None = ...) -> None: ...
-        def __ffi_init__(self, cond: Expr, *, attrs: Attrs | None = ...) -> None: ...  # ty: ignore[invalid-method-override]
+        def __init__(self, cond: Expr) -> None: ...
+        def __ffi_init__(self, cond: Expr) -> None: ...  # ty: ignore[invalid-method-override]
     # fmt: on
     # tvm-ffi-stubgen(end)
 
@@ -1555,8 +1695,8 @@ class BaseWhile(Stmt, mnemonic="std.BaseWhile"):
 
         def __ffi_init__(self, *args: Any, **kwargs: Any) -> None: ...
 
-    def __init__(self, cond: ExprLike, *, attrs: AttrsLike = None) -> None:
-        self.__ffi_init__(cond, attrs=attrs)
+    def __init__(self, cond: ExprLike) -> None:
+        self.__ffi_init__(cond)
 
 
 @c_class("ffi.std.While")
@@ -1566,9 +1706,10 @@ class While(BaseWhile, mnemonic="std.While"):
     # tvm-ffi-stubgen(begin): object/ffi.std.While
     # fmt: off
     body: MutableSequence[Stmt]
+    attrs: Attrs | None
     if TYPE_CHECKING:
-        def __init__(self, cond: Expr, body: MutableSequence[Stmt], *, attrs: Attrs | None = ...) -> None: ...
-        def __ffi_init__(self, cond: Expr, body: MutableSequence[Stmt], *, attrs: Attrs | None = ...) -> None: ...  # ty: ignore[invalid-method-override]
+        def __init__(self, cond: Expr, body: MutableSequence[Stmt], attrs: Attrs | None) -> None: ...
+        def __ffi_init__(self, cond: Expr, body: MutableSequence[Stmt], attrs: Attrs | None) -> None: ...  # ty: ignore[invalid-method-override]
     # fmt: on
     # tvm-ffi-stubgen(end)
 
@@ -1579,7 +1720,7 @@ class While(BaseWhile, mnemonic="std.While"):
             cond: ExprLike,
             body: MutableSequence[Stmt],
             *,
-            attrs: AttrsLike = ...,
+            attrs: AttrsLike = None,
         ) -> None: ...
 
         def __ffi_init__(self, *args: Any, **kwargs: Any) -> None: ...
@@ -1591,7 +1732,7 @@ class While(BaseWhile, mnemonic="std.While"):
         *,
         attrs: AttrsLike = None,
     ) -> None:
-        self.__ffi_init__(cond, list(body), attrs)
+        self.__ffi_init__(cond, list(body), _normalize_attrs(attrs))
 
 
 @c_class("ffi.std.BaseBindExpr")
@@ -1602,8 +1743,8 @@ class BaseBindExpr(Stmt, mnemonic="std.BaseBindExpr"):
     # fmt: off
     expr: Expr
     if TYPE_CHECKING:
-        def __init__(self, expr: Expr, *, attrs: Attrs | None = ...) -> None: ...
-        def __ffi_init__(self, expr: Expr, *, attrs: Attrs | None = ...) -> None: ...  # ty: ignore[invalid-method-override]
+        def __init__(self, expr: Expr) -> None: ...
+        def __ffi_init__(self, expr: Expr) -> None: ...  # ty: ignore[invalid-method-override]
     # fmt: on
     # tvm-ffi-stubgen(end)
 
@@ -1611,8 +1752,8 @@ class BaseBindExpr(Stmt, mnemonic="std.BaseBindExpr"):
 
         def __ffi_init__(self, *args: Any, **kwargs: Any) -> None: ...
 
-    def __init__(self, expr: ExprLike, **kwargs: Any) -> None:
-        self.__ffi_init__(_normalize_expr(expr), attrs=kwargs or None)
+    def __init__(self, expr: ExprLike) -> None:
+        self.__ffi_init__(_normalize_expr(expr))
 
 
 @c_class("ffi.std.BindExpr")
@@ -1623,8 +1764,8 @@ class BindExpr(BaseBindExpr, mnemonic="std.BindExpr"):
     # fmt: off
     vars: MutableSequence[Var]
     if TYPE_CHECKING:
-        def __init__(self, vars: MutableSequence[Var], expr: Expr, *, attrs: Attrs | None = ...) -> None: ...
-        def __ffi_init__(self, vars: MutableSequence[Var], expr: Expr, *, attrs: Attrs | None = ...) -> None: ...  # ty: ignore[invalid-method-override]
+        def __init__(self, vars: MutableSequence[Var], expr: Expr) -> None: ...
+        def __ffi_init__(self, vars: MutableSequence[Var], expr: Expr) -> None: ...  # ty: ignore[invalid-method-override]
     # fmt: on
     # tvm-ffi-stubgen(end)
 
@@ -1632,8 +1773,8 @@ class BindExpr(BaseBindExpr, mnemonic="std.BindExpr"):
 
         def __ffi_init__(self, *args: Any, **kwargs: Any) -> None: ...
 
-    def __init__(self, expr: ExprLike, *args: Var, **kwargs: Any) -> None:
-        self.__ffi_init__(list(args), _normalize_expr(expr), kwargs or None)
+    def __init__(self, expr: ExprLike, *args: Var) -> None:
+        self.__ffi_init__(list(args), _normalize_expr(expr))
 
 
 @c_class("ffi.std.BaseVarDef")
@@ -1643,8 +1784,8 @@ class BaseVarDef(Stmt, mnemonic="std.BaseVarDef"):
     # tvm-ffi-stubgen(begin): object/ffi.std.BaseVarDef
     # fmt: off
     if TYPE_CHECKING:
-        def __init__(self, *, attrs: Attrs | None = ...) -> None: ...
-        def __ffi_init__(self, *, attrs: Attrs | None = ...) -> None: ...  # ty: ignore[invalid-method-override]
+        def __init__(self) -> None: ...
+        def __ffi_init__(self) -> None: ...  # ty: ignore[invalid-method-override]
     # fmt: on
     # tvm-ffi-stubgen(end)
 
@@ -1652,8 +1793,8 @@ class BaseVarDef(Stmt, mnemonic="std.BaseVarDef"):
 
         def __ffi_init__(self, *args: Any, **kwargs: Any) -> None: ...
 
-    def __init__(self, **kwargs: Any) -> None:
-        self.__ffi_init__(attrs=kwargs or None)
+    def __init__(self) -> None:
+        self.__ffi_init__()
 
 
 @c_class("ffi.std.VarDef")
@@ -1664,8 +1805,8 @@ class VarDef(BaseVarDef, mnemonic="std.VarDef"):
     # fmt: off
     vars: MutableSequence[Var]
     if TYPE_CHECKING:
-        def __init__(self, vars: MutableSequence[Var], *, attrs: Attrs | None = ...) -> None: ...
-        def __ffi_init__(self, vars: MutableSequence[Var], *, attrs: Attrs | None = ...) -> None: ...  # ty: ignore[invalid-method-override]
+        def __init__(self, vars: MutableSequence[Var]) -> None: ...
+        def __ffi_init__(self, vars: MutableSequence[Var]) -> None: ...  # ty: ignore[invalid-method-override]
     # fmt: on
     # tvm-ffi-stubgen(end)
 
@@ -1673,9 +1814,9 @@ class VarDef(BaseVarDef, mnemonic="std.VarDef"):
 
         def __ffi_init__(self, *args: Any, **kwargs: Any) -> None: ...
 
-    def __init__(self, *args: Var | TyLike, **kwargs: Any) -> None:
+    def __init__(self, *args: Var | TyLike) -> None:
         vars = [arg if isinstance(arg, Var) else Var(_normalize_ty(arg), "") for arg in args]
-        self.__ffi_init__(vars, attrs=kwargs or None)
+        self.__ffi_init__(vars)
 
 
 @c_class("ffi.std.Store")
@@ -1688,8 +1829,8 @@ class Store(Stmt, mnemonic="std.Store"):
     indices: MutableSequence[Range]
     rhs: Expr
     if TYPE_CHECKING:
-        def __init__(self, lhs: ExprLike, rhs: ExprLike, *indices: RangeLike, **kwargs: Any) -> None: ...
-        def __ffi_init__(self, lhs: Expr, indices: MutableSequence[Range], rhs: Expr, *, attrs: Attrs | None = ...) -> None: ...  # ty: ignore[invalid-method-override]
+        def __init__(self, lhs: ExprLike, rhs: ExprLike, *indices: RangeLike) -> None: ...
+        def __ffi_init__(self, lhs: Expr, indices: MutableSequence[Range], rhs: Expr) -> None: ...  # ty: ignore[invalid-method-override]
     # fmt: on
     # tvm-ffi-stubgen(end)
 
@@ -1697,8 +1838,8 @@ class Store(Stmt, mnemonic="std.Store"):
 
         def __ffi_init__(self, *args: Any, **kwargs: Any) -> None: ...
 
-    def __init__(self, lhs: ExprLike, rhs: ExprLike, *indices: RangeLike, **kwargs: Any) -> None:
-        self.__ffi_init__(lhs, indices, rhs, kwargs or None)
+    def __init__(self, lhs: ExprLike, rhs: ExprLike, *indices: RangeLike) -> None:
+        self.__ffi_init__(lhs, indices, rhs)
 
 
 @c_class("ffi.std.Assert")
@@ -1709,8 +1850,8 @@ class Assert(Stmt, mnemonic="std.Assert"):
     # fmt: off
     cond: Expr
     if TYPE_CHECKING:
-        def __init__(self, cond: Expr, *, attrs: Attrs | None = ...) -> None: ...
-        def __ffi_init__(self, cond: Expr, *, attrs: Attrs | None = ...) -> None: ...  # ty: ignore[invalid-method-override]
+        def __init__(self, cond: Expr) -> None: ...
+        def __ffi_init__(self, cond: Expr) -> None: ...  # ty: ignore[invalid-method-override]
     # fmt: on
     # tvm-ffi-stubgen(end)
 
@@ -1718,8 +1859,8 @@ class Assert(Stmt, mnemonic="std.Assert"):
 
         def __ffi_init__(self, *args: Any, **kwargs: Any) -> None: ...
 
-    def __init__(self, cond: ExprLike, **kwargs: Any) -> None:
-        self.__ffi_init__(cond, kwargs or None)
+    def __init__(self, cond: ExprLike) -> None:
+        self.__ffi_init__(cond)
 
 
 @c_class("ffi.std.Return")
@@ -1730,8 +1871,8 @@ class Return(Stmt, mnemonic="std.Return"):
     # fmt: off
     exprs: MutableSequence[Expr]
     if TYPE_CHECKING:
-        def __init__(self, exprs: MutableSequence[Expr], *, attrs: Attrs | None = ...) -> None: ...
-        def __ffi_init__(self, exprs: MutableSequence[Expr], *, attrs: Attrs | None = ...) -> None: ...  # ty: ignore[invalid-method-override]
+        def __init__(self, exprs: MutableSequence[Expr]) -> None: ...
+        def __ffi_init__(self, exprs: MutableSequence[Expr]) -> None: ...  # ty: ignore[invalid-method-override]
     # fmt: on
     # tvm-ffi-stubgen(end)
 
@@ -1739,8 +1880,8 @@ class Return(Stmt, mnemonic="std.Return"):
 
         def __ffi_init__(self, *args: Any, **kwargs: Any) -> None: ...
 
-    def __init__(self, *exprs: ExprLike, **kwargs: Any) -> None:
-        self.__ffi_init__(list(exprs), attrs=kwargs or None)
+    def __init__(self, *exprs: ExprLike) -> None:
+        self.__ffi_init__(list(exprs))
 
 
 @c_class("ffi.std.Yield")
@@ -1751,8 +1892,8 @@ class Yield(Stmt, mnemonic="std.Yield"):
     # fmt: off
     exprs: MutableSequence[Expr]
     if TYPE_CHECKING:
-        def __init__(self, exprs: MutableSequence[Expr], *, attrs: Attrs | None = ...) -> None: ...
-        def __ffi_init__(self, exprs: MutableSequence[Expr], *, attrs: Attrs | None = ...) -> None: ...  # ty: ignore[invalid-method-override]
+        def __init__(self, exprs: MutableSequence[Expr]) -> None: ...
+        def __ffi_init__(self, exprs: MutableSequence[Expr]) -> None: ...  # ty: ignore[invalid-method-override]
     # fmt: on
     # tvm-ffi-stubgen(end)
 
@@ -1760,8 +1901,8 @@ class Yield(Stmt, mnemonic="std.Yield"):
 
         def __ffi_init__(self, *args: Any, **kwargs: Any) -> None: ...
 
-    def __init__(self, *exprs: ExprLike, **kwargs: Any) -> None:
-        self.__ffi_init__(list(exprs), attrs=kwargs or None)
+    def __init__(self, *exprs: ExprLike) -> None:
+        self.__ffi_init__(list(exprs))
 
 
 @c_class("ffi.std.Break")
@@ -1771,8 +1912,8 @@ class Break(Stmt, mnemonic="std.Break"):
     # tvm-ffi-stubgen(begin): object/ffi.std.Break
     # fmt: off
     if TYPE_CHECKING:
-        def __init__(self, *, attrs: Attrs | None = ...) -> None: ...
-        def __ffi_init__(self, *, attrs: Attrs | None = ...) -> None: ...  # ty: ignore[invalid-method-override]
+        def __init__(self) -> None: ...
+        def __ffi_init__(self) -> None: ...  # ty: ignore[invalid-method-override]
     # fmt: on
     # tvm-ffi-stubgen(end)
 
@@ -1780,8 +1921,8 @@ class Break(Stmt, mnemonic="std.Break"):
 
         def __ffi_init__(self, *args: Any, **kwargs: Any) -> None: ...
 
-    def __init__(self, **kwargs: Any) -> None:
-        self.__ffi_init__(attrs=kwargs or None)
+    def __init__(self) -> None:
+        self.__ffi_init__()
 
 
 @c_class("ffi.std.Continue")
@@ -1791,8 +1932,8 @@ class Continue(Stmt, mnemonic="std.Continue"):
     # tvm-ffi-stubgen(begin): object/ffi.std.Continue
     # fmt: off
     if TYPE_CHECKING:
-        def __init__(self, *, attrs: Attrs | None = ...) -> None: ...
-        def __ffi_init__(self, *, attrs: Attrs | None = ...) -> None: ...  # ty: ignore[invalid-method-override]
+        def __init__(self) -> None: ...
+        def __ffi_init__(self) -> None: ...  # ty: ignore[invalid-method-override]
     # fmt: on
     # tvm-ffi-stubgen(end)
 
@@ -1800,8 +1941,8 @@ class Continue(Stmt, mnemonic="std.Continue"):
 
         def __ffi_init__(self, *args: Any, **kwargs: Any) -> None: ...
 
-    def __init__(self, **kwargs: Any) -> None:
-        self.__ffi_init__(attrs=kwargs or None)
+    def __init__(self) -> None:
+        self.__ffi_init__()
 
 
 @c_class("ffi.std.DictAttrs")
@@ -2074,7 +2215,7 @@ def select(cond: ExprLike, then_expr: ExprLike, else_expr: ExprLike) -> Expr:
     return _typing_cast(Expr, _std_api.select(cond, then_expr, else_expr))
 
 
-_STD_BASE_PRINTER_CLASSES = (BaseFunc, BaseScope, BaseFor, BaseWhile, BaseBindExpr, BaseVarDef)
+_STD_BASE_PRINTER_CLASSES = (BaseFunc, BaseScope, BaseFor, BaseWhile, BaseBindExpr)
 _STD_CONCRETE_PRINTER_CLASSES = (Func, Scope, For, While, BindExpr, VarDef)
 __all__ = [
     "Abs",
