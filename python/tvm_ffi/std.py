@@ -246,7 +246,10 @@ def _normalize_ty(value: TyLike) -> Ty:
     if isinstance(value, Ty):
         return value
     if hasattr(value, "to_dialect"):
-        return value.to_dialect()  # ty: ignore[call-non-callable]
+        ty = value.to_dialect()  # ty: ignore[call-non-callable]
+        if isinstance(ty, Ty):
+            return ty
+        raise TypeError(f"expected std type from to_dialect(), got {type(ty).__name__}")
     if isinstance(value, str):
         return PrimTy(value)
     raise TypeError(f"expected std type, got {type(value).__name__}")
