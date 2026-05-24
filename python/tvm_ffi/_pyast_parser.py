@@ -21,11 +21,14 @@ from __future__ import annotations
 import operator
 import sys
 from collections import defaultdict
-from collections.abc import Iterable, Iterator, Sequence
+from collections.abc import Iterable, Iterator, MutableSequence, Sequence
 from contextlib import contextmanager
-from typing import Any, Callable, cast
+from typing import Any, Callable, cast, get_origin
 
+from tvm_ffi import Array as FFIArray
+from tvm_ffi import List as FFIList
 from tvm_ffi.core import MISSING
+from tvm_ffi.dataclasses import fields
 from tvm_ffi.pyast import OperationKind
 
 from . import pyast, std
@@ -177,6 +180,43 @@ def normalize_ty(value: Any) -> std.Ty:
     raise TypeError(f"expected std type, got {type(value).__name__}")
 
 
+def _to_dialect(value: Any) -> Any:
+    """Materialize parser factories before passing values to dialect constructors."""
+    if hasattr(value, "to_dialect"):
+        return value.to_dialect()
+    if isinstance(value, list):
+        return [_to_dialect(item) for item in value]
+    if isinstance(value, tuple):
+        return tuple(_to_dialect(item) for item in value)
+    if isinstance(value, dict):
+        return {_to_dialect(key): _to_dialect(item) for key, item in value.items()}
+    if isinstance(value, set):
+        return {_to_dialect(item) for item in value}
+    return value
+
+
+def _field_expects_var_sequence(field: Any) -> bool:
+    """Return whether a dataclass var_def field should receive a list of variables."""
+    origin = get_origin(field.type)
+    if origin in (list, tuple, Sequence, MutableSequence, FFIArray, FFIList):
+        return True
+    return field.default_factory is list
+
+
+def _is_missing_var_def_call(
+    callee: Any, kwargs_keys: Sequence[str]
+) -> tuple[list[Any], list[Any]]:
+    """Return var-def fields and missing var-def fields for a constructor call."""
+    if not isinstance(callee, type):
+        return ([], [])
+    collector = getattr(callee, "__ffi_dialect_field_collector__", None)
+    if collector is None:
+        return ([], [])
+    var_fields = [field for field in fields(callee) if field.lang_kind == "var_def"]
+    missing = [field for field in var_fields if field.name not in kwargs_keys]
+    return var_fields, missing
+
+
 class Factory:
     """Base class for parser-side factories."""
 
@@ -265,6 +305,7 @@ class Parser:
         self.var_table.push_frame()
         self.dialect_stack: list[str] = ["std"]
         self.scope_stack: list[Frame] = []
+        self._placeholder_var_defs = False
         self.generics: dict[tuple[str, Any], Callable[..., Any]] = {}
         self.dialects: dict[str, Any] = {}
         for dialect, language in _DIALECT_REGISTRY.items():
@@ -432,6 +473,10 @@ class Parser:
         if isinstance(stmt, (std.BindExpr, std.VarDef)):
             for var in stmt.vars:
                 self.var_table.add(var.name, var, allow_shadowing=True)
+        collector = getattr(type(stmt), "__ffi_dialect_field_collector__", None)
+        if collector is not None:
+            for var in collector(stmt).var_def:
+                self.var_table.add(var.name, var, allow_shadowing=True)
 
     @contextmanager
     def _with_frame(
@@ -476,7 +521,12 @@ class Parser:
         subclasses are called with no arguments so ``@std.func`` and
         ``@std.func()`` are equivalent.
         """
-        value = self.visit(node)
+        old_placeholder_var_defs = self._placeholder_var_defs
+        self._placeholder_var_defs = True
+        try:
+            value = self.visit(node)
+        finally:
+            self._placeholder_var_defs = old_placeholder_var_defs
         if isinstance(value, type) and issubclass(value, Frame):
             value = value()
         elif callable(value) and not isinstance(value, (type, Frame)):
@@ -522,6 +572,13 @@ class Parser:
             self._emit_bound_stmt(self._run_generics("__bind_var_def__", (names, ty)))
             return
 
+        constructor_var_def = self._constructor_var_def_fields(node.rhs)
+        if constructor_var_def is not None:
+            if node.annotation is None and not issubclass(constructor_var_def[0], std.BaseBindExpr):
+                raise TypeError("constructor var-def assignment requires a type annotation")
+            self._emit_constructor_var_def(node, names, constructor_var_def)
+            return
+
         rhs = self.visit(node.rhs)
         # Case 3. Regular assignment with or without annotation
         #       x = expr
@@ -546,6 +603,69 @@ class Parser:
             self._emit_bound_stmt(self._run_generics("__bind_var_def__", (names, rhs)))
         else:
             self._emit_bound_stmt(self._run_generics("__bind_expr__", (names, ty, rhs)))
+
+    def _constructor_var_def_fields(
+        self,
+        node: pyast.Expr | None,
+    ) -> tuple[type[Any], list[Any]] | None:
+        """Return missing collector var-def fields for constructor binding syntax."""
+        if not isinstance(node, pyast.Call):
+            return None
+        callee = self.visit(node.callee)
+        if not isinstance(callee, type):
+            return None
+        _, missing = _is_missing_var_def_call(callee, node.kwargs_keys)
+        return (callee, missing) if missing else None
+
+    def _emit_constructor_var_def(
+        self,
+        node: pyast.Assign,
+        names: list[str],
+        constructor_var_def: tuple[type[Any], list[Any]],
+    ) -> None:
+        """Handle annotated collector-backed constructor syntax with omitted var-def fields."""
+        if not isinstance(node.rhs, pyast.Call):
+            raise TypeError("constructor var-def assignment requires a call rhs")
+        callee, missing_var_fields = constructor_var_def
+        if len(names) != 1:
+            raise TypeError(
+                f"constructor var-def assignment supports exactly one binding target, got {len(names)}"
+            )
+        if len(missing_var_fields) != 1:
+            raise TypeError(
+                "constructor var-def assignment requires exactly one omitted var_def field, "
+                f"got {len(missing_var_fields)}"
+            )
+        positional = [_to_dialect(value) for value in self._visit_container(node.rhs.args)]
+        kwargs = {
+            key: _to_dialect(self.visit(value))
+            for key, value in zip(node.rhs.kwargs_keys, node.rhs.kwargs_values)
+        }
+        arg_fields = [
+            field.name for field in fields(callee) if field.init and field.lang_kind == "arg"
+        ]
+        if issubclass(callee, std.BaseBindExpr) and "expr" not in arg_fields:
+            arg_fields.insert(0, "expr")
+        if len(positional) > len(arg_fields):
+            raise TypeError("too many positional arguments for constructor var-def assignment")
+        for field_name, value in zip(arg_fields, positional):
+            if field_name in kwargs:
+                raise TypeError(f"multiple values for constructor field {field_name!r}")
+            kwargs[field_name] = value
+        if node.annotation is not None:
+            ty = normalize_ty(self.visit(node.annotation))
+        else:
+            expr = kwargs.get("expr")
+            if not isinstance(expr, std.Expr):
+                expr = _materialize_top_value(self._run_generics, expr)
+                kwargs["expr"] = expr
+            if not isinstance(expr, std.Expr):
+                raise TypeError("constructor var-def assignment requires a type annotation")
+            ty = expr.ty
+        var = std.Var(ty, names[0])
+        var_field = missing_var_fields[0]
+        kwargs[var_field.name] = [var] if _field_expects_var_sequence(var_field) else var
+        self._emit_bound_stmt(callee(**kwargs))
 
     def visit_ExprStmt(self, node: pyast.ExprStmt) -> None:
         """Handle expression statements as standalone IR statements or implicit binds.
@@ -766,10 +886,6 @@ class Parser:
         call nodes when the callee is a dialect expression rather than a Python
         callable.
         """
-
-        def _to_dialect(value: Any) -> Any:
-            return value.to_dialect() if hasattr(value, "to_dialect") else value
-
         callee = self.visit(node.callee)
         positional = list(self._visit_container(node.args))
         if "" in node.kwargs_keys:
@@ -778,9 +894,74 @@ class Parser:
             key: _to_dialect(self.visit(value))
             for key, value in zip(node.kwargs_keys, node.kwargs_values)
         }
+        if self._placeholder_var_defs:
+            placeholder = self._try_placeholder_var_def_call(
+                callee,
+                positional,
+                kwargs,
+                node.kwargs_keys,
+            )
+            if not MISSING.is_(placeholder):
+                return placeholder
         if callable(callee):
-            return callee(*positional, **kwargs)
-        return self._run_generics("__call__", (callee, *positional))
+            call_args = (
+                positional if isinstance(callee, Factory) else [_to_dialect(v) for v in positional]
+            )
+            return callee(*call_args, **kwargs)
+        return self._run_generics("__call__", (callee, *[_to_dialect(v) for v in positional]))
+
+    def _try_placeholder_var_def_call(
+        self,
+        callee: Any,
+        positional: list[Any],
+        kwargs: dict[str, Any],
+        kwargs_keys: Sequence[str],
+    ) -> Any:
+        """Build a placeholder var-def object for scope-header bind syntax."""
+        if not isinstance(callee, type):
+            return MISSING
+        _, missing_var_fields = _is_missing_var_def_call(callee, kwargs_keys)
+        if len(missing_var_fields) != 1:
+            return MISSING
+
+        arg_fields = [
+            field.name for field in fields(callee) if field.init and field.lang_kind == "arg"
+        ]
+        if issubclass(callee, std.BaseBindExpr) and "expr" not in arg_fields:
+            arg_fields.insert(0, "expr")
+        if len(positional) > len(arg_fields):
+            return MISSING
+        for field_name, value in zip(arg_fields, positional):
+            if field_name in kwargs:
+                return MISSING
+            kwargs[field_name] = _to_dialect(value)
+
+        ty = self._infer_placeholder_var_type(callee, kwargs)
+        if ty is None:
+            return MISSING
+        var_field = missing_var_fields[0]
+        var = std.Var(ty, "")
+        kwargs[var_field.name] = [var] if _field_expects_var_sequence(var_field) else var
+        return callee(**kwargs)
+
+    def _infer_placeholder_var_type(
+        self,
+        callee: type[Any],
+        kwargs: dict[str, Any],
+    ) -> std.Ty | None:
+        """Infer a placeholder binding type for constructor scope syntax."""
+        if issubclass(callee, std.BaseBindExpr):
+            expr = kwargs.get("expr")
+            if not isinstance(expr, std.Expr):
+                expr = _materialize_top_value(self._run_generics, expr)
+                kwargs["expr"] = expr
+            return expr.ty if isinstance(expr, std.Expr) else None
+
+        if issubclass(callee, std.BaseVarDef):
+            for value in kwargs.values():
+                if isinstance(value, std.Ty):
+                    return value
+        return None
 
     def visit_Literal(self, node: pyast.Literal) -> Any:
         """Return native Python literal values before the language materializes them."""
@@ -820,15 +1001,15 @@ class Parser:
 
     def visit_Tuple(self, node: pyast.Tuple) -> tuple[Any, ...]:
         """Parse tuple literals, used for destructuring and multi-value returns."""
-        return tuple(self._visit_container(node.values))
+        return tuple(_to_dialect(value) for value in self._visit_container(node.values))
 
     def visit_List(self, node: pyast.List) -> list[Any]:
         """Parse list literals for explicit node constructors and Python values."""
-        return list(self._visit_container(node.values))
+        return [_to_dialect(value) for value in self._visit_container(node.values)]
 
     def visit_Set(self, node: pyast.Set) -> set[Any]:
         """Parse set literals when they appear in constructor arguments."""
-        return set(self._visit_container(node.values))
+        return {_to_dialect(value) for value in self._visit_container(node.values)}
 
     def visit_Dict(self, node: pyast.Dict) -> dict[Any, Any]:
         """Parse dict literals and ``**`` expansions for attrs or call kwargs."""
@@ -839,7 +1020,7 @@ class Parser:
             ):
                 out.update(self.visit(k_node.value.value))
             else:
-                out[self.visit(k_node)] = self.visit(v_node)
+                out[_to_dialect(self.visit(k_node))] = _to_dialect(self.visit(v_node))
         return out
 
     def visit_Slice(self, node: pyast.Slice) -> Any:
@@ -896,7 +1077,6 @@ def parse(
         source.source = text
         source.full_source = text
         source.ast_root = program
-        return source
     else:
         source = Source(program, feature_version=feature_version)
     return Parser(

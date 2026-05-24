@@ -925,7 +925,6 @@ text::NodeAST TextPrint(const Store& obj, const text::IRPrinter& printer, const 
   for (size_t i = 0; i < obj->indices.size(); ++i) {
     ctx.operands.push_back(TextPrintSlice(obj->indices[i], printer, indices_path->ArrayItem(i)));
   }
-  ctx.AddAttrs(printer, obj->attrs, path->Attr("attrs"));
   if (ctx.ExprDerivable()) {
     return text::AssignAST(text::IndexAST(ctx.operands[0],  //
                                           {ctx.operands.begin() + 2, ctx.operands.end()}),
@@ -954,7 +953,6 @@ Optional<text::ExprAST> StmtValue(List<text::ExprAST> operands) {
 text::NodeAST TextPrint(const Assert& obj, const text::IRPrinter& printer, const Path& path) {
   ExprBuilder ctx;
   ctx.AddOperand(printer, obj->cond, path->Attr("cond"));
-  ctx.AddAttrs(printer, obj->attrs, path->Attr("attrs"));
   if (ctx.ExprDerivable() || (ctx.dialects.empty() && ctx.StmtDerivable(printer, obj))) {
     return text::AssertAST(ctx.operands[0]);
   }
@@ -964,7 +962,6 @@ text::NodeAST TextPrint(const Assert& obj, const text::IRPrinter& printer, const
 text::NodeAST TextPrint(const Return& obj, const text::IRPrinter& printer, const Path& path) {
   ExprBuilder ctx;
   ctx.AddOperands(printer, obj->exprs, path->Attr("exprs"));
-  ctx.AddAttrs(printer, obj->attrs, path->Attr("attrs"));
   if (ctx.ExprDerivable() || (ctx.dialects.empty() && ctx.StmtDerivable(printer, obj))) {
     return text::ReturnAST(StmtValue(std::move(ctx.operands)));
   }
@@ -974,7 +971,6 @@ text::NodeAST TextPrint(const Return& obj, const text::IRPrinter& printer, const
 text::NodeAST TextPrint(const Yield_& obj, const text::IRPrinter& printer, const Path& path) {
   ExprBuilder ctx;
   ctx.AddOperands(printer, obj->exprs, path->Attr("exprs"));
-  ctx.AddAttrs(printer, obj->attrs, path->Attr("attrs"));
   if (ctx.ExprDerivable() || (ctx.dialects.empty() && ctx.StmtDerivable(printer, obj))) {
     return text::ExprStmtAST(text::YieldAST(StmtValue(std::move(ctx.operands))));
   }
@@ -983,13 +979,11 @@ text::NodeAST TextPrint(const Yield_& obj, const text::IRPrinter& printer, const
 
 text::NodeAST TextPrint(const Break& obj, const text::IRPrinter& printer, const Path& path) {
   ExprBuilder ctx;
-  ctx.AddAttrs(printer, obj->attrs, path->Attr("attrs"));
   return ctx.StmtDerivable(printer, obj) ? text::BreakAST() : ctx.StmtCall(printer, obj);
 }
 
 text::NodeAST TextPrint(const Continue& obj, const text::IRPrinter& printer, const Path& path) {
   ExprBuilder ctx;
-  ctx.AddAttrs(printer, obj->attrs, path->Attr("attrs"));
   return ctx.StmtDerivable(printer, obj) ? text::ContinueAST() : ctx.StmtCall(printer, obj);
 }
 
@@ -1063,14 +1057,12 @@ std::pair<text::ExprAST, List<Var>> ScopeBindingCall(const text::IRPrinter& prin
                                List<Node>{});
   if (std::optional<BaseBindExpr> bind_expr = bind.as<BaseBindExpr>()) {
     ctx.AddOperand(printer, (*bind_expr)->expr, path->Attr("expr"));
-    ctx.AddAttrs(printer, bind->attrs, path->Attr("attrs"));
     if (std::optional<FieldCollectionResult> collected = CollectDialectFields(*bind_expr)) {
       fields = collected.value();
       TVM_FFI_CHECK(fields->body.empty(), TypeError)
           << "ffi.std.BaseBindExpr text printer does not support body fields";
     }
   } else if (std::optional<BaseVarDef> var_def = bind.as<BaseVarDef>()) {
-    ctx.AddAttrs(printer, bind->attrs, path->Attr("attrs"));
     if (std::optional<FieldCollectionResult> collected = CollectDialectFields(*var_def)) {
       fields = collected.value();
       TVM_FFI_CHECK(fields->body.empty(), TypeError)
@@ -1089,7 +1081,6 @@ std::pair<text::ExprAST, List<Var>> ScopeBindingCall(const text::IRPrinter& prin
 text::NodeAST TextPrint(const BaseBindExpr& obj, const text::IRPrinter& printer, const Path& path) {
   ExprBuilder ctx;
   ctx.AddOperand(printer, obj->expr, path->Attr("expr"));
-  ctx.AddAttrs(printer, obj->attrs, path->Attr("attrs"));
   std::optional<FieldCollectionResult> collected = CollectDialectFields(obj);
   if (!collected.has_value()) {
     return ctx.StmtCall(printer, obj);
@@ -1113,7 +1104,6 @@ text::NodeAST TextPrint(const BindExpr& obj, const text::IRPrinter& printer, con
   // literals.
   ExprBuilder ctx;
   ctx.AddOperand(printer, obj->expr, path->Attr("expr"));
-  ctx.AddAttrs(printer, obj->attrs, path->Attr("attrs"));
   FieldCollectionResult fields = CollectRequiredDialectFields(obj);
   TVM_FFI_CHECK(fields->body.empty(), TypeError)
       << "ffi.std.BindExpr text printer does not support body fields";
@@ -1131,7 +1121,6 @@ text::NodeAST TextPrint(const BindExpr& obj, const text::IRPrinter& printer, con
 
 text::NodeAST TextPrint(const BaseVarDef& obj, const text::IRPrinter& printer, const Path& path) {
   ExprBuilder ctx;
-  ctx.AddAttrs(printer, obj->attrs, path->Attr("attrs"));
   std::optional<FieldCollectionResult> collected = CollectDialectFields(obj);
   if (!collected.has_value()) {
     return ctx.StmtCall(printer, obj);
@@ -1151,7 +1140,6 @@ text::NodeAST TextPrint(const BaseVarDef& obj, const text::IRPrinter& printer, c
 
 text::NodeAST TextPrint(const VarDef& obj, const text::IRPrinter& printer, const Path& path) {
   ExprBuilder ctx;
-  ctx.AddAttrs(printer, obj->attrs, path->Attr("attrs"));
   FieldCollectionResult fields = CollectRequiredDialectFields(obj);
   TVM_FFI_CHECK(fields->body.empty(), TypeError)
       << "ffi.std.VarDef text printer does not support body fields";
@@ -1189,7 +1177,6 @@ text::NodeAST TextPrint(const IfStmt& obj, const text::IRPrinter& printer, const
 text::NodeAST TextPrint(const BaseWhile& obj, const text::IRPrinter& printer, const Path& path) {
   ExprBuilder ctx;
   ctx.AddOperand(printer, obj->cond, path->Attr("cond"));
-  ctx.AddAttrs(printer, obj->attrs, path->Attr("attrs"));
   std::optional<FieldCollectionResult> collected = CollectDialectFields(obj);
   if (!collected.has_value()) {
     return ctx.StmtCall(printer, obj);
@@ -1200,7 +1187,6 @@ text::NodeAST TextPrint(const BaseWhile& obj, const text::IRPrinter& printer, co
   ScopeBuilder scope("while_", DialectName(obj), printer->cfg);
   scope.scope_call = CallMnemonic(printer->cfg, obj);
   scope.operands.push_back(printer->ToExpr(obj->cond, path->Attr("cond")));
-  scope.AddAttrs(printer, obj->attrs, path->Attr("attrs"));
   scope.AddDialectArgsAttrs(printer, fields, path);
   scope.AddBodyStmts(printer, fields->body, path->Attr("body"));
   return text::WithAST({}, scope.StmtCall(false), std::move(scope.body));
@@ -1210,7 +1196,6 @@ text::NodeAST TextPrint(const BaseFor& obj, const text::IRPrinter& printer, cons
   ExprBuilder ctx;
   ctx.AddOperand(printer, obj->extent, path->Attr("extent"));
   ctx.operands.push_back(DefineVar(printer, obj->var));
-  ctx.AddAttrs(printer, obj->attrs, path->Attr("attrs"));
   std::optional<FieldCollectionResult> collected = CollectDialectFields(obj);
   if (!collected.has_value()) {
     return ctx.StmtCall(printer, obj);
@@ -1230,7 +1215,6 @@ text::NodeAST TextPrint(const BaseFor& obj, const text::IRPrinter& printer, cons
     scope.kwargs_keys.push_back("ty");
     scope.kwargs_values.push_back(printer->ToExpr(obj->var->ty, path->Attr("var")->Attr("ty")));
   }
-  scope.AddAttrs(printer, obj->attrs, path->Attr("attrs"));
   scope.AddDialectArgsAttrs(printer, fields, path);
   scope.AddBodyStmts(printer, fields->body, path->Attr("body"));
   return text::ForAST(*scope.Target(/*create_placeholder_for_none=*/true), scope.StmtCall(false),
@@ -1249,7 +1233,6 @@ text::NodeAST TextPrint(const BaseFunc& obj, const text::IRPrinter& printer, con
     kwargs_keys.push_back("ret_type");
     kwargs_values.push_back(printer->ToExpr(*obj->ret_type, path->Attr("ret_type")));
   }
-  AppendAttrsKwargs(printer, obj->attrs, path->Attr("attrs"), kwargs_keys, kwargs_values);
   std::optional<FieldCollectionResult> collected = CollectDialectFields(obj);
   if (!collected.has_value()) {
     return text::ExprStmtAST(
@@ -1263,7 +1246,6 @@ text::NodeAST TextPrint(const BaseFunc& obj, const text::IRPrinter& printer, con
 
   ScopeBuilder scope("func", DialectName(obj), printer->cfg);
   scope.scope_call = CallMnemonic(printer->cfg, obj);
-  scope.AddAttrs(printer, obj->attrs, path->Attr("attrs"));
   scope.AddDialectArgsAttrs(printer, fields, path);
   List<text::AssignAST> args;
   int64_t n = static_cast<int64_t>(obj->args.size());
@@ -1285,7 +1267,6 @@ text::NodeAST TextPrint(const BaseFunc& obj, const text::IRPrinter& printer, con
 
 text::NodeAST TextPrint(const BaseScope& obj, const text::IRPrinter& printer, const Path& path) {
   ExprBuilder ctx;
-  ctx.AddAttrs(printer, obj->attrs, path->Attr("attrs"));
   std::optional<FieldCollectionResult> collected = CollectDialectFields(obj);
   if (!collected.has_value()) {
     return ctx.StmtCall(printer, obj);
@@ -1293,7 +1274,6 @@ text::NodeAST TextPrint(const BaseScope& obj, const text::IRPrinter& printer, co
   const FieldCollectionResult& fields = collected.value();
   ScopeBuilder scope("scope", DialectName(obj), printer->cfg);
   scope.scope_call = CallMnemonic(printer->cfg, obj);
-  scope.AddAttrs(printer, obj->attrs, path->Attr("attrs"));
   scope.AddDialectArgsAttrs(printer, fields, path);
   scope.AddTargets(printer, fields->var_def);
   scope.AddBodyStmts(printer, fields->body, path->Attr("body"));
@@ -1303,11 +1283,11 @@ text::NodeAST TextPrint(const BaseScope& obj, const text::IRPrinter& printer, co
 
 text::NodeAST TextPrint(const While& obj, const text::IRPrinter& printer, const Path& path) {
   ScopeBuilder ctx("while_", DialectName(obj), printer->cfg);
-  ctx.AddAttrs(printer, obj->attrs, path->Attr("attrs"));
   FieldCollectionResult fields = CollectRequiredDialectFields(obj);
   TVM_FFI_CHECK(fields->var_def.empty(), TypeError)
       << "ffi.std.While text printer does not support var_def fields";
   ctx.AddDialectArgsAttrs(printer, fields, path);
+  ctx.AddAttrs(printer, obj->attrs, path->Attr("attrs"));
   ctx.AddBodyStmts(printer, fields->body, path->Attr("body"));
   text::ExprAST cond = printer->ToExpr(obj->cond, path->Attr("cond"));
   if (ctx.operands.empty() && ctx.kwargs_keys.empty()) {
@@ -1350,8 +1330,8 @@ text::NodeAST TextPrint(const For& obj, const text::IRPrinter& printer, const Pa
     ctx.kwargs_values.push_back(printer->ToExpr(obj->var->ty, path->Attr("var")->Attr("ty")));
   }
   // --------------------------------------- //
-  ctx.AddAttrs(printer, obj->attrs, path->Attr("attrs"));
   ctx.AddDialectArgsAttrs(printer, fields, path);
+  ctx.AddAttrs(printer, obj->attrs, path->Attr("attrs"));
   ctx.AddBodyStmts(printer, fields->body, path->Attr("body"));
   text::ExprAST lhs = *ctx.Target(/*create_placeholder_for_none=*/true);
   text::ExprAST rhs = ctx.StmtCall(false);
@@ -1361,11 +1341,11 @@ text::NodeAST TextPrint(const For& obj, const text::IRPrinter& printer, const Pa
 text::NodeAST TextPrint(const Func& obj, const text::IRPrinter& printer, const Path& path) {
   // TODO(@junrushao): Handle dynamic shape, where a VarDef may contain other variable definition.
   ScopeBuilder ctx("func", DialectName(obj), printer->cfg);
-  ctx.AddAttrs(printer, obj->attrs, path->Attr("attrs"));
   FieldCollectionResult fields = CollectRequiredDialectFields(obj);
   TVM_FFI_CHECK(fields->var_def.empty(), TypeError)
       << "ffi.std.Func text printer does not support var_def fields";
   ctx.AddDialectArgsAttrs(printer, fields, path);
+  ctx.AddAttrs(printer, obj->attrs, path->Attr("attrs"));
   // ----------- "args" section ----------- //
   List<text::AssignAST> args;
   int64_t n = static_cast<int64_t>(obj->args.size());
@@ -1388,7 +1368,6 @@ text::NodeAST TextPrint(const Func& obj, const text::IRPrinter& printer, const P
 
 text::NodeAST TextPrint(const Scope& obj, const text::IRPrinter& printer, const Path& path) {
   ScopeBuilder ctx("scope", DialectName(obj), printer->cfg);
-  ctx.AddAttrs(printer, obj->attrs, path->Attr("attrs"));
   FieldCollectionResult fields = CollectRequiredDialectFields(obj);
   TVM_FFI_CHECK(fields->var_def.empty(), TypeError)
       << "ffi.std.Scope text printer does not support var_def fields";
@@ -1402,6 +1381,7 @@ text::NodeAST TextPrint(const Scope& obj, const text::IRPrinter& printer, const 
     ctx.AddTargets(printer, vars);
   }
   ctx.AddDialectArgsAttrs(printer, fields, path);
+  ctx.AddAttrs(printer, obj->attrs, path->Attr("attrs"));
   ctx.AddBodyStmts(printer, fields->body, path->Attr("body"));
   if (ctx.operands.empty() && ctx.kwargs_keys.empty()) {
     return text::StmtBlockAST(std::move(ctx.body));
@@ -2312,8 +2292,7 @@ TVM_FFI_STATIC_INIT_BLOCK() {
 
   TVM_FFI_STD_OBJECT_DEF_BASE_INIT(NodeObj, Node, refl::init(false));
   TVM_FFI_STD_OBJECT_DEF_BASE_INIT(TyObj, Ty, refl::init(false));
-  TVM_FFI_STD_OBJECT_DEF_BASE_INIT(StmtObj, Stmt, refl::init(false))
-      .def_rw("attrs", &StmtObj::attrs, refl::kw_only(true), refl::default_value(nullptr));
+  TVM_FFI_STD_OBJECT_DEF_BASE_INIT(StmtObj, Stmt, refl::init(false));
   TVM_FFI_STD_OBJECT_DEF_BASE_INIT(AttrsObj, Attrs, refl::init(false)).def_convert<Attrs>();
   TVM_FFI_STD_OBJECT_DEF_BASE_INIT(AggregateObj, Aggregate, refl::init(false));
   TVM_FFI_STD_OBJECT_DEF_BASE_INIT(ExprObj, Expr, refl::init(false))
@@ -2328,7 +2307,8 @@ TVM_FFI_STATIC_INIT_BLOCK() {
   TVM_FFI_STD_OBJECT_DEF(FuncObj, Func, "Func")
       .def_type_attr(refl::type_attr::kDialectFieldCollector, CollectBodyFields<Func>)
       .def(refl::init<String, List<Var>, Optional<Ty>, List<Stmt>, Optional<Attrs>>())
-      .def_rw("body", &FuncObj::body);
+      .def_rw("body", &FuncObj::body)
+      .def_rw("attrs", &FuncObj::attrs, refl::default_value(nullptr));
   TVM_FFI_STD_OBJECT_DEF(ModuleObj, Module, "Module").def_rw("funcs", &ModuleObj::funcs);
   TVM_FFI_STD_OBJECT_DEF(RangeObj, Range, "Range")
       .def_convert<Range>()
@@ -2408,7 +2388,7 @@ TVM_FFI_STATIC_INIT_BLOCK() {
       .def_rw("args", &CallObj::args)
       .def_rw("attr", &CallObj::attr, refl::default_value(nullptr));
   TVM_FFI_STD_OBJECT_DEF(IfStmtObj, IfStmt, "IfStmt")
-      .def(refl::init<Expr, List<Stmt>, List<Stmt>, Optional<Attrs>>())
+      .def(refl::init<Expr, List<Stmt>, List<Stmt>>())
       .def_rw("cond", &IfStmtObj::cond)
       .def_rw("then_body", &IfStmtObj::then_body)
       .def_rw("else_body", &IfStmtObj::else_body);
@@ -2416,7 +2396,7 @@ TVM_FFI_STATIC_INIT_BLOCK() {
       .def_rw("expr", &BaseBindExprObj::expr);
   TVM_FFI_STD_OBJECT_DEF(BindExprObj, BindExpr, "BindExpr")
       .def_type_attr(refl::type_attr::kDialectFieldCollector, CollectBindExprFields)
-      .def(refl::init<List<Var>, Expr, Optional<Attrs>>())
+      .def(refl::init<List<Var>, Expr>())
       .def_rw("vars", &BindExprObj::vars, refl::AttachFieldFlag::SEqHashDefRecursive());
   TVM_FFI_STD_OBJECT_DEF(BaseVarDefObj, BaseVarDef, "BaseVarDef");
   TVM_FFI_STD_OBJECT_DEF(VarDefObj, VarDef, "VarDef")
@@ -2427,7 +2407,8 @@ TVM_FFI_STATIC_INIT_BLOCK() {
       .def_type_attr(refl::type_attr::kDialectFieldCollector, CollectBodyFields<Scope>)
       .def(refl::init<List<Stmt>, List<Stmt>, Optional<Attrs>>())
       .def_rw("binds", &ScopeObj::binds, refl::AttachFieldFlag::SEqHashDefRecursive())
-      .def_rw("body", &ScopeObj::body);
+      .def_rw("body", &ScopeObj::body)
+      .def_rw("attrs", &ScopeObj::attrs, refl::default_value(nullptr));
   TVM_FFI_STD_OBJECT_DEF(BaseForObj, BaseFor, "BaseFor")
       .def_rw("extent", &BaseForObj::extent)
       .def_rw("var", &BaseForObj::var, refl::AttachFieldFlag::SEqHashDefRecursive());
@@ -2436,19 +2417,21 @@ TVM_FFI_STATIC_INIT_BLOCK() {
       .def(refl::init<Optional<Expr>, Expr, Optional<Expr>, Var, List<Stmt>, Optional<Attrs>>())
       .def_rw("start", &ForObj::start, refl::default_value(nullptr))
       .def_rw("step", &ForObj::step, refl::kw_only(true), refl::default_value(nullptr))
-      .def_rw("body", &ForObj::body);
+      .def_rw("body", &ForObj::body)
+      .def_rw("attrs", &ForObj::attrs, refl::default_value(nullptr));
   TVM_FFI_STD_OBJECT_DEF(BaseWhileObj, BaseWhile, "BaseWhile").def_rw("cond", &BaseWhileObj::cond);
   TVM_FFI_STD_OBJECT_DEF(WhileObj, While, "While")
       .def_type_attr(refl::type_attr::kDialectFieldCollector, CollectBodyFields<While>)
       .def(refl::init<Expr, List<Stmt>, Optional<Attrs>>())
-      .def_rw("body", &WhileObj::body);
+      .def_rw("body", &WhileObj::body)
+      .def_rw("attrs", &WhileObj::attrs, refl::default_value(nullptr));
   TVM_FFI_STD_OBJECT_DEF(StoreObj, Store, "Store")
-      .def(refl::init<Expr, List<Range>, Expr, Optional<Attrs>>())
+      .def(refl::init<Expr, List<Range>, Expr>())
       .def_rw("lhs", &StoreObj::lhs)
       .def_rw("indices", &StoreObj::indices)
       .def_rw("rhs", &StoreObj::rhs);
   TVM_FFI_STD_OBJECT_DEF(AssertObj, Assert, "Assert")
-      .def(refl::init<Expr, Optional<Attrs>>())
+      .def(refl::init<Expr>())
       .def_rw("cond", &AssertObj::cond);
   TVM_FFI_STD_OBJECT_DEF(ReturnObj, Return, "Return").def_rw("exprs", &ReturnObj::exprs);
   TVM_FFI_STD_OBJECT_DEF(YieldObj, Yield_, "Yield").def_rw("exprs", &YieldObj::exprs);

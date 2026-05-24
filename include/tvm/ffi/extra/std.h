@@ -131,12 +131,8 @@ struct Attrs : public Node {
 
 /*! \brief Base object for standard dialect statement nodes. */
 struct StmtObj : public NodeObj {
-  /*! \brief Optional statement attributes. */
-  Optional<Attrs> attrs;
-
   /// \cond Doxygen_Suppress
   StmtObj() = default;
-  explicit StmtObj(Optional<Attrs> attrs) : attrs(std::move(attrs)) {}
 
   TVM_FFI_DECLARE_OBJECT_INFO("ffi.std.Stmt", StmtObj, NodeObj);
   /// \endcond
@@ -241,7 +237,6 @@ struct Var : public Expr {
 struct BaseScopeObj : public StmtObj {
   /// \cond Doxygen_Suppress
   BaseScopeObj() = default;
-  explicit BaseScopeObj(Optional<Attrs> attrs) : StmtObj(std::move(attrs)) {}
 
   TVM_FFI_DECLARE_OBJECT_INFO("ffi.std.BaseScope", BaseScopeObj, StmtObj);
   /// \endcond
@@ -249,9 +244,6 @@ struct BaseScopeObj : public StmtObj {
 
 /*! \brief Reference wrapper for scoped statements. */
 struct BaseScope : public Stmt {
-  /*! \brief Construct a scoped statement base. */
-  explicit BaseScope(Optional<Attrs> attrs)
-      : BaseScope(make_object<BaseScopeObj>(std::move(attrs))) {}
   /// \cond Doxygen_Suppress
   TVM_FFI_DEFINE_OBJECT_REF_METHODS_NULLABLE(BaseScope, Stmt, BaseScopeObj);
   /// \endcond
@@ -268,11 +260,8 @@ struct BaseFuncObj : public StmtObj {
 
   /// \cond Doxygen_Suppress
   BaseFuncObj() = default;
-  BaseFuncObj(String symbol, List<Var> args, Optional<Ty> ret_type, Optional<Attrs> attrs = {})
-      : StmtObj(std::move(attrs)),
-        symbol(std::move(symbol)),
-        args(std::move(args)),
-        ret_type(std::move(ret_type)) {}
+  BaseFuncObj(String symbol, List<Var> args, Optional<Ty> ret_type)
+      : symbol(std::move(symbol)), args(std::move(args)), ret_type(std::move(ret_type)) {}
 
   TVM_FFI_DECLARE_OBJECT_INFO("ffi.std.BaseFunc", BaseFuncObj, StmtObj);
   /// \endcond
@@ -281,9 +270,9 @@ struct BaseFuncObj : public StmtObj {
 /*! \brief Reference wrapper for standard dialect functions. */
 struct BaseFunc : public Stmt {
   /*! \brief Construct a function-like statement base. */
-  BaseFunc(String symbol, List<Var> args, Optional<Ty> ret_type, Optional<Attrs> attrs = {})
-      : BaseFunc(make_object<BaseFuncObj>(std::move(symbol), std::move(args), std::move(ret_type),
-                                          std::move(attrs))) {}
+  BaseFunc(String symbol, List<Var> args, Optional<Ty> ret_type)
+      : BaseFunc(
+            make_object<BaseFuncObj>(std::move(symbol), std::move(args), std::move(ret_type))) {}
   /// \cond Doxygen_Suppress
   TVM_FFI_DEFINE_OBJECT_REF_METHODS_NULLABLE(BaseFunc, Stmt, BaseFuncObj);
   /// \endcond
@@ -293,17 +282,16 @@ struct BaseFunc : public Stmt {
 struct FuncObj : public BaseFuncObj {
   /*! \brief Function body statements. */
   List<Stmt> body;
+  /*! \brief Optional function attributes. */
+  Optional<Attrs> attrs;
 
   /// \cond Doxygen_Suppress
   FuncObj() = default;
   FuncObj(String symbol, List<Var> args, Optional<Ty> ret_type, List<Stmt> body,
           Optional<Attrs> attrs = {})
-      : FuncObj(std::move(symbol), std::move(attrs), std::move(args), std::move(ret_type),
-                std::move(body)) {}
-  FuncObj(String symbol, Optional<Attrs> attrs, List<Var> args, Optional<Ty> ret_type,
-          List<Stmt> body)
-      : BaseFuncObj(std::move(symbol), std::move(args), std::move(ret_type), std::move(attrs)),
-        body(std::move(body)) {}
+      : BaseFuncObj(std::move(symbol), std::move(args), std::move(ret_type)),
+        body(std::move(body)),
+        attrs(std::move(attrs)) {}
 
   TVM_FFI_DECLARE_OBJECT_INFO("ffi.std.Func", FuncObj, BaseFuncObj);
   /// \endcond
@@ -316,10 +304,6 @@ struct Func : public BaseFunc {
        Optional<Attrs> attrs = {})
       : Func(make_object<FuncObj>(std::move(symbol), std::move(args), std::move(ret_type),
                                   std::move(body), std::move(attrs))) {}
-  /*! \brief Construct a standard dialect function with attributes first. */
-  Func(String symbol, Optional<Attrs> attrs, List<Var> args, Optional<Ty> ret_type, List<Stmt> body)
-      : Func(make_object<FuncObj>(std::move(symbol), std::move(attrs), std::move(args),
-                                  std::move(ret_type), std::move(body))) {}
   /// \cond Doxygen_Suppress
   TVM_FFI_DEFINE_OBJECT_REF_METHODS_NULLABLE(Func, BaseFunc, FuncObj);
   /// \endcond
@@ -889,11 +873,8 @@ struct IfStmtObj : public StmtObj {
 
   /// \cond Doxygen_Suppress
   IfStmtObj() = default;
-  IfStmtObj(Expr cond, List<Stmt> then_body, List<Stmt> else_body, Optional<Attrs> attrs = {})
-      : StmtObj(std::move(attrs)),
-        cond(std::move(cond)),
-        then_body(std::move(then_body)),
-        else_body(std::move(else_body)) {
+  IfStmtObj(Expr cond, List<Stmt> then_body, List<Stmt> else_body)
+      : cond(std::move(cond)), then_body(std::move(then_body)), else_body(std::move(else_body)) {
     details::CheckScalarBoolCond("IfStmt", this->cond);
   }
 
@@ -919,8 +900,7 @@ struct BaseBindExprObj : public StmtObj {
 
   /// \cond Doxygen_Suppress
   BaseBindExprObj() = default;
-  explicit BaseBindExprObj(Expr expr, Optional<Attrs> attrs = {})
-      : StmtObj(std::move(attrs)), expr(std::move(expr)) {}
+  explicit BaseBindExprObj(Expr expr) : expr(std::move(expr)) {}
 
   TVM_FFI_DECLARE_OBJECT_INFO("ffi.std.BaseBindExpr", BaseBindExprObj, StmtObj);
   /// \endcond
@@ -929,8 +909,7 @@ struct BaseBindExprObj : public StmtObj {
 /*! \brief Reference wrapper for expression bindings. */
 struct BaseBindExpr : public Stmt {
   /*! \brief Construct an expression binding base. */
-  explicit BaseBindExpr(Expr expr, Optional<Attrs> attrs = {})
-      : BaseBindExpr(make_object<BaseBindExprObj>(std::move(expr), std::move(attrs))) {}
+  explicit BaseBindExpr(Expr expr) : BaseBindExpr(make_object<BaseBindExprObj>(std::move(expr))) {}
   /// \cond Doxygen_Suppress
   TVM_FFI_DEFINE_OBJECT_REF_METHODS_NULLABLE(BaseBindExpr, Stmt, BaseBindExprObj);
   /// \endcond
@@ -943,10 +922,8 @@ struct BindExprObj : public BaseBindExprObj {
 
   /// \cond Doxygen_Suppress
   BindExprObj() = default;
-  BindExprObj(List<Var> vars, Expr expr, Optional<Attrs> attrs = {})
-      : BindExprObj(std::move(vars), std::move(attrs), std::move(expr)) {}
-  BindExprObj(List<Var> vars, Optional<Attrs> attrs, Expr expr)
-      : BaseBindExprObj(std::move(expr), std::move(attrs)), vars(std::move(vars)) {}
+  BindExprObj(List<Var> vars, Expr expr)
+      : BaseBindExprObj(std::move(expr)), vars(std::move(vars)) {}
 
   TVM_FFI_DECLARE_OBJECT_INFO("ffi.std.BindExpr", BindExprObj, BaseBindExprObj);
   /// \endcond
@@ -955,8 +932,8 @@ struct BindExprObj : public BaseBindExprObj {
 /*! \brief Reference wrapper for binding an expression to variables. */
 struct BindExpr : public BaseBindExpr {
   /*! \brief Construct an expression binding. */
-  BindExpr(List<Var> vars, Optional<Attrs> attrs, Expr expr)
-      : BindExpr(make_object<BindExprObj>(std::move(vars), std::move(attrs), std::move(expr))) {}
+  BindExpr(List<Var> vars, Expr expr)
+      : BindExpr(make_object<BindExprObj>(std::move(vars), std::move(expr))) {}
   /// \cond Doxygen_Suppress
   TVM_FFI_DEFINE_OBJECT_REF_METHODS_NULLABLE(BindExpr, BaseBindExpr, BindExprObj);
   /// \endcond
@@ -966,7 +943,6 @@ struct BindExpr : public BaseBindExpr {
 struct BaseVarDefObj : public StmtObj {
   /// \cond Doxygen_Suppress
   BaseVarDefObj() = default;
-  explicit BaseVarDefObj(Optional<Attrs> attrs) : StmtObj(std::move(attrs)) {}
 
   TVM_FFI_DECLARE_OBJECT_INFO("ffi.std.BaseVarDef", BaseVarDefObj, StmtObj);
   /// \endcond
@@ -974,9 +950,6 @@ struct BaseVarDefObj : public StmtObj {
 
 /*! \brief Reference wrapper for variable definitions. */
 struct BaseVarDef : public Stmt {
-  /*! \brief Construct a variable-definition base. */
-  explicit BaseVarDef(Optional<Attrs> attrs)
-      : BaseVarDef(make_object<BaseVarDefObj>(std::move(attrs))) {}
   /// \cond Doxygen_Suppress
   TVM_FFI_DEFINE_OBJECT_REF_METHODS_NULLABLE(BaseVarDef, Stmt, BaseVarDefObj);
   /// \endcond
@@ -989,8 +962,7 @@ struct VarDefObj : public BaseVarDefObj {
 
   /// \cond Doxygen_Suppress
   VarDefObj() = default;
-  VarDefObj(List<Var> vars, Optional<Attrs> attrs)
-      : BaseVarDefObj(std::move(attrs)), vars(std::move(vars)) {}
+  explicit VarDefObj(List<Var> vars) : vars(std::move(vars)) {}
 
   TVM_FFI_DECLARE_OBJECT_INFO("ffi.std.VarDef", VarDefObj, BaseVarDefObj);
   /// \endcond
@@ -999,8 +971,7 @@ struct VarDefObj : public BaseVarDefObj {
 /*! \brief Reference wrapper for defining variables without a source expression. */
 struct VarDef : public BaseVarDef {
   /*! \brief Construct a variable definition. */
-  VarDef(List<Var> vars, Optional<Attrs> attrs)
-      : VarDef(make_object<VarDefObj>(std::move(vars), std::move(attrs))) {}
+  explicit VarDef(List<Var> vars) : VarDef(make_object<VarDefObj>(std::move(vars))) {}
   /// \cond Doxygen_Suppress
   TVM_FFI_DEFINE_OBJECT_REF_METHODS_NULLABLE(VarDef, BaseVarDef, VarDefObj);
   /// \endcond
@@ -1012,13 +983,13 @@ struct ScopeObj : public BaseScopeObj {
   List<Stmt> binds;
   /*! \brief Block body statements. */
   List<Stmt> body;
+  /*! \brief Optional scope attributes. */
+  Optional<Attrs> attrs;
 
   /// \cond Doxygen_Suppress
   ScopeObj() = default;
   ScopeObj(List<Stmt> binds, List<Stmt> body, Optional<Attrs> attrs = {})
-      : BaseScopeObj(std::move(attrs)), binds(std::move(binds)), body(std::move(body)) {}
-  ScopeObj(Optional<Attrs> attrs, List<Stmt> binds, List<Stmt> body)
-      : ScopeObj(std::move(binds), std::move(body), std::move(attrs)) {}
+      : binds(std::move(binds)), body(std::move(body)), attrs(std::move(attrs)) {}
 
   TVM_FFI_DECLARE_OBJECT_INFO("ffi.std.Scope", ScopeObj, BaseScopeObj);
   /// \endcond
@@ -1029,9 +1000,6 @@ struct Scope : public BaseScope {
   /*! \brief Construct a lexical scope block. */
   Scope(List<Stmt> binds, List<Stmt> body, Optional<Attrs> attrs = {})
       : Scope(make_object<ScopeObj>(std::move(binds), std::move(body), std::move(attrs))) {}
-  /*! \brief Construct a lexical scope block with attributes first. */
-  Scope(Optional<Attrs> attrs, List<Stmt> binds, List<Stmt> body)
-      : Scope(make_object<ScopeObj>(std::move(attrs), std::move(binds), std::move(body))) {}
   /// \cond Doxygen_Suppress
   TVM_FFI_DEFINE_OBJECT_REF_METHODS_NULLABLE(Scope, BaseScope, ScopeObj);
   /// \endcond
@@ -1046,8 +1014,7 @@ struct BaseForObj : public StmtObj {
 
   /// \cond Doxygen_Suppress
   BaseForObj() = default;
-  BaseForObj(Expr extent, Var var, Optional<Attrs> attrs = {})
-      : StmtObj(std::move(attrs)), extent(std::move(extent)), var(std::move(var)) {
+  BaseForObj(Expr extent, Var var) : extent(std::move(extent)), var(std::move(var)) {
     details::CheckLoopVarTy("For", this->extent, this->var);
   }
 
@@ -1058,8 +1025,8 @@ struct BaseForObj : public StmtObj {
 /*! \brief Reference wrapper for for loops. */
 struct BaseFor : public Stmt {
   /*! \brief Construct a for-loop base. */
-  BaseFor(Expr extent, Var var, Optional<Attrs> attrs = {})
-      : BaseFor(make_object<BaseForObj>(std::move(extent), std::move(var), std::move(attrs))) {}
+  BaseFor(Expr extent, Var var)
+      : BaseFor(make_object<BaseForObj>(std::move(extent), std::move(var))) {}
   /// \cond Doxygen_Suppress
   TVM_FFI_DEFINE_OBJECT_REF_METHODS_NULLABLE(BaseFor, Stmt, BaseForObj);
   /// \endcond
@@ -1073,21 +1040,20 @@ struct ForObj : public BaseForObj {
   Optional<Expr> step;
   /*! \brief Loop body statements. */
   List<Stmt> body;
+  /*! \brief Optional loop attributes. */
+  Optional<Attrs> attrs;
 
   /// \cond Doxygen_Suppress
   ForObj() = default;
   ForObj(Optional<Expr> start, Expr extent, Optional<Expr> step, Var var, List<Stmt> body,
          Optional<Attrs> attrs = {})
-      : BaseForObj(std::move(extent), std::move(var), std::move(attrs)),
+      : BaseForObj(std::move(extent), std::move(var)),
         start(std::move(start)),
         step(std::move(step)),
-        body(std::move(body)) {
+        body(std::move(body)),
+        attrs(std::move(attrs)) {
     details::CheckRangeDTypes("For", this->start, this->extent, this->step);
   }
-  ForObj(Optional<Expr> start, Expr extent, Optional<Expr> step, Optional<Attrs> attrs, Var var,
-         List<Stmt> body)
-      : ForObj(std::move(start), std::move(extent), std::move(step), std::move(var),
-               std::move(body), std::move(attrs)) {}
 
   TVM_FFI_DECLARE_OBJECT_INFO("ffi.std.For", ForObj, BaseForObj);
   /// \endcond
@@ -1112,8 +1078,7 @@ struct BaseWhileObj : public StmtObj {
 
   /// \cond Doxygen_Suppress
   BaseWhileObj() = default;
-  explicit BaseWhileObj(Expr cond, Optional<Attrs> attrs = {})
-      : StmtObj(std::move(attrs)), cond(std::move(cond)) {
+  explicit BaseWhileObj(Expr cond) : cond(std::move(cond)) {
     details::CheckScalarBoolCond("While", this->cond);
   }
 
@@ -1124,8 +1089,7 @@ struct BaseWhileObj : public StmtObj {
 /*! \brief Reference wrapper for while loops. */
 struct BaseWhile : public Stmt {
   /*! \brief Construct a while-loop base. */
-  explicit BaseWhile(Expr cond, Optional<Attrs> attrs = {})
-      : BaseWhile(make_object<BaseWhileObj>(std::move(cond), std::move(attrs))) {}
+  explicit BaseWhile(Expr cond) : BaseWhile(make_object<BaseWhileObj>(std::move(cond))) {}
   /// \cond Doxygen_Suppress
   TVM_FFI_DEFINE_OBJECT_REF_METHODS_NULLABLE(BaseWhile, Stmt, BaseWhileObj);
   /// \endcond
@@ -1135,13 +1099,13 @@ struct BaseWhile : public Stmt {
 struct WhileObj : public BaseWhileObj {
   /*! \brief Loop body statements. */
   List<Stmt> body;
+  /*! \brief Optional loop attributes. */
+  Optional<Attrs> attrs;
 
   /// \cond Doxygen_Suppress
   WhileObj() = default;
-  WhileObj(Expr cond, Optional<Attrs> attrs, List<Stmt> body)
-      : BaseWhileObj(std::move(cond), std::move(attrs)), body(std::move(body)) {}
   WhileObj(Expr cond, List<Stmt> body, Optional<Attrs> attrs = {})
-      : WhileObj(std::move(cond), std::move(attrs), std::move(body)) {}
+      : BaseWhileObj(std::move(cond)), body(std::move(body)), attrs(std::move(attrs)) {}
 
   TVM_FFI_DECLARE_OBJECT_INFO("ffi.std.While", WhileObj, BaseWhileObj);
   /// \endcond
@@ -1150,8 +1114,8 @@ struct WhileObj : public BaseWhileObj {
 /*! \brief Reference wrapper for a while loop. */
 struct While : public BaseWhile {
   /*! \brief Construct a while loop. */
-  While(Expr cond, Optional<Attrs> attrs, List<Stmt> body)
-      : While(make_object<WhileObj>(std::move(cond), std::move(attrs), std::move(body))) {}
+  While(Expr cond, List<Stmt> body, Optional<Attrs> attrs = {})
+      : While(make_object<WhileObj>(std::move(cond), std::move(body), std::move(attrs))) {}
   /// \cond Doxygen_Suppress
   TVM_FFI_DEFINE_OBJECT_REF_METHODS_NULLABLE(While, BaseWhile, WhileObj);
   /// \endcond
@@ -1168,11 +1132,8 @@ struct StoreObj : public StmtObj {
 
   /// \cond Doxygen_Suppress
   StoreObj() = default;
-  StoreObj(Expr lhs, List<Range> indices, Expr rhs, Optional<Attrs> attrs = {})
-      : StmtObj(std::move(attrs)),
-        lhs(std::move(lhs)),
-        indices(std::move(indices)),
-        rhs(std::move(rhs)) {
+  StoreObj(Expr lhs, List<Range> indices, Expr rhs)
+      : lhs(std::move(lhs)), indices(std::move(indices)), rhs(std::move(rhs)) {
     details::CheckStoreTy(this->lhs, this->indices, this->rhs);
   }
 
@@ -1197,8 +1158,7 @@ struct AssertObj : public StmtObj {
 
   /// \cond Doxygen_Suppress
   AssertObj() = default;
-  explicit AssertObj(Expr cond, Optional<Attrs> attrs = {})
-      : StmtObj(std::move(attrs)), cond(std::move(cond)) {
+  explicit AssertObj(Expr cond) : cond(std::move(cond)) {
     details::CheckScalarBoolCond("Assert", this->cond);
   }
 
@@ -1262,6 +1222,8 @@ struct Yield_ : public Stmt {
 /*! \brief Data object for a break statement. */
 struct BreakObj : public StmtObj {
   /// \cond Doxygen_Suppress
+  BreakObj() = default;
+
   TVM_FFI_DECLARE_OBJECT_INFO("ffi.std.Break", BreakObj, StmtObj);
   /// \endcond
 };
@@ -1281,6 +1243,8 @@ struct Break : public Stmt {
 /*! \brief Data object for a continue statement. */
 struct ContinueObj : public StmtObj {
   /// \cond Doxygen_Suppress
+  ContinueObj() = default;
+
   TVM_FFI_DECLARE_OBJECT_INFO("ffi.std.Continue", ContinueObj, StmtObj);
   /// \endcond
 };

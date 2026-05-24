@@ -43,6 +43,7 @@
 #include <iomanip>
 #include <limits>
 #include <memory>
+#include <new>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -1706,6 +1707,27 @@ class RecursiveComparer : public ObjectGraphDFS<RecursiveComparer, CompareFrame,
 
 // ---------- Python-defined type support ----------
 
+enum class PyClassFieldStorageKind {
+  kPOD,
+  kAny,
+  kObjectRef,
+};
+
+PyClassFieldStorageKind GetPyClassFieldStorageKind(const TVMFFIFieldInfo* finfo) {
+  int32_t ti = finfo->field_static_type_index;
+  if (ti == TypeIndex::kTVMFFIAny) {
+    // C++-defined parent fields may use kTVMFFIAny as their conversion type
+    // while storing a compact ObjectRef/Optional<ObjectRef> in memory.
+    return finfo->size == static_cast<int64_t>(sizeof(ObjectRef))
+               ? PyClassFieldStorageKind::kObjectRef
+               : PyClassFieldStorageKind::kAny;
+  }
+  if (ti >= TypeIndex::kTVMFFIStaticObjectBegin) {
+    return PyClassFieldStorageKind::kObjectRef;
+  }
+  return PyClassFieldStorageKind::kPOD;
+}
+
 /*!
  * \brief Deleter for objects whose layout is defined from Python via Field descriptors.
  *
@@ -1719,13 +1741,17 @@ void PyClassDeleter(void* self_void, int flags) {
     const TVMFFITypeInfo* type_info = TVMFFIGetTypeInfo(self->type_index);
     refl::ForEachFieldInfo(type_info, [&](const TVMFFIFieldInfo* finfo) {
       void* field_addr = reinterpret_cast<char*>(self) + finfo->offset;
-      int32_t ti = finfo->field_static_type_index;
-      if (ti == TypeIndex::kTVMFFIAny) {
-        // Any field: call destructor to release owned references
-        reinterpret_cast<Any*>(field_addr)->~Any();
-      } else if (ti >= TypeIndex::kTVMFFIStaticObjectBegin) {
-        // ObjectRef field: call destructor to DecRef
-        reinterpret_cast<ObjectRef*>(field_addr)->~ObjectRef();
+      switch (GetPyClassFieldStorageKind(finfo)) {
+        case PyClassFieldStorageKind::kAny:
+          // Any field: call destructor to release owned references
+          reinterpret_cast<Any*>(field_addr)->~Any();
+          break;
+        case PyClassFieldStorageKind::kObjectRef:
+          // ObjectRef field: call destructor to DecRef
+          reinterpret_cast<ObjectRef*>(field_addr)->~ObjectRef();
+          break;
+        case PyClassFieldStorageKind::kPOD:
+          break;
       }
       // POD types (int, float, bool, etc.): no cleanup needed
     });
@@ -1827,6 +1853,22 @@ void WriteFieldValue(void* field_addr, int32_t field_type_index, Any value) {
   } else {
     TVM_FFI_THROW(ValueError) << "Unsupported field type index for setter: " << field_type_index;
   }
+}
+
+void ConstructPyClassFields(Object* obj, const TVMFFITypeInfo* type_info) {
+  refl::ForEachFieldInfo(type_info, [&](const TVMFFIFieldInfo* finfo) {
+    void* field_addr = reinterpret_cast<char*>(obj) + finfo->offset;
+    switch (GetPyClassFieldStorageKind(finfo)) {
+      case PyClassFieldStorageKind::kAny:
+        new (field_addr) Any();
+        break;
+      case PyClassFieldStorageKind::kObjectRef:
+        new (field_addr) ObjectRef();
+        break;
+      case PyClassFieldStorageKind::kPOD:
+        break;
+    }
+  });
 }
 
 /*!
@@ -2064,7 +2106,7 @@ void PyClassRegisterTypeAttrColumns(int32_t type_index, int32_t total_size) {
   // Step 1. Register `__ffi_init__`
   RegisterFFIInit(type_index);
   // Step 2. Register `__ffi_new__`
-  Function new_fn = Function::FromTyped([type_index, total_size]() -> ObjectRef {
+  Function new_fn = Function::FromTyped([type_index, total_size, type_info]() -> ObjectRef {
     void* obj_ptr = std::calloc(1, static_cast<size_t>(total_size));
     if (!obj_ptr) {
       TVM_FFI_THROW(RuntimeError) << "Failed to allocate " << total_size << " bytes for type "
@@ -2074,12 +2116,8 @@ void PyClassRegisterTypeAttrColumns(int32_t type_index, int32_t total_size) {
     ffi_obj->type_index = type_index;
     ffi_obj->combined_ref_count = details::kCombinedRefCountBothOne;
     ffi_obj->deleter = PyClassDeleter;
-    // calloc zero-initializes all bytes.  For non-trivial field types:
-    //   - Any: zero state is {type_index=kTVMFFINone, v_int64=0}, representing None.
-    //   - ObjectRef: zero state is a null pointer.
-    // Both are valid initial states whose destructors and assignment operators
-    // handle correctly, so no placement construction is needed.
     Object* obj = reinterpret_cast<Object*>(obj_ptr);
+    ConstructPyClassFields(obj, type_info);
     return ObjectRef(details::ObjectUnsafe::ObjectPtrFromOwned<Object>(obj));
   });
   TVMFFIByteArray attr_name = refl::AsByteArray(refl::type_attr::kNew);
