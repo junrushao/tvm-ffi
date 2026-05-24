@@ -7,194 +7,368 @@
 # with the License.  You may obtain a copy of the License at
 #
 #   http://www.apache.org/licenses/LICENSE-2.0
-
-"""Representative per-node text round-trip tests for Weave IR."""
-
-# ruff: noqa: F405
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+"""Function/module-level Weave text-format round-trip tests."""
 
 from __future__ import annotations
 
-from typing import Any
-
-import tvm_ffi
+import pytest
 import weave  # noqa: F401  # Registers the dialect.
-from tvm_ffi import std
-from tvm_ffi._pyast_parser import parse
-from weave.ir import *
+from _roundtrip import assert_source_roundtrip
 
 
-def _rt(node: Any) -> None:
-    parsed = parse(node.text())
-    assert tvm_ffi.structural_equal(parsed, node), node.text()
-    assert tvm_ffi.structural_equal(node, parsed), node.text()
-
-
-def _v(name: str, ty: std.Ty | None = None) -> std.Var:
-    return std.Var(ty or i32, name)
-
-
-def _barrier() -> MbarrierSpec:
-    return MbarrierSpec("full", 2)
-
-
-def _region() -> TmemRegion:
-    return TmemRegion("acc", 0, 128)
-
-
-def _nodes() -> list[Any]:
-    pool = SmemPool("pool", 4096)
-    desc = TmaDescriptor(2, (16, 64))
-    buf = BufferRef("A", f32, (128, 64), tma=desc)
-    view = SmemView("tile", pool, 0, (16, 64), f32)
-    phase = PhaseVar("phase")
-    domain = PhaseDomain("main", "stage", 2, phase_vars=(phase,))
-    role = WarpRole("mma", (0, 1, 2, 3))
-    pipe = PipelineSpec("main", 2)
-    barrier = _barrier()
-    assign = Assign(Const("x", i32), 1)
-    task_node = TaskSpec("load", "producer", "tma", body=[assign])
-    return [
-        RawTy(),
-        Ue4m3Ty(),
-        ConstexprTy(),
-        TmaGatherTy(),
-        TmaReduceTy(),
-        GridCounterTy(),
-        TmaTy(2),
-        UniformTy(i32),
-        PtrTy(f32, const=True, space="global"),
-        Swizzle(4, 3, 3),
-        Const("BLOCK_M", i32),
-        Field(Const("frag"), "x", f32),
-        AddrOf(Const("ptr", i32), PtrTy(i32)),
-        Deref(Const("ptr", PtrTy(f32)), f32),
-        ReinterpretCast(Const("ptr", PtrTy(u8)), PtrTy(f32, const=True)),
-        SmemSwizzleOffset(1, Swizzle(4, 3, 3)),
-        SmemSwizzleAddress(1, swizzle=Swizzle(4, 3, 3), row_stride_bytes=256),
-        TmemRef("acc", offset=1),
-        SmemRef("tile", offset=2),
-        SmemDescRef("tile", 0),
-        BarrierRef("full", stage=0),
-        BuiltinRef("warp_in_role", i32),
-        role,
-        pipe,
-        PipelineProtocol("main", load_tasks=("load",), compute_tasks=("mma",)),
-        barrier,
-        desc,
-        buf,
-        ScalarParam("n", "int"),
-        WarpConfig(4, roles=(role,)),
-        PipelineConfig(pipelines=(pipe,)),
-        GridConfig(cluster_dims=(2, 1, 1), cta_group=2),
-        TmemConfig(regions=(_region(),), buffering="double"),
-        EpilogueConfig("overlapped", vectorized=True, num_epilogue_warps=1),
-        pool,
-        view,
-        phase,
-        domain,
-        MmaParams(2, 4, 0, dtype=f32),
-        SoftmaxParams(128, num_load_chunks=4),
-        EpilogueParams(128, 8, use_tma_store=True),
-        TmaLoadParams("main", src_buffers=("A",), dst_buffers=("tile",)),
-        NamedBarrierSpec("bar", 1, 128),
-        ProcessGroup("pg", 8),
-        SymmetricMemory("sym", f32, (128,), "pg"),
-        TaskTiming(task="load", cycles=10),
-        BarrierEdge("load", "mma", "full"),
-        SmemAllocation("tile", 0, 1024),
-        TmemAllocation("acc", 0, 128),
-        task_node,
-        ForLoop(extent=4, var=_v("i"), body=[std.Break()], start=0, step=1),
-        Block([assign]),
-        LeaderCtaBlock([assign]),
-        ElectedThreadBlock([assign]),
-        ConditionalIteration(Const("i", i32), last_expr=True, body=[assign]),
-        VarDecl(_v("stage"), "int", init=0),
-        assign,
-        Kernel(
-            "kernel",
-            [],
-            None,
-            [task_node],
-            pipeline=PipelineConfig(pipelines=(pipe,)),
-            warps=WarpConfig(4, roles=(role,)),
-            grid=GridConfig(),
-            tmem=TmemConfig(regions=(_region(),)),
-            epilogue=EpilogueConfig(),
-            buffers=(buf,),
-            mbarriers=(barrier,),
-            smem_pools=(pool,),
-            smem_views=(view,),
-            phase_domains=(domain,),
+@pytest.mark.parametrize(
+    "source",
+    [
+        pytest.param(
+            """
+            @weave.Kernel
+            def empty_kernel():
+                pass
+            """,
+            id="empty-kernel",
         ),
-        BuiltinVar("warp_in_role", dst=1),
-        TmemRegionLoad(_region(), dst=1, col_offset=0, num=16),
-        TmemRegionStore(_region(), src=1, dtype=f32),
-        SmemDesc("tile", k_idx=0, mode="k", dst=1),
-        GmemLoad(1, 2, count=8, dtype=bf16, dst_dtype=f32),
-        GmemStore(1, 2, count=8, dtype=bf16, src_dtype=f32),
-        SmemStore(1, 2, predicate=True, index=0),
-        SmemLoad(1, 2),
-        SmemRead(1, dst=2, index=0),
-        SmemLoadRegs("regs", 1, count=4, dtype=f32),
-        SmemWrite(1, 2, index=0),
-        SmemLoadVec(1, 2),
-        SmemStoreVec(1, 2),
-        TmaStore(1, 2),
-        TmaReduceOp(1, 2, op="max"),
-        TmaGatherLoad(1, 2, 3, token_offset=4),
-        ScaleFactorCopy(1, 2, cta_group=2, sbo=128),
-        MetadataCopy(1, 2),
-        Elementwise(op="fma", inputs=[1, 2, 3], output=4),
-        PredicatedStore(1, 2, bound_m=3, bound_n=4, tile_offset_m=5, tile_offset_n=6),
-        ThreshMask(1, 32, width=16),
-        BitmaskFill(1, 2, fill_value=0, count=16),
-        MaskFill(1, 0, size=8),
-        RegArrayCast(1, 2, src_dtype=i8, dst_dtype=bf16, count=4),
-        BarrierSync(),
-        BarrierTryWait(barrier, 0, 1, _v("tok")),
-        BarrierWait(barrier, 0, 1, token=1),
-        BarrierSignal(barrier, "arrive_expect_tx", 0, tx_bytes=128),
-        MBarrierArrive(1),
-        PeerArriveCommit(barrier, 0),
-        MulticastCommit(barrier, 0, 3),
-        DualCommit(barrier, barrier, 0, 1),
-        Fence(kind="before_thread_sync"),
-        ThreadFence(scope="system"),
-        ClusterSync(),
-        GridSync(),
-        GridDepSync(),
-        GridDepLaunch(),
-        ClusterMapa(1, 2, _v("remote", u32)),
-        ClusterBarrierArrive(1, tx_count=16, peer_rank=0),
-        CpAsyncBulkSmem2SmemCluster(1, 2, 16, mbar_addr=3),
-        WarpReduce(1, op="add"),
-        BlockReduce(1, 2, op="max"),
-        CrossWarpReduce(1, 2, _v("cw", f32), finalize="rsqrt"),
-        WarpGroupReduce(1, 2, _v("wg", f32), num_warp_groups=2),
-        StAsync(1, srcs=[2, 3, 4, 5], bytes=16),
-        Tcgen05Cp(1, 2, shape="4x256b"),
-        PackedF32x2("fma", inputs=[1, 2, 3], output=4),
-        FragmentOp("add", 1, srcs=[2, 3], size=16, dtype=f32),
-        MmaTile(1, 2, 3, k_idx=0, a_dtype=bf16, b_dtype=bf16, acc_dtype=f32),
-        AtomicOp("add", 1, 2, space="gmem", dtype=f32),
-        AtomicFetchAdd(1, 2, 3, dtype=u32),
-        RelaxedFmax(1, 2, space="smem"),
-        AtomicMaxF32Positive(1, 2, index=0, dst=3),
-        SysVolatileLoad128(1, 2),
-        SysVolatileStore128(1, 2),
-        MultimemLdReduce(1, 2, payload="bf16x8"),
-        MultimemStore(1, 2),
-        MultimemRedAddI32(1, 2, sem="relaxed", scope="gpu"),
-        AtomicMaxFloatEncode(1, 2),
-        AtomicMaxFloatDecode(1, 2),
-        ClcTryCancel(1, 2, multicast=True),
-        ClcQueryCancel(1, 2),
-        ClcQueryCancelGetCtaId(1, 2, dim="y"),
-        ClcFenceRelease(),
-    ]
+        pytest.param(
+            """
+            @weave.kernel
+            def typed_alias_kernel(
+                m: std.i32,
+                ptr: weave.PtrTy(std.bf16, const=True, space="global"),
+            ) -> std.i32:
+                return m
+            """,
+            id="lowercase-kernel-alias-and-typed-signature",
+        ),
+        pytest.param(
+            """
+            # Comments and blank lines are not semantically significant.
+            @weave.Kernel
+            def first():
+                pass
+
+            @weave.Kernel
+            def second():
+                pass
+            """,
+            id="multiple-top-level-kernels-with-comments",
+        ),
+    ],
+)
+def test_weave_kernel_source_round_trip(source: str) -> None:
+    assert_source_roundtrip(source)
 
 
-def test_representative_weave_nodes_text_round_trip() -> None:
-    for node in _nodes():
-        _rt(node)
+def test_weave_kernel_alias_prints_canonical_decorator() -> None:
+    printed = assert_source_roundtrip(
+        """
+        @weave.kernel
+        def alias_surface(x: weave.lm.f32) -> weave.lm.f32:
+            return x
+        """
+    )
+
+    assert printed.startswith("@weave.Kernel")
+    assert "@weave.kernel" not in printed
+    assert "weave.lm" not in printed
+    assert printed.count("std.f32") == 2
+
+
+def test_weave_kernels_inside_std_module_round_trip() -> None:
+    printed = assert_source_roundtrip(
+        """
+        @std.module
+        class KernelPair:
+            @weave.Kernel
+            def load_tile():
+                with weave.TaskSpec("load", "producer", "tma"):
+                    pass
+
+            @weave.kernel
+            def compute_tile():
+                with weave.task("compute", "consumer", "mma"):
+                    pass
+        """
+    )
+
+    assert printed.startswith("@std.module")
+    assert printed.count("@weave.Kernel") == 2
+    assert "@weave.kernel" not in printed
+    assert printed.count("with weave.TaskSpec") == 2
+    assert "with weave.task" not in printed
+
+
+def test_fully_decorated_kernel_source_round_trip() -> None:
+    printed = assert_source_roundtrip(
+        """
+        @weave.Kernel(
+            pipeline=weave.PipelineConfig(
+                num_stages=2,
+                style="warp_specialized",
+                pipelines=[
+                    weave.Pipeline(
+                        "main",
+                        2,
+                        style="warp_specialized",
+                        smem_buffers=["tile"],
+                        cta_group=2,
+                    )
+                ],
+            ),
+            warps=weave.WarpConfig(
+                4,
+                roles=[
+                    weave.WarpRole("load", [0], instances=1),
+                    weave.WarpRole("mma", [1, 2, 3]),
+                ],
+            ),
+            grid=weave.GridConfig(cluster_dims=[2, 1, 1], cta_group=2),
+            tmem=weave.TmemConfig(
+                buffering="double",
+                regions=[weave.TmemRegion("acc", 0, 128, dtype=std.f32)],
+            ),
+            epilogue=weave.EpilogueConfig(
+                "overlapped",
+                vectorized=True,
+                num_epilogue_warps=1,
+            ),
+            buffers=[
+                weave.Buffer(
+                    "A",
+                    std.bf16,
+                    shape=[128, 64],
+                    tma=weave.TmaDescriptor(2, box_shape=[16, 64]),
+                )
+            ],
+            mbarriers=[
+                weave.Mbarrier(
+                    "full",
+                    2,
+                    producers=["load"],
+                    consumers=["mma"],
+                    signaling_mode="all_warps",
+                    producer_warps=4,
+                )
+            ],
+            smem_pools=[weave.SmemPool("pool", 4096)],
+            smem_views=[
+                weave.SmemView(
+                    "tile",
+                    "pool",
+                    0,
+                    shape=[16, 64],
+                    dtype=std.bf16,
+                    swizzle=weave.Swizzle(7, 6, 3),
+                )
+            ],
+            protocols=[
+                weave.PipelineProtocol(
+                    "main",
+                    load_tasks=["load"],
+                    compute_tasks=["mma"],
+                )
+            ],
+            phase_domains=[
+                weave.PhaseDomain(
+                    "main",
+                    "stage",
+                    2,
+                    phase_vars=[weave.PhaseVar("phase", dtype=std.i32)],
+                )
+            ],
+            params=[weave.Param("m", "int")],
+            constants={"BLOCK_M": 64},
+            task_times=[weave.TaskTiming(task="load", cycles=12)],
+            barriers=[weave.BarrierEdge(producer="load", consumer="mma", barrier="full")],
+            smem_alloc=[weave.SmemAllocation(name="tile", offset=0, size=1024)],
+            tmem_alloc=[weave.TmemAllocation(name="acc", start_col=0, ncols=128)],
+            tile_params=weave.MmaParams(2, 4, 0, dtype=std.bf16),
+            reg_budgets={"mma": 128},
+            tma_param_ndims={"A": 2},
+        )
+        def full_kernel(
+            m: std.i32,
+            ptr: weave.PtrTy(std.bf16, const=True, space="global"),
+        ) -> std.i32:
+            with weave.TaskSpec("load", "producer", "tma", pipeline="main", outputs=["tile"]):
+                weave.GmemLoad(
+                    weave.Const("src", result_ty=std.u64),
+                    weave.Const("dst", result_ty=std.u32),
+                    count=8,
+                    dtype=std.bf16,
+                    dst_dtype=std.f32,
+                )
+                tok: std.i32 = weave.BarrierTryWait(weave.Mbarrier("full", 2), 0, 1)
+            return m
+        """
+    )
+
+    assert "pipeline=weave.PipelineConfig" in printed
+    assert "buffers=[weave.Buffer" in printed
+    assert 'constants={"BLOCK_M": 64}' in printed
+    assert 'params=[weave.Param("m", "int")]' in printed
+    assert "tile_params=weave.MmaParams" in printed
+    assert 'reg_budgets={"mma": 128}' in printed
+    assert 'tma_param_ndims={"A": 2}' in printed
+    assert "tok: std.i32 = weave.BarrierTryWait" in printed
+
+
+def test_task_scope_and_loop_source_round_trip() -> None:
+    printed = assert_source_roundtrip(
+        """
+        @weave.Kernel
+        def body_kernel():
+            with weave.task("compute", "consumer", "mma", depends_on=["load"]):
+                stage: std.i32 = weave.VarDecl("int", init=0)
+                for k in weave.ForLoop(4, start=0, step=1, ty=std.i32):
+                    with weave.Block():
+                        weave.Assign(weave.Const("stage", result_ty=std.i32), k, op="+=")
+                    with weave.LeaderCtaBlock():
+                        weave.BarrierSignal(weave.Mbarrier("full", 2), "arrive", stage)
+                    with weave.ElectedThreadBlock():
+                        weave.ClusterSync()
+                    with weave.ConditionalIteration(k, last_expr=k + 1):
+                        break
+        """
+    )
+
+    assert "with weave.TaskSpec" in printed
+    assert "for k in weave.ForLoop" in printed
+    assert "with weave.LeaderCtaBlock" in printed
+    assert "with weave.ElectedThreadBlock" in printed
+    assert "with weave.ConditionalIteration" in printed
+
+
+def test_operation_source_round_trip() -> None:
+    printed = assert_source_roundtrip(
+        """
+        @weave.Kernel
+        def ops_kernel():
+            with weave.TaskSpec("compute", "consumer", "mma"):
+                weave.SmemDesc("tile", k_idx=0, mode="mn", dst=1, step=2, offset=3)
+                weave.Elementwise(op="fma", inputs=[1, 2, 3], output=4)
+                weave.PredicatedStore(
+                    1,
+                    2,
+                    bound_m=3,
+                    bound_n=4,
+                    tile_offset_m=5,
+                    tile_offset_n=6,
+                )
+                weave.Tcgen05Cp(
+                    1,
+                    2,
+                    shape="64x128b.warpx2::02_13",
+                    cta_group=2,
+                    sbo=256,
+                )
+                weave.MmaTile(
+                    1,
+                    2,
+                    3,
+                    k_idx=0,
+                    a_dtype=std.bf16,
+                    b_dtype=std.bf16,
+                    acc_dtype=std.f32,
+                )
+                weave.AtomicOp("max", 1, 2, space="smem", index=3, dtype=std.f32)
+                weave.MultimemLdReduce(1, 2, payload="bf16x8")
+                weave.ClcQueryCancelGetCtaId(1, 2, dim="z")
+        """
+    )
+
+    assert "weave.SmemDesc" in printed
+    assert "weave.Elementwise" in printed
+    assert "weave.PredicatedStore" in printed
+    assert "weave.Tcgen05Cp" in printed
+    assert "weave.MmaTile" in printed
+    assert "weave.AtomicOp" in printed
+    assert 'payload="bf16x8"' in printed
+    assert 'dim="z"' in printed
+
+
+def test_memory_barrier_and_reduction_source_round_trip() -> None:
+    printed = assert_source_roundtrip(
+        """
+        @weave.Kernel
+        def ops_catalog():
+            with weave.TaskSpec("ops", "consumer", "mma"):
+                weave.TmemRegionLoad(
+                    weave.TmemRegion("acc", 0, 128, dtype=std.f32),
+                    dst=1,
+                    col_offset=2,
+                    num=16,
+                    row_base=3,
+                )
+                weave.TmemRegionStore(
+                    weave.TmemRegion("acc", 0, 128, dtype=std.f32),
+                    src=4,
+                    col_offset=5,
+                    num=8,
+                    dtype=std.f32,
+                    row_base=6,
+                )
+                weave.TmaGatherLoad(
+                    1,
+                    2,
+                    3,
+                    tokens_per_page=128,
+                    mbar_expr=4,
+                    token_offset=5,
+                )
+                weave.BarrierWait(weave.Mbarrier("full", 2), 0, 1, token=2)
+                weave.PeerArriveCommit(weave.Mbarrier("full", 2), 0, cta_group=2)
+                weave.MulticastCommit(weave.Mbarrier("full", 2), 0, 3, cta_group=2)
+                weave.DualCommit(
+                    weave.Mbarrier("full", 2),
+                    weave.Mbarrier("empty", 2),
+                    0,
+                    1,
+                    cta_group=2,
+                )
+                weave.GridSync()
+                weave.GridDepSync()
+                weave.GridDepLaunch()
+                reduced: std.i32 = weave.WarpReduce(1, op="max")
+                weave.BlockReduce(1, 2, op="min")
+                weave.CrossWarpReduce(
+                    1,
+                    2,
+                    std.Var(std.f32, "cw"),
+                    op="max",
+                    finalize="rsqrt",
+                )
+                weave.WarpGroupReduce(
+                    1,
+                    2,
+                    std.Var(std.f32, "wg"),
+                    op="min",
+                    num_warp_groups=4,
+                )
+                weave.StAsync(1, srcs=[2, 3, 4, 5], bytes=16, barrier=reduced, src_is_int=True)
+        """
+    )
+
+    for expected in (
+        "weave.TmemRegionLoad",
+        "weave.TmemRegionStore",
+        "weave.TmaGatherLoad",
+        "weave.BarrierWait",
+        "weave.PeerArriveCommit",
+        "weave.MulticastCommit",
+        "weave.DualCommit",
+        "weave.GridSync",
+        "weave.GridDepSync",
+        "weave.GridDepLaunch",
+        "reduced: std.i32 = weave.WarpReduce",
+        "weave.BlockReduce",
+        "weave.CrossWarpReduce",
+        "weave.WarpGroupReduce",
+        "weave.StAsync",
+    ):
+        assert expected in printed

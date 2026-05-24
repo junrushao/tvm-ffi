@@ -17,7 +17,7 @@ from typing import Any, ClassVar
 from tvm_ffi import dataclasses as dc
 from tvm_ffi import std
 
-from .._utils import Op, normalize_expr_sequence
+from .._utils import Op, normalize_expr_sequence, validate_cta_group
 
 SIGNAL_ACTIONS = ("arrive", "arrive_expect_tx", "commit")
 FENCE_KINDS = ("after_thread_sync", "before_thread_sync")
@@ -27,7 +27,7 @@ FINALIZE_MODES = ("none", "rsqrt")
 
 
 def _reject_string_handle(value: Any, field_name: str) -> None:
-    if isinstance(value, str):
+    if isinstance(value, (str, std.StringImm)):
         raise TypeError(f"{field_name} expects a structured handle, not raw string")
 
 
@@ -73,7 +73,7 @@ class BarrierSignal(Op, mnemonic="weave.BarrierSignal"):
     stage: std.Expr = dc.field(lang_kind="arg")
     tx_bytes: std.Expr | None = dc.field(default=None, lang_kind="attr")
     arrive_count: std.Expr | None = dc.field(default=None, lang_kind="attr")
-    cta_group: int = dc.field(default=1, lang_kind="attr")
+    cta_group: Any = dc.field(default=1, lang_kind="attr")
     cluster: bool = dc.field(default=False, lang_kind="attr")
     stage_is_deterministic: bool = dc.field(default=True, lang_kind="attr")
     elected: bool = dc.field(default=False, lang_kind="attr")
@@ -85,8 +85,7 @@ class BarrierSignal(Op, mnemonic="weave.BarrierSignal"):
     def __post_init__(self) -> None:
         _reject_string_handle(self.barrier, "barrier")
         super().__post_init__()
-        if self.cta_group not in (1, 2):
-            raise ValueError("cta_group must be 1 or 2")
+        object.__setattr__(self, "cta_group", validate_cta_group(self.cta_group))
 
 
 @dc.py_class("weave.MBarrierArrive", structural_eq="tree")
@@ -100,10 +99,15 @@ class MBarrierArrive(Op, mnemonic="weave.MBarrierArrive"):
 class PeerArriveCommit(Op, mnemonic="weave.PeerArriveCommit"):
     barrier: Any = dc.field(lang_kind="arg")
     stage: std.Expr = dc.field(lang_kind="arg")
-    cta_group: int = dc.field(default=2, lang_kind="attr")
+    cta_group: Any = dc.field(default=2, lang_kind="attr")
     elected: bool = dc.field(default=False, lang_kind="attr")
 
     EXPR_FIELDS: ClassVar[frozenset[str]] = frozenset(("stage",))
+
+    def __post_init__(self) -> None:
+        _reject_string_handle(self.barrier, "barrier")
+        super().__post_init__()
+        object.__setattr__(self, "cta_group", validate_cta_group(self.cta_group))
 
 
 @dc.py_class("weave.MulticastCommit", structural_eq="tree")
@@ -111,10 +115,15 @@ class MulticastCommit(Op, mnemonic="weave.MulticastCommit"):
     barrier: Any = dc.field(lang_kind="arg")
     stage: std.Expr = dc.field(lang_kind="arg")
     multicast_mask: std.Expr = dc.field(lang_kind="arg")
-    cta_group: int = dc.field(default=2, lang_kind="attr")
+    cta_group: Any = dc.field(default=2, lang_kind="attr")
     elected: bool = dc.field(default=False, lang_kind="attr")
 
     EXPR_FIELDS: ClassVar[frozenset[str]] = frozenset(("stage", "multicast_mask"))
+
+    def __post_init__(self) -> None:
+        _reject_string_handle(self.barrier, "barrier")
+        super().__post_init__()
+        object.__setattr__(self, "cta_group", validate_cta_group(self.cta_group))
 
 
 @dc.py_class("weave.DualCommit", structural_eq="tree")
@@ -123,10 +132,16 @@ class DualCommit(Op, mnemonic="weave.DualCommit"):
     barrier_1: Any = dc.field(lang_kind="arg")
     stage_0: std.Expr = dc.field(lang_kind="arg")
     stage_1: std.Expr = dc.field(lang_kind="arg")
-    cta_group: int = dc.field(default=1, lang_kind="attr")
+    cta_group: Any = dc.field(default=1, lang_kind="attr")
     elected: bool = dc.field(default=False, lang_kind="attr")
 
     EXPR_FIELDS: ClassVar[frozenset[str]] = frozenset(("stage_0", "stage_1"))
+
+    def __post_init__(self) -> None:
+        _reject_string_handle(self.barrier_0, "barrier_0")
+        _reject_string_handle(self.barrier_1, "barrier_1")
+        super().__post_init__()
+        object.__setattr__(self, "cta_group", validate_cta_group(self.cta_group))
 
 
 @dc.py_class("weave.Fence", structural_eq="tree")
@@ -193,6 +208,11 @@ class CpAsyncBulkSmem2SmemCluster(Op, mnemonic="weave.CpAsyncBulkSmem2SmemCluste
         ("dst_addr", "src_addr", "bytes", "mbar_addr")
     )
 
+    def __post_init__(self) -> None:
+        if self.barrier is not None:
+            _reject_string_handle(self.barrier, "barrier")
+        super().__post_init__()
+
 
 @dc.py_class("weave.WarpReduce", structural_eq="tree")
 class WarpReduce(Op, mnemonic="weave.WarpReduce"):
@@ -258,4 +278,8 @@ class StAsync(Op, mnemonic="weave.StAsync"):
             raise ValueError("bytes must be one of 4, 8, 16")
 
 
-__all__ = [name for name, value in list(globals().items()) if isinstance(value, type)]
+__all__ = [
+    name
+    for name, value in list(globals().items())
+    if isinstance(value, type) and value.__module__ == __name__
+]

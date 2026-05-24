@@ -24,7 +24,7 @@ import pytest
 import tvm_ffi
 import tvm_ffi.dataclasses as dc
 from tvm_ffi import core, pyast, std
-from tvm_ffi._pyast_parser import parse, register_dialect
+from tvm_ffi._pyast_parser import normalize_ty, parse, register_dialect
 from tvm_ffi.access_path import AccessPath
 from tvm_ffi.dataclasses import fields
 
@@ -93,6 +93,24 @@ class TestPrimTy:
         assert tvm_ffi.structural_equal(lhs, rhs)
         assert tvm_ffi.structural_hash(lhs) == tvm_ffi.structural_hash(rhs)
         assert not tvm_ffi.structural_equal(lhs, different)
+
+
+class TestTypeNormalization:
+    def test_to_dialect_must_return_std_type_for_std_constructors(self) -> None:
+        class BadFactory:
+            def to_dialect(self) -> str:
+                return "int32"
+
+        with pytest.raises(TypeError, match=r"expected std type from to_dialect\(\), got str"):
+            std.Var(cast(Any, BadFactory()), "x")
+
+    def test_to_dialect_must_return_std_type_for_parser_normalization(self) -> None:
+        class BadFactory:
+            def to_dialect(self) -> str:
+                return "int32"
+
+        with pytest.raises(TypeError, match=r"expected std type from to_dialect\(\), got str"):
+            normalize_ty(BadFactory())
 
 
 class TestAttrs:

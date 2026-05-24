@@ -17,8 +17,7 @@ from typing import Any, ClassVar
 from tvm_ffi import dataclasses as dc
 from tvm_ffi import std
 
-from .._utils import Op
-from .memory import _check_dtype
+from .._utils import Op, normalize_dtype
 
 ATOMIC_OPS = ("add", "max", "min")
 MEM_SPACES = ("gmem", "smem")
@@ -42,7 +41,7 @@ class AtomicOp(Op, mnemonic="weave.AtomicOp"):
 
     def __post_init__(self) -> None:
         super().__post_init__()
-        _check_dtype(self.dtype, "dtype")
+        object.__setattr__(self, "dtype", normalize_dtype(self.dtype, field_name="dtype"))
 
 
 @dc.py_class("weave.AtomicFetchAdd", structural_eq="tree")
@@ -57,7 +56,7 @@ class AtomicFetchAdd(Op, mnemonic="weave.AtomicFetchAdd"):
 
     def __post_init__(self) -> None:
         super().__post_init__()
-        _check_dtype(self.dtype, "dtype")
+        object.__setattr__(self, "dtype", normalize_dtype(self.dtype, field_name="dtype"))
 
 
 @dc.py_class("weave.RelaxedFmax", structural_eq="tree")
@@ -146,4 +145,8 @@ class AtomicMaxFloatDecode(Op, mnemonic="weave.AtomicMaxFloatDecode"):
     EXPR_FIELDS: ClassVar[frozenset[str]] = frozenset(("dst", "src"))
 
 
-__all__ = [name for name, value in list(globals().items()) if isinstance(value, type)]
+__all__ = [
+    name
+    for name, value in list(globals().items())
+    if isinstance(value, type) and value.__module__ == __name__
+]

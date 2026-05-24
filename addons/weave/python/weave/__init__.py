@@ -18,3 +18,4 @@
 
 from . import _weave_lang as _weave_lang  # Registers the dialect.
 from .ir import *
+from .ir import __all__ as __all__

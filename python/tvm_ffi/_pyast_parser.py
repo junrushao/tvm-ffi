@@ -174,7 +174,10 @@ def normalize_ty(value: Any) -> std.Ty:
     if isinstance(value, std.Ty):
         return value
     if hasattr(value, "to_dialect"):
-        return value.to_dialect()
+        ty = value.to_dialect()
+        if isinstance(ty, std.Ty):
+            return ty
+        raise TypeError(f"expected std type from to_dialect(), got {type(ty).__name__}")
     if isinstance(value, str):
         return std.PrimTy(value)
     raise TypeError(f"expected std type, got {type(value).__name__}")

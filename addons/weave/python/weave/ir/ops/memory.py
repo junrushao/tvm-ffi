@@ -17,18 +17,11 @@ from typing import Any, ClassVar
 from tvm_ffi import dataclasses as dc
 from tvm_ffi import std
 
-from .._utils import Op, normalize_ty
+from .._utils import Op, normalize_dtype, validate_cta_group
 
 SMEM_DESC_MODES = ("k", "mn")
 GMEM_CACHE_HINTS = ("none", "no_allocate", "evict_first", "evict_last")
 TMA_REDUCE_OPS = ("add", "min", "max", "inc", "dec", "and", "or", "xor")
-
-
-def _check_dtype(value: Any, field_name: str) -> None:
-    if isinstance(value, str):
-        raise TypeError(f"{field_name} must be a Weave/std type, not raw string")
-    if value is not None:
-        normalize_ty(value)
 
 
 @dc.py_class("weave.BuiltinVar", structural_eq="tree")
@@ -72,7 +65,7 @@ class TmemRegionStore(Op, mnemonic="weave.TmemRegionStore"):
         super().__post_init__()
         if self.num not in (8, 16):
             raise ValueError("num must be 8 or 16")
-        _check_dtype(self.dtype, "dtype")
+        object.__setattr__(self, "dtype", normalize_dtype(self.dtype, field_name="dtype"))
 
 
 @dc.py_class("weave.SmemDesc", structural_eq="tree")
@@ -102,8 +95,10 @@ class GmemLoad(Op, mnemonic="weave.GmemLoad"):
 
     def __post_init__(self) -> None:
         super().__post_init__()
-        _check_dtype(self.dtype, "dtype")
-        _check_dtype(self.dst_dtype, "dst_dtype")
+        object.__setattr__(self, "dtype", normalize_dtype(self.dtype, field_name="dtype"))
+        object.__setattr__(
+            self, "dst_dtype", normalize_dtype(self.dst_dtype, field_name="dst_dtype")
+        )
 
 
 @dc.py_class("weave.GmemStore", structural_eq="tree")
@@ -125,8 +120,10 @@ class GmemStore(Op, mnemonic="weave.GmemStore"):
 
     def __post_init__(self) -> None:
         super().__post_init__()
-        _check_dtype(self.dtype, "dtype")
-        _check_dtype(self.src_dtype, "src_dtype")
+        object.__setattr__(self, "dtype", normalize_dtype(self.dtype, field_name="dtype"))
+        object.__setattr__(
+            self, "src_dtype", normalize_dtype(self.src_dtype, field_name="src_dtype")
+        )
 
 
 @dc.py_class("weave.SmemStore", structural_eq="tree")
@@ -167,7 +164,7 @@ class SmemLoadRegs(Op, mnemonic="weave.SmemLoadRegs"):
 
     def __post_init__(self) -> None:
         super().__post_init__()
-        _check_dtype(self.dtype, "dtype")
+        object.__setattr__(self, "dtype", normalize_dtype(self.dtype, field_name="dtype"))
         if self.count < 0:
             raise ValueError("count must be non-negative")
 
@@ -240,7 +237,7 @@ class TmaGatherLoad(Op, mnemonic="weave.TmaGatherLoad"):
 class ScaleFactorCopy(Op, mnemonic="weave.ScaleFactorCopy"):
     src: std.Expr = dc.field(lang_kind="arg")
     dst: std.Expr = dc.field(lang_kind="arg")
-    cta_group: int = dc.field(default=1, lang_kind="attr")
+    cta_group: Any = dc.field(default=1, lang_kind="attr")
     sbo: int = dc.field(default=256, lang_kind="attr")
     elected: bool = dc.field(default=False, lang_kind="attr")
 
@@ -248,17 +245,26 @@ class ScaleFactorCopy(Op, mnemonic="weave.ScaleFactorCopy"):
 
     def __post_init__(self) -> None:
         super().__post_init__()
-        if self.cta_group not in (1, 2):
-            raise ValueError("cta_group must be 1 or 2")
+        object.__setattr__(self, "cta_group", validate_cta_group(self.cta_group))
+        if self.sbo <= 0 or self.sbo % 16:
+            raise ValueError("sbo must be a positive multiple of 16")
 
 
 @dc.py_class("weave.MetadataCopy", structural_eq="tree")
 class MetadataCopy(Op, mnemonic="weave.MetadataCopy"):
     src: std.Expr = dc.field(lang_kind="arg")
     dst: std.Expr = dc.field(lang_kind="arg")
-    cta_group: int = dc.field(default=1, lang_kind="attr")
+    cta_group: Any = dc.field(default=1, lang_kind="attr")
 
     EXPR_FIELDS: ClassVar[frozenset[str]] = frozenset(("src", "dst"))
 
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        object.__setattr__(self, "cta_group", validate_cta_group(self.cta_group))
 
-__all__ = [name for name, value in list(globals().items()) if isinstance(value, type)]
+
+__all__ = [
+    name
+    for name, value in list(globals().items())
+    if isinstance(value, type) and value.__module__ == __name__
+]

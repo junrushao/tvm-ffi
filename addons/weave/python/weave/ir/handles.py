@@ -17,7 +17,7 @@ from typing import Any
 from tvm_ffi import dataclasses as dc
 from tvm_ffi import std
 
-from ._utils import normalize_domain, normalize_ty
+from ._utils import normalize_domain, normalize_dtype, validate_cta_group
 
 SIGNALING_MODES = ("elected", "hw_commit", "all_warps", "tma_expect_tx")
 MEMORY_SPACES = ("gmem", "smem", "tmem", "regs", "local", "param", "symm")
@@ -36,6 +36,7 @@ class TmemRegion(std.Node, mnemonic="weave.TmemRegion"):
     dtype: Any = dc.field(default=None, lang_kind="attr")
 
     def __post_init__(self) -> None:
+        object.__setattr__(self, "dtype", normalize_dtype(self.dtype, field_name="dtype"))
         if self.start_col < 0 or self.ncols <= 0 or self.num_buffers <= 0:
             raise ValueError("invalid TMEM region extent")
 
@@ -117,6 +118,7 @@ class BufferRef(std.Node, mnemonic="weave.Buffer"):
     volatile: bool = dc.field(default=False, lang_kind="attr")
 
     def __post_init__(self) -> None:
+        object.__setattr__(self, "dtype", normalize_dtype(self.dtype, field_name="dtype"))
         object.__setattr__(self, "shape", tuple(self.shape))
         object.__setattr__(
             self, "space", normalize_domain(self.space, MEMORY_SPACES, field_name="space")
@@ -162,6 +164,7 @@ class SmemView(std.Node, mnemonic="weave.SmemView"):
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "shape", tuple(self.shape))
+        object.__setattr__(self, "dtype", normalize_dtype(self.dtype, field_name="dtype"))
 
 
 @dc.py_class("weave.PhaseVar", structural_eq="tree")
@@ -175,7 +178,7 @@ class PhaseVar(std.Node, mnemonic="weave.PhaseVar"):
     rotation_trigger: str = dc.field(default="", lang_kind="attr")
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "dtype", normalize_ty(self.dtype))
+        object.__setattr__(self, "dtype", normalize_dtype(self.dtype, field_name="dtype"))
 
 
 @dc.py_class("weave.PhaseDomain", structural_eq="tree")
@@ -203,16 +206,16 @@ class MmaParams(std.Aggregate, mnemonic="weave.MmaParams"):
     k_steps_per_group: int = dc.field(lang_kind="arg")
     k_groups: int = dc.field(lang_kind="arg")
     group_lo_offset: int = dc.field(lang_kind="arg")
-    cta_group: int = dc.field(default=1, lang_kind="attr")
+    cta_group: Any = dc.field(default=1, lang_kind="attr")
     tile_m: int = dc.field(default=0, lang_kind="attr")
     tile_n: int = dc.field(default=0, lang_kind="attr")
     dtype: Any = dc.field(default=None, lang_kind="attr")
 
     def __post_init__(self) -> None:
+        object.__setattr__(self, "dtype", normalize_dtype(self.dtype, field_name="dtype"))
         if self.k_steps_per_group <= 0 or self.k_groups <= 0:
             raise ValueError("MMA step and group counts must be positive")
-        if self.cta_group not in (1, 2):
-            raise ValueError("cta_group must be 1 or 2")
+        object.__setattr__(self, "cta_group", validate_cta_group(self.cta_group))
 
 
 @dc.py_class("weave.SoftmaxParams", structural_eq="tree")
@@ -279,6 +282,7 @@ class SymmetricMemory(std.Node, mnemonic="weave.SymmetricMemory"):
     group: ProcessGroup | str = dc.field(lang_kind="attr")
 
     def __post_init__(self) -> None:
+        object.__setattr__(self, "dtype", normalize_dtype(self.dtype, field_name="dtype"))
         object.__setattr__(self, "shape", tuple(self.shape))
 
 

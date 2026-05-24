@@ -91,10 +91,32 @@ def normalize_ty(value: Any, default: std.Ty | None = None) -> std.Ty:
     if isinstance(value, std.Ty):
         return value
     if hasattr(value, "to_dialect"):
-        return value.to_dialect()
+        ty = value.to_dialect()
+        if isinstance(ty, std.Ty):
+            return ty
+        raise TypeError(f"expected std type from to_dialect(), got {type(ty).__name__}")
     if isinstance(value, str):
         return std.PrimTy(value)
     raise TypeError(f"expected std type, got {type(value).__name__}")
+
+
+def normalize_dtype(value: Any, *, field_name: str) -> std.Ty | None:
+    """Normalize dtype-bearing fields while rejecting ambiguous raw strings."""
+    if value is None:
+        return None
+    if isinstance(value, str):
+        raise TypeError(f"{field_name} must be a Weave/std type, not raw string")
+    try:
+        return normalize_ty(value)
+    except TypeError as err:
+        raise TypeError(f"{field_name}: {err}") from None
+
+
+def validate_cta_group(value: Any, *, field_name: str = "cta_group") -> int:
+    """Validate CTA group ids without accepting bool-as-int values."""
+    if type(value) is not int or value not in (1, 2):
+        raise ValueError(f"{field_name} must be 1 or 2")
+    return value
 
 
 def normalize_expr(value: Any, *, field_name: str = "expr") -> std.Expr:
@@ -201,9 +223,11 @@ __all__ = [
     "Op",
     "collect_dialect_fields",
     "normalize_domain",
+    "normalize_dtype",
     "normalize_expr",
     "normalize_expr_fields",
     "normalize_expr_sequence",
     "normalize_optional_expr",
     "normalize_ty",
+    "validate_cta_group",
 ]

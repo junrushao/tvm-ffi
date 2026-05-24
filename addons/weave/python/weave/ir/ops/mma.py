@@ -17,8 +17,7 @@ from typing import Any, ClassVar
 from tvm_ffi import dataclasses as dc
 from tvm_ffi import std
 
-from .._utils import Op, normalize_expr_sequence
-from .memory import _check_dtype
+from .._utils import Op, normalize_dtype, normalize_expr_sequence, validate_cta_group
 
 TCGEN05_CP_SHAPES = (
     "4x256b",
@@ -46,6 +45,7 @@ FRAGMENT_OPS = (
     "mask",
     "bitmask",
 )
+MMA_TILE_MODES = ("ss", "sr", "rs", "rr")
 
 
 @dc.py_class("weave.Tcgen05Cp", structural_eq="tree")
@@ -53,7 +53,7 @@ class Tcgen05Cp(Op, mnemonic="weave.Tcgen05Cp"):
     src: std.Expr = dc.field(lang_kind="arg")
     dst: std.Expr = dc.field(lang_kind="arg")
     shape: str = dc.field(default="32x128b.warpx4", lang_kind="attr")
-    cta_group: int = dc.field(default=1, lang_kind="attr")
+    cta_group: Any = dc.field(default=1, lang_kind="attr")
     sbo: int = dc.field(default=128, lang_kind="attr")
     elected: bool = dc.field(default=False, lang_kind="attr")
 
@@ -62,8 +62,7 @@ class Tcgen05Cp(Op, mnemonic="weave.Tcgen05Cp"):
 
     def __post_init__(self) -> None:
         super().__post_init__()
-        if self.cta_group not in (1, 2):
-            raise ValueError("cta_group must be 1 or 2")
+        object.__setattr__(self, "cta_group", validate_cta_group(self.cta_group))
         if self.sbo <= 0 or self.sbo % 16:
             raise ValueError("sbo must be a positive multiple of 16")
 
@@ -98,7 +97,7 @@ class FragmentOp(Op, mnemonic="weave.FragmentOp"):
     def __post_init__(self) -> None:
         object.__setattr__(self, "srcs", normalize_expr_sequence(self.srcs, field_name="srcs"))
         super().__post_init__()
-        _check_dtype(self.dtype, "dtype")
+        object.__setattr__(self, "dtype", normalize_dtype(self.dtype, field_name="dtype"))
         if self.size < 0:
             raise ValueError("size must be non-negative")
 
@@ -112,17 +111,27 @@ class MmaTile(Op, mnemonic="weave.MmaTile"):
     d_tmem: std.Expr = dc.field(lang_kind="arg")
     k_idx: std.Expr = dc.field(lang_kind="attr")
     mode: str = dc.field(default="ss", lang_kind="attr")
-    cta_group: int = dc.field(default=1, lang_kind="attr")
+    cta_group: Any = dc.field(default=1, lang_kind="attr")
     a_dtype: Any = dc.field(default=None, lang_kind="attr")
     b_dtype: Any = dc.field(default=None, lang_kind="attr")
     acc_dtype: Any = dc.field(default=None, lang_kind="attr")
 
     EXPR_FIELDS: ClassVar[frozenset[str]] = frozenset(("a_desc", "b_desc", "d_tmem", "k_idx"))
+    VALID_DOMAINS: ClassVar[dict[str, tuple[str, ...]]] = {"mode": MMA_TILE_MODES}
 
     def __post_init__(self) -> None:
         super().__post_init__()
+        object.__setattr__(self, "cta_group", validate_cta_group(self.cta_group))
         for name in ("a_dtype", "b_dtype", "acc_dtype"):
-            _check_dtype(getattr(self, name), name)
+            object.__setattr__(
+                self,
+                name,
+                normalize_dtype(getattr(self, name), field_name=name),
+            )
 
 
-__all__ = [name for name, value in list(globals().items()) if isinstance(value, type)]
+__all__ = [
+    name
+    for name, value in list(globals().items())
+    if isinstance(value, type) and value.__module__ == __name__
+]

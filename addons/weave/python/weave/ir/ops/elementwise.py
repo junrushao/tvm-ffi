@@ -17,8 +17,7 @@ from typing import Any, ClassVar
 from tvm_ffi import dataclasses as dc
 from tvm_ffi import std
 
-from .._utils import Op, normalize_expr_sequence
-from .memory import _check_dtype
+from .._utils import Op, normalize_dtype, normalize_expr_sequence
 
 ELEMENTWISE_OPS = ("fma", "mul", "add", "sub", "fmax", "exp", "bitmask")
 
@@ -112,8 +111,16 @@ class RegArrayCast(Op, mnemonic="weave.RegArrayCast"):
 
     def __post_init__(self) -> None:
         super().__post_init__()
-        _check_dtype(self.src_dtype, "src_dtype")
-        _check_dtype(self.dst_dtype, "dst_dtype")
+        object.__setattr__(
+            self, "src_dtype", normalize_dtype(self.src_dtype, field_name="src_dtype")
+        )
+        object.__setattr__(
+            self, "dst_dtype", normalize_dtype(self.dst_dtype, field_name="dst_dtype")
+        )
 
 
-__all__ = [name for name, value in list(globals().items()) if isinstance(value, type)]
+__all__ = [
+    name
+    for name, value in list(globals().items())
+    if isinstance(value, type) and value.__module__ == __name__
+]

@@ -17,7 +17,7 @@ from typing import Any
 from tvm_ffi import dataclasses as dc
 from tvm_ffi import std
 
-from ._utils import normalize_domain
+from ._utils import normalize_domain, validate_cta_group
 
 PIPELINE_STYLES = ("sequential", "sw_pipelined", "warp_specialized", "none")
 EPILOGUE_STYLES = ("inline", "overlapped")
@@ -53,7 +53,7 @@ class PipelineSpec(std.Node, mnemonic="weave.Pipeline"):
     num_stages: int = dc.field(lang_kind="arg")
     style: str = dc.field(default="sequential", lang_kind="attr")
     smem_buffers: tuple[str, ...] = dc.field(default_factory=tuple, lang_kind="attr")
-    cta_group: int = dc.field(default=1, lang_kind="attr")
+    cta_group: Any = dc.field(default=1, lang_kind="attr")
     producer_barriers: tuple[str, ...] = dc.field(default_factory=tuple, lang_kind="attr")
     consumer_barriers: tuple[str, ...] = dc.field(default_factory=tuple, lang_kind="attr")
     release_barriers: tuple[str, ...] = dc.field(default_factory=tuple, lang_kind="attr")
@@ -68,8 +68,7 @@ class PipelineSpec(std.Node, mnemonic="weave.Pipeline"):
             object.__setattr__(self, name, tuple(getattr(self, name)))
         if self.num_stages <= 0:
             raise ValueError("num_stages must be positive")
-        if self.cta_group not in (1, 2):
-            raise ValueError("cta_group must be 1 or 2")
+        object.__setattr__(self, "cta_group", validate_cta_group(self.cta_group))
 
 
 @dc.py_class("weave.PipelineConfig", structural_eq="tree")
@@ -111,14 +110,13 @@ class GridConfig(std.Node, mnemonic="weave.GridConfig"):
     """Grid and cluster topology."""
 
     cluster_dims: tuple[int, int, int] = dc.field(default=(1, 1, 1), lang_kind="attr")
-    cta_group: int = dc.field(default=1, lang_kind="attr")
+    cta_group: Any = dc.field(default=1, lang_kind="attr")
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "cluster_dims", tuple(self.cluster_dims))
         if len(self.cluster_dims) != 3:
             raise ValueError("cluster_dims must have 3 entries")
-        if self.cta_group not in (1, 2):
-            raise ValueError("cta_group must be 1 or 2")
+        object.__setattr__(self, "cta_group", validate_cta_group(self.cta_group))
 
 
 @dc.py_class("weave.TmemConfig", structural_eq="tree")
