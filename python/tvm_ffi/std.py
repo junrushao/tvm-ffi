@@ -44,8 +44,8 @@ from typing import cast as _typing_cast
 from typing_extensions import Never, Protocol, TypeAlias
 
 from tvm_ffi import Array, Dict, List, Map, dtype
-from tvm_ffi.core import Object
-from tvm_ffi.dataclasses import Field, c_class, field, fields
+from tvm_ffi.core import MISSING, Object
+from tvm_ffi.dataclasses import c_class, field, fields
 from tvm_ffi.pyast import PrinterConfig
 
 from . import _std_api
@@ -66,7 +66,7 @@ _STD_BASE_PRINTER_CLASSES: tuple[type[Any], ...] = ()
 _STD_CONCRETE_PRINTER_CLASSES: tuple[type[Any], ...] = ()
 
 
-def _std_collect_dialect_fields(obj: Any) -> FieldCollectionResult:
+def collect_dialect_fields(obj: Any) -> FieldCollectionResult:
     """Collect ``lang_kind`` fields for std-derived dialect text printing."""
     args: list[Any] = []
     attrs: dict[str, Any] = {}
@@ -90,7 +90,10 @@ def _std_collect_dialect_fields(obj: Any) -> FieldCollectionResult:
             for item in value:
                 extend_var_def(item)
         else:
-            var_def.extend(type(value).__ffi_dialect_field_collector__(value).var_def)
+            collector = getattr(type(value), "__ffi_dialect_field_collector__", None)
+            if collector is None:
+                raise TypeError(f"expected std.Var or var-def node, got {type(value).__name__}")
+            var_def.extend(collector(value).var_def)
 
     for f in fields(obj):
         lang_kind = f.lang_kind
@@ -117,6 +120,31 @@ def _std_collect_dialect_fields(obj: Any) -> FieldCollectionResult:
             raise ValueError(f"Invalid {lang_kind = } on {type(obj).__name__}.{name}")
 
     return FieldCollectionResult(args, attrs, var_def, body)
+
+
+def _collect_std_bind_expr_fields(obj: Any) -> FieldCollectionResult:
+    return FieldCollectionResult(var_def=list(obj.vars))
+
+
+def _collect_std_func_fields(obj: Any) -> FieldCollectionResult:
+    return FieldCollectionResult(attrs=getattr(obj, "attrs", None), body=list(obj.body))
+
+
+def _collect_std_scope_fields(obj: Any) -> FieldCollectionResult:
+    return FieldCollectionResult(attrs=getattr(obj, "attrs", None), body=list(obj.body))
+
+
+def _collect_std_for_fields(obj: Any) -> FieldCollectionResult:
+    return FieldCollectionResult(attrs=getattr(obj, "attrs", None), body=list(obj.body))
+
+
+def _collect_std_var_def_fields(obj: Any) -> FieldCollectionResult:
+    vars = list(obj.vars)
+    return FieldCollectionResult(args=[var.ty for var in vars], var_def=vars)
+
+
+def _collect_std_while_fields(obj: Any) -> FieldCollectionResult:
+    return FieldCollectionResult(attrs=getattr(obj, "attrs", None), body=list(obj.body))
 
 
 def _std_dialect_callee(config: Any, dialect: str, mnemonic: str) -> Any:
@@ -241,8 +269,12 @@ def _std_generic_dialect_text_print(obj: Any, printer: Any, path: Any) -> Any:
     return call
 
 
-def _normalize_ty(value: TyLike) -> Ty:
+def normalize_ty(value: Any, default: Any = MISSING) -> Ty:
     """Normalize parser-side type factories and dtype strings to ``std.Ty``."""
+    if value is None:
+        if default is MISSING:
+            raise TypeError("expected std type, got NoneType")
+        return normalize_ty(default)
     if isinstance(value, Ty):
         return value
     if hasattr(value, "to_dialect"):
@@ -272,11 +304,26 @@ def _normalize_attrs(value: AttrsLike) -> Attrs | None:
 
 
 def _binary_expr_ffi_init(self: Any, a: ExprLike, b: ExprLike, *, ty: TyLike) -> None:
-    self.__ffi_init__(a, b, _normalize_ty(ty))
+    self.__ffi_init__(a, b, normalize_ty(ty))
 
 
 def _unary_expr_ffi_init(self: Any, operand: ExprLike, *, ty: TyLike) -> None:
-    self.__ffi_init__(operand, _normalize_ty(ty))
+    self.__ffi_init__(operand, normalize_ty(ty))
+
+
+def _first_mro_attr(cls: type[Any], attr_name: str) -> Any:
+    for parent in cls.__mro__[1:]:
+        value = getattr(parent, attr_name, None)
+        if value is not None:
+            return value
+    return None
+
+
+def _first_mro_dict_owner(cls: type[Any], attr_name: str) -> type[Any] | None:
+    for parent in cls.__mro__[1:]:
+        if attr_name in parent.__dict__:
+            return parent
+    return None
 
 
 @c_class("ffi.std.Node", init=False)
@@ -300,7 +347,12 @@ class Node(Object):
 
         def __ffi_init__(self, *args: Any, **kwargs: Any) -> None: ...
 
-    def __init_subclass__(cls, *, mnemonic: str | None = None, **kwargs: Any) -> None:
+    def __init_subclass__(
+        cls,
+        *,
+        mnemonic: str | None = None,
+        **kwargs: Any,
+    ) -> None:
         super().__init_subclass__(**kwargs)
         if mnemonic is None:
             raise TypeError(
@@ -314,25 +366,15 @@ class Node(Object):
             "__ffi_dialect_mnemonic__": ClassVar,
         }
 
-        if "__ffi_dialect_field_collector__" not in cls.__dict__ and (
-            any(
-                isinstance(value, Field) and value.lang_kind is not None
-                for value in cls.__dict__.values()
-            )
-            or any(
-                getattr(parent, "__ffi_dialect_field_collector__", None)
-                is _std_collect_dialect_fields
-                for parent in cls.__mro__[1:]
-            )
-        ):
-            cls.__ffi_dialect_field_collector__ = staticmethod(_std_collect_dialect_fields)
+        if "__ffi_dialect_field_collector__" not in cls.__dict__:
+            inherited_collector = _first_mro_attr(cls, "__ffi_dialect_field_collector__")
+            if inherited_collector is not None:
+                cls.__ffi_dialect_field_collector__ = staticmethod(inherited_collector)
+            elif cls.__module__ != __name__:
+                cls.__ffi_dialect_field_collector__ = staticmethod(collect_dialect_fields)
 
         if "__ffi_text_print__" not in cls.__dict__:
-            inherited_text_print_owner = None
-            for parent in cls.__mro__[1:]:
-                if "__ffi_text_print__" in parent.__dict__:
-                    inherited_text_print_owner = parent
-                    break
+            inherited_text_print_owner = _first_mro_dict_owner(cls, "__ffi_text_print__")
             if (
                 inherited_text_print_owner is not None
                 and inherited_text_print_owner is not Node
@@ -356,6 +398,7 @@ class Node(Object):
             if (
                 "__ffi_text_print__" not in cls.__dict__
                 and getattr(cls, "__ffi_dialect_field_collector__", None) is not None
+                and cls.__module__ != __name__
             ):
                 cls.__ffi_text_print__ = staticmethod(_std_generic_dialect_text_print)
 
@@ -609,7 +652,7 @@ class Var(Expr, mnemonic="std.Var"):
     # tvm-ffi-stubgen(end)
 
     def __init__(self, ty: TyLike, name: str) -> None:
-        self.__ffi_init__(name, ty=_normalize_ty(ty))
+        self.__ffi_init__(name, ty=normalize_ty(ty))
 
 
 @c_class("ffi.std.BaseScope")
@@ -656,13 +699,15 @@ class BaseFunc(Stmt, mnemonic="std.BaseFunc"):
         self.__ffi_init__(
             symbol,
             list(args),
-            _normalize_ty(ret_type) if ret_type is not None else None,
+            normalize_ty(ret_type) if ret_type is not None else None,
         )
 
 
 @c_class("ffi.std.Func")
 class Func(BaseFunc, mnemonic="std.Func"):
     """A standard dialect function."""
+
+    __ffi_dialect_field_collector__ = staticmethod(_collect_std_func_fields)
 
     # tvm-ffi-stubgen(begin): object/ffi.std.Func
     # fmt: off
@@ -700,7 +745,7 @@ class Func(BaseFunc, mnemonic="std.Func"):
         self.__ffi_init__(
             symbol,
             list(args),
-            _normalize_ty(ret_type) if ret_type is not None else None,
+            normalize_ty(ret_type) if ret_type is not None else None,
             list(body),
             _normalize_attrs(attrs),
         )
@@ -863,7 +908,7 @@ class BoolImm(Expr, mnemonic="std.BoolImm"):
     # tvm-ffi-stubgen(end)
 
     def __init__(self, ty: TyLike, value: bool) -> None:
-        self.__ffi_init__(value, ty=_normalize_ty(ty))
+        self.__ffi_init__(value, ty=normalize_ty(ty))
 
     @staticmethod
     def from_py(value: bool) -> BoolImm:
@@ -885,7 +930,7 @@ class IntImm(Expr, mnemonic="std.IntImm"):
     # tvm-ffi-stubgen(end)
 
     def __init__(self, ty: TyLike, value: int) -> None:
-        self.__ffi_init__(value, ty=_normalize_ty(ty))
+        self.__ffi_init__(value, ty=normalize_ty(ty))
 
     @staticmethod
     def from_py(value: int) -> IntImm:
@@ -907,7 +952,7 @@ class FloatImm(Expr, mnemonic="std.FloatImm"):
     # tvm-ffi-stubgen(end)
 
     def __init__(self, ty: TyLike, value: float) -> None:
-        self.__ffi_init__(value, ty=_normalize_ty(ty))
+        self.__ffi_init__(value, ty=normalize_ty(ty))
 
     @staticmethod
     def from_py(value: float) -> FloatImm:
@@ -929,7 +974,7 @@ class StringImm(Expr, mnemonic="std.StringImm"):
     # tvm-ffi-stubgen(end)
 
     def __init__(self, ty: TyLike, value: str) -> None:
-        self.__ffi_init__(value, ty=_normalize_ty(ty))
+        self.__ffi_init__(value, ty=normalize_ty(ty))
 
     @staticmethod
     def from_py(value: str) -> StringImm:
@@ -1445,7 +1490,7 @@ class IfExpr(Expr, mnemonic="std.IfExpr"):
         *,
         ty: TyLike,
     ) -> None:
-        self.__ffi_init__(cond, then_expr, else_expr, _normalize_ty(ty))
+        self.__ffi_init__(cond, then_expr, else_expr, normalize_ty(ty))
 
 
 @c_class("ffi.std.Load")
@@ -1472,7 +1517,7 @@ class Load(Expr, mnemonic="std.Load"):
         *indices: RangeLike,
         ty: TyLike | None = None,
     ) -> None:
-        self.__ffi_init__(lhs, indices, _normalize_ty(ty) if ty is not None else None)
+        self.__ffi_init__(lhs, indices, normalize_ty(ty) if ty is not None else None)
 
 
 @c_class("ffi.std.Cast")
@@ -1493,7 +1538,7 @@ class Cast(Expr, mnemonic="std.Cast"):
         def __ffi_init__(self, *args: Any, **kwargs: Any) -> None: ...
 
     def __init__(self, ty: TyLike, value: ExprLike) -> None:
-        self.__ffi_init__(value, ty=_normalize_ty(ty))
+        self.__ffi_init__(value, ty=normalize_ty(ty))
 
 
 @c_class("ffi.std.Call")
@@ -1531,7 +1576,7 @@ class Call(Expr, mnemonic="std.Call"):
                 "std.Call callee must be a name, expression, or function, "
                 f"got {type(callee).__name__}"
             )
-        self.__ffi_init__(callee, args, kwargs or None, ty=_normalize_ty(ty))
+        self.__ffi_init__(callee, args, kwargs or None, ty=normalize_ty(ty))
 
 
 @c_class("ffi.std.IfStmt")
@@ -1569,6 +1614,8 @@ class IfStmt(Stmt, mnemonic="std.IfStmt"):
 @c_class("ffi.std.Scope")
 class Scope(BaseScope, mnemonic="std.Scope"):
     """A scoped statement block with lexical bindings."""
+
+    __ffi_dialect_field_collector__ = staticmethod(_collect_std_scope_fields)
 
     # tvm-ffi-stubgen(begin): object/ffi.std.Scope
     # fmt: off
@@ -1624,6 +1671,8 @@ class BaseFor(Stmt, mnemonic="std.BaseFor"):
 @c_class("ffi.std.For")
 class For(BaseFor, mnemonic="std.For"):
     """For loop."""
+
+    __ffi_dialect_field_collector__ = staticmethod(_collect_std_for_fields)
 
     # tvm-ffi-stubgen(begin): object/ffi.std.For
     # fmt: off
@@ -1706,6 +1755,8 @@ class BaseWhile(Stmt, mnemonic="std.BaseWhile"):
 class While(BaseWhile, mnemonic="std.While"):
     """While loop."""
 
+    __ffi_dialect_field_collector__ = staticmethod(_collect_std_while_fields)
+
     # tvm-ffi-stubgen(begin): object/ffi.std.While
     # fmt: off
     body: MutableSequence[Stmt]
@@ -1763,6 +1814,8 @@ class BaseBindExpr(Stmt, mnemonic="std.BaseBindExpr"):
 class BindExpr(BaseBindExpr, mnemonic="std.BindExpr"):
     """Binding that defines variables from an expression."""
 
+    __ffi_dialect_field_collector__ = staticmethod(_collect_std_bind_expr_fields)
+
     # tvm-ffi-stubgen(begin): object/ffi.std.BindExpr
     # fmt: off
     vars: MutableSequence[Var]
@@ -1804,6 +1857,8 @@ class BaseVarDef(Stmt, mnemonic="std.BaseVarDef"):
 class VarDef(BaseVarDef, mnemonic="std.VarDef"):
     """Binding that defines variables without a source expression."""
 
+    __ffi_dialect_field_collector__ = staticmethod(_collect_std_var_def_fields)
+
     # tvm-ffi-stubgen(begin): object/ffi.std.VarDef
     # fmt: off
     vars: MutableSequence[Var]
@@ -1818,7 +1873,7 @@ class VarDef(BaseVarDef, mnemonic="std.VarDef"):
         def __ffi_init__(self, *args: Any, **kwargs: Any) -> None: ...
 
     def __init__(self, *args: Var | TyLike) -> None:
-        vars = [arg if isinstance(arg, Var) else Var(_normalize_ty(arg), "") for arg in args]
+        vars = [arg if isinstance(arg, Var) else Var(normalize_ty(arg), "") for arg in args]
         self.__ffi_init__(vars)
 
 
@@ -2025,7 +2080,7 @@ class FieldCollectionResult(Node, mnemonic="std.FieldCollectionResult"):
 
 def cast(ty: TyLike, value: ExprLike) -> Expr:
     """Cast an expression to a standard dialect type."""
-    return _typing_cast(Expr, _std_api.cast(_normalize_ty(ty), value))
+    return _typing_cast(Expr, _std_api.cast(normalize_ty(ty), value))
 
 
 def add(lhs: ExprLike, rhs: ExprLike) -> Expr:
@@ -2299,6 +2354,7 @@ __all__ = [
     "cast",
     "cdiv",
     "cmod",
+    "collect_dialect_fields",
     "eq",
     "equal",
     "floordiv",
@@ -2321,6 +2377,7 @@ __all__ = [
     "mul",
     "ne",
     "neg",
+    "normalize_ty",
     "not_equal",
     "pow",
     "right_shift",

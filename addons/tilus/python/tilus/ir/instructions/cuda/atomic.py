@@ -91,8 +91,9 @@ class AtomicScatterGlobalInst(Instruction, mnemonic="tilus.AtomicScatterGlobal")
     scope: str = field(default="gpu", lang_kind="attr")
 
 
-__all__ = [
-    name
-    for name, value in globals().items()
-    if isinstance(value, type) and value.__module__ == __name__
+__all__ = [  # noqa: RUF022
+    "AtomicSharedInst",
+    "AtomicGlobalInst",
+    "AtomicScatterSharedInst",
+    "AtomicScatterGlobalInst",
 ]

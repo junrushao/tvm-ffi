@@ -24,7 +24,7 @@ import pytest
 import tvm_ffi
 import tvm_ffi.dataclasses as dc
 from tvm_ffi import core, pyast, std
-from tvm_ffi._pyast_parser import normalize_ty, parse, register_dialect
+from tvm_ffi._pyast_parser import parse, register_dialect
 from tvm_ffi.access_path import AccessPath
 from tvm_ffi.dataclasses import fields
 
@@ -96,6 +96,24 @@ class TestPrimTy:
 
 
 class TestTypeNormalization:
+    def test_public_normalize_ty_accepts_std_type_factories_and_dtype_strings(self) -> None:
+        class GoodFactory:
+            def to_dialect(self) -> std.Ty:
+                return std.PrimTy("int16")
+
+        i32 = std.PrimTy("int32")
+        assert std.normalize_ty(i32).same_as(i32)
+        assert tvm_ffi.structural_equal(std.normalize_ty("float32"), std.PrimTy("float32"))
+        assert tvm_ffi.structural_equal(std.normalize_ty(GoodFactory()), std.PrimTy("int16"))
+
+    def test_public_normalize_ty_requires_explicit_default_for_none(self) -> None:
+        with pytest.raises(TypeError, match="expected std type, got NoneType"):
+            std.normalize_ty(None)
+
+        assert tvm_ffi.structural_equal(
+            std.normalize_ty(None, default="int32"), std.PrimTy("int32")
+        )
+
     def test_to_dialect_must_return_std_type_for_std_constructors(self) -> None:
         class BadFactory:
             def to_dialect(self) -> str:
@@ -110,7 +128,7 @@ class TestTypeNormalization:
                 return "int32"
 
         with pytest.raises(TypeError, match=r"expected std type from to_dialect\(\), got str"):
-            normalize_ty(BadFactory())
+            std.normalize_ty(BadFactory())
 
 
 class TestAttrs:
@@ -3044,7 +3062,59 @@ class TestDialectFieldCollector:
         assert dict(collected.attrs.values) == {"scope": "shared"}
         assert list(collected.var_def) == [buf]
         assert list(collected.body) == []
+        assert list(std.collect_dialect_fields(node).var_def) == list(collected.var_def)
         assert node.text() == 'buf: std.i32 = testing.ExtVarDef(16, scope="shared")'
+
+    def test_public_collector_installs_for_no_field_nodes(self) -> None:
+        @dc.py_class(_unique_std_key("ExtNoFieldMarker"), structural_eq="tree")
+        class ExtNoFieldMarker(std.Node, mnemonic="testing.ExtNoFieldMarker"):
+            pass
+
+        node = ExtNoFieldMarker()
+
+        self._assert_fields(self._collect(node))
+        assert type(node).__ffi_dialect_field_collector__ is std.collect_dialect_fields
+        assert node.text() == "testing.ExtNoFieldMarker()"
+
+    def test_public_collector_inherits_to_no_field_children_before_registration(self) -> None:
+        @dc.py_class(_unique_std_key("ExtMarkerBase"), structural_eq="tree", init=False)
+        class ExtMarkerBase(std.Node, mnemonic="testing.ExtMarkerBase"):
+            pass
+
+        @dc.py_class(_unique_std_key("ExtMarkerChild"), structural_eq="tree")
+        class ExtMarkerChild(ExtMarkerBase, mnemonic="testing.ExtMarkerChild"):
+            pass
+
+        node = ExtMarkerChild()
+
+        self._assert_fields(self._collect(node))
+        assert type(node).__ffi_dialect_field_collector__ is std.collect_dialect_fields
+        assert node.text() == "testing.ExtMarkerChild()"
+
+    def test_automatic_collector_does_not_overwrite_custom_collector(self) -> None:
+        def collect_custom_fields(node: std.Node) -> std.FieldCollectionResult:
+            del node
+            return std.FieldCollectionResult(attrs={"custom": True})
+
+        @dc.py_class(_unique_std_key("ExtCustomCollector"), structural_eq="tree")
+        class ExtCustomCollector(std.Node, mnemonic="testing.ExtCustomCollector"):
+            __ffi_dialect_field_collector__ = staticmethod(collect_custom_fields)
+
+        node = ExtCustomCollector()
+
+        collected = self._collect(node)
+        assert type(node).__ffi_dialect_field_collector__ is collect_custom_fields
+        assert dict(collected.attrs.values) == {"custom": True}
+
+    def test_collector_reports_invalid_nested_var_def_value(self) -> None:
+        @dc.py_class(_unique_std_key("ExtBadNestedVarDef"), structural_eq="tree")
+        class ExtBadNestedVarDef(std.Node, mnemonic="testing.ExtBadNestedVarDef"):
+            targets: List[Any] = dc.field(default_factory=list, lang_kind="var_def")  # noqa: UP006
+
+        node = ExtBadNestedVarDef([1])
+
+        with pytest.raises(TypeError, match=r"expected std\.Var or var-def node, got int"):
+            node.text()
 
     def test_generic_collector_printer_handles_plain_node_and_stmt(self) -> None:
         @dc.py_class(_unique_std_key("ExtPlainNode"), structural_eq="tree")

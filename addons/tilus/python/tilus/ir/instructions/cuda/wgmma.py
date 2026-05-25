@@ -53,8 +53,10 @@ class WgmmaMmaRSInst(Instruction, mnemonic="tilus.WgmmaMmaRS"):
     EXPECTED_INPUTS: ClassVar[int] = 2
 
 
-__all__ = [
-    name
-    for name, value in globals().items()
-    if isinstance(value, type) and value.__module__ == __name__
+__all__ = [  # noqa: RUF022
+    "WgmmaFenceInst",
+    "WgmmaCommitGroupInst",
+    "WgmmaWaitGroupInst",
+    "WgmmaMmaSSInst",
+    "WgmmaMmaRSInst",
 ]

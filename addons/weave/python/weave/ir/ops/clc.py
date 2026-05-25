@@ -54,8 +54,9 @@ class ClcFenceRelease(Op, mnemonic="weave.ClcFenceRelease"):
     pass
 
 
-__all__ = [
-    name
-    for name, value in list(globals().items())
-    if isinstance(value, type) and value.__module__ == __name__
+__all__ = [  # noqa: RUF022
+    "ClcTryCancel",
+    "ClcQueryCancel",
+    "ClcQueryCancelGetCtaId",
+    "ClcFenceRelease",
 ]

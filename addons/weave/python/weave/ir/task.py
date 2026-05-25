@@ -17,7 +17,7 @@ from typing import Any, ClassVar
 from tvm_ffi import dataclasses as dc
 from tvm_ffi import std
 
-from ._utils import collect_dialect_fields, normalize_expr, normalize_optional_expr
+from ._utils import normalize_expr, normalize_optional_expr
 
 ASSIGN_OPS = ("=", "+=", "-=", "*=", "/=", "%=", "//=", "^=", "&=", "|=", "<<=", ">>=")
 
@@ -164,10 +164,6 @@ class Assign(std.Stmt, mnemonic="weave.Assign"):
         object.__setattr__(self, "expr", normalize_expr(self.expr, field_name="expr"))
         if self.op not in ASSIGN_OPS:
             raise ValueError(f"unknown assignment operator: {self.op}")
-
-
-# Empty classes inherit no lang_kind fields from std.Stmt, so force generic collector.
-Assign.__ffi_dialect_field_collector__ = staticmethod(collect_dialect_fields)
 
 
 __all__ = [

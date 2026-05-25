@@ -24,8 +24,14 @@ from typing import Any, ClassVar
 
 from tvm_ffi import dataclasses as dc
 from tvm_ffi import std
-from tvm_ffi._pyast_parser import Frame, normalize_ty, register_dialect
-from tvm_ffi._std_lang import Std
+from tvm_ffi._pyast_parser import Frame, register_dialect
+from tvm_ffi._std_lang import (
+    Std,
+    bind_one_var,
+    parse_func_args,
+    register_mnemonic_namespace,
+    std_generics,
+)
 
 from .ir import func, inst, instructions, layout, stmt, tensor
 from .ir.instructions import generic, hints
@@ -60,9 +66,7 @@ class FunctionFactory(TilusFrame):
         self.metadata = metadata
 
     def parse_args(self, args: list[tuple[str, Any]]) -> list[std.Var]:
-        self.args = [
-            std.Var(normalize_ty(ty) if ty is not None else std.AnyTy(), name) for name, ty in args
-        ]
+        self.args = parse_func_args(args)
         return self.args
 
     def to_dialect(self) -> func.Function:
@@ -114,7 +118,7 @@ def _tensor_ctor(cls: type, dtype: std.TyLike, *shape: Any, **kwargs: Any) -> te
         unexpected = next(iter(kwargs))
         raise TypeError(f"unexpected keyword argument: {unexpected}")
     optional_layout = optional_layout if optional_layout is not None else layout_value
-    ty = normalize_ty(dtype)
+    ty = std.normalize_ty(dtype)
     if not isinstance(ty, std.PrimTy):
         raise TypeError(f"expected primitive dtype, got {type(ty).__name__}")
     return cls(ty, shape=tensor._shape(shape), optional_layout=optional_layout)
@@ -261,9 +265,7 @@ def _instruction_ctor(cls: type[inst.Instruction]) -> Callable[..., inst.Instruc
 
 
 def _make_var(names: Sequence[str], ty: Any) -> std.Var:
-    if len(names) != 1:
-        raise TypeError(f"expected 1 binding target, got {len(names)}")
-    return std.Var(normalize_ty(ty), names[0])
+    return bind_one_var(names, ty)
 
 
 def _bind_expr(names: Sequence[str], ty: Any, expr: Any) -> Any:
@@ -280,10 +282,6 @@ def _bind_expr(names: Sequence[str], ty: Any, expr: Any) -> Any:
             return stmt.TensorItemPtr(expr.tensor_value, var, expr.space)
         return stmt.TensorItemValue(expr.tensor_value, var)
     return Std.__ffi_generics__["__bind_expr__"](names, ty, expr)
-
-
-def _bind_var_def(names: Sequence[str], *tys: Any) -> std.VarDef:
-    return Std.__ffi_generics__["__bind_var_def__"](names, *tys)
 
 
 class TilusLang:
@@ -337,18 +335,21 @@ class TilusLang:
     Assume = staticmethod(_instruction_ctor(hints.AssumeInst))
 
 
+def _instruction_namespace_value(cls: type[Any]) -> Any:
+    if issubclass(cls, inst.Instruction):
+        return staticmethod(_instruction_ctor(cls))
+    return cls
+
+
 def _register_instruction_constructors() -> None:
-    for name in instructions.__all__:
-        cls = getattr(instructions, name)
-        if not isinstance(cls, type):
-            continue
-        dialect, mnemonic = cls.__ffi_dialect_mnemonic__
-        if dialect != "tilus" or mnemonic == "Instruction":
-            continue
-        if issubclass(cls, inst.Instruction):
-            setattr(TilusLang, mnemonic, staticmethod(_instruction_ctor(cls)))
-        else:
-            setattr(TilusLang, mnemonic, cls)
+    register_mnemonic_namespace(
+        TilusLang,
+        (instructions,),
+        dialect="tilus",
+        skip_mnemonics={"Instruction"},
+        expose_export_name=False,
+        value_for=_instruction_namespace_value,
+    )
 
 
 _register_instruction_constructors()
@@ -362,11 +363,7 @@ TilusLang.__ffi_globals__ = {
     "tmemory_tensor": tensor.tmemory_tensor,
 }
 
-TilusLang.__ffi_generics__ = {
-    **Std.__ffi_generics__,
-    "__bind_expr__": _bind_expr,
-    "__bind_var_def__": _bind_var_def,
-}
+TilusLang.__ffi_generics__ = std_generics({"__bind_expr__": _bind_expr})
 
 register_dialect("tilus", TilusLang)
 

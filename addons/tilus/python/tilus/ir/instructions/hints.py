@@ -40,7 +40,6 @@ class AssumeInst(Instruction, mnemonic="tilus.Assume"):
 
 
 __all__ = [
-    name
-    for name, value in globals().items()
-    if isinstance(value, type) and value.__module__ == __name__
+    "AnnotateLayoutInst",
+    "AssumeInst",
 ]

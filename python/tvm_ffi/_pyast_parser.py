@@ -168,21 +168,6 @@ class VarTable:
         return values[-1] if values else MISSING
 
 
-def normalize_ty(value: Any) -> std.Ty:
-    """Normalize annotations, type factories, and dtype strings to ``std.Ty``."""
-    assert value is not None
-    if isinstance(value, std.Ty):
-        return value
-    if hasattr(value, "to_dialect"):
-        ty = value.to_dialect()
-        if isinstance(ty, std.Ty):
-            return ty
-        raise TypeError(f"expected std type from to_dialect(), got {type(ty).__name__}")
-    if isinstance(value, str):
-        return std.PrimTy(value)
-    raise TypeError(f"expected std type, got {type(value).__name__}")
-
-
 def _to_dialect(value: Any) -> Any:
     """Materialize parser factories before passing values to dialect constructors."""
     if hasattr(value, "to_dialect"):
@@ -656,7 +641,7 @@ class Parser:
                 raise TypeError(f"multiple values for constructor field {field_name!r}")
             kwargs[field_name] = value
         if node.annotation is not None:
-            ty = normalize_ty(self.visit(node.annotation))
+            ty = std.normalize_ty(self.visit(node.annotation))
         else:
             expr = kwargs.get("expr")
             if not isinstance(expr, std.Expr):
@@ -732,7 +717,9 @@ class Parser:
             raise TypeError("IR functions require exactly one decorator")
         frame = cast(Any, self._visit_frame_expr(node.decorators[0]))
         frame.symbol = node.name.name
-        frame.ret_type = normalize_ty(self.visit(node.return_type)) if node.return_type else None
+        frame.ret_type = (
+            std.normalize_ty(self.visit(node.return_type)) if node.return_type else None
+        )
         with self._with_frame(frame, dialect=frame.dialect):
             args_candidates: list[tuple[str, Any]] = []
             for arg in node.args:

@@ -23,7 +23,7 @@ from typing import Any
 from tvm_ffi import dataclasses as dc
 from tvm_ffi import std
 
-from ._utils import MarkerTy, collect_dialect_fields, normalize_expr, normalize_ty
+from ._utils import MarkerTy, normalize_expr
 
 i8 = std.PrimTy("int8")
 i16 = std.PrimTy("int16")
@@ -93,7 +93,7 @@ class UniformTy(std.Ty, mnemonic="weave.UniformTy"):
     base: std.Ty = dc.field(lang_kind="arg")
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "base", normalize_ty(self.base))
+        object.__setattr__(self, "base", std.normalize_ty(self.base))
 
 
 @dc.py_class("weave.PtrTy", structural_eq="tree")
@@ -107,7 +107,7 @@ class PtrTy(std.Ty, mnemonic="weave.PtrTy"):
 
     def __post_init__(self) -> None:
         if self.elem_ty is not None:
-            object.__setattr__(self, "elem_ty", normalize_ty(self.elem_ty))
+            object.__setattr__(self, "elem_ty", std.normalize_ty(self.elem_ty))
 
 
 @dc.py_class("weave.Swizzle", structural_eq="tree")
@@ -183,10 +183,6 @@ class _LmNamespace:
 lm = _LmNamespace()
 
 
-def _expr_ty(value: std.Ty | None) -> std.Ty:
-    return value if value is not None else std.AnyTy()
-
-
 @dc.py_class("weave.Const", structural_eq="tree")
 class Const(std.Expr, mnemonic="weave.Const"):
     """Named compile-time constant expression."""
@@ -195,7 +191,7 @@ class Const(std.Expr, mnemonic="weave.Const"):
     result_ty: std.Ty = dc.field(default_factory=std.AnyTy, lang_kind="attr")
 
     def __init__(self, name: str, result_ty: Any = None) -> None:
-        result_ty = _expr_ty(normalize_ty(result_ty))
+        result_ty = std.normalize_ty(result_ty, default=std.AnyTy())
         self.__ffi_init__(name, result_ty, ty=result_ty)
 
 
@@ -208,7 +204,7 @@ class Field(std.Expr, mnemonic="weave.Field"):
     result_ty: std.Ty = dc.field(default_factory=std.AnyTy, lang_kind="attr")
 
     def __init__(self, base: Any, field: str, result_ty: Any = None) -> None:
-        result_ty = _expr_ty(normalize_ty(result_ty))
+        result_ty = std.normalize_ty(result_ty, default=std.AnyTy())
         self.__ffi_init__(normalize_expr(base, field_name="base"), field, result_ty, ty=result_ty)
 
 
@@ -232,7 +228,7 @@ class Deref(std.Expr, mnemonic="weave.Deref"):
     result_ty: std.Ty = dc.field(default_factory=std.AnyTy, lang_kind="attr")
 
     def __init__(self, expr: Any, result_ty: Any = None) -> None:
-        result_ty = _expr_ty(normalize_ty(result_ty))
+        result_ty = std.normalize_ty(result_ty, default=std.AnyTy())
         self.__ffi_init__(normalize_expr(expr), result_ty, ty=result_ty)
 
 
@@ -244,7 +240,7 @@ class ReinterpretCast(std.Expr, mnemonic="weave.ReinterpretCast"):
     target_type: std.Ty = dc.field(lang_kind="arg")
 
     def __init__(self, expr: Any, target_type: Any) -> None:
-        target_type = normalize_ty(target_type)
+        target_type = std.normalize_ty(target_type)
         self.__ffi_init__(normalize_expr(expr), target_type, ty=target_type)
 
 
@@ -257,7 +253,7 @@ class SmemSwizzleOffset(std.Expr, mnemonic="weave.SmemSwizzleOffset"):
     result_ty: std.Ty = dc.field(default_factory=lambda: i32, lang_kind="attr")
 
     def __init__(self, expr: Any, swizzle: Swizzle | None = None, result_ty: Any = None) -> None:
-        result_ty = normalize_ty(result_ty, i32)
+        result_ty = std.normalize_ty(result_ty, default=i32)
         self.__ffi_init__(normalize_expr(expr), swizzle, result_ty, ty=result_ty)
 
 
@@ -279,7 +275,7 @@ class SmemSwizzleAddress(std.Expr, mnemonic="weave.SmemSwizzleAddress"):
     result_ty: std.Ty = dc.field(default_factory=lambda: u32, lang_kind="attr")
 
     def __init__(self, expr: Any, **kwargs: Any) -> None:
-        result_ty = normalize_ty(kwargs.pop("result_ty", None), u32)
+        result_ty = std.normalize_ty(kwargs.pop("result_ty", None), default=u32)
         self.__ffi_init__(
             normalize_expr(expr),
             kwargs.pop("swizzle", None),
@@ -301,7 +297,7 @@ class SmemSwizzleAddress(std.Expr, mnemonic="weave.SmemSwizzleAddress"):
 
 
 def _ref_init(self: Any, result_ty_default: std.Ty, *args: Any, **kwargs: Any) -> None:
-    result_ty = normalize_ty(kwargs.pop("result_ty", None), result_ty_default)
+    result_ty = std.normalize_ty(kwargs.pop("result_ty", None), default=result_ty_default)
     self.__ffi_init__(*args, **kwargs, result_ty=result_ty, ty=result_ty)
 
 
@@ -314,7 +310,7 @@ class TmemRef(std.Expr, mnemonic="weave.TmemRef"):
     result_ty: std.Ty = dc.field(default_factory=lambda: u32, lang_kind="attr")
 
     def __init__(self, region: Any, offset: Any = None, result_ty: Any = None) -> None:
-        result_ty = normalize_ty(result_ty, u32)
+        result_ty = std.normalize_ty(result_ty, default=u32)
         self.__ffi_init__(region, offset, result_ty, ty=result_ty)
 
 
@@ -327,7 +323,7 @@ class SmemRef(std.Expr, mnemonic="weave.SmemRef"):
     result_ty: std.Ty = dc.field(default_factory=lambda: u32, lang_kind="attr")
 
     def __init__(self, buffer: Any, offset: Any = None, result_ty: Any = None) -> None:
-        result_ty = normalize_ty(result_ty, u32)
+        result_ty = std.normalize_ty(result_ty, default=u32)
         self.__ffi_init__(buffer, offset, result_ty, ty=result_ty)
 
 
@@ -341,7 +337,7 @@ class SmemDescRef(std.Expr, mnemonic="weave.SmemDescRef"):
     result_ty: std.Ty = dc.field(default_factory=lambda: u64, lang_kind="attr")
 
     def __init__(self, buffer: Any, k_idx: Any, mode: str = "k", result_ty: Any = None) -> None:
-        result_ty = normalize_ty(result_ty, u64)
+        result_ty = std.normalize_ty(result_ty, default=u64)
         self.__ffi_init__(buffer, k_idx, mode, result_ty, ty=result_ty)
 
 
@@ -354,7 +350,7 @@ class BarrierRef(std.Expr, mnemonic="weave.BarrierRef"):
     result_ty: std.Ty = dc.field(default_factory=lambda: u64, lang_kind="attr")
 
     def __init__(self, barrier: Any, stage: Any = None, result_ty: Any = None) -> None:
-        result_ty = normalize_ty(result_ty, u64)
+        result_ty = std.normalize_ty(result_ty, default=u64)
         self.__ffi_init__(barrier, stage, result_ty, ty=result_ty)
 
 
@@ -366,20 +362,8 @@ class BuiltinRef(std.Expr, mnemonic="weave.BuiltinRef"):
     result_ty: std.Ty = dc.field(default_factory=std.AnyTy, lang_kind="attr")
 
     def __init__(self, name: str, result_ty: Any = None) -> None:
-        result_ty = _expr_ty(normalize_ty(result_ty))
+        result_ty = std.normalize_ty(result_ty, default=std.AnyTy())
         self.__ffi_init__(name, result_ty, ty=result_ty)
-
-
-# Ensure no-field marker subclasses inherit a collector-backed generic printer.
-for _marker_cls in (
-    RawTy,
-    Ue4m3Ty,
-    ConstexprTy,
-    TmaGatherTy,
-    TmaReduceTy,
-    GridCounterTy,
-):
-    _marker_cls.__ffi_dialect_field_collector__ = staticmethod(collect_dialect_fields)
 
 
 __all__ = [

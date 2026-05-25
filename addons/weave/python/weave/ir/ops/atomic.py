@@ -145,8 +145,16 @@ class AtomicMaxFloatDecode(Op, mnemonic="weave.AtomicMaxFloatDecode"):
     EXPR_FIELDS: ClassVar[frozenset[str]] = frozenset(("dst", "src"))
 
 
-__all__ = [
-    name
-    for name, value in list(globals().items())
-    if isinstance(value, type) and value.__module__ == __name__
+__all__ = [  # noqa: RUF022
+    "AtomicOp",
+    "AtomicFetchAdd",
+    "RelaxedFmax",
+    "AtomicMaxF32Positive",
+    "SysVolatileLoad128",
+    "SysVolatileStore128",
+    "MultimemLdReduce",
+    "MultimemStore",
+    "MultimemRedAddI32",
+    "AtomicMaxFloatEncode",
+    "AtomicMaxFloatDecode",
 ]

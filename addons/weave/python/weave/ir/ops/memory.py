@@ -263,8 +263,23 @@ class MetadataCopy(Op, mnemonic="weave.MetadataCopy"):
         object.__setattr__(self, "cta_group", validate_cta_group(self.cta_group))
 
 
-__all__ = [
-    name
-    for name, value in list(globals().items())
-    if isinstance(value, type) and value.__module__ == __name__
+__all__ = [  # noqa: RUF022
+    "BuiltinVar",
+    "TmemRegionLoad",
+    "TmemRegionStore",
+    "SmemDesc",
+    "GmemLoad",
+    "GmemStore",
+    "SmemStore",
+    "SmemLoad",
+    "SmemRead",
+    "SmemLoadRegs",
+    "SmemWrite",
+    "SmemLoadVec",
+    "SmemStoreVec",
+    "TmaStore",
+    "TmaReduceOp",
+    "TmaGatherLoad",
+    "ScaleFactorCopy",
+    "MetadataCopy",
 ]
