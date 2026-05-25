@@ -25,6 +25,10 @@ from tvm_ffi import std
 
 from ._utils import MarkerTy, normalize_expr
 
+ExprOrInt = int | std.Expr
+StringLike = str | std.StringImm
+HandleRef = str | std.Node
+
 i8 = std.PrimTy("int8")
 i16 = std.PrimTy("int16")
 i32 = std.PrimTy("int32")
@@ -263,11 +267,11 @@ class SmemSwizzleAddress(std.Expr, mnemonic="weave.SmemSwizzleAddress"):
 
     expr: std.Expr = dc.field(lang_kind="arg")
     swizzle: Swizzle | None = dc.field(default=None, lang_kind="attr")
-    view: Any = dc.field(default=None, lang_kind="attr")
-    row_stride_bytes: Any = dc.field(default=None, lang_kind="attr")
+    view: HandleRef | None = dc.field(default=None, lang_kind="attr")
+    row_stride_bytes: ExprOrInt | None = dc.field(default=None, lang_kind="attr")
     layout: str | None = dc.field(default=None, lang_kind="attr")
-    coord_row: Any = dc.field(default=None, lang_kind="attr")
-    coord_col: Any = dc.field(default=None, lang_kind="attr")
+    coord_row: ExprOrInt | None = dc.field(default=None, lang_kind="attr")
+    coord_col: ExprOrInt | None = dc.field(default=None, lang_kind="attr")
     coord_col_unit: str | None = dc.field(default=None, lang_kind="attr")
     tcgen05_tile_height: int | None = dc.field(default=None, lang_kind="attr")
     tcgen05_k_elements: int | None = dc.field(default=None, lang_kind="attr")
@@ -305,8 +309,8 @@ def _ref_init(self: Any, result_ty_default: std.Ty, *args: Any, **kwargs: Any) -
 class TmemRef(std.Expr, mnemonic="weave.TmemRef"):
     """Reference to a tensor-memory region."""
 
-    region: Any = dc.field(lang_kind="arg")
-    offset: Any = dc.field(default=None, lang_kind="attr")
+    region: HandleRef = dc.field(lang_kind="arg")
+    offset: ExprOrInt | None = dc.field(default=None, lang_kind="attr")
     result_ty: std.Ty = dc.field(default_factory=lambda: u32, lang_kind="attr")
 
     def __init__(self, region: Any, offset: Any = None, result_ty: Any = None) -> None:
@@ -318,8 +322,8 @@ class TmemRef(std.Expr, mnemonic="weave.TmemRef"):
 class SmemRef(std.Expr, mnemonic="weave.SmemRef"):
     """Reference to shared memory."""
 
-    buffer: Any = dc.field(lang_kind="arg")
-    offset: Any = dc.field(default=None, lang_kind="attr")
+    buffer: HandleRef = dc.field(lang_kind="arg")
+    offset: ExprOrInt | None = dc.field(default=None, lang_kind="attr")
     result_ty: std.Ty = dc.field(default_factory=lambda: u32, lang_kind="attr")
 
     def __init__(self, buffer: Any, offset: Any = None, result_ty: Any = None) -> None:
@@ -331,8 +335,8 @@ class SmemRef(std.Expr, mnemonic="weave.SmemRef"):
 class SmemDescRef(std.Expr, mnemonic="weave.SmemDescRef"):
     """Reference to a generated SMEM descriptor."""
 
-    buffer: Any = dc.field(lang_kind="arg")
-    k_idx: Any = dc.field(lang_kind="arg")
+    buffer: HandleRef = dc.field(lang_kind="arg")
+    k_idx: ExprOrInt = dc.field(lang_kind="arg")
     mode: str = dc.field(default="k", lang_kind="attr")
     result_ty: std.Ty = dc.field(default_factory=lambda: u64, lang_kind="attr")
 
@@ -345,8 +349,8 @@ class SmemDescRef(std.Expr, mnemonic="weave.SmemDescRef"):
 class BarrierRef(std.Expr, mnemonic="weave.BarrierRef"):
     """Reference to an mbarrier address."""
 
-    barrier: Any = dc.field(lang_kind="arg")
-    stage: Any = dc.field(default=None, lang_kind="attr")
+    barrier: HandleRef = dc.field(lang_kind="arg")
+    stage: ExprOrInt | None = dc.field(default=None, lang_kind="attr")
     result_ty: std.Ty = dc.field(default_factory=lambda: u64, lang_kind="attr")
 
     def __init__(self, barrier: Any, stage: Any = None, result_ty: Any = None) -> None:

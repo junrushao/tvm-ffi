@@ -2999,6 +2999,19 @@ class TestDialectFieldCollector:
         return cast(std.FieldCollectionResult, collector(node))
 
     @staticmethod
+    def _collect_with_single_var_def_ty(node: std.Node) -> std.FieldCollectionResult:
+        fields_ = std.collect_dialect_fields(node)
+        var_def = list(fields_.var_def)
+        ty = var_def[0].ty if len(var_def) == 1 else None
+        return std.FieldCollectionResult(
+            args=list(fields_.args),
+            attrs=fields_.attrs,
+            var_def=var_def,
+            body=list(fields_.body),
+            ty=ty,
+        )
+
+    @staticmethod
     def _assert_fields(
         fields_: std.FieldCollectionResult,
         *,
@@ -3006,11 +3019,13 @@ class TestDialectFieldCollector:
         attrs: dict[str, Any] | None = None,
         var_def: list[std.Var] | None = None,
         body: list[std.Node] | None = None,
+        ty: std.Ty | None = None,
     ) -> None:
         assert list(fields_.args) == list(args or [])
         assert dict(fields_.attrs.values) == (attrs or {})
         assert list(fields_.var_def) == list(var_def or [])
         assert list(fields_.body) == list(body or [])
+        assert fields_.ty == ty
 
     def test_field_collection_result_defaults_and_normalizes_attrs(self) -> None:
         i32 = std.PrimTy("int32")
@@ -3023,6 +3038,7 @@ class TestDialectFieldCollector:
             attrs={"tag": "demo"},
             var_def=[x],
             body=[ret],
+            ty=i32,
         )
 
         assert tuple(field.name for field in fields(std.FieldCollectionResult)) == (
@@ -3030,17 +3046,20 @@ class TestDialectFieldCollector:
             "attrs",
             "var_def",
             "body",
+            "ty",
         )
         assert list(empty.args) == []
         assert isinstance(empty.attrs, std.DictAttrs)
         assert dict(empty.attrs.values) == {}
         assert list(empty.var_def) == []
         assert list(empty.body) == []
+        assert empty.ty is None
         assert list(result.args) == [x]
         assert isinstance(result.attrs, std.DictAttrs)
         assert dict(result.attrs.values) == {"tag": "demo"}
         assert list(result.var_def) == [x]
         assert list(result.body) == [ret]
+        assert result.ty == i32
 
     def test_generated_collector_uses_lang_kind_metadata(self) -> None:
         @dc.py_class(_unique_std_key("ExtVarDefCollect"))
@@ -3062,8 +3081,9 @@ class TestDialectFieldCollector:
         assert dict(collected.attrs.values) == {"scope": "shared"}
         assert list(collected.var_def) == [buf]
         assert list(collected.body) == []
+        assert collected.ty is None
         assert list(std.collect_dialect_fields(node).var_def) == list(collected.var_def)
-        assert node.text() == 'buf: std.i32 = testing.ExtVarDef(16, scope="shared")'
+        assert node.text() == 'buf = testing.ExtVarDef(16, scope="shared")'
 
     def test_public_collector_installs_for_no_field_nodes(self) -> None:
         @dc.py_class(_unique_std_key("ExtNoFieldMarker"), structural_eq="tree")
@@ -3165,6 +3185,10 @@ class TestDialectFieldCollector:
     def test_generic_collector_printer_honors_dialect_print_map(self) -> None:
         @dc.py_class(_unique_std_key("ExtPrintMapBinding"), structural_eq="tree")
         class ExtPrintMapBinding(std.Node, mnemonic="testing.ExtPrintMapBinding"):
+            __ffi_dialect_field_collector__ = staticmethod(
+                TestDialectFieldCollector._collect_with_single_var_def_ty
+            )
+
             value: int = dc.field(lang_kind="arg")
             target: std.Var = dc.field(
                 lang_kind="var_def",
@@ -3176,7 +3200,7 @@ class TestDialectFieldCollector:
         node = ExtPrintMapBinding(value=1, target=x)
 
         assert node.text(pyast.PrinterConfig(dialect_print_map={"testing": "toy"})) == (
-            'x: std.i32 = toy.ExtPrintMapBinding(1, note="demo")'
+            'x = toy.ExtPrintMapBinding(1, note="demo", ty=std.i32)'
         )
         assert (
             node.text(
@@ -3184,23 +3208,32 @@ class TestDialectFieldCollector:
                     dialect_print_map={"std": "*", "testing$ExtPrintMapBinding": "*"}
                 )
             )
-            == 'x: i32 = ExtPrintMapBinding(1, note="demo")'
+            == 'x = ExtPrintMapBinding(1, note="demo", ty=i32)'
         )
 
     def test_generic_collector_printer_handles_plain_var_def(self) -> None:
         @dc.py_class(_unique_std_key("ExtPlainBinding"), structural_eq="tree")
         class ExtPlainBinding(std.Node, mnemonic="testing.ExtPlainBinding"):
+            __ffi_dialect_field_collector__ = staticmethod(
+                TestDialectFieldCollector._collect_with_single_var_def_ty
+            )
+
             target: std.Var = dc.field(
                 lang_kind="var_def",
                 structural_eq="def-recursive",
             )
             value: int = dc.field(lang_kind="arg")
 
+            def __init__(self, target: std.Var, value: int, *, ty: Any = None) -> None:
+                if ty is not None:
+                    target = std.Var(std.normalize_ty(ty), target.name)
+                self.__ffi_init__(target, value)
+
         i32 = std.PrimTy("int32")
         x = std.Var(i32, "x")
         node = ExtPlainBinding(target=x, value=1)
 
-        assert node.text() == "x: std.i32 = testing.ExtPlainBinding(1)"
+        assert node.text() == "x = testing.ExtPlainBinding(1, ty=std.i32)"
 
         class Testing:
             __ffi_globals__: ClassVar[dict[str, Any]] = {}
@@ -3209,6 +3242,21 @@ class TestDialectFieldCollector:
         setattr(Testing, "ExtPlainBinding", ExtPlainBinding)
         register_dialect("testing", Testing)
         assert tvm_ffi.structural_equal(parse(node.text()), node)
+
+    def test_generic_collector_printer_honors_field_result_ty(self) -> None:
+        def collect_fields(node: Any) -> std.FieldCollectionResult:
+            return std.FieldCollectionResult(args=[node.value], ty=node.value.ty)
+
+        @dc.py_class(_unique_std_key("ExtTyHint"), structural_eq="tree")
+        class ExtTyHint(std.Node, mnemonic="testing.ExtTyHint"):
+            __ffi_dialect_field_collector__ = staticmethod(collect_fields)
+
+            value: std.Var = dc.field(lang_kind="arg")
+
+        x = std.Var(std.PrimTy("int32"), "x")
+        node = ExtTyHint(x)
+
+        assert node.text() == "testing.ExtTyHint(x, ty=std.i32)"
 
     def test_generic_collector_printer_rejects_body_var_def_nodes(self) -> None:
         @dc.py_class(_unique_std_key("ExtBodyBinding"), structural_eq="tree")
@@ -3237,7 +3285,7 @@ class TestDialectFieldCollector:
         with pytest.raises(TypeError, match="requires exactly one var_def target"):
             node.text()
 
-    def test_parser_supports_annotated_constructor_var_def_and_rejects_unannotated(
+    def test_parser_rejects_annotated_constructor_var_def_and_untyped_constructor(
         self,
     ) -> None:
         @dc.py_class(_unique_std_key("ExtParseVarDef"), structural_eq="tree")
@@ -3253,25 +3301,38 @@ class TestDialectFieldCollector:
         setattr(Testing, "ExtParseVarDef", ExtVarDef)
         register_dialect("testing", Testing)
 
-        parsed = parse('buf: std.i32 = testing.ExtParseVarDef(16, scope="shared")')
-        assert isinstance(parsed, ExtVarDef)
-        assert parsed.size == 16
-        assert parsed.scope == "shared"
-        assert parsed.target.name == "buf"
-        assert tvm_ffi.structural_equal(parsed.target.ty, std.PrimTy("int32"))
+        with pytest.raises(TypeError, match="does not support type annotations"):
+            parse('buf: std.i32 = testing.ExtParseVarDef(16, scope="shared")')
 
-        with pytest.raises(TypeError, match="requires a type annotation"):
+        with pytest.raises(TypeError, match="constructor to assign a concrete target type"):
             parse('buf = testing.ExtParseVarDef(16, scope="shared")')
 
-    def test_parser_round_trips_annotated_constructor_sequence_var_def(self) -> None:
+    def test_parser_round_trips_constructor_sequence_var_def_with_constructor_ty(self) -> None:
         @dc.py_class(_unique_std_key("ExtSeqParseVarDef"), structural_eq="tree")
         class ExtVarDef(std.BaseVarDef, mnemonic="testing.ExtSeqParseVarDef"):
+            __ffi_dialect_field_collector__ = staticmethod(
+                TestDialectFieldCollector._collect_with_single_var_def_ty
+            )
+
             size: std.Expr = dc.field(lang_kind="arg")
             targets: List[std.Var] = dc.field(  # noqa: UP006
                 default_factory=list,
                 lang_kind="var_def",
                 structural_eq="def-recursive",
             )
+
+            def __init__(
+                self,
+                size: std.Expr,
+                targets: List[std.Var] | None = None,  # noqa: UP006
+                *,
+                ty: Any = None,
+            ) -> None:
+                targets = list(targets or [])
+                if ty is not None:
+                    normalized_ty = std.normalize_ty(ty)
+                    targets = [std.Var(normalized_ty, target.name) for target in targets]
+                self.__ffi_init__(size, targets)
 
         class Testing:
             __ffi_globals__: ClassVar[dict[str, Any]] = {}
@@ -3280,7 +3341,7 @@ class TestDialectFieldCollector:
         setattr(Testing, "ExtSeqParseVarDef", ExtVarDef)
         register_dialect("testing", Testing)
 
-        parsed = parse("buf: std.i32 = testing.ExtSeqParseVarDef(16)")
+        parsed = parse("buf = testing.ExtSeqParseVarDef(16, ty=std.i32)")
 
         assert isinstance(parsed, ExtVarDef)
         assert len(parsed.targets) == 1
@@ -3303,7 +3364,7 @@ class TestDialectFieldCollector:
         register_dialect("testing", Testing)
 
         with pytest.raises(TypeError, match="requires exactly one omitted var_def field"):
-            parse("buf: std.i32 = testing.ExtAmbiguousParseVarDef(16)")
+            parse("buf = testing.ExtAmbiguousParseVarDef(16)")
 
     def test_parser_reports_constructor_var_def_call_shape_errors(self) -> None:
         @dc.py_class(_unique_std_key("ExtCtorVarDefError"), structural_eq="tree")
@@ -3329,11 +3390,11 @@ class TestDialectFieldCollector:
                 "supports exactly one binding target",
             ),
             (
-                "buf: std.i32 = testing.ExtCtorVarDefError(16, 32)",
+                "buf = testing.ExtCtorVarDefError(16, 32)",
                 "too many positional arguments",
             ),
             (
-                "buf: std.i32 = testing.ExtCtorVarDefError(16, size=32)",
+                "buf = testing.ExtCtorVarDefError(16, size=32)",
                 "multiple values for constructor field 'size'",
             ),
         ]:
@@ -3439,6 +3500,10 @@ class TestDialectFieldCollector:
     def test_base_var_def_subclass_printer_uses_annotated_single_target(self) -> None:
         @dc.py_class(_unique_std_key("ExtVarDefTuple"))
         class ExtVarDef(std.BaseVarDef, mnemonic="testing.ExtVarDef"):
+            __ffi_dialect_field_collector__ = staticmethod(
+                TestDialectFieldCollector._collect_with_single_var_def_ty
+            )
+
             size: std.Expr = dc.field(lang_kind="arg")
             targets: List[std.Var] = dc.field(default_factory=list, lang_kind="var_def")  # noqa: UP006
 
@@ -3448,7 +3513,7 @@ class TestDialectFieldCollector:
         y = std.Var(i32, "y")
 
         assert ExtVarDef(size=std.IntImm(i64, 16), targets=[x]).text() == (
-            "x: std.i32 = testing.ExtVarDef(16)"
+            "x = testing.ExtVarDef(16, ty=std.i32)"
         )
         with pytest.raises(TypeError, match="requires exactly one var_def target"):
             ExtVarDef(size=std.IntImm(i64, 16), targets=[x, y]).text()
@@ -3472,6 +3537,12 @@ class TestDialectFieldCollector:
                 lang_kind="var_def",
                 structural_eq="def-recursive",
             )
+
+            def __init__(self, expr: Any, target: std.Var) -> None:
+                expr = expr if isinstance(expr, std.Expr) else std.Expr.literal(expr)
+                if isinstance(target.ty, std.AnyTy):
+                    target = std.Var(expr.ty, target.name)
+                self.__ffi_init__(expr, target)
 
         class Testing:
             __ffi_globals__: ClassVar[dict[str, Any]] = {}

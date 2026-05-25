@@ -20,11 +20,12 @@ from tvm_ffi._pyast_parser import Frame, register_dialect
 from tvm_ffi._std_lang import (
     bind_one_var,
     parse_func_args,
-    register_mnemonic_namespace,
     std_generics,
 )
 
-from .ir import config, dtypes, handles, kernel, task
+from .ir import config, dtypes, handles
+from .ir import kernel as kernel_ir
+from .ir import task as task_ir
 from .ir.ops import atomic, barriers, clc, elementwise, memory, mma
 
 
@@ -48,8 +49,8 @@ class KernelFactory(WeaveFrame):
         self.args = parse_func_args(args)
         return self.args
 
-    def to_dialect(self) -> kernel.Kernel:
-        return kernel.Kernel(
+    def to_dialect(self) -> kernel_ir.Kernel:
+        return kernel_ir.Kernel(
             symbol=self.symbol,
             args=self.args,
             ret_type=self.ret_type,
@@ -68,8 +69,8 @@ class TaskSpecFactory(WeaveFrame):
         self.attrs = attrs
         self.body: list[Any] = []
 
-    def to_dialect(self) -> task.TaskSpec:
-        return task.TaskSpec(
+    def to_dialect(self) -> task_ir.TaskSpec:
+        return task_ir.TaskSpec(
             self.name,
             self.kind,
             self.assigned_role,
@@ -92,15 +93,15 @@ class _ScopeFactory(WeaveFrame):
 
 
 class BlockFactory(_ScopeFactory):
-    node_cls = task.Block
+    node_cls = task_ir.Block
 
 
 class LeaderCtaBlockFactory(_ScopeFactory):
-    node_cls = task.LeaderCtaBlock
+    node_cls = task_ir.LeaderCtaBlock
 
 
 class ElectedThreadBlockFactory(_ScopeFactory):
-    node_cls = task.ElectedThreadBlock
+    node_cls = task_ir.ElectedThreadBlock
 
 
 class ConditionalIterationFactory(WeaveFrame):
@@ -111,8 +112,8 @@ class ConditionalIterationFactory(WeaveFrame):
         self.last_expr = last_expr
         self.body: list[Any] = []
 
-    def to_dialect(self) -> task.ConditionalIteration:
-        return task.ConditionalIteration(self.iter_var, last_expr=self.last_expr, body=self.body)
+    def to_dialect(self) -> task_ir.ConditionalIteration:
+        return task_ir.ConditionalIteration(self.iter_var, last_expr=self.last_expr, body=self.body)
 
 
 class ForLoopFactory(WeaveFrame):
@@ -150,8 +151,8 @@ class ForLoopFactory(WeaveFrame):
     def bound_vars(self) -> list[std.Var]:
         return [self.var]
 
-    def to_dialect(self) -> task.ForLoop:
-        return task.ForLoop(
+    def to_dialect(self) -> task_ir.ForLoop:
+        return task_ir.ForLoop(
             extent=self.extent,
             var=self.var,
             body=self.body,
@@ -181,43 +182,136 @@ class WeaveLang:
     ElectedThreadBlock = ElectedThreadBlockFactory
     ConditionalIteration = ConditionalIterationFactory
 
+    BarrierEdge = config.BarrierEdge
+    EpilogueConfig = config.EpilogueConfig
+    GridConfig = config.GridConfig
+    PipelineConfig = config.PipelineConfig
+    PipelineProtocol = config.PipelineProtocol
+    Pipeline = config.PipelineSpec
+    PipelineSpec = config.PipelineSpec
+    SmemAllocation = config.SmemAllocation
+    TaskTiming = config.TaskTiming
+    TmemAllocation = config.TmemAllocation
+    TmemConfig = config.TmemConfig
+    WarpConfig = config.WarpConfig
+    WarpRole = config.WarpRole
 
-_FRAME_CLASS_NAMES = frozenset(
-    {
-        "Kernel",
-        "TaskSpec",
-        "ForLoop",
-        "Block",
-        "LeaderCtaBlock",
-        "ElectedThreadBlock",
-        "ConditionalIteration",
-    }
-)
+    AddrOf = dtypes.AddrOf
+    BarrierRef = dtypes.BarrierRef
+    BuiltinRef = dtypes.BuiltinRef
+    Const = dtypes.Const
+    ConstexprTy = dtypes.ConstexprTy
+    Deref = dtypes.Deref
+    Field = dtypes.Field
+    GridCounterTy = dtypes.GridCounterTy
+    PtrTy = dtypes.PtrTy
+    RawTy = dtypes.RawTy
+    ReinterpretCast = dtypes.ReinterpretCast
+    SmemDescRef = dtypes.SmemDescRef
+    SmemRef = dtypes.SmemRef
+    SmemSwizzleAddress = dtypes.SmemSwizzleAddress
+    SmemSwizzleOffset = dtypes.SmemSwizzleOffset
+    Swizzle = dtypes.Swizzle
+    TmaGatherTy = dtypes.TmaGatherTy
+    TmaReduceTy = dtypes.TmaReduceTy
+    TmaTy = dtypes.TmaTy
+    TmemRef = dtypes.TmemRef
+    Ue4m3Ty = dtypes.Ue4m3Ty
+    UniformTy = dtypes.UniformTy
 
+    Buffer = handles.BufferRef
+    BufferRef = handles.BufferRef
+    EpilogueParams = handles.EpilogueParams
+    Mbarrier = handles.MbarrierSpec
+    MbarrierSpec = handles.MbarrierSpec
+    MmaParams = handles.MmaParams
+    NamedBarrierSpec = handles.NamedBarrierSpec
+    PhaseDomain = handles.PhaseDomain
+    PhaseVar = handles.PhaseVar
+    ProcessGroup = handles.ProcessGroup
+    Param = handles.ScalarParam
+    ScalarParam = handles.ScalarParam
+    SmemPool = handles.SmemPool
+    SmemView = handles.SmemView
+    SoftmaxParams = handles.SoftmaxParams
+    SymmetricMemory = handles.SymmetricMemory
+    TmaDescriptor = handles.TmaDescriptor
+    TmaLoadParams = handles.TmaLoadParams
+    TmemRegion = handles.TmemRegion
 
-def _register_module_classes(module: Any) -> None:
-    register_mnemonic_namespace(
-        WeaveLang,
-        (module,),
-        dialect="weave",
-        skip_names=_FRAME_CLASS_NAMES,
-    )
+    Assign = task_ir.Assign
+    VarDecl = task_ir.VarDecl
 
+    BuiltinVar = memory.BuiltinVar
+    TmemRegionLoad = memory.TmemRegionLoad
+    TmemRegionStore = memory.TmemRegionStore
+    SmemDesc = memory.SmemDesc
+    GmemLoad = memory.GmemLoad
+    GmemStore = memory.GmemStore
+    SmemStore = memory.SmemStore
+    SmemLoad = memory.SmemLoad
+    SmemRead = memory.SmemRead
+    SmemLoadRegs = memory.SmemLoadRegs
+    SmemWrite = memory.SmemWrite
+    SmemLoadVec = memory.SmemLoadVec
+    SmemStoreVec = memory.SmemStoreVec
+    TmaStore = memory.TmaStore
+    TmaReduceOp = memory.TmaReduceOp
+    TmaGatherLoad = memory.TmaGatherLoad
+    ScaleFactorCopy = memory.ScaleFactorCopy
+    MetadataCopy = memory.MetadataCopy
 
-for _module in (
-    config,
-    dtypes,
-    handles,
-    kernel,
-    task,
-    memory,
-    elementwise,
-    barriers,
-    mma,
-    atomic,
-    clc,
-):
-    _register_module_classes(_module)
+    Elementwise = elementwise.Elementwise
+    PredicatedStore = elementwise.PredicatedStore
+    ThreshMask = elementwise.ThreshMask
+    BitmaskFill = elementwise.BitmaskFill
+    MaskFill = elementwise.MaskFill
+    RegArrayCast = elementwise.RegArrayCast
+
+    BarrierSync = barriers.BarrierSync
+    BarrierTryWait = barriers.BarrierTryWait
+    BarrierWait = barriers.BarrierWait
+    BarrierSignal = barriers.BarrierSignal
+    MBarrierArrive = barriers.MBarrierArrive
+    PeerArriveCommit = barriers.PeerArriveCommit
+    MulticastCommit = barriers.MulticastCommit
+    DualCommit = barriers.DualCommit
+    Fence = barriers.Fence
+    ThreadFence = barriers.ThreadFence
+    ClusterSync = barriers.ClusterSync
+    GridSync = barriers.GridSync
+    GridDepSync = barriers.GridDepSync
+    GridDepLaunch = barriers.GridDepLaunch
+    ClusterMapa = barriers.ClusterMapa
+    ClusterBarrierArrive = barriers.ClusterBarrierArrive
+    CpAsyncBulkSmem2SmemCluster = barriers.CpAsyncBulkSmem2SmemCluster
+    WarpReduce = barriers.WarpReduce
+    BlockReduce = barriers.BlockReduce
+    CrossWarpReduce = barriers.CrossWarpReduce
+    WarpGroupReduce = barriers.WarpGroupReduce
+    StAsync = barriers.StAsync
+
+    Tcgen05Cp = mma.Tcgen05Cp
+    PackedF32x2 = mma.PackedF32x2
+    FragmentOp = mma.FragmentOp
+    MmaTile = mma.MmaTile
+
+    AtomicOp = atomic.AtomicOp
+    AtomicFetchAdd = atomic.AtomicFetchAdd
+    RelaxedFmax = atomic.RelaxedFmax
+    AtomicMaxF32Positive = atomic.AtomicMaxF32Positive
+    SysVolatileLoad128 = atomic.SysVolatileLoad128
+    SysVolatileStore128 = atomic.SysVolatileStore128
+    MultimemLdReduce = atomic.MultimemLdReduce
+    MultimemStore = atomic.MultimemStore
+    MultimemRedAddI32 = atomic.MultimemRedAddI32
+    AtomicMaxFloatEncode = atomic.AtomicMaxFloatEncode
+    AtomicMaxFloatDecode = atomic.AtomicMaxFloatDecode
+
+    ClcTryCancel = clc.ClcTryCancel
+    ClcQueryCancel = clc.ClcQueryCancel
+    ClcQueryCancelGetCtaId = clc.ClcQueryCancelGetCtaId
+    ClcFenceRelease = clc.ClcFenceRelease
 
 
 WeaveLang.__ffi_globals__ = {"lm": dtypes.lm}

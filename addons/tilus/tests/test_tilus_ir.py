@@ -58,9 +58,14 @@ class CollectLeaves(IRVisitor):
         self.values.append(node.value)
 
 
+def _input_vars(node: object) -> dict[str, std.Var]:
+    inputs = getattr(node, "inputs", ())
+    return {value.name: value for value in inputs if isinstance(value, std.Var)}
+
+
 def _round_trip(node: object) -> None:
     _import("tilus._tilus_lang")
-    assert tvm_ffi.structural_equal(parse(node.text()), node)
+    assert tvm_ffi.structural_equal(parse(node.text(), extra_vars=_input_vars(node)), node)
 
 
 def _import(name: str):
@@ -162,9 +167,12 @@ def test_instruction_round_trip() -> None:
         layout=layout_mod.register_row_major(16, 32),
     )
     dst = std.Var(dst_ty, "dst")
-    inst = inst_mod.LoadGlobalInst(inputs=[src_ty], output=dst, offsets=[0, 0], dims=[0, 1])
+    src = std.Var(src_ty, "src")
+    inst = inst_mod.LoadGlobalInst(inputs=[src], output=dst, offsets=[0, 0], dims=[0, 1])
     _round_trip(inst)
     assert "inputs=" not in inst.text()
+    assert "dst: " not in inst.text()
+    assert "ty=tilus.RegTensor" in inst.text()
 
 
 def test_hint_and_cuda_instruction_round_trip() -> None:
@@ -172,8 +180,14 @@ def test_hint_and_cuda_instruction_round_trip() -> None:
     hints_mod = _import("tilus.ir.instructions.hints")
     tensor_mod = _import("tilus.ir.tensor")
     cuda_mod = _import("tilus.ir.instructions.cuda")
-    src = tensor_mod.global_tensor("float32", (16, 32), layout=layout_mod.global_row_major(16, 32))
-    dst = tensor_mod.shared_tensor("float32", (16, 32), layout=layout_mod.shared_row_major(16, 32))
+    src_ty = tensor_mod.global_tensor(
+        "float32", (16, 32), layout=layout_mod.global_row_major(16, 32)
+    )
+    dst_ty = tensor_mod.shared_tensor(
+        "float32", (16, 32), layout=layout_mod.shared_row_major(16, 32)
+    )
+    src = std.Var(src_ty, "src")
+    dst = std.Var(dst_ty, "dst")
 
     nodes = [
         hints_mod.AssumeInst(condition=True),
@@ -245,7 +259,7 @@ def test_metadata_round_trip() -> None:
     )
 
 
-def test_tensor_layout_alias_conflict_is_rejected() -> None:
+def test_tensor_optional_layout_alias_is_rejected() -> None:
     layout_mod = _import("tilus.ir.layout")
     tensor_mod = _import("tilus.ir.tensor")
 
@@ -253,13 +267,12 @@ def test_tensor_layout_alias_conflict_is_rejected() -> None:
         tensor_mod.register_tensor(
             "float32",
             (2, 2),
-            layout_mod.register_row_major(2, 2),
-            layout=layout_mod.register_row_major(2, 2),
+            optional_layout=layout_mod.register_row_major(2, 2),
         )
     except TypeError:
         pass
     else:
-        raise AssertionError("expected layout alias conflict to fail")
+        raise AssertionError("expected optional_layout alias to fail")
 
 
 def test_public_printed_name_constructors_are_callable() -> None:
@@ -269,15 +282,15 @@ def test_public_printed_name_constructors_are_callable() -> None:
 
     reg_layout = layout_mod.register_row_major(2, 2)
     global_layout = layout_mod.global_row_major(2, 2)
-    reg_ty = tilus.RegTensor("float32", shape=[2, 2], layout=reg_layout)
-    src_ty = tilus.GlobalTensor("float32", shape=[2, 2], layout=global_layout)
+    reg_ty = tilus.RegTensor("float32", 2, 2, layout=reg_layout)
+    src_ty = tilus.GlobalTensor("float32", 2, 2, layout=global_layout)
 
     assert tvm_ffi.structural_equal(
         reg_ty,
         tensor_mod.register_tensor("float32", (2, 2), layout=reg_layout),
     )
     assert tvm_ffi.structural_equal(
-        tilus.RegisterTensor("float32", shape=[2, 2], layout=reg_layout),
+        tilus.RegisterTensor("float32", 2, 2, layout=reg_layout),
         reg_ty,
     )
     assert tvm_ffi.structural_equal(
@@ -287,11 +300,16 @@ def test_public_printed_name_constructors_are_callable() -> None:
 
     x = std.Var(reg_ty, "x")
     y = std.Var(reg_ty, "y")
-    assert isinstance(tilus.Add(inputs=[x, x], output=y), inst_mod.AddInst)
+    assert isinstance(tilus.Add(x, x, output=y), inst_mod.AddInst)
     assert isinstance(
-        tilus.LoadGlobal(inputs=[src_ty], output=y, offsets=[0, 0], dims=[0, 1]),
+        tilus.LoadGlobal(std.Var(src_ty, "src"), output=y, offsets=[0, 0], dims=[0, 1]),
         inst_mod.LoadGlobalInst,
     )
+
+    shared_ty = tilus.SharedTensor("float32", 2, 2, layout=layout_mod.shared_row_major(2, 2))
+    load_shared = tilus.LoadShared(std.Var(shared_ty, "shared"), output=y)
+    assert isinstance(load_shared, inst_mod.LoadSharedInst)
+    assert "ty=tilus.RegTensor" in load_shared.text()
 
 
 def test_inst_stmt_requires_instruction() -> None:

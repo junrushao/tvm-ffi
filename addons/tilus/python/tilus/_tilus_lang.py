@@ -20,21 +20,21 @@ from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from functools import partial
 from typing import Any, ClassVar
 
 from tvm_ffi import dataclasses as dc
 from tvm_ffi import std
-from tvm_ffi._pyast_parser import Frame, register_dialect
+from tvm_ffi._pyast_parser import Factory, Frame, register_dialect
 from tvm_ffi._std_lang import (
     Std,
     bind_one_var,
     parse_func_args,
-    register_mnemonic_namespace,
     std_generics,
 )
+from tvm_ffi.core import MISSING
 
 from .ir import func, inst, instructions, layout, stmt, tensor
-from .ir.instructions import generic, hints
 
 
 class TilusFrame(Frame):
@@ -79,6 +79,23 @@ class FunctionFactory(TilusFrame):
         )
 
 
+class InstructionFactory(Factory):
+    """Parser-visible constructor for Tilus instructions."""
+
+    dialect = "tilus"
+
+    def __init__(self, cls: type[inst.Instruction]) -> None:
+        self.cls = cls
+
+    def __call__(
+        self,
+        *operands: Any,
+        output: std.Var | None = None,
+        **attrs: Any,
+    ) -> inst.Instruction:
+        return _make_instruction(self.cls, *operands, output=output, **attrs)
+
+
 @dataclass(frozen=True)
 class _TensorItemBuilder:
     __ffi_dialect_mnemonic__: ClassVar[tuple[str, str]] = ("tilus", "TensorItemBuilder")
@@ -95,189 +112,54 @@ class _TensorItemBuilder:
         return stmt.TensorItemValue(self.tensor_value, var)
 
 
-def _tensor_ctor(cls: type, dtype: std.TyLike, *shape: Any, **kwargs: Any) -> tensor.Tensor:
-    if "shape" in kwargs:
-        if shape:
-            raise TypeError("shape specified both positionally and by keyword")
-        shape_value = kwargs.pop("shape")
-        try:
-            shape = tuple(shape_value)
-        except TypeError:
-            raise TypeError(
-                f"shape must be a sequence of integer extents, got {type(shape_value).__name__}"
-            ) from None
-    elif len(shape) == 1 and isinstance(shape[0], (list, tuple)):
-        shape = tuple(shape[0])
-    has_optional_layout = "optional_layout" in kwargs
-    optional_layout = kwargs.pop("optional_layout", None)
-    has_layout = "layout" in kwargs
-    layout_value = kwargs.pop("layout", None)
-    if has_optional_layout and has_layout:
-        raise TypeError("specify either optional_layout or layout, not both")
-    if kwargs:
-        unexpected = next(iter(kwargs))
-        raise TypeError(f"unexpected keyword argument: {unexpected}")
-    optional_layout = optional_layout if optional_layout is not None else layout_value
-    ty = std.normalize_ty(dtype)
-    if not isinstance(ty, std.PrimTy):
-        raise TypeError(f"expected primitive dtype, got {type(ty).__name__}")
-    return cls(ty, shape=tensor._shape(shape), optional_layout=optional_layout)
-
-
-def _tensor_ctor_for(cls: type) -> Callable[..., tensor.Tensor]:
-    def make(dtype: std.TyLike, *shape: Any, **kwargs: Any) -> tensor.Tensor:
-        return _tensor_ctor(cls, dtype, *shape, **kwargs)
-
-    make.__name__ = cls.__ffi_dialect_mnemonic__[1]
-    make.__qualname__ = make.__name__
-    return make
-
-
-def _expr(value: Any) -> std.Expr:
-    return value if isinstance(value, std.Expr) else std.Expr.literal(value)
-
-
-def _global_layout_ctor(*shape: Any, **kwargs: Any) -> layout.GlobalLayout:
-    if "shape" in kwargs:
-        if shape:
-            raise TypeError("shape specified both positionally and by keyword")
-        shape = tuple(kwargs.pop("shape"))
-    elif len(shape) == 1 and isinstance(shape[0], (list, tuple)):
-        shape = tuple(shape[0])
-    size = kwargs.pop("size", None)
-    axes = kwargs.pop("axes", None)
-    offset = kwargs.pop("offset", 0)
-    if kwargs:
-        unexpected = next(iter(kwargs))
-        raise TypeError(f"unexpected keyword argument: {unexpected}")
-    if axes is None:
-        axes = tuple(f"i{axis}" for axis in range(len(shape)))
-    else:
-        for axis in axes:
-            if not isinstance(axis, str):
-                raise TypeError(f"axes entries must be strings, got {axis!r}")
-    if size is None:
-        size = layout.prod(shape)
-    return layout.GlobalLayout(
-        shape=tuple(
-            layout._integer_expr(extent, "shape extent", positive=True) for extent in shape
-        ),
-        size=layout._integer_expr(size, "size"),
-        axes=tuple(axes),
-        offset=layout._integer_expr(offset, "offset"),
+def _make_tensor(
+    cls: type[tensor.Tensor],
+    dtype: std.TyLike,
+    shape_args: tuple[Any, ...],
+    layout_value: layout.Layout | None,
+) -> tensor.Tensor:
+    return cls(
+        tensor._prim_ty(dtype),
+        shape=tensor._shape(shape_args),
+        optional_layout=layout_value,
     )
 
 
-def _apply_positional_kwargs(
-    names: tuple[str, ...],
-    args: tuple[Any, ...],
-    kwargs: dict[str, Any],
-) -> dict[str, Any]:
-    if len(args) > len(names):
-        raise TypeError(f"expected at most {len(names)} positional arguments, got {len(args)}")
-    out = dict(kwargs)
-    for name, value in zip(names, args):
-        if name in out:
-            raise TypeError(f"{name} specified both positionally and by keyword")
-        out[name] = value
-    return out
-
-
-def _register_layout_ctor(*args: Any, **kwargs: Any) -> layout.RegisterLayout:
-    kwargs = _apply_positional_kwargs(
-        ("shape", "mode_shape", "spatial_modes", "local_modes"), args, kwargs
-    )
-    shape = kwargs.pop("shape", ())
-    mode_shape = kwargs.pop("mode_shape", None)
-    spatial_modes = kwargs.pop("spatial_modes", None)
-    local_modes = kwargs.pop("local_modes", None)
-    if kwargs:
-        unexpected = next(iter(kwargs))
-        raise TypeError(f"unexpected keyword argument: {unexpected}")
-    return layout.register_layout(
-        shape,
-        mode_shape=mode_shape,
-        spatial_modes=spatial_modes,
-        local_modes=local_modes,
-    )
-
-
-def _shared_layout_ctor(*args: Any, **kwargs: Any) -> layout.SharedLayout:
-    kwargs = _apply_positional_kwargs(
-        ("shape", "mode_shape", "mode_strides", "optional_swizzle"), args, kwargs
-    )
-    shape = kwargs.pop("shape", ())
-    mode_shape = kwargs.pop("mode_shape", None)
-    mode_strides = kwargs.pop("mode_strides", None)
-    optional_swizzle = kwargs.pop("optional_swizzle", None)
-    if kwargs:
-        unexpected = next(iter(kwargs))
-        raise TypeError(f"unexpected keyword argument: {unexpected}")
-    return layout.shared_layout(
-        shape,
-        mode_shape=mode_shape,
-        mode_strides=mode_strides,
-        optional_swizzle=optional_swizzle,
-    )
-
-
-def _tmemory_layout_ctor(*args: Any, **kwargs: Any) -> layout.TMemoryLayout:
-    kwargs = _apply_positional_kwargs(("shape", "column_strides", "lane_offset"), args, kwargs)
-    shape = kwargs.pop("shape", ())
-    column_strides = kwargs.pop("column_strides", None)
-    lane_offset = kwargs.pop("lane_offset", 0)
-    if kwargs:
-        unexpected = next(iter(kwargs))
-        raise TypeError(f"unexpected keyword argument: {unexpected}")
-    if column_strides is None and lane_offset == 0:
-        return layout.tmemory_layout(shape)
-    return layout.TMemoryLayout(
-        shape=layout._shape(shape),
-        column_strides=layout._tuple(column_strides or ()),
-        lane_offset=layout._strict_int(lane_offset, "lane_offset"),
-    )
-
-
-def _instruction_ctor(cls: type[inst.Instruction]) -> Callable[..., inst.Instruction]:
-    def make(*args: Any, **kwargs: Any) -> inst.Instruction:
-        output = kwargs.pop("output", None)
-        has_inputs = "inputs" in kwargs
-        inputs = kwargs.pop("inputs", None)
-        if has_inputs and inputs is None:
-            raise TypeError("inputs must not be None")
-        if not has_inputs:
-            inputs_list = list(args)
-            args = ()
-        else:
-            try:
-                inputs_list = list(inputs)
-            except TypeError:
-                raise TypeError(
-                    f"inputs must be an iterable of operands, got {type(inputs).__name__}"
-                ) from None
-        if args:
-            raise TypeError(f"{cls.__name__} unexpected positional arguments: {args!r}")
-        return cls(inputs=inputs_list, output=output, **kwargs)
-
-    make.__name__ = cls.__ffi_dialect_mnemonic__[1]
-    make.__qualname__ = make.__name__
-    return make
-
-
-def _make_var(names: Sequence[str], ty: Any) -> std.Var:
-    return bind_one_var(names, ty)
+def _make_instruction(
+    cls: type[inst.Instruction],
+    *operands: Any,
+    output: std.Var | None = None,
+    **attrs: Any,
+) -> inst.Instruction:
+    if "inputs" in attrs:
+        raise TypeError(
+            f"{cls.__name__} operands must be passed positionally; "
+            "`inputs` keyword is not supported"
+        )
+    ty = attrs.pop("ty", MISSING)
+    instruction = cls(inputs=list(operands), output=output, **attrs)
+    if not MISSING.is_(ty):
+        inst.validate_instruction_ty_hint(instruction, ty)
+    return instruction
 
 
 def _bind_expr(names: Sequence[str], ty: Any, expr: Any) -> Any:
     if isinstance(expr, inst.Instruction):
         if expr.output is not None:
             raise TypeError("instruction RHS must not already define an output")
+        explicit_ty = inst.pop_instruction_ty_hint(expr)
         if ty is None:
-            raise TypeError("instruction assignment requires a type annotation")
-        return dc.replace(expr, output=_make_var(names, ty))
+            ty = explicit_ty or inst.infer_instruction_output_ty(expr)
+        if ty is None:
+            raise TypeError("instruction assignment requires an inferable output type")
+        bound = dc.replace(expr, output=bind_one_var(names, ty))
+        bound.__post_init__()
+        if explicit_ty is not None:
+            inst.validate_instruction_output_ty(bound, explicit_ty)
+        return bound
     if isinstance(expr, _TensorItemBuilder):
         bind_ty = ty if ty is not None else expr.tensor_value
-        var = _make_var(names, bind_ty)
+        var = bind_one_var(names, bind_ty)
         if expr.cls is stmt.TensorItemPtr:
             return stmt.TensorItemPtr(expr.tensor_value, var, expr.space)
         return stmt.TensorItemValue(expr.tensor_value, var)
@@ -291,16 +173,129 @@ class TilusLang:
     __ffi_generics__: ClassVar[dict[Any, Callable[..., Any]]] = {}
 
     Swizzle = layout.Swizzle
-    RegisterLayout = staticmethod(_register_layout_ctor)
-    SharedLayout = staticmethod(_shared_layout_ctor)
-    GlobalLayout = _global_layout_ctor
-    TMemoryLayout = staticmethod(_tmemory_layout_ctor)
 
-    RegTensor = staticmethod(_tensor_ctor_for(tensor.RegisterTensor))
+    @staticmethod
+    def RegisterLayout(
+        *shape_args: Any,
+        mode_shape: Any = None,
+        spatial_modes: Any = None,
+        local_modes: Any = None,
+    ) -> layout.RegisterLayout:
+        return layout.register_layout(
+            shape_args,
+            mode_shape=mode_shape,
+            spatial_modes=spatial_modes,
+            local_modes=local_modes,
+        )
+
+    @staticmethod
+    def SharedLayout(
+        *shape_args: Any,
+        mode_shape: Any = None,
+        mode_strides: Any = None,
+        optional_swizzle: layout.Swizzle | None = None,
+    ) -> layout.SharedLayout:
+        return layout.shared_layout(
+            shape_args,
+            mode_shape=mode_shape,
+            mode_strides=mode_strides,
+            optional_swizzle=optional_swizzle,
+        )
+
+    @staticmethod
+    def GlobalLayout(
+        *shape_args: Any,
+        size: Any = None,
+        axes: Any = None,
+        offset: Any = 0,
+    ) -> layout.GlobalLayout:
+        shape_tuple = tuple(shape_args)
+        if axes is None:
+            axes = tuple(f"i{axis}" for axis in range(len(shape_tuple)))
+        else:
+            for axis in axes:
+                if not isinstance(axis, str):
+                    raise TypeError(f"axes entries must be strings, got {axis!r}")
+        if size is None:
+            size = layout.prod(shape_tuple)
+        return layout.GlobalLayout(
+            shape=tuple(
+                layout._integer_expr(extent, "shape extent", positive=True)
+                for extent in shape_tuple
+            ),
+            size=layout._integer_expr(size, "size"),
+            axes=tuple(axes),
+            offset=layout._integer_expr(offset, "offset"),
+        )
+
+    @staticmethod
+    def TMemoryLayout(
+        *shape_args: Any,
+        column_strides: Any = None,
+        lane_offset: Any = 0,
+    ) -> layout.TMemoryLayout:
+        shape = tuple(shape_args)
+        if column_strides is None and lane_offset == 0:
+            return layout.tmemory_layout(shape)
+        return layout.TMemoryLayout(
+            shape=layout._shape(shape),
+            column_strides=layout._tuple(column_strides or ()),
+            lane_offset=layout._strict_int(lane_offset, "lane_offset"),
+        )
+
+    @staticmethod
+    def RegTensor(
+        dtype: std.TyLike,
+        *shape_args: Any,
+        layout: layout.Layout | None = None,
+    ) -> tensor.RegisterTensor:
+        return _make_tensor(
+            tensor.RegisterTensor,
+            dtype,
+            shape_args,
+            layout,
+        )
+
     RegisterTensor = RegTensor
-    SharedTensor = staticmethod(_tensor_ctor_for(tensor.SharedTensor))
-    GlobalTensor = staticmethod(_tensor_ctor_for(tensor.GlobalTensor))
-    TMemoryTensor = staticmethod(_tensor_ctor_for(tensor.TMemoryTensor))
+
+    @staticmethod
+    def SharedTensor(
+        dtype: std.TyLike,
+        *shape_args: Any,
+        layout: layout.Layout | None = None,
+    ) -> tensor.SharedTensor:
+        return _make_tensor(
+            tensor.SharedTensor,
+            dtype,
+            shape_args,
+            layout,
+        )
+
+    @staticmethod
+    def GlobalTensor(
+        dtype: std.TyLike,
+        *shape_args: Any,
+        layout: layout.Layout | None = None,
+    ) -> tensor.GlobalTensor:
+        return _make_tensor(
+            tensor.GlobalTensor,
+            dtype,
+            shape_args,
+            layout,
+        )
+
+    @staticmethod
+    def TMemoryTensor(
+        dtype: std.TyLike,
+        *shape_args: Any,
+        layout: layout.Layout | None = None,
+    ) -> tensor.TMemoryTensor:
+        return _make_tensor(
+            tensor.TMemoryTensor,
+            dtype,
+            shape_args,
+            layout,
+        )
 
     ThreadGroup = ThreadGroupFactory
     thread_group = ThreadGroupFactory
@@ -312,47 +307,106 @@ class TilusLang:
     Eval = stmt.Evaluate
     Inst = stmt.InstStmt
 
-    TensorItemPtr = staticmethod(
-        lambda tensor_value, space=None: _TensorItemBuilder(stmt.TensorItemPtr, tensor_value, space)
+    @staticmethod
+    def TensorItemPtr(
+        tensor_value: tensor.Tensor,
+        space: str | None = None,
+    ) -> _TensorItemBuilder:
+        return _TensorItemBuilder(stmt.TensorItemPtr, tensor_value, space)
+
+    @staticmethod
+    def TensorItemValue(tensor_value: tensor.Tensor) -> _TensorItemBuilder:
+        return _TensorItemBuilder(stmt.TensorItemValue, tensor_value)
+
+    AtomicShared = partial(_make_instruction, instructions.AtomicSharedInst)
+    AtomicGlobal = partial(_make_instruction, instructions.AtomicGlobalInst)
+    AtomicScatterShared = partial(_make_instruction, instructions.AtomicScatterSharedInst)
+    AtomicScatterGlobal = partial(_make_instruction, instructions.AtomicScatterGlobalInst)
+    ClcTryCancel = partial(_make_instruction, instructions.ClusterLaunchControlTryCancelInst)
+    ClcQueryResponse = partial(
+        _make_instruction, instructions.ClusterLaunchControlQueryResponseInst
     )
-    TensorItemValue = staticmethod(
-        lambda tensor_value: _TensorItemBuilder(stmt.TensorItemValue, tensor_value)
+    ClusterSyncThreads = partial(_make_instruction, instructions.ClusterSyncThreadsInst)
+    CopyAsync = partial(_make_instruction, instructions.CopyAsyncInst)
+    CopyAsyncGeneric = partial(_make_instruction, instructions.CopyAsyncGenericInst)
+    CopyAsyncCommitGroup = partial(_make_instruction, instructions.CopyAsyncCommitGroupInst)
+    CopyAsyncWaitGroup = partial(_make_instruction, instructions.CopyAsyncWaitGroupInst)
+    CopyAsyncWaitAll = partial(_make_instruction, instructions.CopyAsyncWaitAllInst)
+    CopyAsyncBulkGlobalToShared = partial(
+        _make_instruction, instructions.CopyAsyncBulkGlobalToSharedInst
     )
-
-    LoadGlobal = staticmethod(_instruction_ctor(generic.LoadGlobalInst))
-    StoreGlobal = staticmethod(_instruction_ctor(generic.StoreGlobalInst))
-    LoadShared = staticmethod(_instruction_ctor(generic.LoadSharedInst))
-    StoreShared = staticmethod(_instruction_ctor(generic.StoreSharedInst))
-    Cast = staticmethod(_instruction_ctor(generic.CastInst))
-    Add = staticmethod(_instruction_ctor(generic.AddInst))
-    Sub = staticmethod(_instruction_ctor(generic.SubInst))
-    Mul = staticmethod(_instruction_ctor(generic.MulInst))
-    Div = staticmethod(_instruction_ctor(generic.DivInst))
-    Reduce = staticmethod(_instruction_ctor(generic.ReduceInst))
-    SyncThreads = staticmethod(_instruction_ctor(generic.SyncThreadsInst))
-    Nop = staticmethod(_instruction_ctor(generic.NopInst))
-    AnnotateLayout = staticmethod(_instruction_ctor(hints.AnnotateLayoutInst))
-    Assume = staticmethod(_instruction_ctor(hints.AssumeInst))
-
-
-def _instruction_namespace_value(cls: type[Any]) -> Any:
-    if issubclass(cls, inst.Instruction):
-        return staticmethod(_instruction_ctor(cls))
-    return cls
-
-
-def _register_instruction_constructors() -> None:
-    register_mnemonic_namespace(
-        TilusLang,
-        (instructions,),
-        dialect="tilus",
-        skip_mnemonics={"Instruction"},
-        expose_export_name=False,
-        value_for=_instruction_namespace_value,
+    CopyAsyncBulkGlobalToClusterShared = partial(
+        _make_instruction, instructions.CopyAsyncBulkGlobalToClusterSharedInst
     )
-
-
-_register_instruction_constructors()
+    CopyAsyncBulkSharedToGlobal = partial(
+        _make_instruction, instructions.CopyAsyncBulkSharedToGlobalInst
+    )
+    CopyAsyncBulkSharedToClusterShared = partial(
+        _make_instruction, instructions.CopyAsyncBulkSharedToClusterSharedInst
+    )
+    CopyAsyncBulkCommitGroup = partial(_make_instruction, instructions.CopyAsyncBulkCommitGroupInst)
+    CopyAsyncBulkWaitGroup = partial(_make_instruction, instructions.CopyAsyncBulkWaitGroupInst)
+    CopyAsyncTensorGlobalToShared = partial(
+        _make_instruction, instructions.CopyAsyncTensorGlobalToSharedInst
+    )
+    CopyAsyncTensorSharedToGlobal = partial(
+        _make_instruction, instructions.CopyAsyncTensorSharedToGlobalInst
+    )
+    CopyAsyncTensorCommitGroup = partial(
+        _make_instruction, instructions.CopyAsyncTensorCommitGroupInst
+    )
+    CopyAsyncTensorWaitGroup = partial(_make_instruction, instructions.CopyAsyncTensorWaitGroupInst)
+    FenceProxyAsync = partial(_make_instruction, instructions.FenceProxyAsync)
+    FenceProxyAsyncRelease = partial(_make_instruction, instructions.FenceProxyAsyncRelease)
+    MapSharedAddr = partial(_make_instruction, instructions.MapSharedAddrInst)
+    AllocBarrier = partial(_make_instruction, instructions.AllocBarrierInst)
+    ArriveBarrier = partial(_make_instruction, instructions.ArriveBarrierInst)
+    ArriveExpectTxBarrier = partial(_make_instruction, instructions.ArriveExpectTxBarrierInst)
+    WaitBarrier = partial(_make_instruction, instructions.WaitBarrierInst)
+    ArriveExpectTxMulticastBarrier = partial(
+        _make_instruction, instructions.ArriveExpectTxMulticastBarrierInst
+    )
+    ArriveExpectTxRemoteBarrier = partial(
+        _make_instruction, instructions.ArriveExpectTxRemoteBarrierInst
+    )
+    Dot = partial(_make_instruction, instructions.DotInst)
+    AtomicMmaConfig = instructions.AtomicMmaConfig
+    LockSemaphore = partial(_make_instruction, instructions.LockSemaphoreInst)
+    ReleaseSemaphore = partial(_make_instruction, instructions.ReleaseSemaphoreInst)
+    SimtDot = partial(_make_instruction, instructions.SimtDotInst)
+    Tcgen05Alloc = partial(_make_instruction, instructions.Tcgen05AllocInst)
+    Tcgen05Dealloc = partial(_make_instruction, instructions.Tcgen05DeallocInst)
+    Tcgen05RelinquishAllocPermit = partial(
+        _make_instruction, instructions.Tcgen05RelinquishAllocPermitInst
+    )
+    Tcgen05Slice = partial(_make_instruction, instructions.Tcgen05SliceInst)
+    Tcgen05View = partial(_make_instruction, instructions.Tcgen05ViewInst)
+    Tcgen05Load = partial(_make_instruction, instructions.Tcgen05LoadInst)
+    Tcgen05Store = partial(_make_instruction, instructions.Tcgen05StoreInst)
+    Tcgen05Wait = partial(_make_instruction, instructions.Tcgen05WaitInst)
+    Tcgen05Copy = partial(_make_instruction, instructions.Tcgen05CopyInst)
+    Tcgen05Commit = partial(_make_instruction, instructions.Tcgen05CommitInst)
+    Tcgen05MmaSS = partial(_make_instruction, instructions.Tcgen05MmaSSInst)
+    Tcgen05MmaTS = partial(_make_instruction, instructions.Tcgen05MmaTSInst)
+    WgmmaFence = partial(_make_instruction, instructions.WgmmaFenceInst)
+    WgmmaCommitGroup = partial(_make_instruction, instructions.WgmmaCommitGroupInst)
+    WgmmaWaitGroup = partial(_make_instruction, instructions.WgmmaWaitGroupInst)
+    WgmmaMmaSS = partial(_make_instruction, instructions.WgmmaMmaSSInst)
+    WgmmaMmaRS = partial(_make_instruction, instructions.WgmmaMmaRSInst)
+    Add = partial(_make_instruction, instructions.AddInst)
+    Cast = partial(_make_instruction, instructions.CastInst)
+    Div = partial(_make_instruction, instructions.DivInst)
+    LoadGlobal = InstructionFactory(instructions.LoadGlobalInst)
+    LoadShared = InstructionFactory(instructions.LoadSharedInst)
+    Mul = partial(_make_instruction, instructions.MulInst)
+    Nop = partial(_make_instruction, instructions.NopInst)
+    Reduce = partial(_make_instruction, instructions.ReduceInst)
+    StoreGlobal = partial(_make_instruction, instructions.StoreGlobalInst)
+    StoreShared = partial(_make_instruction, instructions.StoreSharedInst)
+    Sub = partial(_make_instruction, instructions.SubInst)
+    SyncThreads = partial(_make_instruction, instructions.SyncThreadsInst)
+    AnnotateLayout = partial(_make_instruction, instructions.AnnotateLayoutInst)
+    Assume = partial(_make_instruction, instructions.AssumeInst)
 
 
 TilusLang.__ffi_globals__ = {

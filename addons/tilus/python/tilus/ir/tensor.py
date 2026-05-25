@@ -69,18 +69,12 @@ def _check_layout_shape(tensor_shape: tuple[int, ...], layout: Layout | None) ->
         raise ValueError(f"tensor shape {tensor_shape} must match layout shape {layout_shape}")
 
 
-def _select_layout(optional_layout: Layout | None, layout: Layout | None) -> Layout | None:
-    if optional_layout is not None and layout is not None:
-        raise TypeError("specify either optional_layout or layout, not both")
-    return optional_layout if optional_layout is not None else layout
-
-
 def _collect_tensor_fields(obj: Tensor) -> std.FieldCollectionResult:
-    attrs: dict[str, object] = {"shape": obj.shape}
+    attrs: dict[str, object] = {}
     if obj.optional_layout is not None:
         attrs["layout"] = obj.optional_layout
     return std.FieldCollectionResult(
-        args=[obj.dtype],
+        args=[obj.dtype, *obj.shape],
         attrs=attrs,
         var_def=[],
         body=[],
@@ -191,14 +185,12 @@ def register_tensor(
     dtype: std.TyLike,
     shape: Sequence[int],
     layout: RegisterLayout | None = None,
-    *,
-    optional_layout: RegisterLayout | None = None,
 ) -> RegisterTensor:
     """Create a register tensor type."""
     return RegisterTensor(
         _prim_ty(dtype),
         shape=_shape(shape),
-        optional_layout=_select_layout(optional_layout, layout),
+        optional_layout=layout,
     )
 
 
@@ -206,14 +198,12 @@ def shared_tensor(
     dtype: std.TyLike,
     shape: Sequence[int],
     layout: SharedLayout | None = None,
-    *,
-    optional_layout: SharedLayout | None = None,
 ) -> SharedTensor:
     """Create a shared tensor type."""
     return SharedTensor(
         _prim_ty(dtype),
         shape=_shape(shape),
-        optional_layout=_select_layout(optional_layout, layout),
+        optional_layout=layout,
     )
 
 
@@ -221,14 +211,12 @@ def global_tensor(
     dtype: std.TyLike,
     shape: Sequence[int],
     layout: GlobalLayout | None = None,
-    *,
-    optional_layout: GlobalLayout | None = None,
 ) -> GlobalTensor:
     """Create a global tensor type."""
     return GlobalTensor(
         _prim_ty(dtype),
         shape=_shape(shape),
-        optional_layout=_select_layout(optional_layout, layout),
+        optional_layout=layout,
     )
 
 
@@ -236,14 +224,12 @@ def tmemory_tensor(
     dtype: std.TyLike,
     shape: Sequence[int],
     layout: TMemoryLayout | None = None,
-    *,
-    optional_layout: TMemoryLayout | None = None,
 ) -> TMemoryTensor:
     """Create a tensor-memory tensor type."""
     return TMemoryTensor(
         _prim_ty(dtype),
         shape=_shape(shape),
-        optional_layout=_select_layout(optional_layout, layout),
+        optional_layout=layout,
     )
 
 

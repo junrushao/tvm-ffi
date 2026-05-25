@@ -18,6 +18,7 @@ from tvm_ffi import dataclasses as dc
 from tvm_ffi import std
 
 from ._utils import normalize_domain, validate_cta_group
+from .handles import TmemRegion
 
 PIPELINE_STYLES = ("sequential", "sw_pipelined", "warp_specialized", "none")
 EPILOGUE_STYLES = ("inline", "overlapped")
@@ -124,7 +125,7 @@ class TmemConfig(std.Node, mnemonic="weave.TmemConfig"):
     """Tensor-memory allocation configuration."""
 
     buffering: str = dc.field(default="single", lang_kind="attr")
-    regions: tuple[Any, ...] = dc.field(default_factory=tuple, lang_kind="attr")
+    regions: tuple[TmemRegion, ...] = dc.field(default_factory=tuple, lang_kind="attr")
     total_cols: int = dc.field(default=512, lang_kind="attr")
     allocator_warp: int | None = dc.field(default=None, lang_kind="attr")
 

@@ -515,6 +515,9 @@ struct ExprBuilder {
       AddOperand(printer, fields->args[i], args_path->ArrayItem(i));
     }
     AddAttrs(printer, Optional<Attrs>(fields->attrs), path->Attr("attrs"));
+    if (fields->ty.has_value()) {
+      AddTy(printer, fields->ty.value(), path->Attr("ty"));
+    }
   }
 
   bool ExprDerivable() const {
@@ -574,6 +577,10 @@ struct ScopeBuilder {
       operands.push_back(printer->ToExpr(fields->args[i], args_path->ArrayItem(i)));
     }
     AddAttrs(printer, Optional<Attrs>(fields->attrs), path->Attr("attrs"));
+    if (fields->ty.has_value()) {
+      kwargs_keys.push_back("ty");
+      kwargs_values.push_back(printer->ToExpr(fields->ty.value(), path->Attr("ty")));
+    }
   }
 
   void AddTargets(const text::IRPrinter& printer, const List<Var>& vars) {
@@ -2444,7 +2451,8 @@ TVM_FFI_STATIC_INIT_BLOCK() {
       .def_rw("attrs", &FieldCollectionResultObj::attrs)
       .def_rw("var_def", &FieldCollectionResultObj::var_def,
               refl::AttachFieldFlag::SEqHashDefRecursive())
-      .def_rw("body", &FieldCollectionResultObj::body);
+      .def_rw("body", &FieldCollectionResultObj::body)
+      .def_rw("ty", &FieldCollectionResultObj::ty);
 
 #undef TVM_FFI_STD_OBJECT_DEF
 #undef TVM_FFI_STD_OBJECT_DEF_INIT

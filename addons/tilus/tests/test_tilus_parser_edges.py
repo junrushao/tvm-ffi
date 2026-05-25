@@ -45,7 +45,7 @@ def test_prints_public_constructor_names() -> None:
     rhs = std.Var(ty, "rhs")
     inst = generic.AddInst(inputs=[lhs, rhs])
 
-    assert ty.text() == "tilus.RegTensor(std.f32, shape=[2, 2])"
+    assert ty.text() == "tilus.RegTensor(std.f32, 2, 2)"
     assert inst.text() == "tilus.Add(lhs, rhs)"
     assert tvm_ffi.structural_equal(parse(ty.text()), ty)
     assert tvm_ffi.structural_equal(parse(inst.text(), extra_vars={"lhs": lhs, "rhs": rhs}), inst)
@@ -54,16 +54,16 @@ def test_prints_public_constructor_names() -> None:
 @pytest.mark.parametrize(
     "ctor", ["RegisterTensor", "SharedTensor", "GlobalTensor", "TMemoryTensor"]
 )
-def test_parse_tensor_layout_alias_conflict_is_rejected_for_public_aliases(ctor: str) -> None:
-    source = f"tilus.{ctor}(std.f32, shape=[2], layout=None, optional_layout=None)"
+def test_parse_tensor_optional_layout_alias_is_rejected_for_public_aliases(ctor: str) -> None:
+    source = f"tilus.{ctor}(std.f32, 2, optional_layout=None)"
 
-    with pytest.raises(TypeError, match="specify either optional_layout or layout, not both"):
+    with pytest.raises(TypeError, match="unexpected keyword argument 'optional_layout'"):
         parse(source)
 
 
 def test_parse_tensor_item_ptr_scope_binding() -> None:
     source = """
-with std.scope(tilus.TensorItemPtr(tilus.SharedTensor(std.f32, shape=[4]), space="shared")) as ptr:
+with std.scope(tilus.TensorItemPtr(tilus.SharedTensor(std.f32, 4), space="shared")) as ptr:
     return ptr
 """
     ty = tensor.shared_tensor("float32", (4,))
@@ -95,13 +95,13 @@ def test_public_instruction_constructors_reject_input_mode_errors() -> None:
 
     with pytest.raises(InstructionError, match="AddInst expects 2 input"):
         tilus.Add(lhs)
-    with pytest.raises(TypeError, match="unexpected positional arguments"):
+    with pytest.raises(TypeError, match=r"inputs.*not supported"):
         tilus.Add(lhs, inputs=[lhs, rhs])
-    with pytest.raises(TypeError, match="inputs"):
+    with pytest.raises(TypeError, match=r"inputs.*not supported"):
         tilus.Add(lhs, rhs, inputs=None)
-    with pytest.raises(TypeError, match="inputs must be an iterable"):
+    with pytest.raises(TypeError, match=r"inputs.*not supported"):
         tilus.Add(inputs=1)
-    with pytest.raises(TypeError, match="inputs"):
+    with pytest.raises(TypeError, match=r"inputs.*not supported"):
         tilus.SyncThreads(inputs=None)
     with pytest.raises(InstructionError, match="SyncThreadsInst expects 0 input"):
         tilus.SyncThreads(lhs)
@@ -111,10 +111,10 @@ def test_public_instruction_constructors_reject_input_mode_errors() -> None:
     "source,exc,message",
     [
         ("tilus.Add(lhs)", InstructionError, "AddInst expects 2 input"),
-        ("tilus.Add(lhs, inputs=[lhs, rhs])", TypeError, "unexpected positional arguments"),
-        ("tilus.Add(lhs, rhs, inputs=None)", TypeError, "inputs"),
-        ("tilus.Add(inputs=1)", TypeError, "inputs must be an iterable"),
-        ("tilus.SyncThreads(inputs=None)", TypeError, "inputs"),
+        ("tilus.Add(lhs, inputs=[lhs, rhs])", TypeError, "inputs.*not supported"),
+        ("tilus.Add(lhs, rhs, inputs=None)", TypeError, "inputs.*not supported"),
+        ("tilus.Add(inputs=1)", TypeError, "inputs.*not supported"),
+        ("tilus.SyncThreads(inputs=None)", TypeError, "inputs.*not supported"),
         ("tilus.SyncThreads(lhs)", InstructionError, "SyncThreadsInst expects 0 input"),
     ],
 )
@@ -161,13 +161,16 @@ def test_parse_cta_group_rejects_bool_domain_value() -> None:
         parse("tilus.Tcgen05Alloc(cta_group=True)")
 
 
-def test_parse_instruction_assignment_requires_annotation() -> None:
+def test_parse_instruction_assignment_infers_output_type() -> None:
     ty = tensor.register_tensor("float32", (2,))
     lhs = std.Var(ty, "lhs")
     rhs = std.Var(ty, "rhs")
 
-    with pytest.raises(TypeError, match="instruction assignment requires a type annotation"):
-        parse("out = tilus.Add(lhs, rhs)", extra_vars={"lhs": lhs, "rhs": rhs})
+    parsed = parse("out = tilus.Add(lhs, rhs)", extra_vars={"lhs": lhs, "rhs": rhs})
+
+    assert isinstance(parsed, generic.AddInst)
+    assert parsed.output is not None
+    assert tvm_ffi.structural_equal(parsed.output.ty, ty)
 
 
 def test_parse_instruction_assignment_rejects_prebound_output() -> None:
@@ -178,7 +181,7 @@ def test_parse_instruction_assignment_rejects_prebound_output() -> None:
 
     with pytest.raises(TypeError, match="instruction RHS must not already define an output"):
         parse(
-            "bound: tilus.RegTensor(std.f32, shape=[2]) = tilus.Add(lhs, rhs, output=out)",
+            "bound: tilus.RegTensor(std.f32, 2) = tilus.Add(lhs, rhs, output=out)",
             extra_vars={"lhs": lhs, "rhs": rhs, "out": out},
         )
 
@@ -191,11 +194,9 @@ def test_parse_instruction_assignment_rejects_prebound_output() -> None:
     "shape_args",
     [
         "2, 3",
-        "[2, 3]",
-        "shape=(2, 3)",
     ],
 )
-def test_parse_tensor_shape_forms(
+def test_parse_tensor_shape_args(
     ctor_name: str,
     make_expected: Callable[[std.TyLike, tuple[int, ...]], tensor.Tensor],
     shape_args: str,
@@ -214,32 +215,35 @@ def test_public_tensor_constructor_shape_forms(
     expected = make_expected("float32", (2, 3))
 
     assert tvm_ffi.structural_equal(ctor("float32", 2, 3), expected)
-    assert tvm_ffi.structural_equal(ctor("float32", [2, 3]), expected)
-    assert tvm_ffi.structural_equal(ctor("float32", shape=(2, 3)), expected)
 
 
 @pytest.mark.parametrize(
     "source,exc,message",
     [
         (
-            "tilus.RegTensor(std.f32, 2, shape=[2])",
+            "tilus.RegTensor(std.f32, shape=[2])",
             TypeError,
-            "shape specified both positionally and by keyword",
+            "unexpected keyword argument 'shape'",
         ),
         (
-            "tilus.RegTensor(std.f32, shape=[0])",
+            "tilus.RegTensor(std.f32, [2, 3])",
+            TypeError,
+            "shape extents must be integers",
+        ),
+        (
+            "tilus.RegTensor(std.f32, (2, 3))",
+            TypeError,
+            "shape extents must be integers",
+        ),
+        (
+            "tilus.RegTensor(std.f32, 0)",
             ValueError,
             "shape extents must be positive",
         ),
         (
-            "tilus.RegTensor(std.f32, shape=[2], unknown=1)",
+            "tilus.RegTensor(std.f32, 2, unknown=1)",
             TypeError,
-            "unexpected keyword argument: unknown",
-        ),
-        (
-            "tilus.RegTensor(std.f32, shape=2)",
-            TypeError,
-            "shape must be a sequence",
+            "unexpected keyword argument 'unknown'",
         ),
     ],
 )
@@ -250,9 +254,9 @@ def test_parse_tensor_shape_errors(source: str, exc: type[Exception], message: s
 
 def test_parse_tensor_rejects_non_integral_shape_extents() -> None:
     for ctor_name, _ in _PUBLIC_TENSOR_CASES:
-        for shape in ("[1.5]", '["2"]', "[True]"):
+        for shape in ("1.5", '"2"', "True"):
             with pytest.raises((TypeError, ValueError), match="shape extents must be integers"):
-                parse(f"tilus.{ctor_name}(std.f32, shape={shape})")
+                parse(f"tilus.{ctor_name}(std.f32, {shape})")
 
 
 @pytest.mark.parametrize(
@@ -261,9 +265,8 @@ def test_parse_tensor_rejects_non_integral_shape_extents() -> None:
         "tilus.GlobalLayout(1.5)",
         'tilus.GlobalLayout("2")',
         "tilus.GlobalLayout(True)",
-        "tilus.GlobalLayout(shape=[1.5])",
-        'tilus.GlobalLayout(shape=["2"])',
-        "tilus.GlobalLayout(shape=[True])",
+        "tilus.GlobalLayout([2, 3])",
+        "tilus.GlobalLayout((2, 3))",
     ],
 )
 def test_parse_global_layout_rejects_non_integral_shape_extents(source: str) -> None:
@@ -274,30 +277,38 @@ def test_parse_global_layout_rejects_non_integral_shape_extents(source: str) -> 
 @pytest.mark.parametrize(
     "source",
     [
-        "tilus.RegisterLayout(shape=[True], mode_shape=[1], spatial_modes=[], local_modes=[0])",
-        (
-            "tilus.RegisterLayout("
-            "shape=[2], mode_shape=[True, 2], spatial_modes=[], local_modes=[0, 1]"
-            ")"
-        ),
-        (
-            "tilus.RegisterLayout("
-            "shape=[2], mode_shape=[1, 2], spatial_modes=[True], local_modes=[0]"
-            ")"
-        ),
-        (
-            "tilus.RegisterLayout("
-            "shape=[2], mode_shape=[1, 2], spatial_modes=[0], local_modes=[True]"
-            ")"
-        ),
-        "tilus.SharedLayout(shape=[True], mode_shape=[1], mode_strides=[0])",
-        "tilus.SharedLayout(shape=[2], mode_shape=[True, 2], mode_strides=[0, 1])",
-        "tilus.SharedLayout(shape=[2], mode_shape=[2], mode_strides=[True])",
-        "tilus.GlobalLayout(shape=[2], size=True, axes=['i0'], offset=0)",
-        "tilus.GlobalLayout(shape=[2], size=2, axes=['i0'], offset=True)",
-        "tilus.TMemoryLayout(shape=[32, True], column_strides=[0, 0], lane_offset=0)",
-        "tilus.TMemoryLayout(shape=[32, 2], column_strides=[0, True], lane_offset=0)",
-        "tilus.TMemoryLayout(shape=[32, 2], column_strides=[0, 1], lane_offset=True)",
+        "tilus.RegisterLayout(shape=[2])",
+        "tilus.SharedLayout(shape=[2])",
+        "tilus.GlobalLayout(shape=[2])",
+        "tilus.TMemoryLayout(shape=[32, 8])",
+    ],
+)
+def test_parse_layout_shape_keyword_is_rejected(source: str) -> None:
+    with pytest.raises(TypeError, match="unexpected keyword argument 'shape'"):
+        parse(source)
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "tilus.RegisterLayout(True, mode_shape=[1], spatial_modes=[], local_modes=[0])",
+        "tilus.RegisterLayout([2, 3])",
+        "tilus.RegisterLayout((2, 3))",
+        ("tilus.RegisterLayout(2, mode_shape=[True, 2], spatial_modes=[], local_modes=[0, 1])"),
+        ("tilus.RegisterLayout(2, mode_shape=[1, 2], spatial_modes=[True], local_modes=[0])"),
+        ("tilus.RegisterLayout(2, mode_shape=[1, 2], spatial_modes=[0], local_modes=[True])"),
+        "tilus.SharedLayout(True, mode_shape=[1], mode_strides=[0])",
+        "tilus.SharedLayout([2, 3])",
+        "tilus.SharedLayout((2, 3))",
+        "tilus.SharedLayout(2, mode_shape=[True, 2], mode_strides=[0, 1])",
+        "tilus.SharedLayout(2, mode_shape=[2], mode_strides=[True])",
+        "tilus.GlobalLayout(2, size=True, axes=['i0'], offset=0)",
+        "tilus.GlobalLayout(2, size=2, axes=['i0'], offset=True)",
+        "tilus.TMemoryLayout([32, 8])",
+        "tilus.TMemoryLayout((32, 8))",
+        "tilus.TMemoryLayout(32, True, column_strides=[0, 0], lane_offset=0)",
+        "tilus.TMemoryLayout(32, 2, column_strides=[0, True], lane_offset=0)",
+        "tilus.TMemoryLayout(32, 2, column_strides=[0, 1], lane_offset=True)",
     ],
 )
 def test_parse_layout_constructors_reject_bool_integer_fields(source: str) -> None:
@@ -308,10 +319,13 @@ def test_parse_layout_constructors_reject_bool_integer_fields(source: str) -> No
 def test_public_layout_constructors_match_parser_forms() -> None:
     cases = [
         (tilus.GlobalLayout(2, 3), "tilus.GlobalLayout(2, 3)"),
-        (tilus.RegisterLayout([2, 3]), "tilus.RegisterLayout(shape=[2, 3])"),
-        (tilus.RegisterLayout([2], [2], [], [0]), "tilus.RegisterLayout([2], [2], [], [0])"),
-        (tilus.SharedLayout([2, 3]), "tilus.SharedLayout(shape=[2, 3])"),
-        (tilus.TMemoryLayout([32, 8]), "tilus.TMemoryLayout(shape=[32, 8])"),
+        (tilus.RegisterLayout(2, 3), "tilus.RegisterLayout(2, 3)"),
+        (
+            tilus.RegisterLayout(2, mode_shape=[2], spatial_modes=[], local_modes=[0]),
+            "tilus.RegisterLayout(2, mode_shape=[2], spatial_modes=[], local_modes=[0])",
+        ),
+        (tilus.SharedLayout(2, 3), "tilus.SharedLayout(2, 3)"),
+        (tilus.TMemoryLayout(32, 8), "tilus.TMemoryLayout(32, 8)"),
     ]
 
     for direct, source in cases:
@@ -319,27 +333,55 @@ def test_public_layout_constructors_match_parser_forms() -> None:
 
 
 @pytest.mark.parametrize(
+    "make",
+    [
+        lambda: tilus.RegisterLayout([2, 3]),
+        lambda: tilus.RegisterLayout((2, 3)),
+        lambda: tilus.SharedLayout([2, 3]),
+        lambda: tilus.SharedLayout((2, 3)),
+        lambda: tilus.GlobalLayout([2, 3]),
+        lambda: tilus.GlobalLayout((2, 3)),
+        lambda: tilus.TMemoryLayout([32, 8]),
+        lambda: tilus.TMemoryLayout((32, 8)),
+    ],
+)
+def test_public_layout_constructors_reject_aggregate_shape_args(make) -> None:
+    with pytest.raises(TypeError, match="must be an integer"):
+        make()
+
+
+@pytest.mark.parametrize(
     "make,exc,message",
     [
         (
-            lambda: tilus.RegTensor("float32", 2, shape=[2]),
+            lambda: tilus.RegTensor("float32", shape=[2]),
             TypeError,
-            "shape specified both positionally and by keyword",
+            "unexpected keyword argument 'shape'",
         ),
         (
-            lambda: tilus.RegTensor("float32", shape=[0]),
+            lambda: tilus.RegTensor("float32", [2, 3]),
+            TypeError,
+            "shape extents must be integers",
+        ),
+        (
+            lambda: tilus.RegTensor("float32", (2, 3)),
+            TypeError,
+            "shape extents must be integers",
+        ),
+        (
+            lambda: tilus.RegTensor("float32", 0),
             ValueError,
             "shape extents must be positive",
         ),
         (
-            lambda: tilus.RegTensor(std.AnyTy(), shape=[2]),
+            lambda: tilus.RegTensor(std.AnyTy(), 2),
             TypeError,
             "expected primitive dtype",
         ),
         (
-            lambda: tilus.RegTensor("float32", shape=2),
+            lambda: tilus.RegTensor("float32", 2, unknown=1),
             TypeError,
-            "shape must be a sequence",
+            "unexpected keyword argument 'unknown'",
         ),
     ],
 )
@@ -353,7 +395,7 @@ def test_public_tensor_constructor_rejects_non_integral_shape_extents() -> None:
         ctor = getattr(tilus, ctor_name)
         for bad_extent in (1.5, "2", True):
             try:
-                ctor("float32", shape=[bad_extent])
+                ctor("float32", bad_extent)
             except (TypeError, ValueError):
                 continue
             raise AssertionError(f"{ctor_name} accepted non-integral extent {bad_extent!r}")
@@ -364,27 +406,27 @@ def test_public_tensor_constructor_rejects_non_integral_shape_extents() -> None:
     [
         (
             tensor.register_tensor("float32", (2, 2), layout=layout.register_row_major(2, 2)),
-            "tilus.RegTensor(std.f32, layout=tilus.RegisterLayout("
-            "local_modes=[0, 1], mode_shape=[2, 2], shape=[2, 2], spatial_modes=[]"
-            "), shape=[2, 2])",
+            "tilus.RegTensor(std.f32, 2, 2, layout=tilus.RegisterLayout("
+            "2, 2, local_modes=[0, 1], mode_shape=[2, 2], spatial_modes=[]"
+            "))",
         ),
         (
             tensor.shared_tensor("float32", (2, 2), layout=layout.shared_row_major(2, 2)),
-            "tilus.SharedTensor(std.f32, layout=tilus.SharedLayout("
-            "mode_shape=[2, 2], mode_strides=[2, 1], shape=[2, 2]"
-            "), shape=[2, 2])",
+            "tilus.SharedTensor(std.f32, 2, 2, layout=tilus.SharedLayout("
+            "2, 2, mode_shape=[2, 2], mode_strides=[2, 1]"
+            "))",
         ),
         (
             tensor.global_tensor("float32", (2, 2), layout=layout.global_row_major(2, 2)),
-            "tilus.GlobalTensor(std.f32, layout=tilus.GlobalLayout("
-            'axes=["i0", "i1"], offset=0, shape=[2, 2], size=4'
-            "), shape=[2, 2])",
+            "tilus.GlobalTensor(std.f32, 2, 2, layout=tilus.GlobalLayout("
+            '2, 2, axes=["i0", "i1"], offset=0, size=4'
+            "))",
         ),
         (
             tensor.tmemory_tensor("float32", (32, 8), layout=layout.tmemory_row_major((32, 8))),
-            "tilus.TMemoryTensor(std.f32, layout=tilus.TMemoryLayout("
-            "column_strides=[0, 1], lane_offset=0, shape=[32, 8]"
-            "), shape=[32, 8])",
+            "tilus.TMemoryTensor(std.f32, 32, 8, layout=tilus.TMemoryLayout("
+            "32, 8, column_strides=[0, 1], lane_offset=0"
+            "))",
         ),
     ],
 )

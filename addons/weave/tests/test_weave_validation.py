@@ -28,6 +28,10 @@ def _var(name: str = "v", ty: std.Ty | None = None) -> std.Var:
     return std.Var(ty or i32, name)
 
 
+def _string_imm(value: str) -> std.StringImm:
+    return std.StringImm.from_py(value)
+
+
 def test_expr_fields_reject_raw_strings() -> None:
     with pytest.raises(TypeError):
         SmemStore("src", 1)
@@ -98,6 +102,38 @@ def test_op_dtype_fields_normalize_factory_values() -> None:
         assert tvm_ffi.structural_equal(value, i32)
     assert tvm_ffi.structural_equal(cast.src_dtype, i32)
     assert tvm_ffi.structural_equal(cast.dst_dtype, i32)
+
+
+def test_handle_dtype_fields_normalize_factory_values() -> None:
+    class DTypeProxy:
+        def to_dialect(self) -> std.Ty:
+            return i32
+
+    values = [
+        TmemRegion("acc", 0, 16, dtype=DTypeProxy()).dtype,
+        BufferRef("A", DTypeProxy(), (16,)).dtype,
+        SmemView("tile", "pool", 0, (16,), DTypeProxy()).dtype,
+        PhaseVar("phase", dtype=DTypeProxy()).dtype,
+        MmaParams(1, 1, 0, dtype=DTypeProxy()).dtype,
+        SymmetricMemory("sym", DTypeProxy(), (16,), "pg").dtype,
+        TmemRegionStore(TmemRegion("acc", 0, 16), dtype=DTypeProxy()).dtype,
+    ]
+
+    for value in values:
+        assert tvm_ffi.structural_equal(value, i32)
+
+
+def test_string_like_narrowed_fields_accept_string_imm_values() -> None:
+    swizzle = _string_imm("128B")
+    pool = _string_imm("pool")
+    role = _string_imm("role")
+
+    TmaDescriptor(2, (16, 16), swizzle=swizzle)
+    BufferRef("A", i32, (16,), swizzle=swizzle)
+    SmemView("tile", pool, 0, (16,), i32, swizzle=swizzle)
+    TaskSpec("task", "producer", role, outputs=(_string_imm("out"),))
+    TmemRegionLoad(_string_imm("acc"))
+    SmemDesc(_string_imm("tile"))
 
 
 def test_structured_barrier_refs_reject_raw_strings() -> None:

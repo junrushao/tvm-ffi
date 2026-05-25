@@ -127,6 +127,48 @@ def _strides_from_ranks(shape: Sequence[int], ranks: Sequence[int]) -> tuple[int
     )
 
 
+def _collect_register_layout_fields(obj: RegisterLayout) -> std.FieldCollectionResult:
+    return std.FieldCollectionResult(
+        args=list(obj.shape),
+        attrs={
+            "local_modes": obj.local_modes,
+            "mode_shape": obj.mode_shape,
+            "spatial_modes": obj.spatial_modes,
+        },
+    )
+
+
+def _collect_shared_layout_fields(obj: SharedLayout) -> std.FieldCollectionResult:
+    attrs = {
+        "mode_shape": obj.mode_shape,
+        "mode_strides": obj.mode_strides,
+    }
+    if obj.optional_swizzle is not None:
+        attrs["optional_swizzle"] = obj.optional_swizzle
+    return std.FieldCollectionResult(args=list(obj.shape), attrs=attrs)
+
+
+def _collect_global_layout_fields(obj: GlobalLayout) -> std.FieldCollectionResult:
+    return std.FieldCollectionResult(
+        args=list(obj.shape),
+        attrs={
+            "axes": obj.axes,
+            "offset": obj.offset,
+            "size": obj.size,
+        },
+    )
+
+
+def _collect_tmemory_layout_fields(obj: TMemoryLayout) -> std.FieldCollectionResult:
+    return std.FieldCollectionResult(
+        args=list(obj.shape),
+        attrs={
+            "column_strides": obj.column_strides,
+            "lane_offset": obj.lane_offset,
+        },
+    )
+
+
 @dc.py_class("tilus.Layout", frozen=True, init=False, structural_eq="tree")
 class Layout(std.Node, mnemonic="tilus.Layout"):
     """Base class for Tilus layout descriptors."""
@@ -162,6 +204,8 @@ class Swizzle(std.Node, mnemonic="tilus.Swizzle"):
 @dc.py_class("tilus.RegisterLayout", frozen=True, structural_eq="tree")
 class RegisterLayout(Layout, mnemonic="tilus.RegisterLayout"):
     """Register tensor layout."""
+
+    __ffi_dialect_field_collector__ = staticmethod(_collect_register_layout_fields)
 
     shape: tuple[int, ...] = dc.field(default_factory=tuple, lang_kind="attr")
     mode_shape: tuple[int, ...] = dc.field(default_factory=tuple, lang_kind="attr")
@@ -226,6 +270,8 @@ class RegisterLayout(Layout, mnemonic="tilus.RegisterLayout"):
 class SharedLayout(Layout, mnemonic="tilus.SharedLayout"):
     """Shared-memory tensor layout."""
 
+    __ffi_dialect_field_collector__ = staticmethod(_collect_shared_layout_fields)
+
     shape: tuple[int, ...] = dc.field(default_factory=tuple, lang_kind="attr")
     mode_shape: tuple[int, ...] = dc.field(default_factory=tuple, lang_kind="attr")
     mode_strides: tuple[int, ...] = dc.field(default_factory=tuple, lang_kind="attr")
@@ -267,6 +313,8 @@ class SharedLayout(Layout, mnemonic="tilus.SharedLayout"):
 class GlobalLayout(Layout, mnemonic="tilus.GlobalLayout"):
     """Global-memory tensor layout."""
 
+    __ffi_dialect_field_collector__ = staticmethod(_collect_global_layout_fields)
+
     shape: tuple[std.Expr, ...] = dc.field(default_factory=tuple, lang_kind="attr")
     size: std.Expr = dc.field(default_factory=lambda: std.IntImm.from_py(1), lang_kind="attr")
     axes: tuple[str, ...] = dc.field(default_factory=tuple, lang_kind="attr")
@@ -286,6 +334,8 @@ class GlobalLayout(Layout, mnemonic="tilus.GlobalLayout"):
 @dc.py_class("tilus.TMemoryLayout", frozen=True, structural_eq="tree")
 class TMemoryLayout(Layout, mnemonic="tilus.TMemoryLayout"):
     """Tensor-memory layout."""
+
+    __ffi_dialect_field_collector__ = staticmethod(_collect_tmemory_layout_fields)
 
     shape: tuple[int, ...] = dc.field(default_factory=tuple, lang_kind="attr")
     column_strides: tuple[int, ...] = dc.field(default_factory=tuple, lang_kind="attr")

@@ -19,14 +19,20 @@ from __future__ import annotations
 
 import importlib
 
-import tilus  # noqa: F401  # Registers the Tilus dialect.
+import pytest
+import tilus  # Registers the Tilus dialect.
 import tvm_ffi
 from tvm_ffi import std
 from tvm_ffi._pyast_parser import parse
 
 
+def _input_vars(node: object) -> dict[str, std.Var]:
+    inputs = getattr(node, "inputs", ())
+    return {value.name: value for value in inputs if isinstance(value, std.Var)}
+
+
 def _round_trip(node: object) -> None:
-    assert tvm_ffi.structural_equal(parse(node.text()), node)
+    assert tvm_ffi.structural_equal(parse(node.text(), extra_vars=_input_vars(node)), node)
 
 
 def _import(name: str):
@@ -37,7 +43,7 @@ def test_parse_hand_written_global_layout() -> None:
     _import("tilus._tilus_lang")
     layout_mod = _import("tilus.ir.layout")
 
-    source = 'tilus.GlobalLayout(shape=[16, 32], size=512, axes=["i0", "i1"], offset=0)'
+    source = 'tilus.GlobalLayout(16, 32, size=512, axes=["i0", "i1"], offset=0)'
     expected = layout_mod.global_row_major(16, 32)
 
     parsed = parse(source)
@@ -52,9 +58,8 @@ def test_parse_hand_written_global_tensor() -> None:
 
     source = (
         "tilus.GlobalTensor("
-        "std.f32, "
-        "shape=[16, 32], "
-        'layout=tilus.GlobalLayout(shape=[16, 32], size=512, axes=["i0", "i1"], offset=0)'
+        "std.f32, 16, 32, "
+        'layout=tilus.GlobalLayout(16, 32, size=512, axes=["i0", "i1"], offset=0)'
         ")"
     )
     layout = layout_mod.global_row_major(16, 32)
@@ -74,19 +79,20 @@ def test_parse_hand_written_instruction() -> None:
     source = """
 dst: tilus.RegTensor(
     std.f32,
-    shape=[16, 32],
+    16, 32,
     layout=tilus.RegisterLayout(
-        shape=[16, 32],
+        16, 32,
         mode_shape=[16, 32],
         spatial_modes=[],
         local_modes=[0, 1],
     ),
     ) = tilus.LoadGlobal(
-        tilus.GlobalTensor(
+        src,
+        ty=tilus.GlobalTensor(
             std.f32,
-            shape=[16, 32],
+            16, 32,
             layout=tilus.GlobalLayout(
-                shape=[16, 32],
+                16, 32,
                 size=512,
                 axes=["i0", "i1"],
                 offset=0,
@@ -98,7 +104,8 @@ dst: tilus.RegTensor(
 """
     global_layout = layout_mod.global_row_major(16, 32)
     reg_layout = layout_mod.register_row_major(16, 32)
-    src = tensor_mod.global_tensor("float32", (16, 32), layout=global_layout)
+    src_ty = tensor_mod.global_tensor("float32", (16, 32), layout=global_layout)
+    src = std.Var(src_ty, "src")
     dst_ty = tensor_mod.register_tensor("float32", (16, 32), layout=reg_layout)
     expected = inst_mod.LoadGlobalInst(
         output=std.Var(dst_ty, "dst"),
@@ -107,22 +114,84 @@ dst: tilus.RegTensor(
         dims=[0, 1],
     )
 
-    parsed = parse(source)
+    parsed = parse(source, extra_vars={"src": src})
     assert tvm_ffi.structural_equal(parsed, expected)
     _round_trip(expected)
 
 
-def test_parse_tensor_layout_alias_conflict_is_rejected() -> None:
+def test_parse_load_shared_instruction_ty_hint() -> None:
+    _import("tilus._tilus_lang")
+    layout_mod = _import("tilus.ir.layout")
+    tensor_mod = _import("tilus.ir.tensor")
+    inst_mod = _import("tilus.ir.instructions.generic")
+
+    source = """
+dst: tilus.RegTensor(std.f32, 8, layout=tilus.RegisterLayout(
+    8,
+    mode_shape=[8],
+    spatial_modes=[],
+    local_modes=[0],
+)) = tilus.LoadShared(
+    shared,
+    ty=tilus.SharedTensor(
+        std.f32,
+        8,
+        layout=tilus.SharedLayout(
+            8,
+            mode_shape=[8],
+            mode_strides=[1],
+        ),
+    ),
+)
+"""
+    shared_ty = tensor_mod.shared_tensor(
+        "float32",
+        (8,),
+        layout=layout_mod.shared_layout((8,), mode_shape=(8,), mode_strides=(1,)),
+    )
+    dst_ty = tensor_mod.register_tensor(
+        "float32",
+        (8,),
+        layout=layout_mod.register_layout((8,), mode_shape=(8,), local_modes=(0,)),
+    )
+    expected = inst_mod.LoadSharedInst(
+        output=std.Var(dst_ty, "dst"),
+        inputs=[std.Var(shared_ty, "shared")],
+    )
+
+    parsed = parse(source, extra_vars={"shared": std.Var(shared_ty, "shared")})
+    assert tvm_ffi.structural_equal(parsed, expected)
+    _round_trip(expected)
+
+
+def test_parse_load_global_ty_hint_must_match_output() -> None:
     _import("tilus._tilus_lang")
 
-    source = "tilus.RegTensor(std.f32, shape=[2, 2], layout=None, optional_layout=None)"
+    source = """
+dst: tilus.RegTensor(std.f32, 8) = tilus.LoadGlobal(
+    src,
+    ty=tilus.GlobalTensor(std.f32, 16),
+    offsets=[0],
+    dims=[0],
+)
+"""
+
+    src = std.Var(tilus.GlobalTensor("float32", 16), "src")
+    with pytest.raises(TypeError, match="must match output dtype and shape"):
+        parse(source, extra_vars={"src": src})
+
+
+def test_parse_tensor_optional_layout_alias_is_rejected() -> None:
+    _import("tilus._tilus_lang")
+
+    source = "tilus.RegTensor(std.f32, 2, 2, optional_layout=None)"
 
     try:
         parse(source)
     except TypeError as err:
-        assert "specify either optional_layout or layout, not both" in str(err)
+        assert "unexpected keyword argument 'optional_layout'" in str(err)
     else:
-        raise AssertionError("expected layout alias conflict to fail")
+        raise AssertionError("expected optional_layout alias to fail")
 
 
 def test_parse_instruction_binding_inside_function() -> None:
@@ -133,8 +202,8 @@ def test_parse_instruction_binding_inside_function() -> None:
 
     source = """
 @tilus.Function
-def kernel(x: tilus.RegTensor(std.f32, shape=[2, 2])):
-    y: tilus.RegTensor(std.f32, shape=[2, 2]) = tilus.Add(x, x)
+def kernel(x: tilus.RegTensor(std.f32, 2, 2)):
+    y: tilus.RegTensor(std.f32, 2, 2) = tilus.Add(x, x)
     return y
 """
     ty = tensor_mod.register_tensor("float32", (2, 2))
@@ -162,7 +231,7 @@ def test_parse_tensor_item_scope_binding() -> None:
     stmt_mod = _import("tilus.ir.stmt")
 
     source = """
-with std.scope(tilus.TensorItemValue(tilus.RegTensor(std.f32, shape=[2, 2]))) as v:
+with std.scope(tilus.TensorItemValue(tilus.RegTensor(std.f32, 2, 2))) as v:
     return v
 """
     ty = tensor_mod.register_tensor("float32", (2, 2))

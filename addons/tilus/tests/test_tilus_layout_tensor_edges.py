@@ -326,9 +326,7 @@ def test_layout_and_tensor_text_round_trip_stays_concise() -> None:
     ]
 
     assert nodes[0].text() == "tilus.Swizzle(1, 2, 1)"
-    assert nodes[1].text() == (
-        'tilus.GlobalLayout(axes=["i1", "i0"], offset=0, shape=[2, 3], size=6)'
-    )
-    assert nodes[2].text() == "tilus.RegTensor(std.f32, shape=[2, 2])"
+    assert nodes[1].text() == ('tilus.GlobalLayout(2, 3, axes=["i1", "i0"], offset=0, size=6)')
+    assert nodes[2].text() == "tilus.RegTensor(std.f32, 2, 2)"
     for node in nodes:
         _round_trip(node)

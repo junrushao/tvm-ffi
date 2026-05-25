@@ -562,8 +562,6 @@ class Parser:
 
         constructor_var_def = self._constructor_var_def_fields(node.rhs)
         if constructor_var_def is not None:
-            if node.annotation is None and not issubclass(constructor_var_def[0], std.BaseBindExpr):
-                raise TypeError("constructor var-def assignment requires a type annotation")
             self._emit_constructor_var_def(node, names, constructor_var_def)
             return
 
@@ -611,9 +609,14 @@ class Parser:
         names: list[str],
         constructor_var_def: tuple[type[Any], list[Any]],
     ) -> None:
-        """Handle annotated collector-backed constructor syntax with omitted var-def fields."""
+        """Handle collector-backed constructor syntax with omitted var-def fields."""
         if not isinstance(node.rhs, pyast.Call):
             raise TypeError("constructor var-def assignment requires a call rhs")
+        if node.annotation is not None:
+            raise TypeError(
+                "constructor var-def assignment does not support type annotations; "
+                "pass type information to the constructor"
+            )
         callee, missing_var_fields = constructor_var_def
         if len(names) != 1:
             raise TypeError(
@@ -640,20 +643,19 @@ class Parser:
             if field_name in kwargs:
                 raise TypeError(f"multiple values for constructor field {field_name!r}")
             kwargs[field_name] = value
-        if node.annotation is not None:
-            ty = std.normalize_ty(self.visit(node.annotation))
-        else:
-            expr = kwargs.get("expr")
-            if not isinstance(expr, std.Expr):
-                expr = _materialize_top_value(self._run_generics, expr)
-                kwargs["expr"] = expr
-            if not isinstance(expr, std.Expr):
-                raise TypeError("constructor var-def assignment requires a type annotation")
-            ty = expr.ty
-        var = std.Var(ty, names[0])
+        var = std.Var(std.AnyTy(), names[0])
         var_field = missing_var_fields[0]
         kwargs[var_field.name] = [var] if _field_expects_var_sequence(var_field) else var
-        self._emit_bound_stmt(callee(**kwargs))
+        stmt = callee(**kwargs)
+        collector = getattr(type(stmt), "__ffi_dialect_field_collector__", None)
+        if collector is not None:
+            for defined_var in collector(stmt).var_def:
+                if defined_var.name == names[0] and isinstance(defined_var.ty, std.AnyTy):
+                    raise TypeError(
+                        "constructor var-def assignment requires the constructor to assign "
+                        "a concrete target type"
+                    )
+        self._emit_bound_stmt(stmt)
 
     def visit_ExprStmt(self, node: pyast.ExprStmt) -> None:
         """Handle expression statements as standalone IR statements or implicit binds.
@@ -877,9 +879,9 @@ class Parser:
         callable.
         """
         callee = self.visit(node.callee)
-        positional = list(self._visit_container(node.args))
         if "" in node.kwargs_keys:
             raise TypeError("** keyword expansion is not supported")
+        positional = list(self._visit_container(node.args))
         kwargs = {
             key: _to_dialect(self.visit(value))
             for key, value in zip(node.kwargs_keys, node.kwargs_values)

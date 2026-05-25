@@ -32,8 +32,13 @@ from tvm_ffi import std
 from tvm_ffi._pyast_parser import parse
 
 
+def _input_vars(node: object) -> dict[str, std.Var]:
+    inputs = getattr(node, "inputs", ())
+    return {value.name: value for value in inputs if isinstance(value, std.Var)}
+
+
 def _round_trip(node: object) -> None:
-    parsed = parse(node.text())
+    parsed = parse(node.text(), extra_vars=_input_vars(node))
     assert tvm_ffi.structural_equal(parsed, node), node.text()
 
 
@@ -61,16 +66,28 @@ def _global_tensor() -> tensor.GlobalTensor:
     return tensor.global_tensor("float32", (2, 2), layout=_global_layout())
 
 
+def _reg_value(name: str = "reg") -> std.Var:
+    return std.Var(_reg_tensor(), name)
+
+
+def _shared_value(name: str = "shared") -> std.Var:
+    return std.Var(_shared_tensor(), name)
+
+
+def _global_value(name: str = "global") -> std.Var:
+    return std.Var(_global_tensor(), name)
+
+
 def _output() -> std.Var:
     return std.Var(_reg_tensor(), "dst")
 
 
 def _unary_tensor_inst(cls: Callable[..., object]) -> object:
-    return cls(inputs=[_reg_tensor()], output=_output())
+    return cls(inputs=[_reg_value("src")], output=_output())
 
 
 def _binary_tensor_inst(cls: Callable[..., object]) -> object:
-    return cls(inputs=[_reg_tensor(), _reg_tensor()], output=_output())
+    return cls(inputs=[_reg_value("lhs"), _reg_value("rhs")], output=_output())
 
 
 def _nullary_inst(cls: Callable[..., object]) -> object:
@@ -96,7 +113,7 @@ _CATALOG_FACTORIES: dict[str, Callable[[], object]] = {
     "AddInst": lambda: _binary_tensor_inst(instructions.AddInst),
     "AllocBarrierInst": lambda: instructions.AllocBarrierInst(counts=[1, None, 4]),
     "AnnotateLayoutInst": lambda: instructions.AnnotateLayoutInst(
-        inputs=[_reg_tensor()],
+        inputs=[_reg_value("src")],
         layout=_reg_layout(),
         output=_output(),
     ),
@@ -117,22 +134,22 @@ _CATALOG_FACTORIES: dict[str, Callable[[], object]] = {
     ),
     "AssumeInst": lambda: instructions.AssumeInst(condition=True),
     "AtomicGlobalInst": lambda: instructions.AtomicGlobalInst(
-        inputs=[_global_tensor(), _reg_tensor()],
+        inputs=[_global_value("ptr"), _reg_value("value")],
         op="add",
     ),
     "AtomicMmaConfig": _atomic_mma_config,
     "AtomicScatterGlobalInst": lambda: instructions.AtomicScatterGlobalInst(
-        inputs=[_global_tensor(), _reg_tensor()],
+        inputs=[_global_value("ptr"), _reg_value("value")],
         op="add",
         dim=1,
     ),
     "AtomicScatterSharedInst": lambda: instructions.AtomicScatterSharedInst(
-        inputs=[_shared_tensor(), _reg_tensor()],
+        inputs=[_shared_value("ptr"), _reg_value("value")],
         op="add",
         dim=1,
     ),
     "AtomicSharedInst": lambda: instructions.AtomicSharedInst(
-        inputs=[_shared_tensor(), _reg_tensor()],
+        inputs=[_shared_value("ptr"), _reg_value("value")],
         op="add",
     ),
     "CastInst": lambda: _unary_tensor_inst(instructions.CastInst),
@@ -149,7 +166,7 @@ _CATALOG_FACTORIES: dict[str, Callable[[], object]] = {
     ),
     "CopyAsyncBulkGlobalToClusterSharedInst": lambda: (
         instructions.CopyAsyncBulkGlobalToClusterSharedInst(
-            inputs=[_global_tensor(), _shared_tensor()],
+            inputs=[_global_value("src"), _shared_value("dst")],
             offsets=[0, 1],
             dims=[0, 1],
             mbarrier=0,
@@ -159,7 +176,7 @@ _CATALOG_FACTORIES: dict[str, Callable[[], object]] = {
         )
     ),
     "CopyAsyncBulkGlobalToSharedInst": lambda: instructions.CopyAsyncBulkGlobalToSharedInst(
-        inputs=[_global_tensor(), _shared_tensor()],
+        inputs=[_global_value("src"), _shared_value("dst")],
         offsets=[0, 1],
         dims=[0, 1],
         mbarrier=0,
@@ -168,13 +185,13 @@ _CATALOG_FACTORIES: dict[str, Callable[[], object]] = {
     ),
     "CopyAsyncBulkSharedToClusterSharedInst": lambda: (
         instructions.CopyAsyncBulkSharedToClusterSharedInst(
-            inputs=[_shared_tensor(), _shared_tensor()],
+            inputs=[_shared_value("src"), _shared_value("dst")],
             mbarrier=0,
             remote_rank=1,
         )
     ),
     "CopyAsyncBulkSharedToGlobalInst": lambda: instructions.CopyAsyncBulkSharedToGlobalInst(
-        inputs=[_shared_tensor(), _global_tensor()],
+        inputs=[_shared_value("src"), _global_value("dst")],
         offsets=[0, 1],
         dims=[0, 1],
         check_bounds=False,
@@ -190,7 +207,7 @@ _CATALOG_FACTORIES: dict[str, Callable[[], object]] = {
         evict="evict_first",
     ),
     "CopyAsyncInst": lambda: instructions.CopyAsyncInst(
-        inputs=[_global_tensor(), _shared_tensor()],
+        inputs=[_global_value("src"), _shared_value("dst")],
         offsets=[0, 1],
         dims=[0, 1],
         evict="evict_last",
@@ -200,7 +217,7 @@ _CATALOG_FACTORIES: dict[str, Callable[[], object]] = {
         instructions.CopyAsyncTensorCommitGroupInst
     ),
     "CopyAsyncTensorGlobalToSharedInst": lambda: instructions.CopyAsyncTensorGlobalToSharedInst(
-        inputs=[_global_tensor(), _shared_tensor()],
+        inputs=[_global_value("src"), _shared_value("dst")],
         offsets=[0, 1],
         dims=[0, 1],
         mbarrier=0,
@@ -209,7 +226,7 @@ _CATALOG_FACTORIES: dict[str, Callable[[], object]] = {
         cache_policy=5,
     ),
     "CopyAsyncTensorSharedToGlobalInst": lambda: instructions.CopyAsyncTensorSharedToGlobalInst(
-        inputs=[_shared_tensor(), _global_tensor()],
+        inputs=[_shared_value("src"), _global_value("dst")],
         offsets=[0, 1],
         dims=[0, 1],
         cache_policy=5,
@@ -225,25 +242,25 @@ _CATALOG_FACTORIES: dict[str, Callable[[], object]] = {
     "FenceProxyAsync": lambda: instructions.FenceProxyAsync(space="global"),
     "FenceProxyAsyncRelease": lambda: _nullary_inst(instructions.FenceProxyAsyncRelease),
     "LoadGlobalInst": lambda: instructions.LoadGlobalInst(
-        inputs=[_global_tensor()],
+        inputs=[_global_value("src")],
         output=_output(),
         offsets=[0, 1],
         dims=[0, 1],
     ),
     "LoadSharedInst": lambda: instructions.LoadSharedInst(
-        inputs=[_shared_tensor()],
+        inputs=[_shared_value("src")],
         output=_output(),
     ),
     "LockSemaphoreInst": lambda: instructions.LockSemaphoreInst(semaphore=0, value=1),
     "MapSharedAddrInst": lambda: instructions.MapSharedAddrInst(
-        inputs=[_shared_tensor()],
+        inputs=[_shared_value("src")],
         target_rank=1,
         output=_output(),
     ),
     "MulInst": lambda: _binary_tensor_inst(instructions.MulInst),
     "NopInst": lambda: _nullary_inst(instructions.NopInst),
     "ReduceInst": lambda: instructions.ReduceInst(
-        inputs=[_reg_tensor()],
+        inputs=[_reg_value("src")],
         output=_output(),
         dim=1,
         op="max",
@@ -251,7 +268,7 @@ _CATALOG_FACTORIES: dict[str, Callable[[], object]] = {
     ),
     "ReleaseSemaphoreInst": lambda: instructions.ReleaseSemaphoreInst(semaphore=0, value=1),
     "SimtDotInst": lambda: instructions.SimtDotInst(
-        inputs=[_reg_tensor(), _reg_tensor()],
+        inputs=[_reg_value("lhs"), _reg_value("rhs")],
         output=_output(),
         warp_spatial=[1, 1],
         warp_repeat=[1, 1],
@@ -259,12 +276,12 @@ _CATALOG_FACTORIES: dict[str, Callable[[], object]] = {
         thread_repeat=[1, 1],
     ),
     "StoreGlobalInst": lambda: instructions.StoreGlobalInst(
-        inputs=[_reg_tensor(), _global_tensor()],
+        inputs=[_reg_value("src"), _global_value("dst")],
         offsets=[0, 1],
         dims=[0, 1],
     ),
     "StoreSharedInst": lambda: instructions.StoreSharedInst(
-        inputs=[_reg_tensor(), _shared_tensor()],
+        inputs=[_reg_value("src"), _shared_value("dst")],
     ),
     "SubInst": lambda: _binary_tensor_inst(instructions.SubInst),
     "SyncThreadsInst": lambda: _nullary_inst(instructions.SyncThreadsInst),
@@ -278,13 +295,13 @@ _CATALOG_FACTORIES: dict[str, Callable[[], object]] = {
     "Tcgen05DeallocInst": lambda: _nullary_inst(instructions.Tcgen05DeallocInst),
     "Tcgen05LoadInst": lambda: _nullary_inst(instructions.Tcgen05LoadInst),
     "Tcgen05MmaSSInst": lambda: instructions.Tcgen05MmaSSInst(
-        inputs=[_reg_tensor(), _reg_tensor()],
+        inputs=[_reg_value("lhs"), _reg_value("rhs")],
         output=_output(),
         enable_input_d=True,
         cta_group=1,
     ),
     "Tcgen05MmaTSInst": lambda: instructions.Tcgen05MmaTSInst(
-        inputs=[_reg_tensor(), _reg_tensor()],
+        inputs=[_reg_value("lhs"), _reg_value("rhs")],
         output=_output(),
         enable_input_d=False,
         cta_group=1,
@@ -293,7 +310,7 @@ _CATALOG_FACTORIES: dict[str, Callable[[], object]] = {
         cta_group=2
     ),
     "Tcgen05SliceInst": lambda: instructions.Tcgen05SliceInst(
-        inputs=[_reg_tensor()],
+        inputs=[_reg_value("src")],
         output=_output(),
         offsets=[0, 1],
         slice_dims=[0, 1],
@@ -404,7 +421,7 @@ def test_catalog_factories_exercise_declared_input_arity(class_name: str) -> Non
 
     invalid_count = 0 if 0 not in valid_counts else max(valid_counts) + 1
     kwargs = {field.name: getattr(node, field.name) for field in dc.fields(node)}
-    kwargs["inputs"] = [_reg_tensor()] * invalid_count
+    kwargs["inputs"] = [_reg_value()] * invalid_count
     with pytest.raises(InstructionError, match=rf"{class_name} expects"):
         cls(**kwargs)
 

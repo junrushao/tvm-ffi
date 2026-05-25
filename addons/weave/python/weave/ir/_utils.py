@@ -23,6 +23,7 @@ from typing import Any, ClassVar
 
 from tvm_ffi import Array, List, std
 from tvm_ffi import dataclasses as dc
+from tvm_ffi.structural import structural_equal
 
 
 def normalize_dtype(value: Any, *, field_name: str) -> std.Ty | None:
@@ -107,11 +108,59 @@ def normalize_domain(value: Any, valid: Sequence[str], *, field_name: str) -> st
     return value
 
 
+def collect_fields_with_var_def_ty(obj: Any) -> std.FieldCollectionResult:
+    """Collect dialect fields and print the single defined variable type as ``ty=``."""
+    fields = std.collect_dialect_fields(obj)
+    var_def = list(fields.var_def)
+    ty = var_def[0].ty if len(var_def) == 1 else None
+    return std.FieldCollectionResult(
+        args=list(fields.args),
+        attrs=fields.attrs,
+        var_def=var_def,
+        body=list(fields.body),
+        ty=ty,
+    )
+
+
+def var_with_ty_hint(var: std.Var, ty: Any, *, field_name: str) -> std.Var:
+    """Return ``var`` with ``ty`` applied when parsing assignment constructor syntax."""
+    if not isinstance(var, std.Var):
+        raise TypeError(f"{field_name} must be std.Var")
+    if ty is None:
+        if isinstance(var.ty, std.AnyTy):
+            raise TypeError(f"{field_name} requires a concrete type")
+        return var
+    normalized_ty = std.normalize_ty(ty)
+    if not isinstance(var.ty, std.AnyTy) and not structural_equal(var.ty, normalized_ty):
+        raise TypeError(f"{field_name} type does not match ty")
+    return std.Var(normalized_ty, var.name)
+
+
+def _collect_op_fields(obj: Any) -> std.FieldCollectionResult:
+    fields = std.collect_dialect_fields(obj)
+    var_def = list(fields.var_def)
+    ty = (
+        var_def[0].ty
+        if len(var_def) == 1 and not type(obj).OUTPUT_TY_INFERABLE_FROM_INPUTS
+        else None
+    )
+    return std.FieldCollectionResult(
+        args=list(fields.args),
+        attrs=fields.attrs,
+        var_def=var_def,
+        body=list(fields.body),
+        ty=ty,
+    )
+
+
 @dc.py_class("weave.Op", structural_eq="tree", init=False)
 class Op(std.Stmt, mnemonic="weave.Op"):
     """Base class for executable Weave operations."""
 
+    __ffi_dialect_field_collector__ = staticmethod(_collect_op_fields)
+
     EXPR_FIELDS: ClassVar[frozenset[str]] = frozenset()
+    OUTPUT_TY_INFERABLE_FROM_INPUTS: ClassVar[bool] = False
     VALID_DOMAINS: ClassVar[dict[str, tuple[str, ...]]] = {}
 
     def __post_init__(self) -> None:
@@ -140,6 +189,7 @@ __all__ = [
     "MarkerNode",
     "MarkerTy",
     "Op",
+    "collect_fields_with_var_def_ty",
     "normalize_domain",
     "normalize_dtype",
     "normalize_expr",
@@ -147,4 +197,5 @@ __all__ = [
     "normalize_expr_sequence",
     "normalize_optional_expr",
     "validate_cta_group",
+    "var_with_ty_hint",
 ]

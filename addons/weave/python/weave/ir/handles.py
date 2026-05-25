@@ -18,6 +18,11 @@ from tvm_ffi import dataclasses as dc
 from tvm_ffi import std
 
 from ._utils import normalize_domain, normalize_dtype, validate_cta_group
+from .dtypes import StringLike, Swizzle
+
+ShapeDim = int | StringLike | std.Expr
+ExprOrInt = int | std.Expr
+SwizzleSpec = StringLike | Swizzle | None
 
 SIGNALING_MODES = ("elected", "hw_commit", "all_warps", "tma_expect_tx")
 MEMORY_SPACES = ("gmem", "smem", "tmem", "regs", "local", "param", "symm")
@@ -84,10 +89,10 @@ class TmaDescriptor(std.Node, mnemonic="weave.TmaDescriptor"):
     """TMA tensor map descriptor."""
 
     ndim: int = dc.field(lang_kind="arg")
-    box_shape: tuple[Any, ...] = dc.field(lang_kind="attr")
-    swizzle: Any = dc.field(default="128B", lang_kind="attr")
-    global_shape: tuple[str, ...] = dc.field(default_factory=tuple, lang_kind="attr")
-    global_strides: tuple[str, ...] = dc.field(default_factory=tuple, lang_kind="attr")
+    box_shape: tuple[ShapeDim, ...] = dc.field(lang_kind="attr")
+    swizzle: SwizzleSpec = dc.field(default="128B", lang_kind="attr")
+    global_shape: tuple[StringLike, ...] = dc.field(default_factory=tuple, lang_kind="attr")
+    global_strides: tuple[StringLike, ...] = dc.field(default_factory=tuple, lang_kind="attr")
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "box_shape", tuple(self.box_shape))
@@ -105,11 +110,11 @@ class BufferRef(std.Node, mnemonic="weave.Buffer"):
 
     name: str = dc.field(lang_kind="arg")
     dtype: Any = dc.field(lang_kind="arg")
-    shape: tuple[Any, ...] = dc.field(lang_kind="attr")
+    shape: tuple[ShapeDim, ...] = dc.field(lang_kind="attr")
     space: str = dc.field(default="gmem", lang_kind="attr")
     tmem_col: int | None = dc.field(default=None, lang_kind="attr")
     smem_offset: int | None = dc.field(default=None, lang_kind="attr")
-    swizzle: Any = dc.field(default=None, lang_kind="attr")
+    swizzle: SwizzleSpec = dc.field(default=None, lang_kind="attr")
     stage: int | None = dc.field(default=None, lang_kind="attr")
     tma: TmaDescriptor | None = dc.field(default=None, lang_kind="attr")
     source_gmem: str = dc.field(default="", lang_kind="attr")
@@ -152,13 +157,13 @@ class SmemView(std.Node, mnemonic="weave.SmemView"):
     """View into a shared-memory pool."""
 
     name: str = dc.field(lang_kind="arg")
-    pool: SmemPool | str = dc.field(lang_kind="arg")
-    offset: Any = dc.field(lang_kind="arg")
-    shape: tuple[Any, ...] = dc.field(lang_kind="attr")
+    pool: SmemPool | StringLike = dc.field(lang_kind="arg")
+    offset: ExprOrInt = dc.field(lang_kind="arg")
+    shape: tuple[ShapeDim, ...] = dc.field(lang_kind="attr")
     dtype: Any = dc.field(lang_kind="attr")
     stage: int | None = dc.field(default=None, lang_kind="attr")
-    stride: Any = dc.field(default=None, lang_kind="attr")
-    swizzle: Any = dc.field(default=None, lang_kind="attr")
+    stride: ExprOrInt | None = dc.field(default=None, lang_kind="attr")
+    swizzle: SwizzleSpec = dc.field(default=None, lang_kind="attr")
     layout: str = dc.field(default="", lang_kind="attr")
     alias_of: str = dc.field(default="", lang_kind="attr")
 
@@ -173,7 +178,7 @@ class PhaseVar(std.Node, mnemonic="weave.PhaseVar"):
 
     name: str = dc.field(lang_kind="arg")
     dtype: Any = dc.field(default_factory=lambda: std.PrimTy("int32"), lang_kind="attr")
-    init_value: Any = dc.field(default=0, lang_kind="attr")
+    init_value: ExprOrInt = dc.field(default=0, lang_kind="attr")
     rotation_rule: str = dc.field(default="", lang_kind="attr")
     rotation_trigger: str = dc.field(default="", lang_kind="attr")
 
@@ -278,8 +283,8 @@ class SymmetricMemory(std.Node, mnemonic="weave.SymmetricMemory"):
 
     name: str = dc.field(lang_kind="arg")
     dtype: Any = dc.field(lang_kind="arg")
-    shape: tuple[Any, ...] = dc.field(lang_kind="attr")
-    group: ProcessGroup | str = dc.field(lang_kind="attr")
+    shape: tuple[ShapeDim, ...] = dc.field(lang_kind="attr")
+    group: ProcessGroup | StringLike = dc.field(lang_kind="attr")
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "dtype", normalize_dtype(self.dtype, field_name="dtype"))

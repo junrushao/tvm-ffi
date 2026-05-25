@@ -18,7 +18,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Container, Iterable, Mapping, Sequence
+from collections.abc import Mapping, Sequence
 from typing import Any as TypingAny
 from typing import Callable, ClassVar
 
@@ -159,47 +159,6 @@ def std_generics(
         generics.update(overrides)
     generics.update(kw_overrides)
     return generics
-
-
-def register_mnemonic_namespace(
-    namespace: type[TypingAny],
-    sources: Iterable[TypingAny],
-    *,
-    dialect: str,
-    skip_names: Container[str] = (),
-    skip_mnemonics: Container[str] = (),
-    expose_export_name: bool = True,
-    expose_mnemonic: bool = True,
-    preserve_existing: bool = True,
-    value_for: Callable[[type[TypingAny]], TypingAny] | None = None,
-) -> list[str]:
-    """Expose dialect classes on a parser namespace by export name and mnemonic."""
-    installed: list[str] = []
-    for source in sources:
-        for export_name in getattr(source, "__all__", ()):
-            value = getattr(source, export_name)
-            if not isinstance(value, type):
-                continue
-            mnemonic_info = getattr(value, "__ffi_dialect_mnemonic__", None)
-            if not (
-                isinstance(mnemonic_info, tuple)
-                and len(mnemonic_info) == 2
-                and mnemonic_info[0] == dialect
-            ):
-                continue
-            mnemonic = mnemonic_info[1]
-            if export_name in skip_names or mnemonic in skip_mnemonics:
-                continue
-            exposed_value = value_for(value) if value_for is not None else value
-            if expose_export_name and (
-                not preserve_existing or not hasattr(namespace, export_name)
-            ):
-                setattr(namespace, export_name, exposed_value)
-                installed.append(export_name)
-            if expose_mnemonic and (not preserve_existing or not hasattr(namespace, mnemonic)):
-                setattr(namespace, mnemonic, exposed_value)
-                installed.append(mnemonic)
-    return installed
 
 
 class FuncFactory(Frame):

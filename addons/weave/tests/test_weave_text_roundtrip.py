@@ -203,7 +203,7 @@ def test_fully_decorated_kernel_source_round_trip() -> None:
                     dtype=std.bf16,
                     dst_dtype=std.f32,
                 )
-                tok: std.i32 = weave.BarrierTryWait(weave.Mbarrier("full", 2), 0, 1)
+                tok = weave.BarrierTryWait(weave.Mbarrier("full", 2), 0, 1, ty=std.i32)
             return m
         """
     )
@@ -215,7 +215,8 @@ def test_fully_decorated_kernel_source_round_trip() -> None:
     assert "tile_params=weave.MmaParams" in printed
     assert 'reg_budgets={"mma": 128}' in printed
     assert 'tma_param_ndims={"A": 2}' in printed
-    assert "tok: std.i32 = weave.BarrierTryWait" in printed
+    assert "tok = weave.BarrierTryWait" in printed
+    assert "ty=std.i32" in printed
 
 
 def test_task_scope_and_loop_source_round_trip() -> None:
@@ -224,7 +225,7 @@ def test_task_scope_and_loop_source_round_trip() -> None:
         @weave.Kernel
         def body_kernel():
             with weave.task("compute", "consumer", "mma", depends_on=["load"]):
-                stage: std.i32 = weave.VarDecl("int", init=0)
+                stage = weave.VarDecl("int", init=0, ty=std.i32)
                 for k in weave.ForLoop(4, start=0, step=1, ty=std.i32):
                     with weave.Block():
                         weave.Assign(weave.Const("stage", result_ty=std.i32), k, op="+=")
@@ -334,7 +335,7 @@ def test_memory_barrier_and_reduction_source_round_trip() -> None:
                 weave.GridSync()
                 weave.GridDepSync()
                 weave.GridDepLaunch()
-                reduced: std.i32 = weave.WarpReduce(1, op="max")
+                reduced = weave.WarpReduce(1, op="max", ty=std.i32)
                 weave.BlockReduce(1, 2, op="min")
                 weave.CrossWarpReduce(
                     1,
@@ -365,7 +366,7 @@ def test_memory_barrier_and_reduction_source_round_trip() -> None:
         "weave.GridSync",
         "weave.GridDepSync",
         "weave.GridDepLaunch",
-        "reduced: std.i32 = weave.WarpReduce",
+        "reduced = weave.WarpReduce",
         "weave.BlockReduce",
         "weave.CrossWarpReduce",
         "weave.WarpGroupReduce",

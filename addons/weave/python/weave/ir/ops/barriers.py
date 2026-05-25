@@ -17,13 +17,16 @@ from typing import Any, ClassVar
 from tvm_ffi import dataclasses as dc
 from tvm_ffi import std
 
-from .._utils import Op, normalize_expr_sequence, validate_cta_group
+from .._utils import Op, normalize_expr_sequence, validate_cta_group, var_with_ty_hint
+from ..dtypes import BarrierRef
+from ..handles import MbarrierSpec
 
 SIGNAL_ACTIONS = ("arrive", "arrive_expect_tx", "commit")
 FENCE_KINDS = ("after_thread_sync", "before_thread_sync")
 THREAD_FENCE_SCOPES = ("block", "device", "system")
 REDUCE_OPS = ("add", "max", "min")
 FINALIZE_MODES = ("none", "rsqrt")
+BarrierHandle = MbarrierSpec | BarrierRef
 
 
 def _reject_string_handle(value: Any, field_name: str) -> None:
@@ -38,13 +41,32 @@ class BarrierSync(Op, mnemonic="weave.BarrierSync"):
 
 @dc.py_class("weave.BarrierTryWait", structural_eq="tree")
 class BarrierTryWait(Op, mnemonic="weave.BarrierTryWait"):
-    barrier: Any = dc.field(lang_kind="arg")
+    barrier: BarrierHandle = dc.field(lang_kind="arg")
     stage: std.Expr = dc.field(lang_kind="arg")
     phase: std.Expr = dc.field(lang_kind="arg")
     dst: std.Var = dc.field(lang_kind="var_def", structural_eq="def-recursive")
     stage_is_deterministic: bool = dc.field(default=True, lang_kind="attr")
 
     EXPR_FIELDS: ClassVar[frozenset[str]] = frozenset(("stage", "phase"))
+
+    def __init__(
+        self,
+        barrier: BarrierHandle,
+        stage: std.Expr,
+        phase: std.Expr,
+        dst: std.Var,
+        stage_is_deterministic: bool = True,
+        *,
+        ty: Any = None,
+    ) -> None:
+        self.__ffi_init__(
+            barrier,
+            stage,
+            phase,
+            var_with_ty_hint(dst, ty, field_name="dst"),
+            stage_is_deterministic,
+        )
+        self.__post_init__()
 
     def __post_init__(self) -> None:
         _reject_string_handle(self.barrier, "barrier")
@@ -53,7 +75,7 @@ class BarrierTryWait(Op, mnemonic="weave.BarrierTryWait"):
 
 @dc.py_class("weave.BarrierWait", structural_eq="tree")
 class BarrierWait(Op, mnemonic="weave.BarrierWait"):
-    barrier: Any = dc.field(lang_kind="arg")
+    barrier: BarrierHandle = dc.field(lang_kind="arg")
     stage: std.Expr = dc.field(lang_kind="arg")
     phase: std.Expr = dc.field(lang_kind="arg")
     token: std.Expr | None = dc.field(default=None, lang_kind="attr")
@@ -68,7 +90,7 @@ class BarrierWait(Op, mnemonic="weave.BarrierWait"):
 
 @dc.py_class("weave.BarrierSignal", structural_eq="tree")
 class BarrierSignal(Op, mnemonic="weave.BarrierSignal"):
-    barrier: Any = dc.field(lang_kind="arg")
+    barrier: BarrierHandle = dc.field(lang_kind="arg")
     action: str = dc.field(lang_kind="arg")
     stage: std.Expr = dc.field(lang_kind="arg")
     tx_bytes: std.Expr | None = dc.field(default=None, lang_kind="attr")
@@ -97,7 +119,7 @@ class MBarrierArrive(Op, mnemonic="weave.MBarrierArrive"):
 
 @dc.py_class("weave.PeerArriveCommit", structural_eq="tree")
 class PeerArriveCommit(Op, mnemonic="weave.PeerArriveCommit"):
-    barrier: Any = dc.field(lang_kind="arg")
+    barrier: BarrierHandle = dc.field(lang_kind="arg")
     stage: std.Expr = dc.field(lang_kind="arg")
     cta_group: Any = dc.field(default=2, lang_kind="attr")
     elected: bool = dc.field(default=False, lang_kind="attr")
@@ -112,7 +134,7 @@ class PeerArriveCommit(Op, mnemonic="weave.PeerArriveCommit"):
 
 @dc.py_class("weave.MulticastCommit", structural_eq="tree")
 class MulticastCommit(Op, mnemonic="weave.MulticastCommit"):
-    barrier: Any = dc.field(lang_kind="arg")
+    barrier: BarrierHandle = dc.field(lang_kind="arg")
     stage: std.Expr = dc.field(lang_kind="arg")
     multicast_mask: std.Expr = dc.field(lang_kind="arg")
     cta_group: Any = dc.field(default=2, lang_kind="attr")
@@ -128,8 +150,8 @@ class MulticastCommit(Op, mnemonic="weave.MulticastCommit"):
 
 @dc.py_class("weave.DualCommit", structural_eq="tree")
 class DualCommit(Op, mnemonic="weave.DualCommit"):
-    barrier_0: Any = dc.field(lang_kind="arg")
-    barrier_1: Any = dc.field(lang_kind="arg")
+    barrier_0: BarrierHandle = dc.field(lang_kind="arg")
+    barrier_1: BarrierHandle = dc.field(lang_kind="arg")
     stage_0: std.Expr = dc.field(lang_kind="arg")
     stage_1: std.Expr = dc.field(lang_kind="arg")
     cta_group: Any = dc.field(default=1, lang_kind="attr")
@@ -186,6 +208,21 @@ class ClusterMapa(Op, mnemonic="weave.ClusterMapa"):
 
     EXPR_FIELDS: ClassVar[frozenset[str]] = frozenset(("src_addr", "peer_rank"))
 
+    def __init__(
+        self,
+        src_addr: std.Expr,
+        peer_rank: std.Expr,
+        dst: std.Var,
+        *,
+        ty: Any = None,
+    ) -> None:
+        self.__ffi_init__(
+            src_addr,
+            peer_rank,
+            var_with_ty_hint(dst, ty, field_name="dst"),
+        )
+        self.__post_init__()
+
 
 @dc.py_class("weave.ClusterBarrierArrive", structural_eq="tree")
 class ClusterBarrierArrive(Op, mnemonic="weave.ClusterBarrierArrive"):
@@ -201,7 +238,7 @@ class CpAsyncBulkSmem2SmemCluster(Op, mnemonic="weave.CpAsyncBulkSmem2SmemCluste
     dst_addr: std.Expr = dc.field(lang_kind="arg")
     src_addr: std.Expr = dc.field(lang_kind="arg")
     bytes: std.Expr = dc.field(lang_kind="arg")
-    barrier: Any = dc.field(default=None, lang_kind="attr")
+    barrier: BarrierHandle | None = dc.field(default=None, lang_kind="attr")
     mbar_addr: std.Expr | None = dc.field(default=None, lang_kind="attr")
 
     EXPR_FIELDS: ClassVar[frozenset[str]] = frozenset(
@@ -222,6 +259,21 @@ class WarpReduce(Op, mnemonic="weave.WarpReduce"):
 
     EXPR_FIELDS: ClassVar[frozenset[str]] = frozenset(("val",))
     VALID_DOMAINS: ClassVar[dict[str, tuple[str, ...]]] = {"op": REDUCE_OPS}
+
+    def __init__(
+        self,
+        val: std.Expr,
+        op: str = "add",
+        dst: std.Var | None = None,
+        *,
+        ty: Any = None,
+    ) -> None:
+        self.__ffi_init__(
+            val,
+            op,
+            var_with_ty_hint(dst, ty, field_name="dst") if dst is not None else None,
+        )
+        self.__post_init__()
 
 
 @dc.py_class("weave.BlockReduce", structural_eq="tree")
@@ -248,6 +300,25 @@ class CrossWarpReduce(Op, mnemonic="weave.CrossWarpReduce"):
         "finalize": FINALIZE_MODES,
     }
 
+    def __init__(
+        self,
+        src: std.Expr,
+        smem: std.Expr,
+        dst: std.Var,
+        op: str = "add",
+        finalize: str = "none",
+        *,
+        ty: Any = None,
+    ) -> None:
+        self.__ffi_init__(
+            src,
+            smem,
+            var_with_ty_hint(dst, ty, field_name="dst"),
+            op,
+            finalize,
+        )
+        self.__post_init__()
+
 
 @dc.py_class("weave.WarpGroupReduce", structural_eq="tree")
 class WarpGroupReduce(Op, mnemonic="weave.WarpGroupReduce"):
@@ -259,6 +330,25 @@ class WarpGroupReduce(Op, mnemonic="weave.WarpGroupReduce"):
 
     EXPR_FIELDS: ClassVar[frozenset[str]] = frozenset(("src", "smem"))
     VALID_DOMAINS: ClassVar[dict[str, tuple[str, ...]]] = {"op": REDUCE_OPS}
+
+    def __init__(
+        self,
+        src: std.Expr,
+        smem: std.Expr,
+        dst: std.Var,
+        op: str = "add",
+        num_warp_groups: int = 2,
+        *,
+        ty: Any = None,
+    ) -> None:
+        self.__ffi_init__(
+            src,
+            smem,
+            var_with_ty_hint(dst, ty, field_name="dst"),
+            op,
+            num_warp_groups,
+        )
+        self.__post_init__()
 
 
 @dc.py_class("weave.StAsync", structural_eq="tree")

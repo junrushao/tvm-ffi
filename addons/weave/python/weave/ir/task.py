@@ -17,7 +17,13 @@ from typing import Any, ClassVar
 from tvm_ffi import dataclasses as dc
 from tvm_ffi import std
 
-from ._utils import normalize_expr, normalize_optional_expr
+from ._utils import (
+    collect_fields_with_var_def_ty,
+    normalize_expr,
+    normalize_optional_expr,
+    var_with_ty_hint,
+)
+from .dtypes import StringLike
 
 ASSIGN_OPS = ("=", "+=", "-=", "*=", "/=", "%=", "//=", "^=", "&=", "|=", "<<=", ">>=")
 
@@ -34,13 +40,17 @@ class TaskSpec(std.BaseScope, mnemonic="weave.TaskSpec"):
 
     name: str = dc.field(lang_kind="arg")
     kind: str = dc.field(lang_kind="arg")
-    assigned_role: Any = dc.field(lang_kind="arg")
+    assigned_role: StringLike = dc.field(lang_kind="arg")
     pipeline: str = dc.field(default="", lang_kind="attr")
-    inputs: tuple[Any, ...] = dc.field(default_factory=tuple, lang_kind="attr")
-    outputs: tuple[Any, ...] = dc.field(default_factory=tuple, lang_kind="attr")
-    depends_on: tuple[str, ...] = dc.field(default_factory=tuple, lang_kind="attr")
-    sync_before: tuple[Any, ...] = dc.field(default_factory=tuple, lang_kind="attr")
-    sync_after: tuple[Any, ...] = dc.field(default_factory=tuple, lang_kind="attr")
+    inputs: tuple[StringLike, ...] = dc.field(default_factory=tuple, lang_kind="attr")
+    outputs: tuple[StringLike, ...] = dc.field(default_factory=tuple, lang_kind="attr")
+    depends_on: tuple[StringLike, ...] = dc.field(default_factory=tuple, lang_kind="attr")
+    sync_before: tuple[StringLike | std.Expr, ...] = dc.field(
+        default_factory=tuple, lang_kind="attr"
+    )
+    sync_after: tuple[StringLike | std.Expr, ...] = dc.field(
+        default_factory=tuple, lang_kind="attr"
+    )
     body: list[std.Stmt] = dc.field(default_factory=list, lang_kind="body")
 
     def __post_init__(self) -> None:
@@ -131,12 +141,35 @@ class ConditionalIteration(std.BaseScope, mnemonic="weave.ConditionalIteration")
 class VarDecl(std.BaseVarDef, mnemonic="weave.VarDecl"):
     """Variable declaration with C type spelling metadata."""
 
+    __ffi_dialect_field_collector__ = staticmethod(collect_fields_with_var_def_ty)
+
     var: std.Var = dc.field(lang_kind="var_def", structural_eq="def-recursive")
     ctype: str = dc.field(lang_kind="arg")
     init: std.Expr | None = dc.field(default=None, lang_kind="attr")
     array_size: std.Expr | None = dc.field(default=None, lang_kind="attr")
     uniform: bool = dc.field(default=False, lang_kind="attr")
     zero_init: bool = dc.field(default=False, lang_kind="attr")
+
+    def __init__(
+        self,
+        var: std.Var,
+        ctype: str,
+        init: std.Expr | None = None,
+        array_size: std.Expr | None = None,
+        uniform: bool = False,
+        zero_init: bool = False,
+        *,
+        ty: Any = None,
+    ) -> None:
+        self.__ffi_init__(
+            var_with_ty_hint(var, ty, field_name="var"),
+            ctype,
+            init,
+            array_size,
+            uniform,
+            zero_init,
+        )
+        self.__post_init__()
 
     def __post_init__(self) -> None:
         if not isinstance(self.var, std.Var):

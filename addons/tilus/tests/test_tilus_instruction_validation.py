@@ -20,7 +20,7 @@ from __future__ import annotations
 from typing import ClassVar
 
 import pytest
-import tilus  # noqa: F401  # Registers the Tilus dialect.
+import tilus
 from tilus.ir import instructions
 from tilus.ir.inst import Instruction, InstructionError
 from tilus.ir.instructions import cuda, generic
@@ -126,6 +126,29 @@ def test_obvious_instruction_arity_is_validated() -> None:
         )
 
 
+def test_load_type_inputs_must_match_output_dtype_and_shape() -> None:
+    src = std.Var(tilus.GlobalTensor("float32", 16), "src")
+    valid_output = std.Var(tilus.RegTensor("float32", 16), "dst")
+    tilus.LoadGlobal(src, output=valid_output, ty=src.ty, offsets=[0], dims=[0])
+
+    with pytest.raises(TypeError, match="must match output dtype and shape"):
+        tilus.LoadGlobal(
+            src,
+            ty=src.ty,
+            output=std.Var(tilus.RegTensor("float32", 8), "dst"),
+            offsets=[0],
+            dims=[0],
+        )
+    with pytest.raises(TypeError, match="must match output dtype and shape"):
+        tilus.LoadGlobal(
+            src,
+            ty=src.ty,
+            output=std.Var(tilus.RegTensor("float16", 16), "dst"),
+            offsets=[0],
+            dims=[0],
+        )
+
+
 @pytest.mark.parametrize(
     "cls,kwargs,expected_inputs",
     [
@@ -175,6 +198,12 @@ def test_explicit_inputs_none_is_rejected() -> None:
         generic.AddInst(inputs=None)
     with pytest.raises(TypeError, match="inputs"):
         generic.SyncThreadsInst(inputs=None)
+
+
+@pytest.mark.parametrize("bad_input", [object(), {"x": 1}, [object()]])
+def test_instruction_inputs_reject_non_expr_values(bad_input: object) -> None:
+    with pytest.raises(TypeError, match=r"expected ffi\.std\.Expr"):
+        generic.AddInst(inputs=[bad_input, 1])
 
 
 def test_reduce_op_domain_is_validated() -> None:

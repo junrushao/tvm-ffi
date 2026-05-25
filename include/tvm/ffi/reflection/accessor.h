@@ -398,7 +398,8 @@ inline constexpr const char* kDialectMnemonic = "__ffi_dialect_mnemonic__";
  * The hook is commonly generated from Python ``field(lang_kind=...)``
  * annotations. It returns a ``std_::FieldCollectionResult`` in C++, or
  * ``tvm_ffi.std.FieldCollectionResult`` in Python, containing positional
- * arguments, keyword attributes, variables defined by the node, and body nodes.
+ * arguments, keyword attributes, variables defined by the node, body nodes, and
+ * optional ``ty=`` print metadata.
  *
  * Signature: ``(TSelf self) -> ffi.std.FieldCollectionResult``.
  */

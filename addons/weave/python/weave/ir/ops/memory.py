@@ -18,10 +18,14 @@ from tvm_ffi import dataclasses as dc
 from tvm_ffi import std
 
 from .._utils import Op, normalize_dtype, validate_cta_group
+from ..dtypes import StringLike
+from ..handles import BufferRef, SmemView, TmemRegion
 
 SMEM_DESC_MODES = ("k", "mn")
 GMEM_CACHE_HINTS = ("none", "no_allocate", "evict_first", "evict_last")
 TMA_REDUCE_OPS = ("add", "min", "max", "inc", "dec", "and", "or", "xor")
+TmemRegionRef = StringLike | TmemRegion
+SmemBufferRef = StringLike | BufferRef | SmemView
 
 
 @dc.py_class("weave.BuiltinVar", structural_eq="tree")
@@ -34,7 +38,7 @@ class BuiltinVar(Op, mnemonic="weave.BuiltinVar"):
 
 @dc.py_class("weave.TmemRegionLoad", structural_eq="tree")
 class TmemRegionLoad(Op, mnemonic="weave.TmemRegionLoad"):
-    region: Any = dc.field(lang_kind="arg")
+    region: TmemRegionRef = dc.field(lang_kind="arg")
     dst: std.Expr | None = dc.field(default=None, lang_kind="attr")
     col_offset: std.Expr | None = dc.field(default=None, lang_kind="attr")
     num: int = dc.field(default=16, lang_kind="attr")
@@ -52,7 +56,7 @@ class TmemRegionLoad(Op, mnemonic="weave.TmemRegionLoad"):
 
 @dc.py_class("weave.TmemRegionStore", structural_eq="tree")
 class TmemRegionStore(Op, mnemonic="weave.TmemRegionStore"):
-    region: Any = dc.field(lang_kind="arg")
+    region: TmemRegionRef = dc.field(lang_kind="arg")
     src: std.Expr | None = dc.field(default=None, lang_kind="attr")
     col_offset: std.Expr | None = dc.field(default=None, lang_kind="attr")
     num: int = dc.field(default=8, lang_kind="attr")
@@ -70,7 +74,7 @@ class TmemRegionStore(Op, mnemonic="weave.TmemRegionStore"):
 
 @dc.py_class("weave.SmemDesc", structural_eq="tree")
 class SmemDesc(Op, mnemonic="weave.SmemDesc"):
-    buffer: Any = dc.field(lang_kind="arg")
+    buffer: SmemBufferRef = dc.field(lang_kind="arg")
     k_idx: std.Expr | None = dc.field(default=None, lang_kind="attr")
     mode: str = dc.field(default="k", lang_kind="attr")
     dst: std.Expr | None = dc.field(default=None, lang_kind="attr")

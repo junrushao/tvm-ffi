@@ -1294,14 +1294,18 @@ struct FieldCollectionResultObj : public NodeObj {
   List<Var> var_def;
   /*! \brief Body nodes owned by this node. */
   List<Node> body;
+  /*! \brief Optional type hint printed as a ``ty=`` keyword. */
+  Optional<Ty> ty;
 
   /// \cond Doxygen_Suppress
   FieldCollectionResultObj() = default;
-  FieldCollectionResultObj(List<Any> args, DictAttrs attrs, List<Var> var_def, List<Node> body)
+  FieldCollectionResultObj(List<Any> args, DictAttrs attrs, List<Var> var_def, List<Node> body,
+                           Optional<Ty> ty = std::nullopt)
       : args(std::move(args)),
         attrs(std::move(attrs)),
         var_def(std::move(var_def)),
-        body(std::move(body)) {}
+        body(std::move(body)),
+        ty(std::move(ty)) {}
 
   TVM_FFI_DECLARE_OBJECT_INFO("ffi.std.FieldCollectionResult", FieldCollectionResultObj, NodeObj);
   /// \endcond
@@ -1310,9 +1314,11 @@ struct FieldCollectionResultObj : public NodeObj {
 /*! \brief Reference wrapper for collected dialect text-format fields. */
 struct FieldCollectionResult : public Node {
   /*! \brief Construct a field collection result. */
-  FieldCollectionResult(List<Any> args, DictAttrs attrs, List<Var> var_def, List<Node> body)
+  FieldCollectionResult(List<Any> args, DictAttrs attrs, List<Var> var_def, List<Node> body,
+                        Optional<Ty> ty = std::nullopt)
       : FieldCollectionResult(make_object<FieldCollectionResultObj>(
-            std::move(args), std::move(attrs), std::move(var_def), std::move(body))) {}
+            std::move(args), std::move(attrs), std::move(var_def), std::move(body),
+            std::move(ty))) {}
   /// \cond Doxygen_Suppress
   TVM_FFI_DEFINE_OBJECT_REF_METHODS_NULLABLE(FieldCollectionResult, Node, FieldCollectionResultObj);
   /// \endcond
