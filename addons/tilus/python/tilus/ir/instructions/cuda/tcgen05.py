@@ -111,8 +111,17 @@ class Tcgen05MmaTSInst(Instruction, mnemonic="tilus.Tcgen05MmaTS"):
     cta_group: std.Expr = field(lang_kind="attr")
 
 
-__all__ = [
-    name
-    for name, value in globals().items()
-    if isinstance(value, type) and value.__module__ == __name__
+__all__ = [  # noqa: RUF022
+    "Tcgen05AllocInst",
+    "Tcgen05DeallocInst",
+    "Tcgen05RelinquishAllocPermitInst",
+    "Tcgen05SliceInst",
+    "Tcgen05ViewInst",
+    "Tcgen05LoadInst",
+    "Tcgen05StoreInst",
+    "Tcgen05WaitInst",
+    "Tcgen05CopyInst",
+    "Tcgen05CommitInst",
+    "Tcgen05MmaSSInst",
+    "Tcgen05MmaTSInst",
 ]

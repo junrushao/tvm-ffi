@@ -16,8 +16,13 @@ from collections.abc import Callable, Sequence
 from typing import Any, ClassVar
 
 from tvm_ffi import std
-from tvm_ffi._pyast_parser import Frame, normalize_ty, register_dialect
-from tvm_ffi._std_lang import Std
+from tvm_ffi._pyast_parser import Frame, register_dialect
+from tvm_ffi._std_lang import (
+    bind_one_var,
+    parse_func_args,
+    register_mnemonic_namespace,
+    std_generics,
+)
 
 from .ir import config, dtypes, handles, kernel, task
 from .ir.ops import atomic, barriers, clc, elementwise, memory, mma
@@ -40,9 +45,7 @@ class KernelFactory(WeaveFrame):
         self.body: list[Any] = []
 
     def parse_args(self, args: list[tuple[str, Any]]) -> list[std.Var]:
-        self.args = [
-            std.Var(normalize_ty(ty) if ty is not None else std.AnyTy(), name) for name, ty in args
-        ]
+        self.args = parse_func_args(args)
         return self.args
 
     def to_dialect(self) -> kernel.Kernel:
@@ -134,13 +137,15 @@ class ForLoopFactory(WeaveFrame):
         self.constexpr = constexpr
         self.unroll = unroll
         self.ctype = ctype
-        self.var = std.Var(normalize_ty(ty) if ty is not None else std.PrimTy("int32"), "")
+        self.var = std.Var(std.normalize_ty(ty) if ty is not None else std.PrimTy("int32"), "")
         self.body: list[Any] = []
 
     def bind_names(self, names: Sequence[str]) -> None:
-        if len(names) != 1:
-            raise TypeError(f"expected one loop variable, got {len(names)}")
-        self.var = std.Var(self.var.ty, names[0])
+        self.var = bind_one_var(
+            names,
+            self.var.ty,
+            error=f"expected one loop variable, got {len(names)}",
+        )
 
     def bound_vars(self) -> list[std.Var]:
         return [self.var]
@@ -177,24 +182,26 @@ class WeaveLang:
     ConditionalIteration = ConditionalIterationFactory
 
 
+_FRAME_CLASS_NAMES = frozenset(
+    {
+        "Kernel",
+        "TaskSpec",
+        "ForLoop",
+        "Block",
+        "LeaderCtaBlock",
+        "ElectedThreadBlock",
+        "ConditionalIteration",
+    }
+)
+
+
 def _register_module_classes(module: Any) -> None:
-    for name in getattr(module, "__all__", ()):
-        value = getattr(module, name)
-        if isinstance(value, type):
-            if name in {
-                "Kernel",
-                "TaskSpec",
-                "ForLoop",
-                "Block",
-                "LeaderCtaBlock",
-                "ElectedThreadBlock",
-                "ConditionalIteration",
-            }:
-                continue
-            setattr(WeaveLang, name, value)
-            mnemonic = getattr(value, "__ffi_dialect_mnemonic__", (None, None))[1]
-            if mnemonic and not hasattr(WeaveLang, mnemonic):
-                setattr(WeaveLang, mnemonic, value)
+    register_mnemonic_namespace(
+        WeaveLang,
+        (module,),
+        dialect="weave",
+        skip_names=_FRAME_CLASS_NAMES,
+    )
 
 
 for _module in (
@@ -214,7 +221,7 @@ for _module in (
 
 
 WeaveLang.__ffi_globals__ = {"lm": dtypes.lm}
-WeaveLang.__ffi_generics__ = {**Std.__ffi_generics__}
+WeaveLang.__ffi_generics__ = std_generics()
 
 register_dialect("weave", WeaveLang)
 

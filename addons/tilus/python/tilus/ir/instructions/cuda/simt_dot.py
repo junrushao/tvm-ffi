@@ -40,7 +40,5 @@ class SimtDotInst(Instruction, mnemonic="tilus.SimtDot"):
 
 
 __all__ = [
-    name
-    for name, value in globals().items()
-    if isinstance(value, type) and value.__module__ == __name__
+    "SimtDotInst",
 ]

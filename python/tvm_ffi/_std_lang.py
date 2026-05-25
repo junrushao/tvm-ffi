@@ -18,9 +18,11 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Container, Iterable, Mapping, Sequence
 from typing import Any as TypingAny
 from typing import Callable, ClassVar
+
+from typing_extensions import Protocol
 
 from tvm_ffi.dataclasses import fields, replace
 from tvm_ffi.structural import structural_equal
@@ -30,9 +32,14 @@ from ._pyast_parser import (
     Factory,
     Frame,
     TyFactory,
-    normalize_ty,
     register_dialect,
 )
+
+
+class ScopeBindable(Protocol):
+    """Protocol for parser values that can materialize a scope bind statement."""
+
+    def __ffi_scope_bind__(self) -> std.Stmt: ...
 
 
 class PrimTyFactory(TyFactory):
@@ -89,7 +96,7 @@ class TupleTyFactory(TyFactory):
 
     def __call__(self, *fields: TypingAny) -> std.TupleTy:
         """Build ``std.TupleTy`` from call syntax such as ``std.Tuple(std.i32)``."""
-        return std.TupleTy([normalize_ty(field) for field in fields])
+        return std.TupleTy([std.normalize_ty(field) for field in fields])
 
     def __getitem__(self, indices: Sequence[TypingAny]) -> std.TupleTy:
         """Build tuple types from printed syntax such as ``std.Tuple[std.i32]``."""
@@ -118,6 +125,83 @@ class TensorFactory(Factory):
         return std.TensorTy(shape=list(shape), dtype=dtype)
 
 
+def parse_func_args(
+    args: Sequence[tuple[str, TypingAny]],
+    default_ty: TypingAny | None = None,
+) -> list[std.Var]:
+    """Convert parser function parameters and annotations into dialect variables."""
+    fallback = std.AnyTy() if default_ty is None else std.normalize_ty(default_ty)
+    return [
+        std.Var(ty=std.normalize_ty(ty) if ty is not None else fallback, name=name)
+        for name, ty in args
+    ]
+
+
+def bind_one_var(
+    names: Sequence[str],
+    ty: TypingAny,
+    *,
+    error: str | None = None,
+) -> std.Var:
+    """Build a single named variable from a parser binding target."""
+    if len(names) != 1:
+        raise TypeError(error or f"expected 1 binding target, got {len(names)}")
+    return std.Var(std.normalize_ty(ty), names[0])
+
+
+def std_generics(
+    overrides: Mapping[TypingAny, Callable[..., TypingAny]] | None = None,
+    **kw_overrides: Callable[..., TypingAny],
+) -> dict[TypingAny, Callable[..., TypingAny]]:
+    """Return a shallow copy of the standard parser generics with overrides."""
+    generics = dict(Std.__ffi_generics__)
+    if overrides is not None:
+        generics.update(overrides)
+    generics.update(kw_overrides)
+    return generics
+
+
+def register_mnemonic_namespace(
+    namespace: type[TypingAny],
+    sources: Iterable[TypingAny],
+    *,
+    dialect: str,
+    skip_names: Container[str] = (),
+    skip_mnemonics: Container[str] = (),
+    expose_export_name: bool = True,
+    expose_mnemonic: bool = True,
+    preserve_existing: bool = True,
+    value_for: Callable[[type[TypingAny]], TypingAny] | None = None,
+) -> list[str]:
+    """Expose dialect classes on a parser namespace by export name and mnemonic."""
+    installed: list[str] = []
+    for source in sources:
+        for export_name in getattr(source, "__all__", ()):
+            value = getattr(source, export_name)
+            if not isinstance(value, type):
+                continue
+            mnemonic_info = getattr(value, "__ffi_dialect_mnemonic__", None)
+            if not (
+                isinstance(mnemonic_info, tuple)
+                and len(mnemonic_info) == 2
+                and mnemonic_info[0] == dialect
+            ):
+                continue
+            mnemonic = mnemonic_info[1]
+            if export_name in skip_names or mnemonic in skip_mnemonics:
+                continue
+            exposed_value = value_for(value) if value_for is not None else value
+            if expose_export_name and (
+                not preserve_existing or not hasattr(namespace, export_name)
+            ):
+                setattr(namespace, export_name, exposed_value)
+                installed.append(export_name)
+            if expose_mnemonic and (not preserve_existing or not hasattr(namespace, mnemonic)):
+                setattr(namespace, mnemonic, exposed_value)
+                installed.append(mnemonic)
+    return installed
+
+
 class FuncFactory(Frame):
     """Parser frame for ``@std.func`` function definitions."""
 
@@ -135,13 +219,7 @@ class FuncFactory(Frame):
         Called only for ``@std.func`` function definitions.  Missing
         annotations default to ``std.Any``; default argument values are rejected.
         """
-        self.args = [
-            std.Var(
-                ty=normalize_ty(ty or std.AnyTy()),
-                name=name,
-            )
-            for name, ty in args
-        ]
+        self.args = parse_func_args(args)
         return self.args
 
     def to_dialect(self) -> std.Func:
@@ -253,7 +331,7 @@ class ForFactory(Frame):
         self.start = start
         self.extent = extent
         self.step = step
-        ty = normalize_ty(ty) if ty is not None else None
+        ty = std.normalize_ty(ty) if ty is not None else None
         for value in (start, extent, step):
             if value is None or isinstance(value, int):
                 continue
@@ -284,9 +362,11 @@ class ForFactory(Frame):
 
     def bind_names(self, names: Sequence[str]) -> None:
         """Rename placeholder loop variables to match the ``for`` target."""
-        if len(names) != 1:
-            raise TypeError(f"expected 1 binding target(s), got {len(names)}")
-        self.var = std.Var(self.var.ty, names[0])
+        self.var = bind_one_var(
+            names,
+            self.var.ty,
+            error=f"expected 1 binding target(s), got {len(names)}",
+        )
 
     def bound_vars(self) -> list[std.Var]:
         """Return variables introduced by the loop header."""
@@ -484,7 +564,7 @@ def _normalize_binds(values: Sequence[TypingAny]) -> list[std.Stmt]:
         if isinstance(bind_value, (std.BaseBindExpr, std.BaseVarDef)):
             binds.append(bind_value)
         elif isinstance(bind_value, std.Ty) or hasattr(bind_value, "to_dialect"):
-            ty = normalize_ty(bind_value)
+            ty = std.normalize_ty(bind_value)
             binds.append(std.VarDef(std.Var(ty, "")))
         elif isinstance(bind_value, std.Expr) or isinstance(bind_value, (bool, int, float, str)):
             literal = std.Expr.literal(bind_value)
@@ -549,7 +629,7 @@ def _bind_expr_from_names(
         """Convert native literals to typed or default dialect immediates."""
         if not isinstance(value, (bool, int, float, str)):
             return value
-        ty = normalize_ty(ty)
+        ty = std.normalize_ty(ty)
         if isinstance(ty, std.PrimTy):
             literal = ty.coerce_literal(value)
             if literal is not None:
@@ -565,7 +645,7 @@ def _bind_expr_from_names(
         expr = std.Expr.literal(expr)
         bind_ty = expr.ty
     else:
-        bind_ty = normalize_ty(ty)
+        bind_ty = std.normalize_ty(ty)
         expr = _materialize_literal(expr, bind_ty)
         expr_ty = expr.ty
         if (
@@ -593,7 +673,7 @@ def _bind_var_def_from_names(names: Sequence[str], *tys: TypingAny) -> std.VarDe
         return std.VarDef(*vars)
     if len(names) != len(tys):
         raise TypeError(f"expected {len(tys)} binding target(s), got {len(names)}")
-    vars = [std.Var(normalize_ty(ty), name) for name, ty in zip(names, tys)]
+    vars = [std.Var(std.normalize_ty(ty), name) for name, ty in zip(names, tys)]
     return std.VarDef(*vars)
 
 

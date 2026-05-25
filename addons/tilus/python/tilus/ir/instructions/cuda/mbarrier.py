@@ -100,8 +100,11 @@ class ArriveExpectTxRemoteBarrierInst(Instruction, mnemonic="tilus.ArriveExpectT
     scope: str = field(default="cta", lang_kind="attr")
 
 
-__all__ = [
-    name
-    for name, value in globals().items()
-    if isinstance(value, type) and value.__module__ == __name__
+__all__ = [  # noqa: RUF022
+    "AllocBarrierInst",
+    "ArriveBarrierInst",
+    "ArriveExpectTxBarrierInst",
+    "WaitBarrierInst",
+    "ArriveExpectTxMulticastBarrierInst",
+    "ArriveExpectTxRemoteBarrierInst",
 ]

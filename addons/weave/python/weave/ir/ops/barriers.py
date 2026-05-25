@@ -278,8 +278,27 @@ class StAsync(Op, mnemonic="weave.StAsync"):
             raise ValueError("bytes must be one of 4, 8, 16")
 
 
-__all__ = [
-    name
-    for name, value in list(globals().items())
-    if isinstance(value, type) and value.__module__ == __name__
+__all__ = [  # noqa: RUF022
+    "BarrierSync",
+    "BarrierTryWait",
+    "BarrierWait",
+    "BarrierSignal",
+    "MBarrierArrive",
+    "PeerArriveCommit",
+    "MulticastCommit",
+    "DualCommit",
+    "Fence",
+    "ThreadFence",
+    "ClusterSync",
+    "GridSync",
+    "GridDepSync",
+    "GridDepLaunch",
+    "ClusterMapa",
+    "ClusterBarrierArrive",
+    "CpAsyncBulkSmem2SmemCluster",
+    "WarpReduce",
+    "BlockReduce",
+    "CrossWarpReduce",
+    "WarpGroupReduce",
+    "StAsync",
 ]

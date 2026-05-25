@@ -18,86 +18,11 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Iterable, Sequence
 from typing import Any, ClassVar
 
 from tvm_ffi import Array, List, std
 from tvm_ffi import dataclasses as dc
-from tvm_ffi.dataclasses import fields
-
-
-def collect_dialect_fields(obj: Any) -> std.FieldCollectionResult:
-    """Collect ``lang_kind`` fields for Weave nodes, including empty marker nodes."""
-
-    args: list[Any] = []
-    attrs: dict[str, Any] = {}
-    var_def: list[std.Var] = []
-    body: list[Any] = []
-
-    def extend_values(target: list[Any], value: Any) -> None:
-        if value is None:
-            return
-        if isinstance(value, (Array, List)):
-            target.extend(value)
-        else:
-            target.append(value)
-
-    def extend_var_def(value: Any) -> None:
-        if value is None:
-            return
-        if isinstance(value, std.Var):
-            var_def.append(value)
-        elif isinstance(value, (Array, List)):
-            for item in value:
-                extend_var_def(item)
-        else:
-            collector = getattr(type(value), "__ffi_dialect_field_collector__", None)
-            if collector is None:
-                raise TypeError(f"expected std.Var or var-def node, got {type(value).__name__}")
-            var_def.extend(collector(value).var_def)
-
-    for f in fields(obj):
-        lang_kind = f.lang_kind
-        if lang_kind is None:
-            continue
-        name = f.name
-        if name is None:
-            continue
-        value = getattr(obj, name)
-        if lang_kind == "arg":
-            extend_values(args, value)
-        elif lang_kind == "attr":
-            if value is None:
-                continue
-            if name == "attrs" and isinstance(value, Mapping):
-                attrs.update(value)
-            else:
-                attrs[name] = value
-        elif lang_kind == "var_def":
-            extend_var_def(value)
-        elif lang_kind == "body":
-            extend_values(body, value)
-        else:
-            raise ValueError(f"Invalid {lang_kind = } on {type(obj).__name__}.{name}")
-    return std.FieldCollectionResult(args=args, attrs=attrs, var_def=var_def, body=body)
-
-
-def normalize_ty(value: Any, default: std.Ty | None = None) -> std.Ty:
-    """Normalize parser type factories, strings, and ``None`` to ``std.Ty``."""
-    if value is None:
-        if default is not None:
-            return default
-        return std.AnyTy()
-    if isinstance(value, std.Ty):
-        return value
-    if hasattr(value, "to_dialect"):
-        ty = value.to_dialect()
-        if isinstance(ty, std.Ty):
-            return ty
-        raise TypeError(f"expected std type from to_dialect(), got {type(ty).__name__}")
-    if isinstance(value, str):
-        return std.PrimTy(value)
-    raise TypeError(f"expected std type, got {type(value).__name__}")
 
 
 def normalize_dtype(value: Any, *, field_name: str) -> std.Ty | None:
@@ -107,7 +32,7 @@ def normalize_dtype(value: Any, *, field_name: str) -> std.Ty | None:
     if isinstance(value, str):
         raise TypeError(f"{field_name} must be a Weave/std type, not raw string")
     try:
-        return normalize_ty(value)
+        return std.normalize_ty(value)
     except TypeError as err:
         raise TypeError(f"{field_name}: {err}") from None
 
@@ -189,8 +114,6 @@ class Op(std.Stmt, mnemonic="weave.Op"):
     EXPR_FIELDS: ClassVar[frozenset[str]] = frozenset()
     VALID_DOMAINS: ClassVar[dict[str, tuple[str, ...]]] = {}
 
-    __ffi_dialect_field_collector__ = staticmethod(collect_dialect_fields)
-
     def __post_init__(self) -> None:
         normalize_expr_fields(self, self.EXPR_FIELDS)
         for field_name, valid_values in self.VALID_DOMAINS.items():
@@ -207,27 +130,21 @@ class Op(std.Stmt, mnemonic="weave.Op"):
 class MarkerTy(std.Ty, mnemonic="weave.MarkerTy"):
     """Base class for no-field Weave marker types."""
 
-    __ffi_dialect_field_collector__ = staticmethod(collect_dialect_fields)
-
 
 @dc.py_class("weave.MarkerNode", structural_eq="tree", init=False)
 class MarkerNode(std.Node, mnemonic="weave.MarkerNode"):
     """Base class for no-field Weave marker nodes."""
-
-    __ffi_dialect_field_collector__ = staticmethod(collect_dialect_fields)
 
 
 __all__ = [
     "MarkerNode",
     "MarkerTy",
     "Op",
-    "collect_dialect_fields",
     "normalize_domain",
     "normalize_dtype",
     "normalize_expr",
     "normalize_expr_fields",
     "normalize_expr_sequence",
     "normalize_optional_expr",
-    "normalize_ty",
     "validate_cta_group",
 ]

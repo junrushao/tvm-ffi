@@ -119,8 +119,11 @@ class RegArrayCast(Op, mnemonic="weave.RegArrayCast"):
         )
 
 
-__all__ = [
-    name
-    for name, value in list(globals().items())
-    if isinstance(value, type) and value.__module__ == __name__
+__all__ = [  # noqa: RUF022
+    "Elementwise",
+    "PredicatedStore",
+    "ThreshMask",
+    "BitmaskFill",
+    "MaskFill",
+    "RegArrayCast",
 ]
