@@ -911,6 +911,17 @@ class TestDialectFieldCollectorParserInteractions:
             )
             tag: str = dc.field(default="local", lang_kind="attr")
 
+            def __init__(
+                self,
+                ty: std.Ty,
+                targets: List[std.Var] | None = None,  # noqa: UP006
+                tag: str = "local",
+            ) -> None:
+                normalized_ty = std.normalize_ty(ty)
+                targets = list(targets or [std.Var(normalized_ty, "")])
+                targets = [std.Var(normalized_ty, target.name) for target in targets]
+                self.__ffi_init__(normalized_ty, targets, tag)
+
         class ParserProbe:
             __ffi_globals__: ClassVar[dict[str, Any]] = {}
             __ffi_generics__: ClassVar[dict[str, Any]] = {}

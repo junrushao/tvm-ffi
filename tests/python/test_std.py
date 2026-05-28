@@ -3085,6 +3085,39 @@ class TestDialectFieldCollector:
         assert list(std.collect_dialect_fields(node).var_def) == list(collected.var_def)
         assert node.text() == 'buf = testing.ExtVarDef(16, scope="shared")'
 
+    def test_update_var_name_mutates_var_def_nodes_in_place(self) -> None:
+        @dc.py_class(_unique_std_key("ExtScalarVarDefUpdate"), structural_eq="tree")
+        class ExtScalarVarDef(std.BaseVarDef, mnemonic="testing.ExtScalarVarDefUpdate"):
+            target: std.Var = dc.field(lang_kind="var_def", structural_eq="def-recursive")
+
+        @dc.py_class(_unique_std_key("ExtSeqVarDefUpdate"), structural_eq="tree")
+        class ExtSeqVarDef(std.BaseVarDef, mnemonic="testing.ExtSeqVarDefUpdate"):
+            targets: List[std.Var] = dc.field(  # noqa: UP006
+                default_factory=list,
+                lang_kind="var_def",
+                structural_eq="def-recursive",
+            )
+
+        i32 = std.PrimTy("int32")
+        bind = std.BindExpr(1, std.Var(i32, ""))
+        var_def = std.VarDef(std.Var(i32, ""))
+        scalar = ExtScalarVarDef(std.Var(i32, ""))
+        seq = ExtSeqVarDef([std.Var(i32, ""), std.Var(i32, "")])
+
+        bind_vars = bind.__ffi_update_var_name__("bind")
+        var_def_vars = var_def.__ffi_update_var_name__("decl")
+        scalar_vars = scalar.__ffi_update_var_name__("scalar")
+        seq_vars = seq.__ffi_update_var_name__(("lhs", "rhs"))
+
+        assert bind.vars[0].name == "bind"
+        assert var_def.vars[0].name == "decl"
+        assert scalar.target.name == "scalar"
+        assert [var.name for var in seq.targets] == ["lhs", "rhs"]
+        assert bind_vars == tuple(bind.vars)
+        assert var_def_vars == tuple(var_def.vars)
+        assert scalar_vars == (scalar.target,)
+        assert seq_vars == tuple(seq.targets)
+
     def test_public_collector_installs_for_no_field_nodes(self) -> None:
         @dc.py_class(_unique_std_key("ExtNoFieldMarker"), structural_eq="tree")
         class ExtNoFieldMarker(std.Node, mnemonic="testing.ExtNoFieldMarker"):
@@ -3156,6 +3189,18 @@ class TestDialectFieldCollector:
         stmt_with_attrs = ExtPlainStmt(value=3, attrs=std.DictAttrs(tag="demo"))
         assert stmt_with_attrs.text() == 'testing.ExtPlainStmt(3, attrs=std.DictAttrs(tag="demo"))'
 
+    def test_generic_collector_printer_rejects_plain_node_var_def(self) -> None:
+        @dc.py_class(_unique_std_key("ExtPlainNodeBinding"), structural_eq="tree")
+        class ExtPlainNodeBinding(std.Node, mnemonic="testing.ExtPlainNodeBinding"):
+            target: std.Var = dc.field(lang_kind="var_def")
+            value: int = dc.field(lang_kind="arg")
+
+        i32 = std.PrimTy("int32")
+        node = ExtPlainNodeBinding(target=std.Var(i32, "x"), value=1)
+
+        with pytest.raises(TypeError, match=r"subclass std\.BaseBindExpr or std\.BaseVarDef"):
+            node.text()
+
     def test_parser_round_trips_plain_generic_node_and_stmt(self) -> None:
         @dc.py_class(_unique_std_key("ExtPlainNodeParse"), structural_eq="tree")
         class ExtPlainNode(std.Node, mnemonic="testing.ExtPlainNodeParse"):
@@ -3184,7 +3229,7 @@ class TestDialectFieldCollector:
 
     def test_generic_collector_printer_honors_dialect_print_map(self) -> None:
         @dc.py_class(_unique_std_key("ExtPrintMapBinding"), structural_eq="tree")
-        class ExtPrintMapBinding(std.Node, mnemonic="testing.ExtPrintMapBinding"):
+        class ExtPrintMapBinding(std.BaseVarDef, mnemonic="testing.ExtPrintMapBinding"):
             __ffi_dialect_field_collector__ = staticmethod(
                 TestDialectFieldCollector._collect_with_single_var_def_ty
             )
@@ -3213,7 +3258,7 @@ class TestDialectFieldCollector:
 
     def test_generic_collector_printer_handles_plain_var_def(self) -> None:
         @dc.py_class(_unique_std_key("ExtPlainBinding"), structural_eq="tree")
-        class ExtPlainBinding(std.Node, mnemonic="testing.ExtPlainBinding"):
+        class ExtPlainBinding(std.BaseVarDef, mnemonic="testing.ExtPlainBinding"):
             __ffi_dialect_field_collector__ = staticmethod(
                 TestDialectFieldCollector._collect_with_single_var_def_ty
             )
@@ -3224,7 +3269,17 @@ class TestDialectFieldCollector:
             )
             value: int = dc.field(lang_kind="arg")
 
-            def __init__(self, target: std.Var, value: int, *, ty: Any = None) -> None:
+            def __init__(
+                self,
+                value: int,
+                target: std.Var | None = None,
+                *,
+                ty: Any = None,
+            ) -> None:
+                if target is None:
+                    if ty is None:
+                        raise TypeError("target requires ty")
+                    target = std.Var(std.normalize_ty(ty), "")
                 if ty is not None:
                     target = std.Var(std.normalize_ty(ty), target.name)
                 self.__ffi_init__(target, value)
@@ -3260,7 +3315,7 @@ class TestDialectFieldCollector:
 
     def test_generic_collector_printer_rejects_body_var_def_nodes(self) -> None:
         @dc.py_class(_unique_std_key("ExtBodyBinding"), structural_eq="tree")
-        class ExtBodyBinding(std.Node, mnemonic="testing.ExtBodyBinding"):
+        class ExtBodyBinding(std.BaseVarDef, mnemonic="testing.ExtBodyBinding"):
             target: std.Var = dc.field(lang_kind="var_def")
             body: List[std.Stmt] = dc.field(default_factory=list, lang_kind="body")  # noqa: UP006
 
@@ -3273,7 +3328,7 @@ class TestDialectFieldCollector:
 
     def test_generic_collector_printer_rejects_multi_var_def_assignment(self) -> None:
         @dc.py_class(_unique_std_key("ExtMultiBinding"), structural_eq="tree")
-        class ExtMultiBinding(std.Node, mnemonic="testing.ExtMultiBinding"):
+        class ExtMultiBinding(std.BaseVarDef, mnemonic="testing.ExtMultiBinding"):
             value: int = dc.field(lang_kind="arg")
             targets: List[std.Var] = dc.field(default_factory=list, lang_kind="var_def")  # noqa: UP006
 
@@ -3291,8 +3346,22 @@ class TestDialectFieldCollector:
         @dc.py_class(_unique_std_key("ExtParseVarDef"), structural_eq="tree")
         class ExtVarDef(std.BaseVarDef, mnemonic="testing.ExtParseVarDef"):
             size: int = dc.field(lang_kind="arg")
-            target: std.Var = dc.field(lang_kind="var_def")
+            target: std.Var = dc.field(lang_kind="var_def", structural_eq="def-recursive")
             scope: str = dc.field(default="local", lang_kind="attr")
+
+            def __init__(
+                self,
+                size: int,
+                scope: str = "local",
+                *,
+                ty: Any = None,
+                target: std.Var | None = None,
+            ) -> None:
+                if target is None:
+                    if ty is None:
+                        raise TypeError("target requires ty")
+                    target = std.Var(std.normalize_ty(ty), "")
+                self.__ffi_init__(size, target, scope)
 
         class Testing:
             __ffi_globals__: ClassVar[dict[str, Any]] = {}
@@ -3302,9 +3371,9 @@ class TestDialectFieldCollector:
         register_dialect("testing", Testing)
 
         with pytest.raises(TypeError, match="does not support type annotations"):
-            parse('buf: std.i32 = testing.ExtParseVarDef(16, scope="shared")')
+            parse('buf: std.i32 = testing.ExtParseVarDef(16, scope="shared", ty=std.i32)')
 
-        with pytest.raises(TypeError, match="constructor to assign a concrete target type"):
+        with pytest.raises(TypeError, match="target requires ty"):
             parse('buf = testing.ExtParseVarDef(16, scope="shared")')
 
     def test_parser_round_trips_constructor_sequence_var_def_with_constructor_ty(self) -> None:
@@ -3331,6 +3400,8 @@ class TestDialectFieldCollector:
                 targets = list(targets or [])
                 if ty is not None:
                     normalized_ty = std.normalize_ty(ty)
+                    if not targets:
+                        targets = [std.Var(normalized_ty, "")]
                     targets = [std.Var(normalized_ty, target.name) for target in targets]
                 self.__ffi_init__(size, targets)
 
@@ -3349,12 +3420,32 @@ class TestDialectFieldCollector:
         assert tvm_ffi.structural_equal(parsed.targets[0].ty, std.PrimTy("int32"))
         assert tvm_ffi.structural_equal(parse(parsed.text()), parsed)
 
-    def test_parser_rejects_constructor_var_def_with_multiple_missing_fields(self) -> None:
-        @dc.py_class(_unique_std_key("ExtAmbiguousParseVarDef"), structural_eq="tree")
+        body = parse(
+            """
+            buf = testing.ExtSeqParseVarDef(16, ty=std.i32)
+            std.Return(buf)
+            """
+        )
+        assert isinstance(body, list)
+        assert len(body) == 2
+        assert isinstance(body[0], ExtVarDef)
+        assert isinstance(body[1], std.Return)
+        assert tvm_ffi.structural_equal(body[1].exprs[0], body[0].targets[0])
+
+    def test_parser_rejects_constructor_var_def_target_count_mismatch(self) -> None:
+        @dc.py_class(_unique_std_key("ExtPairParseVarDef"), structural_eq="tree")
         class ExtVarDef(std.BaseVarDef, mnemonic="testing.ExtAmbiguousParseVarDef"):
             size: int = dc.field(lang_kind="arg")
             lhs: std.Var = dc.field(lang_kind="var_def")
             rhs: std.Var = dc.field(lang_kind="var_def")
+
+            def __init__(self, size: int, *, ty: Any) -> None:
+                normalized_ty = std.normalize_ty(ty)
+                self.__ffi_init__(
+                    size,
+                    std.Var(normalized_ty, ""),
+                    std.Var(normalized_ty, ""),
+                )
 
         class Testing:
             __ffi_globals__: ClassVar[dict[str, Any]] = {}
@@ -3363,18 +3454,24 @@ class TestDialectFieldCollector:
         setattr(Testing, "ExtAmbiguousParseVarDef", ExtVarDef)
         register_dialect("testing", Testing)
 
-        with pytest.raises(TypeError, match="requires exactly one omitted var_def field"):
-            parse("buf = testing.ExtAmbiguousParseVarDef(16)")
+        with pytest.raises(TypeError, match="expected 2 binding target"):
+            parse("buf = testing.ExtAmbiguousParseVarDef(16, ty=std.i32)")
 
-    def test_parser_reports_constructor_var_def_call_shape_errors(self) -> None:
-        @dc.py_class(_unique_std_key("ExtCtorVarDefError"), structural_eq="tree")
+    def test_parser_reports_constructor_var_def_assignment_target_errors(self) -> None:
+        @dc.py_class(_unique_std_key("ExtCtorVarDefTargetError"), structural_eq="tree")
         class ExtVarDef(std.BaseVarDef, mnemonic="testing.ExtCtorVarDefError"):
             size: int = dc.field(lang_kind="arg")
-            target: std.Var = dc.field(lang_kind="var_def")
+            target: std.Var = dc.field(lang_kind="var_def", structural_eq="def-recursive")
 
         @dc.py_class(_unique_std_key("ExtCtorBindError"), structural_eq="tree")
         class ExtBindExpr(std.BaseBindExpr, mnemonic="testing.ExtCtorBindError"):
-            target: std.Var = dc.field(lang_kind="var_def")
+            target: std.Var = dc.field(lang_kind="var_def", structural_eq="def-recursive")
+
+            def __init__(self, expr: Any, target: std.Var | None = None) -> None:
+                expr = expr if isinstance(expr, std.Expr) else std.Expr.literal(expr)
+                if target is None:
+                    target = std.Var(expr.ty, "")
+                self.__ffi_init__(expr, target)
 
         class Testing:
             __ffi_globals__: ClassVar[dict[str, Any]] = {}
@@ -3387,15 +3484,7 @@ class TestDialectFieldCollector:
         for source, match in [
             (
                 "x, y = testing.ExtCtorBindError(1)",
-                "supports exactly one binding target",
-            ),
-            (
-                "buf = testing.ExtCtorVarDefError(16, 32)",
-                "too many positional arguments",
-            ),
-            (
-                "buf = testing.ExtCtorVarDefError(16, size=32)",
-                "multiple values for constructor field 'size'",
+                "expected 1 binding target",
             ),
         ]:
             with pytest.raises(TypeError, match=match):
@@ -3538,9 +3627,11 @@ class TestDialectFieldCollector:
                 structural_eq="def-recursive",
             )
 
-            def __init__(self, expr: Any, target: std.Var) -> None:
+            def __init__(self, expr: Any, target: std.Var | None = None) -> None:
                 expr = expr if isinstance(expr, std.Expr) else std.Expr.literal(expr)
-                if isinstance(target.ty, std.AnyTy):
+                if target is None:
+                    target = std.Var(expr.ty, "")
+                elif isinstance(target.ty, std.AnyTy):
                     target = std.Var(expr.ty, target.name)
                 self.__ffi_init__(expr, target)
 
@@ -3622,6 +3713,12 @@ class TestDialectFieldCollector:
                 lang_kind="var_def",
                 structural_eq="def-recursive",
             )
+
+            def __init__(self, ty: std.Ty, targets: List[std.Var] | None = None) -> None:  # noqa: UP006
+                normalized_ty = std.normalize_ty(ty)
+                targets = list(targets or [std.Var(normalized_ty, "")])
+                targets = [std.Var(normalized_ty, target.name) for target in targets]
+                self.__ffi_init__(normalized_ty, targets)
 
         class Testing:
             __ffi_globals__: ClassVar[dict[str, Any]] = {}

@@ -54,7 +54,7 @@ class BarrierTryWait(Op, mnemonic="weave.BarrierTryWait"):
         barrier: BarrierHandle,
         stage: std.Expr,
         phase: std.Expr,
-        dst: std.Var,
+        dst: std.Var | None = None,
         stage_is_deterministic: bool = True,
         *,
         ty: Any = None,
@@ -212,7 +212,7 @@ class ClusterMapa(Op, mnemonic="weave.ClusterMapa"):
         self,
         src_addr: std.Expr,
         peer_rank: std.Expr,
-        dst: std.Var,
+        dst: std.Var | None = None,
         *,
         ty: Any = None,
     ) -> None:
@@ -271,7 +271,9 @@ class WarpReduce(Op, mnemonic="weave.WarpReduce"):
         self.__ffi_init__(
             val,
             op,
-            var_with_ty_hint(dst, ty, field_name="dst") if dst is not None else None,
+            var_with_ty_hint(dst, ty, field_name="dst")
+            if dst is not None or ty is not None
+            else None,
         )
         self.__post_init__()
 
@@ -304,7 +306,7 @@ class CrossWarpReduce(Op, mnemonic="weave.CrossWarpReduce"):
         self,
         src: std.Expr,
         smem: std.Expr,
-        dst: std.Var,
+        dst: std.Var | None = None,
         op: str = "add",
         finalize: str = "none",
         *,
@@ -335,7 +337,7 @@ class WarpGroupReduce(Op, mnemonic="weave.WarpGroupReduce"):
         self,
         src: std.Expr,
         smem: std.Expr,
-        dst: std.Var,
+        dst: std.Var | None = None,
         op: str = "add",
         num_warp_groups: int = 2,
         *,

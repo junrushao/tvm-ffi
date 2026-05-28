@@ -24,13 +24,15 @@ from typing import Callable, ClassVar
 
 from typing_extensions import Protocol
 
-from tvm_ffi.dataclasses import fields, replace
+from tvm_ffi import Array, List
+from tvm_ffi.dataclasses import fields
 from tvm_ffi.structural import structural_equal
 
 from . import std
 from ._pyast_parser import (
     Factory,
     Frame,
+    FuncFrame,
     TyFactory,
     register_dialect,
 )
@@ -161,7 +163,7 @@ def std_generics(
     return generics
 
 
-class FuncFactory(Frame):
+class FuncFactory(FuncFrame):
     """Parser frame for ``@std.func`` function definitions."""
 
     def __init__(self, **attrs: TypingAny) -> None:
@@ -233,25 +235,21 @@ class RegionFactory(Frame):
         self.binds: list[std.Stmt] = list(binds or [])
         self.body: list[TypingAny] = []
 
-    def bind_names(self, names: Sequence[str]) -> None:
+    def bind_names(self, names: Sequence[str]) -> tuple[std.Var, ...]:
         """Rename placeholder bind variables to match ``for`` or ``with as`` targets."""
         bind_var_lists = [_bind_vars(bind) for bind in self.binds]
         num_bind_vars = sum(len(bind_vars) for bind_vars in bind_var_lists)
         if len(names) != num_bind_vars:
             raise TypeError(f"expected {num_bind_vars} binding target(s), got {len(names)}")
 
-        rebuilt: list[std.Stmt] = []
+        vars: list[std.Var] = []
         offset = 0
         for bind, bind_vars in zip(self.binds, bind_var_lists):
             count = len(bind_vars)
-            new_vars = [std.Var(bind_vars[i].ty, names[offset + i]) for i in range(count)]
+            new_names = tuple(names[offset + i] for i in range(count))
             offset += count
-            rebuilt.append(_replace_bind_vars(bind, new_vars))
-        self.binds = rebuilt
-
-    def bound_vars(self) -> list[std.Var]:
-        """Return variables introduced by the region header."""
-        return [var for bind in self.binds for var in _bind_vars(bind)]
+            vars.extend(bind.__ffi_update_var_name__(new_names[0] if count == 1 else new_names))
+        return tuple(vars)
 
     def to_dialect(self) -> std.Stmt:
         """Build the concrete region statement after its body has been parsed."""
@@ -319,17 +317,14 @@ class ForFactory(Frame):
         self.var = std.Var(ty, "")
         self.body: list[TypingAny] = []
 
-    def bind_names(self, names: Sequence[str]) -> None:
+    def bind_names(self, names: Sequence[str]) -> tuple[std.Var, ...]:
         """Rename placeholder loop variables to match the ``for`` target."""
         self.var = bind_one_var(
             names,
             self.var.ty,
             error=f"expected 1 binding target(s), got {len(names)}",
         )
-
-    def bound_vars(self) -> list[std.Var]:
-        """Return variables introduced by the loop header."""
-        return [self.var]
+        return (self.var,)
 
     def to_dialect(self) -> std.For:
         """Build a ``std.For`` after the target name and body are known."""
@@ -533,48 +528,30 @@ def _normalize_binds(values: Sequence[TypingAny]) -> list[std.Stmt]:
     return binds
 
 
+def _field_bind_vars(value: TypingAny) -> list[std.Var]:
+    if value is None:
+        return []
+    if isinstance(value, std.Var):
+        return [value]
+    if isinstance(value, (Array, List, list, tuple)):
+        vars: list[std.Var] = []
+        for item in value:
+            vars.extend(_field_bind_vars(item))
+        return vars
+    raise TypeError(f"expected std.Var or var-def sequence, got {type(value).__name__}")
+
+
 def _bind_vars(bind: std.Stmt) -> list[std.Var]:
-    """Return variables introduced by a concrete or collector-backed bind."""
-    collector = getattr(type(bind), "__ffi_dialect_field_collector__", None)
-    if collector is None:
-        raise TypeError(f"unsupported bind type: {type(bind).__name__}")
-    if not (bind_vars := list(collector(bind).var_def)):
+    """Return variables introduced by a concrete bind."""
+    if isinstance(bind, (std.BindExpr, std.VarDef)):
+        return list(bind.vars)
+    bind_vars: list[std.Var] = []
+    for field in fields(type(bind)):
+        if field.lang_kind == "var_def" and field.name is not None:
+            bind_vars.extend(_field_bind_vars(getattr(bind, field.name)))
+    if not bind_vars:
         raise TypeError(f"unsupported bind type: {type(bind).__name__}")
     return bind_vars
-
-
-def _replace_bind_vars(bind: std.Stmt, new_vars: Sequence[std.Var]) -> std.Stmt:
-    """Return ``bind`` with its bound variables renamed."""
-    expected_vars = len(_bind_vars(bind))
-    if len(new_vars) != expected_vars:
-        raise TypeError(
-            f"expected {expected_vars} replacement bind variable(s), got {len(new_vars)}"
-        )
-
-    if isinstance(bind, std.BindExpr):
-        return std.BindExpr(bind.expr, *new_vars)
-    if isinstance(bind, std.VarDef):
-        return std.VarDef(*new_vars)
-
-    var_def_fields = [
-        (field.name, getattr(bind, field.name))
-        for field in fields(type(bind))
-        if field.lang_kind == "var_def" and field.name is not None
-    ]
-    if not var_def_fields:
-        raise TypeError(f"unsupported bind type: {type(bind).__name__}")
-
-    changes: dict[str, TypingAny] = {}
-    offset = 0
-    for field_name, value in var_def_fields:
-        if isinstance(value, std.Var):
-            changes[field_name] = new_vars[offset]
-            count = 1
-        else:
-            count = len(value)
-            changes[field_name] = list(new_vars[offset : offset + count])
-        offset += count
-    return replace(bind, **changes)
 
 
 def _bind_expr_from_names(

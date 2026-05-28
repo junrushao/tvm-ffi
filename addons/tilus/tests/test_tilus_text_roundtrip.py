@@ -116,7 +116,7 @@ def _assert_text_roundtrip(source: str) -> str:
             def tensor_alias_return(
                 x: tilus.RegisterTensor(std.f32, 2, 2),
             ) -> tilus.RegisterTensor(std.f32, 2, 2):
-                y: tilus.RegisterTensor(std.f32, 2, 2) = tilus.Add(x, x)
+                y = tilus.Add(x, x, ty=tilus.RegisterTensor(std.f32, 2, 2))
                 return y
             """,
             id="tensor-alias-return-annotation",
@@ -140,7 +140,7 @@ def _assert_text_roundtrip(source: str) -> str:
                 x: tilus.RegTensor(std.f32, 2, 2),
             ) -> tilus.RegTensor(std.f32, 2, 2):
                 with tilus.thread_group(0, 32):
-                    y: tilus.RegTensor(std.f32, 2, 2) = tilus.Add(x, x)
+                    y = tilus.Add(x, x, ty=tilus.RegTensor(std.f32, 2, 2))
                     return y
             """,
             id="nested-thread-group-return",
@@ -180,8 +180,9 @@ def test_tilus_functions_inside_std_module_round_trip() -> None:
                 num_warps=4,
             ))
             def load_tile(src: tilus.GlobalTensor(std.f32, 16)):
-                tile: tilus.RegTensor(std.f32, 16) = tilus.LoadGlobal(
+                tile = tilus.LoadGlobal(
                     src,
+                    ty=tilus.RegTensor(std.f32, 16),
                     offsets=[0],
                     dims=[0],
                 )
@@ -304,16 +305,21 @@ def test_layouts_in_function_arg_annotations_roundtrip(source: str) -> None:
                     ),
                 ),
             ):
-                tile: tilus.RegTensor(
-                    std.f32,
-                    8, 16,
-                    layout=tilus.RegisterLayout(
+                tile = tilus.LoadGlobal(
+                    src,
+                    offsets=[0, 0],
+                    dims=[0, 1],
+                    ty=tilus.RegTensor(
+                        std.f32,
                         8, 16,
-                        mode_shape=[2, 4, 16],
-                        spatial_modes=[0],
-                        local_modes=[1, 2],
+                        layout=tilus.RegisterLayout(
+                            8, 16,
+                            mode_shape=[2, 4, 16],
+                            spatial_modes=[0],
+                            local_modes=[1, 2],
+                        ),
                     ),
-                ) = tilus.LoadGlobal(src, offsets=[0, 0], dims=[0, 1])
+                )
                 return tile
             """,
             id="global-to-register",
@@ -342,16 +348,19 @@ def test_layouts_in_function_arg_annotations_roundtrip(source: str) -> None:
                     ),
                 ),
             ):
-                tile: tilus.RegTensor(
-                    std.f32,
-                    4, 8,
-                    layout=tilus.RegisterLayout(
+                tile = tilus.LoadShared(
+                    src,
+                    ty=tilus.RegTensor(
+                        std.f32,
                         4, 8,
-                        mode_shape=[4, 8],
-                        spatial_modes=[],
-                        local_modes=[0, 1],
+                        layout=tilus.RegisterLayout(
+                            4, 8,
+                            mode_shape=[4, 8],
+                            spatial_modes=[],
+                            local_modes=[0, 1],
+                        ),
                     ),
-                ) = tilus.LoadShared(src)
+                )
                 tilus.StoreShared(dst, tile)
                 return tile
             """,
@@ -372,17 +381,18 @@ def test_layouts_in_function_arg_annotations_roundtrip(source: str) -> None:
                     ),
                 ),
             ):
-                hinted: tilus.RegTensor(
-                    std.f32,
-                    2, 4,
-                    layout=tilus.RegisterLayout(
-                        2, 4,
-                        mode_shape=[2, 4],
-                        spatial_modes=[],
-                        local_modes=[0, 1],
-                    ),
-                ) = tilus.AnnotateLayout(
+                hinted = tilus.AnnotateLayout(
                     x,
+                    ty=tilus.RegTensor(
+                        std.f32,
+                        2, 4,
+                        layout=tilus.RegisterLayout(
+                            2, 4,
+                            mode_shape=[2, 4],
+                            spatial_modes=[],
+                            local_modes=[0, 1],
+                        ),
+                    ),
                     layout=tilus.RegisterLayout(
                         2, 4,
                         mode_shape=[2, 4],
@@ -390,16 +400,22 @@ def test_layouts_in_function_arg_annotations_roundtrip(source: str) -> None:
                         local_modes=[0, 1],
                     ),
                 )
-                reduced: tilus.RegTensor(
-                    std.f32,
-                    2,
-                    layout=tilus.RegisterLayout(
+                reduced = tilus.Reduce(
+                    hinted,
+                    dim=1,
+                    op="sum",
+                    keepdim=False,
+                    ty=tilus.RegTensor(
+                        std.f32,
                         2,
-                        mode_shape=[2],
-                        spatial_modes=[],
-                        local_modes=[0],
+                        layout=tilus.RegisterLayout(
+                            2,
+                            mode_shape=[2],
+                            spatial_modes=[],
+                            local_modes=[0],
+                        ),
                     ),
-                ) = tilus.Reduce(hinted, dim=1, op="sum", keepdim=False)
+                )
                 return reduced
             """,
             id="annotate-layout-and-reduce-output",
@@ -425,8 +441,9 @@ def test_symbolic_global_layout_expression_inside_function_roundtrips() -> None:
                     offset=tilus.Swizzle(1, 2, 1)(m),
                 ),
             )
-            tile: tilus.RegTensor(std.f32, 16) = tilus.LoadGlobal(
+            tile = tilus.LoadGlobal(
                 src,
+                ty=tilus.RegTensor(std.f32, 16),
                 offsets=[m],
                 dims=[0],
             )
@@ -454,16 +471,20 @@ def test_multi_function_layout_unit_roundtrips() -> None:
                 ),
             ),
         ):
-            y: tilus.RegTensor(
-                std.f32,
-                2, 2,
-                layout=tilus.RegisterLayout(
+            y = tilus.Add(
+                x,
+                x,
+                ty=tilus.RegTensor(
+                    std.f32,
                     2, 2,
-                    mode_shape=[2, 2],
-                    spatial_modes=[],
-                    local_modes=[0, 1],
+                    layout=tilus.RegisterLayout(
+                        2, 2,
+                        mode_shape=[2, 2],
+                        spatial_modes=[],
+                        local_modes=[0, 1],
+                    ),
                 ),
-            ) = tilus.Add(x, x)
+            )
             return y
 
         @tilus.Function
@@ -478,16 +499,19 @@ def test_multi_function_layout_unit_roundtrips() -> None:
                 ),
             ),
         ):
-            y: tilus.RegTensor(
-                std.f32,
-                2, 2,
-                layout=tilus.RegisterLayout(
+            y = tilus.LoadShared(
+                src,
+                ty=tilus.RegTensor(
+                    std.f32,
                     2, 2,
-                    mode_shape=[2, 2],
-                    spatial_modes=[],
-                    local_modes=[0, 1],
+                    layout=tilus.RegisterLayout(
+                        2, 2,
+                        mode_shape=[2, 2],
+                        spatial_modes=[],
+                        local_modes=[0, 1],
+                    ),
                 ),
-            ) = tilus.LoadShared(src)
+            )
             return y
         """
     )
@@ -505,8 +529,8 @@ def test_multi_function_layout_unit_roundtrips() -> None:
             def register_alias_flow(
                 src: tilus.RegisterTensor(std.f32, 2, 3),
             ) -> tilus.RegisterTensor(std.f32, 2, 3):
-                acc: tilus.RegisterTensor(std.f32, 2, 3) = tilus.Add(src, src)
-                out: tilus.RegTensor(std.f32, 2, 3) = tilus.Mul(acc, src)
+                acc = tilus.Add(src, src, ty=tilus.RegisterTensor(std.f32, 2, 3))
+                out = tilus.Mul(acc, src, ty=tilus.RegTensor(std.f32, 2, 3))
                 return out
             """,
             ("tilus.RegTensor",),
@@ -520,13 +544,14 @@ def test_multi_function_layout_unit_roundtrips() -> None:
                 dst: tilus.GlobalTensor(std.f32, 16),
                 scratch: tilus.SharedTensor(std.f32, 16),
             ):
-                loaded: tilus.RegTensor(std.f32, 16) = tilus.LoadGlobal(
+                loaded = tilus.LoadGlobal(
                     src,
+                    ty=tilus.RegTensor(std.f32, 16),
                     offsets=[0],
                     dims=[0],
                 )
                 tilus.StoreShared(scratch, loaded)
-                reread: tilus.RegTensor(std.f32, 16) = tilus.LoadShared(scratch)
+                reread = tilus.LoadShared(scratch, ty=tilus.RegTensor(std.f32, 16))
                 tilus.StoreGlobal(dst, reread, offsets=[0], dims=[0])
             """,
             ("tilus.GlobalTensor", "tilus.SharedTensor", "tilus.RegTensor"),
@@ -566,16 +591,19 @@ def test_multi_function_layout_unit_roundtrips() -> None:
                     ),
                 ),
             ):
-                tile: tilus.RegTensor(
-                    std.f16,
-                    4, 8,
-                    layout=tilus.RegisterLayout(
+                tile = tilus.LoadShared(
+                    shared,
+                    ty=tilus.RegTensor(
+                        std.f16,
                         4, 8,
-                        mode_shape=[4, 8],
-                        spatial_modes=[],
-                        local_modes=[0, 1],
+                        layout=tilus.RegisterLayout(
+                            4, 8,
+                            mode_shape=[4, 8],
+                            spatial_modes=[],
+                            local_modes=[0, 1],
+                        ),
                     ),
-                ) = tilus.LoadShared(shared)
+                )
                 tilus.StoreGlobal(global_tensor, tile, offsets=[0, 0], dims=[0, 1])
                 return tmem
             """,
@@ -663,20 +691,22 @@ def test_tensor_return_types_round_trip_inside_std_module() -> None:
                 dst: tilus.GlobalTensor(std.f32, 64),
             ):
                 for tile in range(0, 4, step=1, tag="tiles"):
-                    left: tilus.RegTensor(std.f32, 16) = tilus.LoadGlobal(
+                    left = tilus.LoadGlobal(
                         lhs,
+                        ty=tilus.RegTensor(std.f32, 16),
                         offsets=[tile * 16],
                         dims=[0],
                     )
-                    right: tilus.RegTensor(std.f32, 16) = tilus.LoadGlobal(
+                    right = tilus.LoadGlobal(
                         rhs,
+                        ty=tilus.RegTensor(std.f32, 16),
                         offsets=[tile * 16],
                         dims=[0],
                     )
-                    summed: tilus.RegTensor(std.f32, 16) = tilus.Add(left, right)
-                    delta: tilus.RegTensor(std.f32, 16) = tilus.Sub(summed, left)
-                    scaled: tilus.RegTensor(std.f32, 16) = tilus.Mul(delta, right)
-                    quotient: tilus.RegTensor(std.f32, 16) = tilus.Div(scaled, summed)
+                    summed = tilus.Add(left, right, ty=tilus.RegTensor(std.f32, 16))
+                    delta = tilus.Sub(summed, left, ty=tilus.RegTensor(std.f32, 16))
+                    scaled = tilus.Mul(delta, right, ty=tilus.RegTensor(std.f32, 16))
+                    quotient = tilus.Div(scaled, summed, ty=tilus.RegTensor(std.f32, 16))
                     tilus.StoreGlobal(dst, quotient, offsets=[tile * 16], dims=[0])
             """,
             id="global-load-arithmetic-store",
@@ -688,18 +718,20 @@ def test_tensor_return_types_round_trip_inside_std_module() -> None:
                 src: tilus.GlobalTensor(std.f32, 8, 4),
                 dst: tilus.GlobalTensor(std.i32, 8),
             ):
-                tile: tilus.RegTensor(std.f32, 8, 4) = tilus.LoadGlobal(
+                tile = tilus.LoadGlobal(
                     src,
+                    ty=tilus.RegTensor(std.f32, 8, 4),
                     offsets=[0, 0],
                     dims=[0, 1],
                 )
-                reduced: tilus.RegTensor(std.f32, 8) = tilus.Reduce(
+                reduced = tilus.Reduce(
                     tile,
+                    ty=tilus.RegTensor(std.f32, 8),
                     dim=1,
                     op="max",
                     keepdim=False,
                 )
-                casted: tilus.RegTensor(std.i32, 8) = tilus.Cast(reduced)
+                casted = tilus.Cast(reduced, ty=tilus.RegTensor(std.i32, 8))
                 tilus.StoreGlobal(dst, casted, offsets=[0], dims=[0])
             """,
             id="reduce-cast-store",
@@ -711,8 +743,9 @@ def test_tensor_return_types_round_trip_inside_std_module() -> None:
                 src: tilus.GlobalTensor(std.f16, 8),
                 dst: tilus.GlobalTensor(std.f16, 8),
             ):
-                loaded: tilus.RegTensor(std.f16, 8) = tilus.LoadGlobal(
+                loaded = tilus.LoadGlobal(
                     src,
+                    ty=tilus.RegTensor(std.f16, 8),
                     offsets=[0],
                     dims=[0],
                 )
@@ -721,7 +754,7 @@ def test_tensor_return_types_round_trip_inside_std_module() -> None:
                 ) as shared:
                     tilus.StoreShared(shared, loaded)
                     tilus.SyncThreads()
-                    reread: tilus.RegTensor(std.f16, 8) = tilus.LoadShared(shared)
+                    reread = tilus.LoadShared(shared, ty=tilus.RegTensor(std.f16, 8))
                     tilus.Nop()
                     tilus.StoreGlobal(dst, reread, offsets=[0], dims=[0])
             """,
@@ -735,8 +768,8 @@ def test_tensor_return_types_round_trip_inside_std_module() -> None:
                     tilus.TensorItemValue(tilus.RegTensor(std.f32, 4)),
                     role="accumulator",
                 ) as acc:
-                    squared: tilus.RegTensor(std.f32, 4) = tilus.Mul(acc, acc)
-                    shifted: tilus.RegTensor(std.f32, 4) = tilus.Add(squared, acc)
+                    squared = tilus.Mul(acc, acc, ty=tilus.RegTensor(std.f32, 4))
+                    shifted = tilus.Add(squared, acc, ty=tilus.RegTensor(std.f32, 4))
                     tilus.StoreGlobal(dst, shifted, offsets=[0], dims=[0])
             """,
             id="tensor-item-value-arithmetic",
@@ -757,9 +790,9 @@ def test_multiple_generic_instruction_functions_round_trip_as_translation_unit()
         rhs: tilus.GlobalTensor(std.f32, 4),
         dst: tilus.GlobalTensor(std.f32, 4),
     ):
-        a: tilus.RegTensor(std.f32, 4) = tilus.LoadGlobal(lhs, offsets=[0], dims=[0])
-        b: tilus.RegTensor(std.f32, 4) = tilus.LoadGlobal(rhs, offsets=[0], dims=[0])
-        out: tilus.RegTensor(std.f32, 4) = tilus.Add(a, b)
+        a = tilus.LoadGlobal(lhs, offsets=[0], dims=[0], ty=tilus.RegTensor(std.f32, 4))
+        b = tilus.LoadGlobal(rhs, offsets=[0], dims=[0], ty=tilus.RegTensor(std.f32, 4))
+        out = tilus.Add(a, b, ty=tilus.RegTensor(std.f32, 4))
         tilus.StoreGlobal(dst, out, offsets=[0], dims=[0])
 
     @tilus.Function
@@ -767,12 +800,13 @@ def test_multiple_generic_instruction_functions_round_trip_as_translation_unit()
         src: tilus.GlobalTensor(std.f32, 2, 4),
         dst: tilus.GlobalTensor(std.f32, 2),
     ):
-        tile: tilus.RegTensor(std.f32, 2, 4) = tilus.LoadGlobal(
+        tile = tilus.LoadGlobal(
             src,
+            ty=tilus.RegTensor(std.f32, 2, 4),
             offsets=[0, 0],
             dims=[0, 1],
         )
-        out: tilus.RegTensor(std.f32, 2) = tilus.Reduce(tile, dim=1, op="min")
+        out = tilus.Reduce(tile, dim=1, op="min", ty=tilus.RegTensor(std.f32, 2))
         tilus.StoreGlobal(dst, out, offsets=[0], dims=[0])
     """
     parsed = parse(dedent(source).strip())
@@ -1055,7 +1089,7 @@ def test_cuda_memory_module_round_trips_multiple_functions() -> None:
                 a: tilus.RegTensor(std.f16, 16, 8),
                 b: tilus.RegTensor(std.f16, 8, 16),
             ) -> tilus.RegTensor(std.f32, 16, 16):
-                acc: tilus.RegTensor(std.f32, 16, 16) = tilus.Dot(a, b)
+                acc = tilus.Dot(a, b, ty=tilus.RegTensor(std.f32, 16, 16))
                 return acc
 
             @tilus.Function
@@ -1063,9 +1097,10 @@ def test_cuda_memory_module_round_trips_multiple_functions() -> None:
                 a: tilus.RegTensor(std.f16, 16, 8),
                 b: tilus.RegTensor(std.f16, 8, 16),
             ) -> tilus.RegTensor(std.f32, 16, 16):
-                acc: tilus.RegTensor(std.f32, 16, 16) = tilus.SimtDot(
+                acc = tilus.SimtDot(
                     a,
                     b,
+                    ty=tilus.RegTensor(std.f32, 16, 16),
                     warp_spatial=[1, 2],
                     warp_repeat=[2, 1],
                     thread_spatial=[1, 2],
@@ -1084,8 +1119,8 @@ def test_cuda_memory_module_round_trips_multiple_functions() -> None:
                 ar: tilus.RegTensor(std.f16, 64, 64),
             ) -> tilus.RegTensor(std.f32, 64, 64):
                 tilus.WgmmaFence()
-                acc_ss: tilus.RegTensor(std.f32, 64, 64) = tilus.WgmmaMmaSS(a, b)
-                acc_rs: tilus.RegTensor(std.f32, 64, 64) = tilus.WgmmaMmaRS(ar, b)
+                acc_ss = tilus.WgmmaMmaSS(a, b, ty=tilus.RegTensor(std.f32, 64, 64))
+                acc_rs = tilus.WgmmaMmaRS(ar, b, ty=tilus.RegTensor(std.f32, 64, 64))
                 tilus.WgmmaCommitGroup()
                 tilus.WgmmaWaitGroup(n=0)
                 return acc_ss
@@ -1109,21 +1144,24 @@ def test_cuda_memory_module_round_trips_multiple_functions() -> None:
                 use_d: std.bool,
             ) -> tilus.RegTensor(std.f32, 64, 64):
                 tilus.Tcgen05Alloc(cta_group=2)
-                tile: tilus.TMemoryTensor(std.f32, 32, 8) = tilus.Tcgen05Slice(
+                tile = tilus.Tcgen05Slice(
                     t,
+                    ty=tilus.TMemoryTensor(std.f32, 32, 8),
                     offsets=[0, 4],
                     slice_dims=[0, 1],
                 )
                 tilus.Tcgen05Commit(mbarrier=0, cta_group=2, multicast_mask=3)
-                out_ss: tilus.RegTensor(std.f32, 64, 64) = tilus.Tcgen05MmaSS(
+                out_ss = tilus.Tcgen05MmaSS(
                     a,
                     b,
+                    ty=tilus.RegTensor(std.f32, 64, 64),
                     enable_input_d=use_d,
                     cta_group=2,
                 )
-                out_ts: tilus.RegTensor(std.f32, 64, 64) = tilus.Tcgen05MmaTS(
+                out_ts = tilus.Tcgen05MmaTS(
                     tile,
                     b,
+                    ty=tilus.RegTensor(std.f32, 64, 64),
                     enable_input_d=False,
                     cta_group=1,
                 )
@@ -1161,16 +1199,17 @@ def test_cuda_memory_module_round_trips_multiple_functions() -> None:
                 smem_a: tilus.SharedTensor(std.f16, 64, 64),
                 smem_b: tilus.SharedTensor(std.f16, 64, 64),
             ) -> tilus.RegTensor(std.f32, 16, 16):
-                simt: tilus.RegTensor(std.f32, 16, 16) = tilus.SimtDot(
+                simt = tilus.SimtDot(
                     a,
                     b,
+                    ty=tilus.RegTensor(std.f32, 16, 16),
                     warp_spatial=[2, 1],
                     warp_repeat=[1, 2],
                     thread_spatial=[2, 1],
                     thread_repeat=[1, 4],
                 )
                 tilus.WgmmaFence()
-                wgmma: tilus.RegTensor(std.f32, 64, 64) = tilus.WgmmaMmaSS(smem_a, smem_b)
+                wgmma = tilus.WgmmaMmaSS(smem_a, smem_b, ty=tilus.RegTensor(std.f32, 64, 64))
                 tilus.WgmmaCommitGroup()
                 tilus.WgmmaWaitGroup(n=1)
                 return simt
@@ -1248,7 +1287,7 @@ def test_thread_group_functions_text_round_trip(source: str) -> None:
                 with std.scope(
                     tilus.TensorItemPtr(tilus.SharedTensor(std.f32, 4), space="shared")
                 ) as ptr:
-                    loaded: tilus.RegTensor(std.f32, 4) = tilus.LoadShared(ptr)
+                    loaded = tilus.LoadShared(ptr, ty=tilus.RegTensor(std.f32, 4))
                     return loaded
             """,
             id="tensor-item-ptr-load",
@@ -1302,8 +1341,9 @@ def test_std_scope_functions_text_round_trip(source: str) -> None:
             ):
                 for phase in range(0, 2, tag="phase"):
                     with tilus.thread_group(0, 32):
-                        tile: tilus.RegTensor(std.f32, 4) = tilus.LoadGlobal(
+                        tile = tilus.LoadGlobal(
                             src,
+                            ty=tilus.RegTensor(std.f32, 4),
                             offsets=[phase * 4],
                             dims=[0],
                         )
@@ -1360,7 +1400,7 @@ def test_scoped_functions_inside_module_text_round_trip() -> None:
                     stage="shared",
                 ) as shared:
                     tilus.StoreShared(shared, src)
-                    loaded: tilus.RegTensor(std.f16, 8) = tilus.LoadShared(shared)
+                    loaded = tilus.LoadShared(shared, ty=tilus.RegTensor(std.f16, 8))
                     tilus.StoreGlobal(dst, loaded, offsets=[0], dims=[0])
         """
     )
@@ -1410,8 +1450,9 @@ def test_scoped_functions_inside_module_text_round_trip() -> None:
                 x: tilus.RegTensor(std.f32, 2, 2),
             ):
                 tilus.Assume(condition=(m % 16 == 0) and (n % 32 == 0))
-                y: tilus.RegTensor(std.f32, 2, 2) = tilus.AnnotateLayout(
+                y = tilus.AnnotateLayout(
                     x,
+                    ty=tilus.RegTensor(std.f32, 2, 2),
                     layout=tilus.RegisterLayout(
                         2, 2,
                         mode_shape=[2, 2],
@@ -1440,17 +1481,18 @@ def test_scoped_functions_inside_module_text_round_trip() -> None:
                 x: tilus.SharedTensor(std.f16, 4, 8),
             ):
                 tilus.Assume(condition=(rows >= 1) and (rows <= 1024))
-                y: tilus.SharedTensor(
-                    std.f16,
-                    4, 8,
-                    layout=tilus.SharedLayout(
-                        4, 8,
-                        mode_shape=[4, 8],
-                        mode_strides=[8, 1],
-                        optional_swizzle=tilus.Swizzle(1, 2, 1),
-                    ),
-                ) = tilus.AnnotateLayout(
+                y = tilus.AnnotateLayout(
                     x,
+                    ty=tilus.SharedTensor(
+                                        std.f16,
+                                        4, 8,
+                                        layout=tilus.SharedLayout(
+                                            4, 8,
+                                            mode_shape=[4, 8],
+                                            mode_strides=[8, 1],
+                                            optional_swizzle=tilus.Swizzle(1, 2, 1),
+                                        ),
+                    ),
                     layout=tilus.SharedLayout(
                         4, 8,
                         mode_shape=[4, 8],
@@ -1471,17 +1513,18 @@ def test_scoped_functions_inside_module_text_round_trip() -> None:
             ):
                 tilus.Assume(condition=m % 16 == 0)
                 with tilus.thread_group(0, 32):
-                    hinted: tilus.RegTensor(
-                        std.f32,
-                        4,
-                        layout=tilus.RegisterLayout(
-                            4,
-                            mode_shape=[4],
-                            spatial_modes=[],
-                            local_modes=[0],
-                        ),
-                    ) = tilus.AnnotateLayout(
+                    hinted = tilus.AnnotateLayout(
                         x,
+                        ty=tilus.RegTensor(
+                                                std.f32,
+                                                4,
+                                                layout=tilus.RegisterLayout(
+                                                    4,
+                                                    mode_shape=[4],
+                                                    spatial_modes=[],
+                                                    local_modes=[0],
+                                                ),
+                        ),
                         layout=tilus.RegisterLayout(
                             4,
                             mode_shape=[4],
@@ -1527,8 +1570,9 @@ def test_module_level_hint_metadata_functions_roundtrip() -> None:
                 src: tilus.GlobalTensor(std.f32, 16),
             ):
                 tilus.Assume(condition=(m >= 0) and (m < 1024))
-                tile: tilus.RegTensor(std.f32, 16) = tilus.LoadGlobal(
+                tile = tilus.LoadGlobal(
                     src,
+                    ty=tilus.RegTensor(std.f32, 16),
                     offsets=[0],
                     dims=[0],
                 )
@@ -1541,17 +1585,18 @@ def test_module_level_hint_metadata_functions_roundtrip() -> None:
                 tile: tilus.RegTensor(std.f32, 16),
             ):
                 tilus.Assume(condition=n % 8 == 0)
-                hinted: tilus.RegTensor(
-                    std.f32,
-                    16,
-                    layout=tilus.RegisterLayout(
-                        16,
-                        mode_shape=[16],
-                        spatial_modes=[],
-                        local_modes=[0],
-                    ),
-                ) = tilus.AnnotateLayout(
+                hinted = tilus.AnnotateLayout(
                     tile,
+                    ty=tilus.RegTensor(
+                                        std.f32,
+                                        16,
+                                        layout=tilus.RegisterLayout(
+                                            16,
+                                            mode_shape=[16],
+                                            spatial_modes=[],
+                                            local_modes=[0],
+                                        ),
+                    ),
                     layout=tilus.RegisterLayout(
                         16,
                         mode_shape=[16],
@@ -1586,17 +1631,18 @@ def test_multi_function_hint_metadata_translation_unit_roundtrip() -> None:
 
         @tilus.Function(metadata=tilus.Metadata(grid_blocks=[1, 1, 1]))
         def annotate_only_translation_unit(x: tilus.RegTensor(std.f32, 2)):
-            y: tilus.RegTensor(
-                std.f32,
-                2,
-                layout=tilus.RegisterLayout(
-                    2,
-                    mode_shape=[2],
-                    spatial_modes=[],
-                    local_modes=[0],
-                ),
-            ) = tilus.AnnotateLayout(
+            y = tilus.AnnotateLayout(
                 x,
+                ty=tilus.RegTensor(
+                                std.f32,
+                                2,
+                                layout=tilus.RegisterLayout(
+                                    2,
+                                    mode_shape=[2],
+                                    spatial_modes=[],
+                                    local_modes=[0],
+                                ),
+                ),
                 layout=tilus.RegisterLayout(
                     2,
                     mode_shape=[2],
@@ -1626,8 +1672,9 @@ def test_multi_function_hint_metadata_translation_unit_roundtrip() -> None:
                 value: tilus.RegTensor(std.u32, 4),
                 rank: std.i32,
             ) -> tilus.RegTensor(std.u32, 4):
-                mapped: tilus.RegTensor(std.u32, 4) = tilus.MapSharedAddr(
+                mapped = tilus.MapSharedAddr(
                     smem,
+                    ty=tilus.RegTensor(std.u32, 4),
                     target_rank=rank,
                 )
                 tilus.AtomicShared(smem, value, op="add", sem="release", scope="cta")
@@ -1739,8 +1786,9 @@ def test_multi_function_hint_metadata_translation_unit_roundtrip() -> None:
                     tilus.TensorItemPtr(tilus.SharedTensor(std.u32, 8), space="shared"),
                     role="remote_smem",
                 ) as shared:
-                    mapped: tilus.RegTensor(std.u32, 8) = tilus.MapSharedAddr(
+                    mapped = tilus.MapSharedAddr(
                         shared,
+                        ty=tilus.RegTensor(std.u32, 8),
                         target_rank=rank,
                     )
                     tilus.AtomicShared(shared, value, op="or", sem="acquire", scope="cluster")
@@ -1817,17 +1865,19 @@ def test_cuda_sync_atomic_functions_inside_std_module_round_trip() -> None:
             ):
                 for tile in range(0, 4, step=1, tag="tiles"):
                     with tilus.thread_group(0, 128):
-                        av: tilus.RegTensor(std.f32, 256) = tilus.LoadGlobal(
+                        av = tilus.LoadGlobal(
                             a,
+                            ty=tilus.RegTensor(std.f32, 256),
                             offsets=[tile * 256],
                             dims=[0],
                         )
-                        bv: tilus.RegTensor(std.f32, 256) = tilus.LoadGlobal(
+                        bv = tilus.LoadGlobal(
                             b,
+                            ty=tilus.RegTensor(std.f32, 256),
                             offsets=[tile * 256],
                             dims=[0],
                         )
-                        cv: tilus.RegTensor(std.f32, 256) = tilus.Add(av, bv)
+                        cv = tilus.Add(av, bv, ty=tilus.RegTensor(std.f32, 256))
                         if tile < 2:
                             tilus.StoreShared(scratch, cv)
                         else:
@@ -1857,7 +1907,7 @@ def test_cuda_sync_atomic_functions_inside_std_module_round_trip() -> None:
                         )
                         tilus.CopyAsyncCommitGroup()
                         tilus.CopyAsyncWaitGroup(n=0)
-                        loaded: tilus.RegTensor(std.f16, 16, 16) = tilus.LoadShared(tile)
+                        loaded = tilus.LoadShared(tile, ty=tilus.RegTensor(std.f16, 16, 16))
                         tilus.StoreGlobal(dst, loaded, offsets=[phase * 16, 0], dims=[0, 1])
             """,
             id="scoped-shared-pipeline",
@@ -1870,13 +1920,15 @@ def test_cuda_sync_atomic_functions_inside_std_module_round_trip() -> None:
                 y: tilus.GlobalTensor(std.f32, 128),
             ):
                 for row in range(0, 128, step=16):
-                    tile: tilus.RegTensor(std.f32, 16, 16) = tilus.LoadGlobal(
+                    tile = tilus.LoadGlobal(
                         x,
+                        ty=tilus.RegTensor(std.f32, 16, 16),
                         offsets=[row, 0],
                         dims=[0, 1],
                     )
-                    reduced: tilus.RegTensor(std.f32, 16) = tilus.Reduce(
+                    reduced = tilus.Reduce(
                         tile,
+                        ty=tilus.RegTensor(std.f32, 16),
                         dim=1,
                         op="sum",
                         keepdim=False,
@@ -1901,11 +1953,11 @@ def test_cuda_sync_atomic_functions_inside_std_module_round_trip() -> None:
                 with std.scope(pragma="mma_stage"):
                     tilus.WgmmaFence()
                     for k in range(0, 2, tag="k_tiles"):
-                        acc: tilus.RegTensor(std.f32, 64, 64) = tilus.WgmmaMmaSS(a, b)
+                        acc = tilus.WgmmaMmaSS(a, b, ty=tilus.RegTensor(std.f32, 64, 64))
                         tilus.WgmmaCommitGroup()
                         tilus.WgmmaWaitGroup(n=0)
                         if k == 0:
-                            scaled: tilus.RegTensor(std.f32, 64, 64) = tilus.Mul(acc, acc)
+                            scaled = tilus.Mul(acc, acc, ty=tilus.RegTensor(std.f32, 64, 64))
                             tilus.StoreGlobal(out, scaled, offsets=[0, 0], dims=[0, 1])
                         else:
                             tilus.StoreGlobal(out, acc, offsets=[0, 0], dims=[0, 1])
@@ -2000,20 +2052,24 @@ def test_kernel_module_text_round_trips() -> None:
             ):
                 tilus.Assume(condition=do_square or (not do_square))
                 tilus.WgmmaFence()
-                acc: tilus.RegTensor(
-                    std.f32,
-                    64, 64,
-                    layout=tilus.RegisterLayout(
+                acc = tilus.WgmmaMmaSS(
+                    a,
+                    b,
+                    ty=tilus.RegTensor(
+                        std.f32,
                         64, 64,
-                        mode_shape=[16, 4, 16, 4],
-                        spatial_modes=[0, 2],
-                        local_modes=[1, 3],
+                        layout=tilus.RegisterLayout(
+                            64, 64,
+                            mode_shape=[16, 4, 16, 4],
+                            spatial_modes=[0, 2],
+                            local_modes=[1, 3],
+                        ),
                     ),
-                ) = tilus.WgmmaMmaSS(a, b)
+                )
                 tilus.WgmmaCommitGroup()
                 tilus.WgmmaWaitGroup(n=0)
                 if do_square:
-                    scaled: tilus.RegTensor(std.f32, 64, 64) = tilus.Mul(acc, acc)
+                    scaled = tilus.Mul(acc, acc, ty=tilus.RegTensor(std.f32, 64, 64))
                     tilus.StoreGlobal(out, scaled, offsets=[0, 0], dims=[0, 1])
                 else:
                     tilus.StoreGlobal(out, acc, offsets=[0, 0], dims=[0, 1])
@@ -2062,8 +2118,9 @@ def test_multiple_top_level_functions_with_comments_and_blank_lines_roundtrip() 
             src: tilus.GlobalTensor(std.f32, 8),
         ) -> tilus.RegTensor(std.f32, 8):
             # Body comments are intentionally not preserved by the IR printer.
-            tile: tilus.RegTensor(std.f32, 8) = tilus.LoadGlobal(
+            tile = tilus.LoadGlobal(
                 src,
+                ty=tilus.RegTensor(std.f32, 8),
                 offsets=[0],
                 dims=[0],
             )
@@ -2092,8 +2149,9 @@ def test_std_module_with_tilus_functions_roundtrip() -> None:
             def load_tile(
                 src: tilus.GlobalTensor(std.f32, 4),
             ) -> tilus.RegTensor(std.f32, 4):
-                tile: tilus.RegTensor(std.f32, 4) = tilus.LoadGlobal(
+                tile = tilus.LoadGlobal(
                     src,
+                    ty=tilus.RegTensor(std.f32, 4),
                     offsets=[0],
                     dims=[0],
                 )
@@ -2146,8 +2204,8 @@ def test_default_instruction_attrs_stabilize_inside_function_bodies() -> None:
             src: tilus.GlobalTensor(std.f32, 1),
             tile: tilus.RegTensor(std.f32, 1),
         ):
-            loaded: tilus.RegTensor(std.f32, 1) = tilus.LoadGlobal(src)
-            reduced: tilus.RegTensor(std.f32, 1) = tilus.Reduce(tile)
+            loaded = tilus.LoadGlobal(src, ty=tilus.RegTensor(std.f32, 1))
+            reduced = tilus.Reduce(tile, ty=tilus.RegTensor(std.f32, 1))
             return loaded, reduced
         """
     )
@@ -2196,8 +2254,9 @@ def test_nested_function_definition_is_preserved_as_function_body_edge_case() ->
                 stride: std.i32,
                 base: std.i32,
             ):
-                tile: tilus.RegTensor(std.f32, 4, 4) = tilus.LoadGlobal(
+                tile = tilus.LoadGlobal(
                     src,
+                    ty=tilus.RegTensor(std.f32, 4, 4),
                     offsets=[
                         base + row * stride + col,
                         ((row + 1) << 2) + (col & 3),
@@ -2278,8 +2337,9 @@ def test_symbolic_global_layout_attrs_inside_function_roundtrip() -> None:
                     offset=tilus.Swizzle(1, 2, 1)(base + col) + row * stride,
                 ),
             )
-            logical: tilus.RegTensor(std.f32, 8) = tilus.LoadGlobal(
+            logical = tilus.LoadGlobal(
                 logical_src,
+                ty=tilus.RegTensor(std.f32, 8),
                 offsets=[(row * stride + col) % (m + 1), col & 7],
                 dims=[0, 1],
             )
@@ -2305,8 +2365,9 @@ def test_predicate_and_scope_expression_attrs_inside_function_roundtrip() -> Non
             with std.scope(predicate=(row < m) and ((col + 1) <= n), stage="guarded"):
                 tilus.Eval((row + col) * (m - n), pred=((row + col) % 2) == 0)
                 tilus.Assume(condition=((row + col) % 16 == 0) or (m <= n))
-                value: tilus.RegTensor(std.f32, 16) = tilus.LoadGlobal(
+                value = tilus.LoadGlobal(
                     dst,
+                    ty=tilus.RegTensor(std.f32, 16),
                     offsets=[(row + col) & 15],
                     dims=[0],
                 )
@@ -2411,27 +2472,33 @@ def test_reduce_and_layout_attr_lists_inside_function_roundtrip() -> None:
             row: std.i32,
             col: std.i32,
         ):
-            tile: tilus.RegTensor(
-                std.f32,
-                8, 4,
-                layout=tilus.RegisterLayout(
+            tile = tilus.LoadGlobal(
+                src,
+                offsets=[row, col],
+                dims=[0, 1],
+                ty=tilus.RegTensor(
+                    std.f32,
                     8, 4,
-                    mode_shape=[2, 4, 4],
-                    spatial_modes=[0],
-                    local_modes=[1, 2],
+                    layout=tilus.RegisterLayout(
+                        8, 4,
+                        mode_shape=[2, 4, 4],
+                        spatial_modes=[0],
+                        local_modes=[1, 2],
+                    ),
                 ),
-            ) = tilus.LoadGlobal(src, offsets=[row, col], dims=[0, 1])
-            hinted: tilus.RegTensor(
-                std.f32,
-                8, 4,
-                layout=tilus.RegisterLayout(
-                    8, 4,
-                    mode_shape=[2, 4, 4],
-                    spatial_modes=[0],
-                    local_modes=[1, 2],
-                ),
-            ) = tilus.AnnotateLayout(
+            )
+            hinted = tilus.AnnotateLayout(
                 tile,
+                ty=tilus.RegTensor(
+                    std.f32,
+                    8, 4,
+                    layout=tilus.RegisterLayout(
+                        8, 4,
+                        mode_shape=[2, 4, 4],
+                        spatial_modes=[0],
+                        local_modes=[1, 2],
+                    ),
+                ),
                 layout=tilus.RegisterLayout(
                     8, 4,
                     mode_shape=[2, 4, 4],
@@ -2439,8 +2506,9 @@ def test_reduce_and_layout_attr_lists_inside_function_roundtrip() -> None:
                     local_modes=[1, 2],
                 ),
             )
-            reduced: tilus.RegTensor(std.f32, 8) = tilus.Reduce(
+            reduced = tilus.Reduce(
                 hinted,
+                ty=tilus.RegTensor(std.f32, 8),
                 dim=1,
                 op="max",
                 keepdim=False,
@@ -2470,8 +2538,9 @@ def test_multi_function_expression_attr_unit_roundtrip() -> None:
             grid_n: std.i32,
             base: std.i32,
         ):
-            value: tilus.RegTensor(std.f32, 8) = tilus.LoadGlobal(
+            value = tilus.LoadGlobal(
                 src,
+                ty=tilus.RegTensor(std.f32, 8),
                 offsets=[base + (grid_m * grid_n) % 128],
                 dims=[0],
             )
@@ -2486,8 +2555,9 @@ def test_multi_function_expression_attr_unit_roundtrip() -> None:
             col: std.i32,
             mbarrier: std.i32,
         ):
-            sliced: tilus.TMemoryTensor(std.f32, 16, 8) = tilus.Tcgen05Slice(
+            sliced = tilus.Tcgen05Slice(
                 tile,
+                ty=tilus.TMemoryTensor(std.f32, 16, 8),
                 offsets=[(row + phase) & 15, col * 8],
                 slice_dims=[0, 2],
             )

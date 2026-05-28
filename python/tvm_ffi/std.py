@@ -147,6 +147,77 @@ def _collect_std_while_fields(obj: Any) -> FieldCollectionResult:
     return FieldCollectionResult(attrs=getattr(obj, "attrs", None), body=list(obj.body))
 
 
+def _normalize_var_name_update(names: str | tuple[str, ...]) -> tuple[str, ...]:
+    if isinstance(names, str):
+        return (names,)
+    return tuple(names)
+
+
+def _vars_with_updated_names(vars: Sequence[Var], names: str | tuple[str, ...]) -> tuple[Var, ...]:
+    normalized_names = _normalize_var_name_update(names)
+    if len(normalized_names) != len(vars):
+        raise TypeError(f"expected {len(vars)} binding target(s), got {len(normalized_names)}")
+    return tuple(Var(var.ty, name) for var, name in zip(vars, normalized_names))
+
+
+def _update_var_sequence_names(
+    vars: MutableSequence[Var],
+    names: str | tuple[str, ...],
+) -> tuple[Var, ...]:
+    new_vars = _vars_with_updated_names(vars, names)
+    for i, var in enumerate(new_vars):
+        vars[i] = var
+    return new_vars
+
+
+def _field_var_defs(value: Any) -> list[Var]:
+    if value is None:
+        return []
+    if isinstance(value, Var):
+        return [value]
+    if isinstance(value, (Array, List, list, tuple)):
+        vars: list[Var] = []
+        for item in value:
+            vars.extend(_field_var_defs(item))
+        return vars
+    raise TypeError(f"expected std.Var or var-def sequence, got {type(value).__name__}")
+
+
+def _update_lang_kind_var_names(obj: Any, names: str | tuple[str, ...]) -> tuple[Var, ...]:
+    bind_vars: list[Var] = []
+    var_def_fields = []
+    for f in fields(type(obj)):
+        if f.lang_kind != "var_def" or f.name is None:
+            continue
+        value = getattr(obj, f.name)
+        bind_vars.extend(_field_var_defs(value))
+        var_def_fields.append((f.name, value))
+
+    new_vars = _vars_with_updated_names(bind_vars, names)
+    offset = 0
+    for field_name, value in var_def_fields:
+        if value is None:
+            continue
+        if isinstance(value, Var):
+            object.__setattr__(obj, field_name, new_vars[offset])
+            offset += 1
+            continue
+        count = len(value)
+        replacement = new_vars[offset : offset + count]
+        if isinstance(value, (tuple, Array)):
+            object.__setattr__(
+                obj,
+                field_name,
+                tuple(replacement) if isinstance(value, tuple) else Array(replacement),
+            )
+        else:
+            value[:] = replacement
+        offset += count
+    if offset != len(new_vars):
+        raise TypeError(f"unsupported bind type: {type(obj).__name__}")
+    return new_vars
+
+
 def _std_dialect_callee(config: Any, dialect: str, mnemonic: str) -> Any:
     """Build the printed callee for a dialect mnemonic."""
     from tvm_ffi import pyast  # noqa: PLC0415
@@ -256,6 +327,11 @@ def _std_generic_dialect_text_print(obj: Any, printer: Any, path: Any) -> Any:
     if fields.body:
         raise TypeError(
             f"{type(obj).__name__} generic collector text printer does not support body fields"
+        )
+    if var_def and not isinstance(obj, (BaseBindExpr, BaseVarDef)):
+        raise TypeError(
+            f"{type(obj).__name__} generic collector text printer does not support "
+            "var_def fields; subclass std.BaseBindExpr or std.BaseVarDef"
         )
     call = _std_generic_dialect_call(obj, printer, path)
     if var_def:
@@ -1807,6 +1883,9 @@ class BaseBindExpr(Stmt, mnemonic="std.BaseBindExpr"):
     def __init__(self, expr: ExprLike) -> None:
         self.__ffi_init__(_normalize_expr(expr))
 
+    def __ffi_update_var_name__(self, names: str | tuple[str, ...]) -> tuple[Var, ...]:
+        return _update_lang_kind_var_names(self, names)
+
 
 @c_class("ffi.std.BindExpr")
 class BindExpr(BaseBindExpr, mnemonic="std.BindExpr"):
@@ -1830,6 +1909,9 @@ class BindExpr(BaseBindExpr, mnemonic="std.BindExpr"):
     def __init__(self, expr: ExprLike, *args: Var) -> None:
         self.__ffi_init__(list(args), _normalize_expr(expr))
 
+    def __ffi_update_var_name__(self, names: str | tuple[str, ...]) -> tuple[Var, ...]:
+        return _update_var_sequence_names(self.vars, names)
+
 
 @c_class("ffi.std.BaseVarDef")
 class BaseVarDef(Stmt, mnemonic="std.BaseVarDef"):
@@ -1849,6 +1931,9 @@ class BaseVarDef(Stmt, mnemonic="std.BaseVarDef"):
 
     def __init__(self) -> None:
         self.__ffi_init__()
+
+    def __ffi_update_var_name__(self, names: str | tuple[str, ...]) -> tuple[Var, ...]:
+        return _update_lang_kind_var_names(self, names)
 
 
 @c_class("ffi.std.VarDef")
@@ -1873,6 +1958,9 @@ class VarDef(BaseVarDef, mnemonic="std.VarDef"):
     def __init__(self, *args: Var | TyLike) -> None:
         vars = [arg if isinstance(arg, Var) else Var(normalize_ty(arg), "") for arg in args]
         self.__ffi_init__(vars)
+
+    def __ffi_update_var_name__(self, names: str | tuple[str, ...]) -> tuple[Var, ...]:
+        return _update_var_sequence_names(self.vars, names)
 
 
 @c_class("ffi.std.Store")
