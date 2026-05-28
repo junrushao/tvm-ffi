@@ -334,7 +334,14 @@ def test_config_and_handle_nodes_text_round_trip(node: Any) -> None:
             id="conditional-iteration",
         ),
         pytest.param(
-            wi.VarDecl(_v("stage"), "int", init=0, array_size=4, uniform=True, zero_init=True),
+            wi.VarDecl(
+                "int",
+                init=0,
+                array_size=4,
+                uniform=True,
+                zero_init=True,
+                var=_v("stage"),
+            ),
             id="var-decl",
         ),
         pytest.param(wi.Assign(wi.Const("stage", wi.i32), 1, op="+="), id="assign"),

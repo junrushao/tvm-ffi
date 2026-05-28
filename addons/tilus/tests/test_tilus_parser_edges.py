@@ -173,17 +173,34 @@ def test_parse_instruction_assignment_infers_output_type() -> None:
     assert tvm_ffi.structural_equal(parsed.output.ty, ty)
 
 
-def test_parse_instruction_assignment_rejects_prebound_output() -> None:
+def test_parse_instruction_assignment_renames_prebound_output() -> None:
     ty = tensor.register_tensor("float32", (2,))
     lhs = std.Var(ty, "lhs")
     rhs = std.Var(ty, "rhs")
     out = std.Var(ty, "out")
 
-    with pytest.raises(TypeError, match="instruction RHS must not already define an output"):
-        parse(
-            "bound: tilus.RegTensor(std.f32, 2) = tilus.Add(lhs, rhs, output=out)",
-            extra_vars={"lhs": lhs, "rhs": rhs, "out": out},
-        )
+    parsed = parse(
+        "bound = tilus.Add(lhs, rhs, output=out)",
+        extra_vars={"lhs": lhs, "rhs": rhs, "out": out},
+    )
+
+    assert isinstance(parsed, generic.AddInst)
+    assert parsed.output is not None
+    assert parsed.output.name == "bound"
+    assert tvm_ffi.structural_equal(parsed.output.ty, ty)
+
+
+def test_instruction_update_var_name_mutates_in_place() -> None:
+    ty = tensor.register_tensor("float32", (2,))
+    lhs = std.Var(ty, "lhs")
+    rhs = std.Var(ty, "rhs")
+    inst = generic.AddInst([lhs, rhs])
+
+    bind_vars = inst.__ffi_update_var_name__("out")
+    assert inst.output is not None
+    assert inst.output.name == "out"
+    assert tvm_ffi.structural_equal(inst.output.ty, ty)
+    assert bind_vars == (inst.output,)
 
 
 @pytest.mark.parametrize(

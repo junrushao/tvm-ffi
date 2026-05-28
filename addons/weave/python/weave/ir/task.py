@@ -152,12 +152,12 @@ class VarDecl(std.BaseVarDef, mnemonic="weave.VarDecl"):
 
     def __init__(
         self,
-        var: std.Var,
         ctype: str,
         init: std.Expr | None = None,
         array_size: std.Expr | None = None,
         uniform: bool = False,
         zero_init: bool = False,
+        var: std.Var | None = None,
         *,
         ty: Any = None,
     ) -> None:

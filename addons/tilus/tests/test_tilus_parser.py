@@ -77,30 +77,21 @@ def test_parse_hand_written_instruction() -> None:
     inst_mod = _import("tilus.ir.instructions.generic")
 
     source = """
-dst: tilus.RegTensor(
-    std.f32,
-    16, 32,
-    layout=tilus.RegisterLayout(
+dst = tilus.LoadGlobal(
+    src,
+    ty=tilus.RegTensor(
+        std.f32,
         16, 32,
-        mode_shape=[16, 32],
-        spatial_modes=[],
-        local_modes=[0, 1],
-    ),
-    ) = tilus.LoadGlobal(
-        src,
-        ty=tilus.GlobalTensor(
-            std.f32,
+        layout=tilus.RegisterLayout(
             16, 32,
-            layout=tilus.GlobalLayout(
-                16, 32,
-                size=512,
-                axes=["i0", "i1"],
-                offset=0,
-            ),
+            mode_shape=[16, 32],
+            spatial_modes=[],
+            local_modes=[0, 1],
         ),
-        offsets=[0, 0],
-        dims=[0, 1],
-    )
+    ),
+    offsets=[0, 0],
+    dims=[0, 1],
+)
 """
     global_layout = layout_mod.global_row_major(16, 32)
     reg_layout = layout_mod.register_row_major(16, 32)
@@ -126,20 +117,16 @@ def test_parse_load_shared_instruction_ty_hint() -> None:
     inst_mod = _import("tilus.ir.instructions.generic")
 
     source = """
-dst: tilus.RegTensor(std.f32, 8, layout=tilus.RegisterLayout(
-    8,
-    mode_shape=[8],
-    spatial_modes=[],
-    local_modes=[0],
-)) = tilus.LoadShared(
+dst = tilus.LoadShared(
     shared,
-    ty=tilus.SharedTensor(
+    ty=tilus.RegTensor(
         std.f32,
         8,
-        layout=tilus.SharedLayout(
+        layout=tilus.RegisterLayout(
             8,
             mode_shape=[8],
-            mode_strides=[1],
+            spatial_modes=[],
+            local_modes=[0],
         ),
     ),
 )
@@ -164,20 +151,20 @@ dst: tilus.RegTensor(std.f32, 8, layout=tilus.RegisterLayout(
     _round_trip(expected)
 
 
-def test_parse_load_global_ty_hint_must_match_output() -> None:
+def test_parse_load_global_ty_hint_must_match_operand() -> None:
     _import("tilus._tilus_lang")
 
     source = """
-dst: tilus.RegTensor(std.f32, 8) = tilus.LoadGlobal(
+dst = tilus.LoadGlobal(
     src,
-    ty=tilus.GlobalTensor(std.f32, 16),
+    ty=tilus.RegTensor(std.f16, 16),
     offsets=[0],
     dims=[0],
 )
 """
 
     src = std.Var(tilus.GlobalTensor("float32", 16), "src")
-    with pytest.raises(TypeError, match="must match output dtype and shape"):
+    with pytest.raises(TypeError, match="must match operand 0 type"):
         parse(source, extra_vars={"src": src})
 
 
@@ -203,7 +190,7 @@ def test_parse_instruction_binding_inside_function() -> None:
     source = """
 @tilus.Function
 def kernel(x: tilus.RegTensor(std.f32, 2, 2)):
-    y: tilus.RegTensor(std.f32, 2, 2) = tilus.Add(x, x)
+    y = tilus.Add(x, x, ty=tilus.RegTensor(std.f32, 2, 2))
     return y
 """
     ty = tensor_mod.register_tensor("float32", (2, 2))

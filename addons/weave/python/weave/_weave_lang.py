@@ -16,7 +16,7 @@ from collections.abc import Callable, Sequence
 from typing import Any, ClassVar
 
 from tvm_ffi import std
-from tvm_ffi._pyast_parser import Frame, register_dialect
+from tvm_ffi._pyast_parser import Frame, FuncFrame, register_dialect
 from tvm_ffi._std_lang import (
     bind_one_var,
     parse_func_args,
@@ -35,7 +35,7 @@ class WeaveFrame(Frame):
     dialect = "weave"
 
 
-class KernelFactory(WeaveFrame):
+class KernelFactory(WeaveFrame, FuncFrame):
     """Parser frame for ``@weave.Kernel`` function definitions."""
 
     def __init__(self, **attrs: Any) -> None:
@@ -141,15 +141,13 @@ class ForLoopFactory(WeaveFrame):
         self.var = std.Var(std.normalize_ty(ty) if ty is not None else std.PrimTy("int32"), "")
         self.body: list[Any] = []
 
-    def bind_names(self, names: Sequence[str]) -> None:
+    def bind_names(self, names: Sequence[str]) -> tuple[std.Var, ...]:
         self.var = bind_one_var(
             names,
             self.var.ty,
             error=f"expected one loop variable, got {len(names)}",
         )
-
-    def bound_vars(self) -> list[std.Var]:
-        return [self.var]
+        return (self.var,)
 
     def to_dialect(self) -> task_ir.ForLoop:
         return task_ir.ForLoop(

@@ -55,7 +55,7 @@ def _collect_instruction_fields(obj: Any) -> std.FieldCollectionResult:
 
 
 @dc.py_class("tilus.Instruction", structural_eq="tree")
-class Instruction(std.Stmt, mnemonic="tilus.Instruction"):
+class Instruction(std.BaseVarDef, mnemonic="tilus.Instruction"):
     """Base class for Tilus instructions."""
 
     __ffi_dialect_field_collector__ = staticmethod(_collect_instruction_fields)
@@ -90,6 +90,26 @@ class Instruction(std.Stmt, mnemonic="tilus.Instruction"):
         self._validate_string_domains()
         self._validate_int_domains()
         self._validate_nonnegative_int_attrs()
+
+    def __ffi_update_var_name__(self, names: str | tuple[str, ...]) -> tuple[std.Var, ...]:
+        normalized_names = (names,) if isinstance(names, str) else tuple(names)
+        if len(normalized_names) != 1:
+            raise TypeError(f"expected 1 binding target(s), got {len(normalized_names)}")
+        if self.output is not None:
+            output = std.Var(self.output.ty, normalized_names[0])
+            object.__setattr__(self, "output", output)
+            self.__post_init__()
+            return (output,)
+        explicit_ty = pop_instruction_ty_hint(self)
+        ty = explicit_ty or infer_instruction_output_ty(self)
+        if ty is None:
+            raise TypeError("instruction assignment requires an inferable output type")
+        output = std.Var(ty, normalized_names[0])
+        object.__setattr__(self, "output", output)
+        self.__post_init__()
+        if explicit_ty is not None:
+            validate_instruction_output_ty(self, explicit_ty)
+        return (output,)
 
     def _validate_input_arity(self) -> None:
         expected = self.EXPECTED_INPUTS

@@ -122,8 +122,12 @@ def collect_fields_with_var_def_ty(obj: Any) -> std.FieldCollectionResult:
     )
 
 
-def var_with_ty_hint(var: std.Var, ty: Any, *, field_name: str) -> std.Var:
-    """Return ``var`` with ``ty`` applied when parsing assignment constructor syntax."""
+def var_with_ty_hint(var: std.Var | None, ty: Any, *, field_name: str) -> std.Var:
+    """Return a constructor-owned variable, optionally created from ``ty``."""
+    if var is None:
+        if ty is None:
+            raise TypeError(f"{field_name} requires std.Var or ty")
+        return std.Var(std.normalize_ty(ty), "")
     if not isinstance(var, std.Var):
         raise TypeError(f"{field_name} must be std.Var")
     if ty is None:
@@ -154,7 +158,7 @@ def _collect_op_fields(obj: Any) -> std.FieldCollectionResult:
 
 
 @dc.py_class("weave.Op", structural_eq="tree", init=False)
-class Op(std.Stmt, mnemonic="weave.Op"):
+class Op(std.BaseVarDef, mnemonic="weave.Op"):
     """Base class for executable Weave operations."""
 
     __ffi_dialect_field_collector__ = staticmethod(_collect_op_fields)

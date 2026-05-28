@@ -25,7 +25,7 @@ from typing import Any, ClassVar
 
 from tvm_ffi import dataclasses as dc
 from tvm_ffi import std
-from tvm_ffi._pyast_parser import Factory, Frame, register_dialect
+from tvm_ffi._pyast_parser import Factory, Frame, FuncFrame, register_dialect
 from tvm_ffi._std_lang import (
     Std,
     bind_one_var,
@@ -55,7 +55,7 @@ class ThreadGroupFactory(TilusFrame):
         return stmt.ThreadGroup(self.thread_begin, self.num_threads, self.body)
 
 
-class FunctionFactory(TilusFrame):
+class FunctionFactory(TilusFrame, FuncFrame):
     """Parser frame for ``@tilus.Function`` definitions."""
 
     def __init__(self, metadata: func.Metadata | None = None) -> None:
