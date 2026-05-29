@@ -26,7 +26,7 @@ from tvm_ffi import std
 from tvm_ffi.core import Object
 
 from tilus.ir.func import Function
-from tilus.ir.functors import IRRewriter, IRVisitor
+from tilus.ir.functors import IRRewriter, IRVisitor, _dialect_field_collector
 from tilus.ir.inst import Instruction
 from tilus.ir.instructions.generic import (
     AddInst,
@@ -159,7 +159,7 @@ class _UseCollector(IRVisitor):
         self.visit_dataclass(inst)
 
     def visit_collected_fields(self, node: std.Node) -> None:
-        collector = getattr(type(node), "__ffi_dialect_field_collector__", None)
+        collector = _dialect_field_collector(node)
         if collector is None:
             return
         collected = collector(node)
@@ -171,7 +171,7 @@ class _UseCollector(IRVisitor):
                 self.visit(stmt)
 
     def visit_dataclass(self, node: std.Node) -> None:
-        collector = getattr(type(node), "__ffi_dialect_field_collector__", None)
+        collector = _dialect_field_collector(node)
         if collector is not None:
             self.visit_collected_fields(node)
             return None
@@ -205,7 +205,7 @@ def _collect_defs(node: Any) -> set[Hashable]:
     if isinstance(node, std.BaseFor):
         return {_node_key(node.var)}
 
-    collector = getattr(type(node), "__ffi_dialect_field_collector__", None)
+    collector = _dialect_field_collector(node)
     if collector is None:
         return set()
     return {_node_key(var) for var in collector(node).var_def}
@@ -223,13 +223,16 @@ class _DeadCodeEliminator(IRRewriter):
         for field in dc.fields(node):
             if not field.init:
                 continue
-            value = getattr(node, field.name)
+            field_name = field.name
+            if field_name is None:
+                continue
+            value = getattr(node, field_name)
             if self._is_stmt_sequence_field(field, value):
                 updated, _ = self._rewrite_body(value)
             else:
                 updated = self.visit(value)
             if not _is_same_value(updated, value):
-                changes[field.name] = updated
+                changes[field_name] = updated
         if not changes:
             return node
         return dc.replace(node, **changes)
@@ -282,9 +285,12 @@ class _DeadCodeEliminator(IRRewriter):
         for field in dc.fields(stmt):
             if not field.init:
                 continue
-            value = getattr(stmt, field.name)
+            field_name = field.name
+            if field_name is None:
+                continue
+            value = getattr(stmt, field_name)
             if self._is_stmt_sequence_field(field, value):
-                if isinstance(stmt, std.BaseWhile) and field.name == "body":
+                if isinstance(stmt, std.BaseWhile) and field_name == "body":
                     updated, body_live = self._rewrite_while_body(stmt, value, live_out)
                 else:
                     updated, body_live = self._rewrite_body(value, live_out)
@@ -292,7 +298,7 @@ class _DeadCodeEliminator(IRRewriter):
             else:
                 updated = self.visit(value)
             if not _is_same_value(updated, value):
-                changes[field.name] = updated
+                changes[field_name] = updated
 
         rewritten_stmt = stmt if not changes else dc.replace(stmt, **changes)
         # Stmt-sequence live-ins are uses of the enclosing statement, except

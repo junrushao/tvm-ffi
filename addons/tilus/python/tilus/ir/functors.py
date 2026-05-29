@@ -23,7 +23,7 @@ from typing import Any, Hashable
 
 from tvm_ffi import std
 from tvm_ffi.container import Array, Dict, List, Map
-from tvm_ffi.core import Object
+from tvm_ffi.core import Object, _lookup_type_attr
 from tvm_ffi.dataclasses import fields, is_dataclass, replace
 
 _CONSTANT_TYPES = (str, int, float, bool, type(None), bytes)
@@ -62,6 +62,22 @@ def _is_same_value(lhs: Any, rhs: Any) -> bool:
     if isinstance(lhs, Object) and isinstance(rhs, Object):
         return type(lhs) is type(rhs) and lhs.__chandle__() == rhs.__chandle__()
     return lhs is rhs
+
+
+def _dialect_field_collector(node: std.Node) -> Any:
+    type_info = getattr(type(node), "__tvm_ffi_type_info__", None)
+    if type_info is None:
+        return None
+    collector = _lookup_type_attr(type_info.type_index, "__ffi_dialect_field_collector__")
+    if collector is not None:
+        return collector
+    if type_info.type_key.startswith("ffi.std."):
+        return None
+    return _lookup_type_attr(
+        type_info.type_index,
+        "__ffi_dialect_field_collector__",
+        ancestor=True,
+    )
 
 
 class IRFunctor:
@@ -185,7 +201,7 @@ class IRRewriter(IRFunctor):
 
     def visit_dataclass(self, node: Any) -> Any:
         """Rewrite dataclass fields."""
-        collector = getattr(type(node), "__ffi_dialect_field_collector__", None)
+        collector = _dialect_field_collector(node)
         if collector is not None:
             # Exercise the dialect reflection hook so malformed lang_kind schemas
             # fail during traversal, while replacement below remains field-based.
@@ -195,13 +211,16 @@ class IRRewriter(IRFunctor):
         for field in fields(node):
             if not field.init:
                 continue
-            value = getattr(node, field.name)
+            field_name = field.name
+            if field_name is None:
+                continue
+            value = getattr(node, field_name)
             if self._is_stmt_sequence_field(field, value):
                 updated = self.visit_stmt_sequence(value)
             else:
                 updated = self.visit(value)
             if not _is_same_value(updated, value):
-                changes[field.name] = updated
+                changes[field_name] = updated
         if not changes:
             return node
         return replace(node, **changes)
@@ -240,11 +259,13 @@ class IRVisitor(IRFunctor):
 
     def visit_dataclass(self, node: std.Node) -> None:
         """Visit dataclass fields."""
-        collector = getattr(type(node), "__ffi_dialect_field_collector__", None)
+        collector = _dialect_field_collector(node)
         if collector is not None:
             collector(node)
         for field in fields(node):
-            self.visit(getattr(node, field.name))
+            field_name = field.name
+            if field_name is not None:
+                self.visit(getattr(node, field_name))
 
 
 __all__ = ["DELETE_STMT", "IRFunctor", "IRRewriter", "IRVisitor", "StmtSplice"]

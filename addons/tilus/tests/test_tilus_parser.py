@@ -39,6 +39,12 @@ def _import(name: str):
     return importlib.import_module(name)
 
 
+def _return_int_body(value: int = 1) -> list[std.Stmt]:
+    literal = std.IntImm.from_py(value)
+    result = std.Var(literal.ty, "result")
+    return [std.BindExpr(literal, result), std.Return(result)]
+
+
 def test_parse_hand_written_global_layout() -> None:
     _import("tilus._tilus_lang")
     layout_mod = _import("tilus.ir.layout")
@@ -236,12 +242,13 @@ def test_parse_hand_written_thread_group() -> None:
 
     source = """
 with tilus.thread_group(0, 32):
-    return 1
+    result = 1
+    return result
 """
     expected = stmt_mod.ThreadGroup(
         thread_begin=0,
         num_threads=32,
-        body=[std.Return(std.IntImm(std.AnyTy(), 1))],
+        body=_return_int_body(),
     )
 
     parsed = parse(source)
@@ -256,13 +263,14 @@ def test_parse_hand_written_function() -> None:
     source = """
 @tilus.function
 def kernel():
-    return 1
+    result = 1
+    return result
 """
     expected = func_mod.Function(
         symbol="kernel",
         args=[],
         ret_type=None,
-        body=[std.Return(std.IntImm(std.AnyTy(), 1))],
+        body=_return_int_body(),
         metadata=None,
     )
 

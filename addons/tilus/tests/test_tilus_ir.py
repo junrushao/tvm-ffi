@@ -72,6 +72,12 @@ def _import(name: str):
     return importlib.import_module(name)
 
 
+def _return_int_body(value: int = 1) -> list[std.Stmt]:
+    literal = std.IntImm.from_py(value)
+    result = std.Var(literal.ty, "result")
+    return [std.BindExpr(literal, result), std.Return(result)]
+
+
 def test_ir_rewriter_uses_dataclass_fields_and_replace() -> None:
     leaf = FunctorLeaf(1)
     node = FunctorBox(leaf, [leaf], label="box")
@@ -215,7 +221,7 @@ def test_hint_and_cuda_instruction_round_trip() -> None:
 
 def test_thread_group_round_trip() -> None:
     stmt_mod = _import("tilus.ir.stmt")
-    body = [std.Return(std.IntImm(std.AnyTy(), 1))]
+    body = _return_int_body()
     stmt = stmt_mod.ThreadGroup(thread_begin=0, num_threads=32, body=body)
     _round_trip(stmt)
 
@@ -338,7 +344,7 @@ def test_function_round_trip() -> None:
         symbol="kernel",
         args=[],
         ret_type=None,
-        body=[std.Return(std.IntImm(std.AnyTy(), 1))],
+        body=_return_int_body(),
         metadata=None,
     )
     _round_trip(func)

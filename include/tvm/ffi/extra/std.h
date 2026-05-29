@@ -1175,45 +1175,45 @@ struct Assert : public Stmt {
   /// \endcond
 };
 
-/*! \brief Data object for returning expressions from a function. */
+/*! \brief Data object for returning variables from a function. */
 struct ReturnObj : public StmtObj {
-  /*! \brief Returned expressions. */
-  List<Expr> exprs;
+  /*! \brief Returned variables. */
+  List<Var> vars;
 
   /// \cond Doxygen_Suppress
   ReturnObj() = default;
-  explicit ReturnObj(List<Expr> exprs) : exprs(std::move(exprs)) {}
+  explicit ReturnObj(List<Var> vars) : vars(std::move(vars)) {}
 
   TVM_FFI_DECLARE_OBJECT_INFO("ffi.std.Return", ReturnObj, StmtObj);
   /// \endcond
 };
 
-/*! \brief Reference wrapper for returning expressions from a function. */
+/*! \brief Reference wrapper for returning variables from a function. */
 struct Return : public Stmt {
   /*! \brief Construct a return statement. */
-  explicit Return(List<Expr> exprs) : Return(make_object<ReturnObj>(std::move(exprs))) {}
+  explicit Return(List<Var> vars) : Return(make_object<ReturnObj>(std::move(vars))) {}
   /// \cond Doxygen_Suppress
   TVM_FFI_DEFINE_OBJECT_REF_METHODS_NULLABLE(Return, Stmt, ReturnObj);
   /// \endcond
 };
 
-/*! \brief Data object for yielding expressions from a resumable scope. */
+/*! \brief Data object for yielding variables from a resumable scope. */
 struct YieldObj : public StmtObj {
-  /*! \brief Yielded expressions. */
-  List<Expr> exprs;
+  /*! \brief Yielded variables. */
+  List<Var> vars;
 
   /// \cond Doxygen_Suppress
   YieldObj() = default;
-  explicit YieldObj(List<Expr> exprs) : exprs(std::move(exprs)) {}
+  explicit YieldObj(List<Var> vars) : vars(std::move(vars)) {}
 
   TVM_FFI_DECLARE_OBJECT_INFO("ffi.std.Yield", YieldObj, StmtObj);
   /// \endcond
 };
 
-/*! \brief Reference wrapper for yielding expressions from a resumable scope. */
+/*! \brief Reference wrapper for yielding variables from a resumable scope. */
 struct Yield_ : public Stmt {
   /*! \brief Construct a yield statement. */
-  explicit Yield_(List<Expr> exprs) : Yield_(make_object<YieldObj>(std::move(exprs))) {}
+  explicit Yield_(List<Var> vars) : Yield_(make_object<YieldObj>(std::move(vars))) {}
   /// \cond Doxygen_Suppress
   TVM_FFI_DEFINE_OBJECT_REF_METHODS_NULLABLE(Yield_, Stmt, YieldObj);
   /// \endcond

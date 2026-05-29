@@ -106,7 +106,8 @@ def _assert_text_roundtrip(source: str) -> str:
                 ),
             ))
             def with_metadata(m: std.i32, n: std.i32) -> std.i32:
-                return m + n
+                total: std.i32 = m + n
+                return total
             """,
             id="decorator-metadata",
         ),
@@ -1232,8 +1233,10 @@ def test_handwritten_cuda_math_text_roundtrips(source: str) -> None:
             def thread_group_branch(flag: std.bool) -> std.i32:
                 with tilus.thread_group(0, 32):
                     if flag:
-                        return 1
-                    return 0
+                        one = 1
+                        return one
+                    zero = 0
+                    return zero
             """,
             id="thread-group-branch-return",
         ),
@@ -1243,8 +1246,10 @@ def test_handwritten_cuda_math_text_roundtrips(source: str) -> None:
             def nested_thread_groups() -> std.i32:
                 with tilus.thread_group(0, 64):
                     with tilus.thread_group(16, 16):
-                        return 7
-                return -1
+                        seven = 7
+                        return seven
+                minus_one = -1
+                return minus_one
             """,
             id="nested-thread-groups",
         ),

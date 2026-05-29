@@ -937,7 +937,7 @@ class TestDialectFieldCollectorParserInteractions:
         assert isinstance(parsed, std.Scope)
         assert isinstance(parsed.binds[0], ExtVarDef)
         assert parsed.binds[0].tag == "shared"
-        assert parsed.body[0].exprs[0].same_as(parsed.binds[0].targets[0])
+        assert parsed.body[0].vars[0].same_as(parsed.binds[0].targets[0])
         assert parsed.text() == source
         assert tvm_ffi.structural_equal(parse(parsed.text()), parsed)
 
@@ -1336,13 +1336,13 @@ class TestParseStatements:
     def test_return_none_is_empty_return(self) -> None:
         result = parse("@std.func\ndef f():\n  return None")
         assert isinstance(result.body[0], std.Return)
-        assert list(result.body[0].exprs) == []
+        assert list(result.body[0].vars) == []
 
-    def test_return_literal_and_expression(self) -> None:
-        result = parse("@std.func\ndef f() -> std.i32:\n  return 0")
-        assert isinstance(result.body[0].exprs[0], std.IntImm)
-        result = parse("@std.func\ndef f() -> std.i32:\n  return 1 + 2")
-        assert isinstance(result.body[0].exprs[0], std.IntImm)
+    def test_return_literal_and_expression_rejected_for_anf(self) -> None:
+        with pytest.raises(TypeError):
+            parse("@std.func\ndef f() -> std.i32:\n  return 0")
+        with pytest.raises(TypeError):
+            parse("@std.func\ndef f() -> std.i32:\n  return 1 + 2")
 
     def test_yield_var(self) -> None:
         x = std.Var(I32, "x")
@@ -1352,9 +1352,9 @@ class TestParseStatements:
     def test_yield_empty(self) -> None:
         _assert_parse_equal("yield", std.Yield())
 
-    def test_yield_literal(self) -> None:
-        result = parse("@std.func\ndef f():\n  yield 1")
-        assert isinstance(result.body[0].exprs[0], std.IntImm)
+    def test_yield_literal_rejected_for_anf(self) -> None:
+        with pytest.raises(TypeError):
+            parse("@std.func\ndef f():\n  yield 1")
 
     def test_break(self) -> None:
         _assert_parse_equal("break", std.Break())
@@ -1393,7 +1393,7 @@ class TestParseStatements:
     def test_top_level_return(self) -> None:
         result = parse("return")
         assert isinstance(result, std.Return)
-        assert list(result.exprs) == []
+        assert list(result.vars) == []
 
     def test_break_continue_reject_attrs_explicitly(self) -> None:
         with pytest.raises(TypeError):

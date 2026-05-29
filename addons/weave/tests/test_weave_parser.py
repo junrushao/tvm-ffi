@@ -209,7 +209,8 @@ def test_parse_lm_namespace_in_signature() -> None:
         def typed(
             ptr: weave.lm.ptr(weave.lm.f32, const=True, volatile=True, space="global"),
         ) -> weave.lm.uniform(weave.lm.i32):
-            return 1
+            result = 1
+            return result
         """
     )
 

@@ -43,8 +43,8 @@ from typing import cast as _typing_cast
 
 from typing_extensions import Never, Protocol, TypeAlias
 
-from tvm_ffi import Array, Dict, List, Map, dtype
-from tvm_ffi.core import MISSING, Object
+from tvm_ffi import Array, List, dtype
+from tvm_ffi.core import MISSING, Object, _lookup_type_attr
 from tvm_ffi.dataclasses import c_class, field, fields
 from tvm_ffi.pyast import PrinterConfig
 
@@ -67,84 +67,15 @@ _STD_CONCRETE_PRINTER_CLASSES: tuple[type[Any], ...] = ()
 
 
 def collect_dialect_fields(obj: Any) -> FieldCollectionResult:
-    """Collect ``lang_kind`` fields for std-derived dialect text printing."""
-    args: list[Any] = []
-    attrs: dict[str, Any] = {}
-    var_def: list[Var] = []
-    body: list[Any] = []
-
-    def extend_values(target: list[Any], value: Any) -> None:
-        if value is None:
-            return
-        if isinstance(value, (Array, List)):
-            target.extend(value)
-        else:
-            target.append(value)
-
-    def extend_var_def(value: Any) -> None:
-        if value is None:
-            return
-        if isinstance(value, Var):
-            var_def.append(value)
-        elif isinstance(value, (Array, List)):
-            for item in value:
-                extend_var_def(item)
-        else:
-            collector = getattr(type(value), "__ffi_dialect_field_collector__", None)
-            if collector is None:
-                raise TypeError(f"expected std.Var or var-def node, got {type(value).__name__}")
-            var_def.extend(collector(value).var_def)
-
-    for f in fields(obj):
-        lang_kind = f.lang_kind
-        if lang_kind is None:
-            continue
-        name = _typing_cast(str, f.name)
-        value = getattr(obj, name)
-        if lang_kind == "arg":
-            extend_values(args, value)
-        elif lang_kind == "attr":
-            if value is None:
-                continue
-            if name == "attrs" and isinstance(value, DictAttrs):
-                attrs.update(value.values)
-            elif name == "attrs" and isinstance(value, Mapping):
-                attrs.update(value)
-            else:
-                attrs[name] = value
-        elif lang_kind == "var_def":
-            extend_var_def(value)
-        elif lang_kind == "body":
-            extend_values(body, value)
-        else:
-            raise ValueError(f"Invalid {lang_kind = } on {type(obj).__name__}.{name}")
-
-    return FieldCollectionResult(args, attrs, var_def, body)
-
-
-def _collect_std_bind_expr_fields(obj: Any) -> FieldCollectionResult:
-    return FieldCollectionResult(var_def=list(obj.vars))
-
-
-def _collect_std_func_fields(obj: Any) -> FieldCollectionResult:
-    return FieldCollectionResult(attrs=getattr(obj, "attrs", None), body=list(obj.body))
-
-
-def _collect_std_scope_fields(obj: Any) -> FieldCollectionResult:
-    return FieldCollectionResult(attrs=getattr(obj, "attrs", None), body=list(obj.body))
-
-
-def _collect_std_for_fields(obj: Any) -> FieldCollectionResult:
-    return FieldCollectionResult(attrs=getattr(obj, "attrs", None), body=list(obj.body))
-
-
-def _collect_std_var_def_fields(obj: Any) -> FieldCollectionResult:
-    vars = list(obj.vars)
-    return FieldCollectionResult(args=[var.ty for var in vars], var_def=vars)
-
-
-def _collect_std_while_fields(obj: Any) -> FieldCollectionResult:
-    return FieldCollectionResult(attrs=getattr(obj, "attrs", None), body=list(obj.body))
+    """Run the default std dialect field collector."""
+    type_info = getattr(Node, "__tvm_ffi_type_info__")
+    collector = _lookup_type_attr(
+        type_info.type_index,
+        "__ffi_dialect_field_collector__",
+    )
+    if collector is None:
+        raise RuntimeError("ffi.std.Node field collector is not registered")
+    return _typing_cast(FieldCollectionResult, collector(obj))
 
 
 def _normalize_var_name_update(names: str | tuple[str, ...]) -> tuple[str, ...]:
@@ -218,134 +149,6 @@ def _update_lang_kind_var_names(obj: Any, names: str | tuple[str, ...]) -> tuple
     return new_vars
 
 
-def _std_dialect_callee(config: Any, dialect: str, mnemonic: str) -> Any:
-    """Build the printed callee for a dialect mnemonic."""
-    from tvm_ffi import pyast  # noqa: PLC0415
-
-    def dotted_name(name: str) -> Any:
-        parts = name.split(".")
-        ret = pyast.Id(parts[0])
-        for part in parts[1:]:
-            ret = ret.attr(part)
-        return ret
-
-    dialect_map = getattr(config, "dialect_print_map", None)
-    if dialect_map:
-        for key in (f"{dialect}${mnemonic}", dialect):
-            mapped = dialect_map.get(key)
-            if mapped is None:
-                continue
-            if mapped == "*":
-                return pyast.Id(mnemonic)
-            return dotted_name(mapped).attr(mnemonic) if key == dialect else dotted_name(mapped)
-    if not dialect:
-        return pyast.Id(mnemonic)
-    return dotted_name(dialect).attr(mnemonic)
-
-
-def _std_print_var_def(printer: Any, var: Var) -> Any:
-    """Print or define a variable for generic dialect binding syntax."""
-    if not printer.var_is_defined(var):
-        return printer.var_def(var.name, var, None)
-    ret = printer.var_get(var)
-    if ret is None:
-        raise ValueError(f"ffi.std.Var printer failed to fetch variable {var.name}")
-    return ret
-
-
-def _std_print_var_tuple(printer: Any, vars: Sequence[Var]) -> Any:
-    """Print one or more variables as a Python assignment target."""
-    from tvm_ffi import pyast  # noqa: PLC0415
-
-    if len(vars) == 1:
-        return _std_print_var_def(printer, vars[0])
-    return pyast.Tuple([_std_print_var_def(printer, var) for var in vars])
-
-
-def _std_print_dialect_value(printer: Any, value: Any, path: Any) -> Any:
-    """Print dialect field values, preserving FFI containers as Python literals."""
-    from tvm_ffi import pyast  # noqa: PLC0415
-
-    if isinstance(value, (Array, List)):
-        return pyast.List(
-            [printer(item, path.array_item(index)) for index, item in enumerate(value)]
-        )
-    if isinstance(value, (Dict, Map)):
-        return pyast.Dict(
-            [printer(key, path.map_item(key)) for key in value],
-            [printer(value[key], path.map_item(key)) for key in value],
-        )
-    collector = getattr(type(value), "__ffi_dialect_field_collector__", None)
-    if collector is not None and isinstance(value, Stmt):
-        fields = collector(value)
-        if not fields.var_def and not fields.body:
-            return _std_generic_dialect_call(value, printer, path)
-    return printer(value, path)
-
-
-def _std_generic_dialect_call(obj: Any, printer: Any, path: Any) -> Any:
-    """Print the constructor call for a collector-backed dialect object."""
-    from tvm_ffi import pyast  # noqa: PLC0415
-
-    dialect, mnemonic = type(obj).__ffi_dialect_mnemonic__
-    fields = type(obj).__ffi_dialect_field_collector__(obj)
-    args_path = path.attr("args")
-    attrs_path = path.attr("attrs")
-    attrs = dict(fields.attrs)
-    obj_attrs = getattr(obj, "attrs", None)
-    if isinstance(obj, Stmt) and obj_attrs is not None and "attrs" not in attrs:
-        attrs["attrs"] = obj_attrs
-
-    args = [
-        _std_print_dialect_value(printer, value, args_path.array_item(index))
-        for index, value in enumerate(fields.args)
-    ]
-    kwargs_keys: list[str] = []
-    kwargs_values: list[Any] = []
-    for key in sorted(attrs):
-        value = attrs[key]
-        kwargs_keys.append(key)
-        kwargs_values.append(_std_print_dialect_value(printer, value, attrs_path.attr(key)))
-    if fields.ty is not None:
-        kwargs_keys.append("ty")
-        kwargs_values.append(_std_print_dialect_value(printer, fields.ty, path.attr("ty")))
-    return pyast.Call(
-        _std_dialect_callee(printer.cfg, dialect, mnemonic),
-        args,
-        kwargs_keys,
-        kwargs_values,
-    )
-
-
-def _std_generic_dialect_text_print(obj: Any, printer: Any, path: Any) -> Any:
-    """Print collector-backed std dialect subclasses."""
-    from tvm_ffi import pyast  # noqa: PLC0415
-
-    fields = type(obj).__ffi_dialect_field_collector__(obj)
-
-    var_def = list(fields.var_def)
-    if fields.body:
-        raise TypeError(
-            f"{type(obj).__name__} generic collector text printer does not support body fields"
-        )
-    if var_def and not isinstance(obj, (BaseBindExpr, BaseVarDef)):
-        raise TypeError(
-            f"{type(obj).__name__} generic collector text printer does not support "
-            "var_def fields; subclass std.BaseBindExpr or std.BaseVarDef"
-        )
-    call = _std_generic_dialect_call(obj, printer, path)
-    if var_def:
-        if len(var_def) != 1:
-            raise TypeError(
-                f"{type(obj).__name__} generic collector text printer requires exactly one "
-                f"var_def target, got {len(var_def)}"
-            )
-        return pyast.Assign(_std_print_var_tuple(printer, var_def), call)
-    if isinstance(obj, Stmt):
-        return pyast.ExprStmt(call)
-    return call
-
-
 def normalize_ty(value: Any, default: Any = MISSING) -> Ty:
     """Normalize parser-side type factories and dtype strings to ``std.Ty``."""
     if value is None:
@@ -388,14 +191,6 @@ def _unary_expr_ffi_init(self: Any, operand: ExprLike, *, ty: TyLike) -> None:
     self.__ffi_init__(operand, normalize_ty(ty))
 
 
-def _first_mro_attr(cls: type[Any], attr_name: str) -> Any:
-    for parent in cls.__mro__[1:]:
-        value = getattr(parent, attr_name, None)
-        if value is not None:
-            return value
-    return None
-
-
 def _first_mro_dict_owner(cls: type[Any], attr_name: str) -> type[Any] | None:
     for parent in cls.__mro__[1:]:
         if attr_name in parent.__dict__:
@@ -424,31 +219,17 @@ class Node(Object):
 
         def __ffi_init__(self, *args: Any, **kwargs: Any) -> None: ...
 
-    def __init_subclass__(
-        cls,
-        *,
-        mnemonic: str | None = None,
-        **kwargs: Any,
-    ) -> None:
+        @staticmethod
+        def __ffi_dialect_field_collector__(obj: Any) -> FieldCollectionResult: ...
+
+    def __init_subclass__(cls, *, mnemonic: str, **kwargs: Any) -> None:
         super().__init_subclass__(**kwargs)
-        if mnemonic is None:
-            raise TypeError(
-                f"{cls.__name__}: subclasses of std.Node must define "
-                "mnemonic as a class definition keyword"
-            )
         dialect, name = mnemonic.rsplit(".", 1)
         cls.__ffi_dialect_mnemonic__ = (dialect, name)
         cls.__annotations__ = {
             **cls.__dict__.get("__annotations__", {}),
             "__ffi_dialect_mnemonic__": ClassVar,
         }
-
-        if "__ffi_dialect_field_collector__" not in cls.__dict__:
-            inherited_collector = _first_mro_attr(cls, "__ffi_dialect_field_collector__")
-            if inherited_collector is not None:
-                cls.__ffi_dialect_field_collector__ = staticmethod(inherited_collector)
-            elif cls.__module__ != __name__:
-                cls.__ffi_dialect_field_collector__ = staticmethod(collect_dialect_fields)
 
         if "__ffi_text_print__" not in cls.__dict__:
             inherited_text_print_owner = _first_mro_dict_owner(cls, "__ffi_text_print__")
@@ -472,12 +253,8 @@ class Node(Object):
                 ):
                     cls.__ffi_text_print__ = staticmethod(base.__ffi_text_print__)
                     break
-            if (
-                "__ffi_text_print__" not in cls.__dict__
-                and getattr(cls, "__ffi_dialect_field_collector__", None) is not None
-                and cls.__module__ != __name__
-            ):
-                cls.__ffi_text_print__ = staticmethod(_std_generic_dialect_text_print)
+            if "__ffi_text_print__" not in cls.__dict__ and cls.__module__ != __name__:
+                cls.__ffi_text_print__ = staticmethod(Node.__ffi_text_print__)
 
     def text(self, config: PrinterConfig | None = None) -> str:
         """Render this standard dialect node with the FFI text printer."""
@@ -485,7 +262,7 @@ class Node(Object):
 
         return pyast.to_python(self, config)
 
-    def render_text(
+    def text_render(
         self,
         config: PrinterConfig | None = None,
         style: str | None = None,
@@ -783,8 +560,6 @@ class BaseFunc(Stmt, mnemonic="std.BaseFunc"):
 @c_class("ffi.std.Func")
 class Func(BaseFunc, mnemonic="std.Func"):
     """A standard dialect function."""
-
-    __ffi_dialect_field_collector__ = staticmethod(_collect_std_func_fields)
 
     # tvm-ffi-stubgen(begin): object/ffi.std.Func
     # fmt: off
@@ -1689,8 +1464,6 @@ class IfStmt(Stmt, mnemonic="std.IfStmt"):
 class Scope(BaseScope, mnemonic="std.Scope"):
     """A scoped statement block with lexical bindings."""
 
-    __ffi_dialect_field_collector__ = staticmethod(_collect_std_scope_fields)
-
     # tvm-ffi-stubgen(begin): object/ffi.std.Scope
     # fmt: off
     binds: MutableSequence[Stmt]
@@ -1745,8 +1518,6 @@ class BaseFor(Stmt, mnemonic="std.BaseFor"):
 @c_class("ffi.std.For")
 class For(BaseFor, mnemonic="std.For"):
     """For loop."""
-
-    __ffi_dialect_field_collector__ = staticmethod(_collect_std_for_fields)
 
     # tvm-ffi-stubgen(begin): object/ffi.std.For
     # fmt: off
@@ -1829,8 +1600,6 @@ class BaseWhile(Stmt, mnemonic="std.BaseWhile"):
 class While(BaseWhile, mnemonic="std.While"):
     """While loop."""
 
-    __ffi_dialect_field_collector__ = staticmethod(_collect_std_while_fields)
-
     # tvm-ffi-stubgen(begin): object/ffi.std.While
     # fmt: off
     body: MutableSequence[Stmt]
@@ -1891,8 +1660,6 @@ class BaseBindExpr(Stmt, mnemonic="std.BaseBindExpr"):
 class BindExpr(BaseBindExpr, mnemonic="std.BindExpr"):
     """Binding that defines variables from an expression."""
 
-    __ffi_dialect_field_collector__ = staticmethod(_collect_std_bind_expr_fields)
-
     # tvm-ffi-stubgen(begin): object/ffi.std.BindExpr
     # fmt: off
     vars: MutableSequence[Var]
@@ -1939,8 +1706,6 @@ class BaseVarDef(Stmt, mnemonic="std.BaseVarDef"):
 @c_class("ffi.std.VarDef")
 class VarDef(BaseVarDef, mnemonic="std.VarDef"):
     """Binding that defines variables without a source expression."""
-
-    __ffi_dialect_field_collector__ = staticmethod(_collect_std_var_def_fields)
 
     # tvm-ffi-stubgen(begin): object/ffi.std.VarDef
     # fmt: off
@@ -2013,10 +1778,10 @@ class Return(Stmt, mnemonic="std.Return"):
 
     # tvm-ffi-stubgen(begin): object/ffi.std.Return
     # fmt: off
-    exprs: MutableSequence[Expr]
+    vars: MutableSequence[Var]
     if TYPE_CHECKING:
-        def __init__(self, exprs: MutableSequence[Expr]) -> None: ...
-        def __ffi_init__(self, exprs: MutableSequence[Expr]) -> None: ...  # ty: ignore[invalid-method-override]
+        def __init__(self, vars: MutableSequence[Var]) -> None: ...
+        def __ffi_init__(self, vars: MutableSequence[Var]) -> None: ...  # ty: ignore[invalid-method-override]
     # fmt: on
     # tvm-ffi-stubgen(end)
 
@@ -2024,8 +1789,8 @@ class Return(Stmt, mnemonic="std.Return"):
 
         def __ffi_init__(self, *args: Any, **kwargs: Any) -> None: ...
 
-    def __init__(self, *exprs: ExprLike) -> None:
-        self.__ffi_init__(list(exprs))
+    def __init__(self, *vars: Var) -> None:
+        self.__ffi_init__(list(vars))
 
 
 @c_class("ffi.std.Yield")
@@ -2034,10 +1799,10 @@ class Yield(Stmt, mnemonic="std.Yield"):
 
     # tvm-ffi-stubgen(begin): object/ffi.std.Yield
     # fmt: off
-    exprs: MutableSequence[Expr]
+    vars: MutableSequence[Var]
     if TYPE_CHECKING:
-        def __init__(self, exprs: MutableSequence[Expr]) -> None: ...
-        def __ffi_init__(self, exprs: MutableSequence[Expr]) -> None: ...  # ty: ignore[invalid-method-override]
+        def __init__(self, vars: MutableSequence[Var]) -> None: ...
+        def __ffi_init__(self, vars: MutableSequence[Var]) -> None: ...  # ty: ignore[invalid-method-override]
     # fmt: on
     # tvm-ffi-stubgen(end)
 
@@ -2045,8 +1810,8 @@ class Yield(Stmt, mnemonic="std.Yield"):
 
         def __ffi_init__(self, *args: Any, **kwargs: Any) -> None: ...
 
-    def __init__(self, *exprs: ExprLike) -> None:
-        self.__ffi_init__(list(exprs))
+    def __init__(self, *vars: Var) -> None:
+        self.__ffi_init__(list(vars))
 
 
 @c_class("ffi.std.Break")

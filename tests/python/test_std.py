@@ -2820,8 +2820,8 @@ class TestReturn:
         node = std.Return(x, y)
 
         assert isinstance(node, std.Return)
-        assert tuple(field.name for field in fields(std.Return)) == ("exprs",)
-        assert list(node.exprs) == [x, y]
+        assert tuple(field.name for field in fields(std.Return)) == ("vars",)
+        assert list(node.vars) == [x, y]
 
         with pytest.raises(TypeError):
             std.Return(x, y, tag="demo")  # ty: ignore[unknown-argument]
@@ -2850,8 +2850,8 @@ class TestYield:
         node = std.Yield(x, y)
 
         assert isinstance(node, std.Yield)
-        assert tuple(field.name for field in fields(std.Yield)) == ("exprs",)
-        assert list(node.exprs) == [x, y]
+        assert tuple(field.name for field in fields(std.Yield)) == ("vars",)
+        assert list(node.vars) == [x, y]
 
         with pytest.raises(TypeError):
             std.Yield(x, y, tag="demo")  # ty: ignore[unknown-argument]
@@ -2995,6 +2995,7 @@ class TestDialectFieldCollector:
         collector = core._lookup_type_attr(
             cast(Any, type(node)).__tvm_ffi_type_info__.type_index,
             "__ffi_dialect_field_collector__",
+            ancestor=True,
         )
         return cast(std.FieldCollectionResult, collector(node))
 
@@ -3061,12 +3062,23 @@ class TestDialectFieldCollector:
         assert list(result.body) == [ret]
         assert result.ty == i32
 
-    def test_generated_collector_uses_lang_kind_metadata(self) -> None:
+    def test_generated_collector_uses_lang_kind_type_attr(self) -> None:
         @dc.py_class(_unique_std_key("ExtVarDefCollect"))
         class ExtVarDef(std.BaseVarDef, mnemonic="testing.ExtVarDef"):
             size: std.Expr = dc.field(lang_kind="arg")
             target: std.Var = dc.field(lang_kind="var_def")
             scope: str = dc.field(default="local", lang_kind="attr")
+
+        type_info = cast(Any, ExtVarDef).__tvm_ffi_type_info__
+        lang_kind = core._lookup_type_attr(type_info.type_index, "__ffi_dialect_lang_kind__")
+        assert lang_kind is not None
+        assert "__ffi_dialect_lang_kind__" in ExtVarDef.__dict__
+        assert {kind: list(indices) for kind, indices in lang_kind.items()} == {
+            "arg": [0],
+            "var_def": [1],
+            "attr": [2],
+        }
+        assert all("lang_kind" not in field.metadata for field in type_info.fields)
 
         i32 = std.PrimTy("int32")
         i64 = std.PrimTy("int64")
@@ -3118,7 +3130,7 @@ class TestDialectFieldCollector:
         assert scalar_vars == (scalar.target,)
         assert seq_vars == tuple(seq.targets)
 
-    def test_public_collector_installs_for_no_field_nodes(self) -> None:
+    def test_default_collector_handles_no_field_nodes(self) -> None:
         @dc.py_class(_unique_std_key("ExtNoFieldMarker"), structural_eq="tree")
         class ExtNoFieldMarker(std.Node, mnemonic="testing.ExtNoFieldMarker"):
             pass
@@ -3126,10 +3138,19 @@ class TestDialectFieldCollector:
         node = ExtNoFieldMarker()
 
         self._assert_fields(self._collect(node))
-        assert type(node).__ffi_dialect_field_collector__ is std.collect_dialect_fields
+        type_index = cast(Any, type(node)).__tvm_ffi_type_info__.type_index
+        assert core._lookup_type_attr(type_index, "__ffi_dialect_field_collector__") is None
+        assert (
+            core._lookup_type_attr(
+                type_index,
+                "__ffi_dialect_field_collector__",
+                ancestor=True,
+            )
+            is not None
+        )
         assert node.text() == "testing.ExtNoFieldMarker()"
 
-    def test_public_collector_inherits_to_no_field_children_before_registration(self) -> None:
+    def test_default_collector_handles_no_field_children_before_registration(self) -> None:
         @dc.py_class(_unique_std_key("ExtMarkerBase"), structural_eq="tree", init=False)
         class ExtMarkerBase(std.Node, mnemonic="testing.ExtMarkerBase"):
             pass
@@ -3141,7 +3162,6 @@ class TestDialectFieldCollector:
         node = ExtMarkerChild()
 
         self._assert_fields(self._collect(node))
-        assert type(node).__ffi_dialect_field_collector__ is std.collect_dialect_fields
         assert node.text() == "testing.ExtMarkerChild()"
 
     def test_automatic_collector_does_not_overwrite_custom_collector(self) -> None:
@@ -3178,7 +3198,6 @@ class TestDialectFieldCollector:
         @dc.py_class(_unique_std_key("ExtPlainStmt"), structural_eq="tree")
         class ExtPlainStmt(std.Stmt, mnemonic="testing.ExtPlainStmt"):
             value: int = dc.field(lang_kind="arg")
-            attrs: Optional[std.Attrs] = dc.field(default=None, kw_only=True)  # noqa: UP045
 
         node = ExtPlainNode(value=1, tag="demo")
         stmt = ExtPlainStmt(value=2)
@@ -3186,8 +3205,46 @@ class TestDialectFieldCollector:
         assert node.text() == 'testing.ExtPlainNode(1, tag="demo")'
         assert stmt.text() == "testing.ExtPlainStmt(2)"
 
-        stmt_with_attrs = ExtPlainStmt(value=3, attrs=std.DictAttrs(tag="demo"))
-        assert stmt_with_attrs.text() == 'testing.ExtPlainStmt(3, attrs=std.DictAttrs(tag="demo"))'
+    def test_generic_collector_printer_handles_leaf_control_subclasses(self) -> None:
+        @dc.py_class(_unique_std_key("ExtAssert"), structural_eq="tree")
+        class ExtAssert(std.Assert, mnemonic="testing.ExtAssert"):
+            note: str = dc.field(default="checked", lang_kind="attr")
+
+        @dc.py_class(_unique_std_key("ExtReturn"), structural_eq="tree")
+        class ExtReturn(std.Return, mnemonic="testing.ExtReturn"):
+            attrs: int = dc.field(default=0, lang_kind="attr")
+
+        @dc.py_class(_unique_std_key("ExtYield"), structural_eq="tree")
+        class ExtYield(std.Yield, mnemonic="testing.ExtYield"):
+            mode: str = dc.field(default="cooperative", lang_kind="attr")
+
+        @dc.py_class(_unique_std_key("ExtBreak"), structural_eq="tree")
+        class ExtBreak(std.Break, mnemonic="testing.ExtBreak"):
+            reason: str = dc.field(default="done", lang_kind="attr")
+
+        @dc.py_class(_unique_std_key("ExtContinue"), structural_eq="tree")
+        class ExtContinue(std.Continue, mnemonic="testing.ExtContinue"):
+            flag: bool = dc.field(default=True, lang_kind="attr")
+
+        @dc.py_class(_unique_std_key("ExtLeafOuter"), structural_eq="tree")
+        class ExtLeafOuter(std.Node, mnemonic="testing.ExtLeafOuter"):
+            stmt: std.Stmt = dc.field(lang_kind="arg")
+
+        bool_ty = std.PrimTy("bool")
+        i32 = std.PrimTy("int32")
+        x = std.Var(i32, "x")
+        y = std.Var(i32, "y")
+
+        assert ExtAssert(cond=std.BoolImm(bool_ty, True), note="fast").text() == (
+            'testing.ExtAssert(True, note="fast")'
+        )
+        assert ExtReturn(vars=[x, y], attrs=3).text() == "testing.ExtReturn(x, y, attrs=3)"
+        assert ExtYield(vars=[x], mode="warp").text() == 'testing.ExtYield(x, mode="warp")'
+        assert ExtBreak(reason="stop").text() == 'testing.ExtBreak(reason="stop")'
+        assert ExtContinue(flag=False).text() == "testing.ExtContinue(flag=False)"
+        assert ExtLeafOuter(ExtReturn(vars=[x], attrs=1)).text() == (
+            "testing.ExtLeafOuter(testing.ExtReturn(x, attrs=1))"
+        )
 
     def test_generic_collector_printer_rejects_plain_node_var_def(self) -> None:
         @dc.py_class(_unique_std_key("ExtPlainNodeBinding"), structural_eq="tree")
@@ -3210,7 +3267,6 @@ class TestDialectFieldCollector:
         @dc.py_class(_unique_std_key("ExtPlainStmtParse"), structural_eq="tree")
         class ExtPlainStmt(std.Stmt, mnemonic="testing.ExtPlainStmtParse"):
             value: int = dc.field(lang_kind="arg")
-            attrs: Optional[std.Attrs] = dc.field(default=None, kw_only=True)  # noqa: UP045
 
         class Testing:
             __ffi_globals__: ClassVar[dict[str, Any]] = {}
@@ -3223,7 +3279,6 @@ class TestDialectFieldCollector:
         for node in [
             ExtPlainNode(value=1, tag="demo"),
             ExtPlainStmt(value=2),
-            ExtPlainStmt(value=3, attrs=std.DictAttrs(tag="demo")),
         ]:
             assert tvm_ffi.structural_equal(parse(node.text()), node)
 
@@ -3430,7 +3485,7 @@ class TestDialectFieldCollector:
         assert len(body) == 2
         assert isinstance(body[0], ExtVarDef)
         assert isinstance(body[1], std.Return)
-        assert tvm_ffi.structural_equal(body[1].exprs[0], body[0].targets[0])
+        assert tvm_ffi.structural_equal(body[1].vars[0], body[0].targets[0])
 
     def test_parser_rejects_constructor_var_def_target_count_mismatch(self) -> None:
         @dc.py_class(_unique_std_key("ExtPairParseVarDef"), structural_eq="tree")
@@ -3584,6 +3639,14 @@ class TestDialectFieldCollector:
         x = std.Var(i32, "x")
         node = ChildExtScope(label="region", target=x, body=[std.Return(x)])
 
+        type_info = cast(Any, ChildExtScope).__tvm_ffi_type_info__
+        lang_kind = core._lookup_type_attr(type_info.type_index, "__ffi_dialect_lang_kind__")
+        assert lang_kind is not None
+        assert {kind: list(indices) for kind, indices in lang_kind.items()} == {
+            "arg": [0],
+            "var_def": [1],
+            "body": [2],
+        }
         assert node.text() == 'with testing.ChildScope("region") as x:\n  return x'
 
     def test_base_var_def_subclass_printer_uses_annotated_single_target(self) -> None:
@@ -3733,7 +3796,7 @@ class TestDialectFieldCollector:
         assert isinstance(parsed, std.Scope)
         assert isinstance(parsed.binds[0], ExtVarDef)
         assert isinstance(parsed.body[0], std.Return)
-        assert parsed.body[0].exprs[0].same_as(parsed.binds[0].targets[0])
+        assert parsed.body[0].vars[0].same_as(parsed.binds[0].targets[0])
         assert parsed.text() == source
         assert tvm_ffi.structural_equal(parse(parsed.text()), parsed)
 
@@ -3800,7 +3863,7 @@ class TestDialectMnemonic:
 
         with pytest.raises(TypeError, match="mnemonic"):
 
-            class _MissingMnemonic(std.Node):
+            class _MissingMnemonic(std.Node):  # ty: ignore[missing-argument]
                 pass
 
     def test_base_classes_have_python_dialect_mnemonics_but_no_type_attr(self) -> None:
