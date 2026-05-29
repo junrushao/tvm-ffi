@@ -922,6 +922,17 @@ class TestDialectFieldCollectorParserInteractions:
                 targets = [std.Var(normalized_ty, target.name) for target in targets]
                 self.__ffi_init__(normalized_ty, targets, tag)
 
+            def __ffi_update_var_name__(self, *name: str) -> tuple[std.Var, ...]:
+                if len(name) != len(self.targets):
+                    raise TypeError(
+                        f"expected {len(self.targets)} binding target(s), got {len(name)}"
+                    )
+                targets = [
+                    std.Var(target.ty, new_name) for target, new_name in zip(self.targets, name)
+                ]
+                object.__setattr__(self, "targets", targets)
+                return tuple(targets)
+
         class ParserProbe:
             __ffi_globals__: ClassVar[dict[str, Any]] = {}
             __ffi_generics__: ClassVar[dict[str, Any]] = {}

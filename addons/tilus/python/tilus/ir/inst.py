@@ -91,12 +91,11 @@ class Instruction(std.BaseVarDef, mnemonic="tilus.Instruction"):
         self._validate_int_domains()
         self._validate_nonnegative_int_attrs()
 
-    def __ffi_update_var_name__(self, names: str | tuple[str, ...]) -> tuple[std.Var, ...]:
-        normalized_names = (names,) if isinstance(names, str) else tuple(names)
-        if len(normalized_names) != 1:
-            raise TypeError(f"expected 1 binding target(s), got {len(normalized_names)}")
+    def __ffi_update_var_name__(self, *name: str) -> tuple[std.Var, ...]:
+        if len(name) != 1:
+            raise TypeError(f"expected 1 binding target(s), got {len(name)}")
         if self.output is not None:
-            output = std.Var(self.output.ty, normalized_names[0])
+            output = std.Var(self.output.ty, name[0])
             object.__setattr__(self, "output", output)
             self.__post_init__()
             return (output,)
@@ -104,7 +103,7 @@ class Instruction(std.BaseVarDef, mnemonic="tilus.Instruction"):
         ty = explicit_ty or infer_instruction_output_ty(self)
         if ty is None:
             raise TypeError("instruction assignment requires an inferable output type")
-        output = std.Var(ty, normalized_names[0])
+        output = std.Var(ty, name[0])
         object.__setattr__(self, "output", output)
         self.__post_init__()
         if explicit_ty is not None:

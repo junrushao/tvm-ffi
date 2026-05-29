@@ -70,6 +70,14 @@ class TensorItemPtr(std.BaseVarDef, mnemonic="tilus.TensorItemPtr"):
     def __post_init__(self) -> None:
         _check_tensor_binding(self.tensor, self.var)
 
+    def __ffi_update_var_name__(self, *name: str) -> tuple[std.Var, ...]:
+        if len(name) != 1:
+            raise TypeError(f"expected 1 binding target(s), got {len(name)}")
+        var = std.Var(self.var.ty, name[0])
+        object.__setattr__(self, "var", var)
+        self.__post_init__()
+        return (var,)
+
 
 @dc.py_class("tilus.TensorItemValue", structural_eq="tree")
 class TensorItemValue(std.BaseVarDef, mnemonic="tilus.TensorItemValue"):
@@ -80,6 +88,14 @@ class TensorItemValue(std.BaseVarDef, mnemonic="tilus.TensorItemValue"):
 
     def __post_init__(self) -> None:
         _check_tensor_binding(self.tensor, self.var)
+
+    def __ffi_update_var_name__(self, *name: str) -> tuple[std.Var, ...]:
+        if len(name) != 1:
+            raise TypeError(f"expected 1 binding target(s), got {len(name)}")
+        var = std.Var(self.var.ty, name[0])
+        object.__setattr__(self, "var", var)
+        self.__post_init__()
+        return (var,)
 
 
 @dc.py_class("tilus.Inst", structural_eq="tree")

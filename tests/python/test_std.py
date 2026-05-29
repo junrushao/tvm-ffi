@@ -3102,6 +3102,13 @@ class TestDialectFieldCollector:
         class ExtScalarVarDef(std.BaseVarDef, mnemonic="testing.ExtScalarVarDefUpdate"):
             target: std.Var = dc.field(lang_kind="var_def", structural_eq="def-recursive")
 
+            def __ffi_update_var_name__(self, *name: str) -> tuple[std.Var, ...]:
+                if len(name) != 1:
+                    raise TypeError(f"expected 1 binding target(s), got {len(name)}")
+                target = std.Var(self.target.ty, name[0])
+                object.__setattr__(self, "target", target)
+                return (target,)
+
         @dc.py_class(_unique_std_key("ExtSeqVarDefUpdate"), structural_eq="tree")
         class ExtSeqVarDef(std.BaseVarDef, mnemonic="testing.ExtSeqVarDefUpdate"):
             targets: List[std.Var] = dc.field(  # noqa: UP006
@@ -3109,6 +3116,17 @@ class TestDialectFieldCollector:
                 lang_kind="var_def",
                 structural_eq="def-recursive",
             )
+
+            def __ffi_update_var_name__(self, *name: str) -> tuple[std.Var, ...]:
+                if len(name) != len(self.targets):
+                    raise TypeError(
+                        f"expected {len(self.targets)} binding target(s), got {len(name)}"
+                    )
+                targets = [
+                    std.Var(target.ty, new_name) for target, new_name in zip(self.targets, name)
+                ]
+                object.__setattr__(self, "targets", targets)
+                return tuple(targets)
 
         i32 = std.PrimTy("int32")
         bind = std.BindExpr(1, std.Var(i32, ""))
@@ -3119,7 +3137,7 @@ class TestDialectFieldCollector:
         bind_vars = bind.__ffi_update_var_name__("bind")
         var_def_vars = var_def.__ffi_update_var_name__("decl")
         scalar_vars = scalar.__ffi_update_var_name__("scalar")
-        seq_vars = seq.__ffi_update_var_name__(("lhs", "rhs"))
+        seq_vars = seq.__ffi_update_var_name__("lhs", "rhs")
 
         assert bind.vars[0].name == "bind"
         assert var_def.vars[0].name == "decl"
@@ -3339,6 +3357,13 @@ class TestDialectFieldCollector:
                     target = std.Var(std.normalize_ty(ty), target.name)
                 self.__ffi_init__(target, value)
 
+            def __ffi_update_var_name__(self, *name: str) -> tuple[std.Var, ...]:
+                if len(name) != 1:
+                    raise TypeError(f"expected 1 binding target(s), got {len(name)}")
+                target = std.Var(self.target.ty, name[0])
+                object.__setattr__(self, "target", target)
+                return (target,)
+
         i32 = std.PrimTy("int32")
         x = std.Var(i32, "x")
         node = ExtPlainBinding(target=x, value=1)
@@ -3460,6 +3485,17 @@ class TestDialectFieldCollector:
                     targets = [std.Var(normalized_ty, target.name) for target in targets]
                 self.__ffi_init__(size, targets)
 
+            def __ffi_update_var_name__(self, *name: str) -> tuple[std.Var, ...]:
+                if len(name) != len(self.targets):
+                    raise TypeError(
+                        f"expected {len(self.targets)} binding target(s), got {len(name)}"
+                    )
+                targets = [
+                    std.Var(target.ty, new_name) for target, new_name in zip(self.targets, name)
+                ]
+                object.__setattr__(self, "targets", targets)
+                return tuple(targets)
+
         class Testing:
             __ffi_globals__: ClassVar[dict[str, Any]] = {}
             __ffi_generics__: ClassVar[dict[str, Any]] = {}
@@ -3502,6 +3538,15 @@ class TestDialectFieldCollector:
                     std.Var(normalized_ty, ""),
                 )
 
+            def __ffi_update_var_name__(self, *name: str) -> tuple[std.Var, ...]:
+                if len(name) != 2:
+                    raise TypeError(f"expected 2 binding target(s), got {len(name)}")
+                lhs = std.Var(self.lhs.ty, name[0])
+                rhs = std.Var(self.rhs.ty, name[1])
+                object.__setattr__(self, "lhs", lhs)
+                object.__setattr__(self, "rhs", rhs)
+                return (lhs, rhs)
+
         class Testing:
             __ffi_globals__: ClassVar[dict[str, Any]] = {}
             __ffi_generics__: ClassVar[dict[str, Any]] = {}
@@ -3527,6 +3572,13 @@ class TestDialectFieldCollector:
                 if target is None:
                     target = std.Var(expr.ty, "")
                 self.__ffi_init__(expr, target)
+
+            def __ffi_update_var_name__(self, *name: str) -> tuple[std.Var, ...]:
+                if len(name) != 1:
+                    raise TypeError(f"expected 1 binding target(s), got {len(name)}")
+                target = std.Var(self.target.ty, name[0])
+                object.__setattr__(self, "target", target)
+                return (target,)
 
         class Testing:
             __ffi_globals__: ClassVar[dict[str, Any]] = {}
@@ -3698,6 +3750,13 @@ class TestDialectFieldCollector:
                     target = std.Var(expr.ty, target.name)
                 self.__ffi_init__(expr, target)
 
+            def __ffi_update_var_name__(self, *name: str) -> tuple[std.Var, ...]:
+                if len(name) != 1:
+                    raise TypeError(f"expected 1 binding target(s), got {len(name)}")
+                target = std.Var(self.target.ty, name[0])
+                object.__setattr__(self, "target", target)
+                return (target,)
+
         class Testing:
             __ffi_globals__: ClassVar[dict[str, Any]] = {}
             __ffi_generics__: ClassVar[dict[str, Any]] = {}
@@ -3782,6 +3841,17 @@ class TestDialectFieldCollector:
                 targets = list(targets or [std.Var(normalized_ty, "")])
                 targets = [std.Var(normalized_ty, target.name) for target in targets]
                 self.__ffi_init__(normalized_ty, targets)
+
+            def __ffi_update_var_name__(self, *name: str) -> tuple[std.Var, ...]:
+                if len(name) != len(self.targets):
+                    raise TypeError(
+                        f"expected {len(self.targets)} binding target(s), got {len(name)}"
+                    )
+                targets = [
+                    std.Var(target.ty, new_name) for target, new_name in zip(self.targets, name)
+                ]
+                object.__setattr__(self, "targets", targets)
+                return tuple(targets)
 
         class Testing:
             __ffi_globals__: ClassVar[dict[str, Any]] = {}

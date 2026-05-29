@@ -568,6 +568,8 @@ void AppendAttrsKwargs(const text::IRPrinter& printer, const Optional<Attrs>& at
   TVM_FFI_THROW(ValueError) << "ffi.std.Attrs text printer must return CallAST";
 }
 
+text::ExprAST PrintDialectValue(const text::IRPrinter& printer, const Any& value, const Path& path);
+
 text::ExprAST DefineVar(const text::IRPrinter& printer, const Var& var) {
   // Convert a std.Var object into its textual identifier and register it with
   // the printer if this is the first occurrence.  For example, the first visit
@@ -623,11 +625,12 @@ struct ExprBuilder {
     int64_t n = static_cast<int64_t>(fields->args.size());
     operands.reserve(static_cast<int64_t>(operands.size()) + n);
     for (int64_t i = 0; i < n; ++i) {
-      AddOperand(printer, fields->args[i], args_path->ArrayItem(i));
+      operands.push_back(PrintDialectValue(printer, fields->args[i], args_path->ArrayItem(i)));
     }
     AddAttrs(printer, Optional<Attrs>(fields->attrs), path->Attr("attrs"));
     if (fields->ty.has_value()) {
-      AddTy(printer, fields->ty.value(), path->Attr("ty"));
+      kwargs_keys.push_back("ty");
+      kwargs_values.push_back(PrintDialectValue(printer, fields->ty.value(), path->Attr("ty")));
     }
   }
 
@@ -685,12 +688,12 @@ struct ScopeBuilder {
     int64_t n = static_cast<int64_t>(fields->args.size());
     operands.reserve(static_cast<int64_t>(operands.size()) + n);
     for (int64_t i = 0; i < n; ++i) {
-      operands.push_back(printer->ToExpr(fields->args[i], args_path->ArrayItem(i)));
+      operands.push_back(PrintDialectValue(printer, fields->args[i], args_path->ArrayItem(i)));
     }
     AddAttrs(printer, Optional<Attrs>(fields->attrs), path->Attr("attrs"));
     if (fields->ty.has_value()) {
       kwargs_keys.push_back("ty");
-      kwargs_values.push_back(printer->ToExpr(fields->ty.value(), path->Attr("ty")));
+      kwargs_values.push_back(PrintDialectValue(printer, fields->ty.value(), path->Attr("ty")));
     }
   }
 
@@ -747,8 +750,6 @@ template <typename ObjType>
 bool IsExactType(const ObjectRef& obj) {
   return obj->type_index() == ObjType::RuntimeTypeIndex();
 }
-
-text::ExprAST PrintDialectValue(const text::IRPrinter& printer, const Any& value, const Path& path);
 
 // Binding statements use assignment targets.  One var prints as "x", while
 // multiple vars print as a tuple target such as "x, y = rhs".
@@ -870,12 +871,34 @@ text::ExprAST PrintDialectValue(const text::IRPrinter& printer, const Any& value
     }
     return text::ListAST(std::move(printed));
   }
+  if (std::optional<List<Any>> values = value.try_cast<List<Any>>()) {
+    List<text::ExprAST> printed;
+    int64_t n = static_cast<int64_t>(values->size());
+    printed.reserve(n);
+    for (int64_t i = 0; i < n; ++i) {
+      printed.push_back(PrintDialectValue(printer, (*values)[i], path->ArrayItem(i)));
+    }
+    return text::ListAST(std::move(printed));
+  }
   if (std::optional<Map<Any, Any>> map = value.try_cast<Map<Any, Any>>()) {
     List<text::ExprAST> keys;
     List<text::ExprAST> values;
     keys.reserve(static_cast<int64_t>(map->size()));
     values.reserve(static_cast<int64_t>(map->size()));
+    using KV = std::pair<Any, Any>;
+    std::vector<KV> items;
+    items.reserve(map->size());
+    bool all_str_keys = true;
     for (const auto& kv : *map) {
+      items.emplace_back(kv.first, kv.second);
+      all_str_keys = all_str_keys && kv.first.try_cast<String>().has_value();
+    }
+    if (all_str_keys) {
+      std::sort(items.begin(), items.end(), [](const KV& lhs, const KV& rhs) {
+        return lhs.first.cast<String>() < rhs.first.cast<String>();
+      });
+    }
+    for (const auto& kv : items) {
       Path item_path = path->MapItem(kv.first);
       keys.push_back(printer->ToExpr(kv.first, item_path));
       values.push_back(PrintDialectValue(printer, kv.second, item_path));
@@ -915,18 +938,24 @@ text::NodeAST TextPrint(const Node& obj, const text::IRPrinter& printer, const P
   return call;
 }
 
-#define TVM_FFI_TEXT_PRINT_DISALLOW(TypeName)                                                    \
-  text::NodeAST TextPrint(const TypeName& obj, const text::IRPrinter&, const Path&) {            \
-    TVM_FFI_THROW(ValueError) << "No ffi.std text printer registered for " << obj->GetTypeKey(); \
-    TVM_FFI_UNREACHABLE();                                                                       \
+// Abstract std bases are invalid to print directly.  If this hook is reached
+// through inherited lookup for an extension subclass, keep walking semantically
+// by delegating to the root std.Node collector printer.
+#define TVM_FFI_TEXT_PRINT_EXACT_DISALLOW(TypeName)                                                \
+  text::NodeAST TextPrint(const TypeName& obj, const text::IRPrinter& printer, const Path& path) { \
+    if (obj->type_index() == TypeName::ContainerType::RuntimeTypeIndex()) {                        \
+      TVM_FFI_THROW(ValueError) << "No ffi.std text printer registered for " << obj->GetTypeKey(); \
+      TVM_FFI_UNREACHABLE();                                                                       \
+    }                                                                                              \
+    return TextPrint(static_cast<const Node&>(obj), printer, path);                                \
   }
-TVM_FFI_TEXT_PRINT_DISALLOW(Ty)
-TVM_FFI_TEXT_PRINT_DISALLOW(Stmt)
-TVM_FFI_TEXT_PRINT_DISALLOW(Attrs)
-TVM_FFI_TEXT_PRINT_DISALLOW(Aggregate)
-TVM_FFI_TEXT_PRINT_DISALLOW(Expr)
-TVM_FFI_TEXT_PRINT_DISALLOW(FieldCollectionResult)
-#undef TVM_FFI_TEXT_PRINT_DISALLOW
+TVM_FFI_TEXT_PRINT_EXACT_DISALLOW(Ty)
+TVM_FFI_TEXT_PRINT_EXACT_DISALLOW(Stmt)
+TVM_FFI_TEXT_PRINT_EXACT_DISALLOW(Attrs)
+TVM_FFI_TEXT_PRINT_EXACT_DISALLOW(Aggregate)
+TVM_FFI_TEXT_PRINT_EXACT_DISALLOW(Expr)
+TVM_FFI_TEXT_PRINT_EXACT_DISALLOW(FieldCollectionResult)
+#undef TVM_FFI_TEXT_PRINT_EXACT_DISALLOW
 
 /************************************************************************/
 /*************** Section 1: Types, Cast, Aggregate, Attrs ***************/
@@ -1029,7 +1058,7 @@ text::NodeAST TextPrint(const DictAttrs& obj, const text::IRPrinter& printer, co
   for (int64_t i = 0; i < n; ++i) {
     const String& key = sorted_keys[i];
     kwargs_keys.push_back(key);
-    values.push_back(printer->ToExpr(obj->values[key], values_path->MapItem(key)));
+    values.push_back(PrintDialectValue(printer, obj->values[key], values_path->MapItem(key)));
   }
   return CallMnemonic(printer->cfg, obj)
       ->CallKw(List<text::ExprAST>{}, std::move(kwargs_keys), std::move(values));
@@ -1440,6 +1469,9 @@ text::NodeAST TextPrint(const BaseVarDef& obj, const text::IRPrinter& printer, c
       << "ffi.std.BaseVarDef text printer does not support body fields";
   ctx.AddDialectFields(printer, fields, path);
   if (!fields->var_def.empty()) {
+    TVM_FFI_CHECK_EQ(fields->var_def.size(), 1, TypeError)
+        << obj->GetTypeKey() << " generic collector text printer requires exactly one "
+        << "var_def target, got " << fields->var_def.size();
     return text::AssignAST(DefineVarTuple(printer, fields->var_def),
                            CallMnemonic(printer->cfg, obj)
                                ->CallKw(std::move(ctx.operands), std::move(ctx.kwargs_keys),

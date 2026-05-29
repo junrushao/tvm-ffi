@@ -183,6 +183,14 @@ class VarDecl(std.BaseVarDef, mnemonic="weave.VarDecl"):
                 normalize_expr(self.array_size, field_name="array_size"),
             )
 
+    def __ffi_update_var_name__(self, *name: str) -> tuple[std.Var, ...]:
+        if len(name) != 1:
+            raise TypeError(f"expected 1 binding target(s), got {len(name)}")
+        var = std.Var(self.var.ty, name[0])
+        object.__setattr__(self, "var", var)
+        self.__post_init__()
+        return (var,)
+
 
 @dc.py_class("weave.Assign", structural_eq="tree")
 class Assign(std.Stmt, mnemonic="weave.Assign"):

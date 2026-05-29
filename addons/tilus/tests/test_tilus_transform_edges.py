@@ -61,6 +61,13 @@ from tvm_ffi.container import Array
 class DCEEdgeBindExpr(std.BaseBindExpr, mnemonic="test_tilus.DCEEdgeBindExpr"):
     target: std.Var = dc.field(lang_kind="var_def")
 
+    def __ffi_update_var_name__(self, *name: str) -> tuple[std.Var, ...]:
+        if len(name) != 1:
+            raise TypeError(f"expected 1 binding target(s), got {len(name)}")
+        target = std.Var(self.target.ty, name[0])
+        object.__setattr__(self, "target", target)
+        return (target,)
+
 
 @dc.py_class("test.tilus.DCEEdgeWhile", structural_eq="tree")
 class DCEEdgeWhile(std.BaseWhile, mnemonic="test_tilus.DCEEdgeWhile"):

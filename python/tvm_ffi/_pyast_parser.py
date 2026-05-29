@@ -455,7 +455,7 @@ class Parser:
         self._emit_stmt(stmt)
         if bind_vars is None:
             if isinstance(stmt, (std.BindExpr, std.VarDef)):
-                bind_vars = stmt.__ffi_update_var_name__(tuple(var.name for var in stmt.vars))
+                bind_vars = stmt.__ffi_update_var_name__(*(var.name for var in stmt.vars))
             else:
                 bind_vars = ()
         for var in bind_vars:
@@ -463,8 +463,7 @@ class Parser:
 
     def _emit_named_bound_stmt(self, stmt: Any, names: Sequence[str]) -> None:
         """Emit an assignment result after binding its defined variables to names."""
-        name_arg = names[0] if len(names) == 1 else tuple(names)
-        self._emit_bound_stmt(stmt, stmt.__ffi_update_var_name__(name_arg))
+        self._emit_bound_stmt(stmt, stmt.__ffi_update_var_name__(*names))
 
     @contextmanager
     def _with_frame(

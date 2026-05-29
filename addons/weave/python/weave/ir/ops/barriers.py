@@ -72,6 +72,14 @@ class BarrierTryWait(Op, mnemonic="weave.BarrierTryWait"):
         _reject_string_handle(self.barrier, "barrier")
         super().__post_init__()
 
+    def __ffi_update_var_name__(self, *name: str) -> tuple[std.Var, ...]:
+        if len(name) != 1:
+            raise TypeError(f"expected 1 binding target(s), got {len(name)}")
+        dst = std.Var(self.dst.ty, name[0])
+        object.__setattr__(self, "dst", dst)
+        self.__post_init__()
+        return (dst,)
+
 
 @dc.py_class("weave.BarrierWait", structural_eq="tree")
 class BarrierWait(Op, mnemonic="weave.BarrierWait"):
@@ -223,6 +231,14 @@ class ClusterMapa(Op, mnemonic="weave.ClusterMapa"):
         )
         self.__post_init__()
 
+    def __ffi_update_var_name__(self, *name: str) -> tuple[std.Var, ...]:
+        if len(name) != 1:
+            raise TypeError(f"expected 1 binding target(s), got {len(name)}")
+        dst = std.Var(self.dst.ty, name[0])
+        object.__setattr__(self, "dst", dst)
+        self.__post_init__()
+        return (dst,)
+
 
 @dc.py_class("weave.ClusterBarrierArrive", structural_eq="tree")
 class ClusterBarrierArrive(Op, mnemonic="weave.ClusterBarrierArrive"):
@@ -277,6 +293,18 @@ class WarpReduce(Op, mnemonic="weave.WarpReduce"):
         )
         self.__post_init__()
 
+    def __ffi_update_var_name__(self, *name: str) -> tuple[std.Var, ...]:
+        if self.dst is None:
+            if len(name) == 0:
+                return ()
+            raise TypeError(f"expected 0 binding target(s), got {len(name)}")
+        if len(name) != 1:
+            raise TypeError(f"expected 1 binding target(s), got {len(name)}")
+        dst = std.Var(self.dst.ty, name[0])
+        object.__setattr__(self, "dst", dst)
+        self.__post_init__()
+        return (dst,)
+
 
 @dc.py_class("weave.BlockReduce", structural_eq="tree")
 class BlockReduce(Op, mnemonic="weave.BlockReduce"):
@@ -321,6 +349,14 @@ class CrossWarpReduce(Op, mnemonic="weave.CrossWarpReduce"):
         )
         self.__post_init__()
 
+    def __ffi_update_var_name__(self, *name: str) -> tuple[std.Var, ...]:
+        if len(name) != 1:
+            raise TypeError(f"expected 1 binding target(s), got {len(name)}")
+        dst = std.Var(self.dst.ty, name[0])
+        object.__setattr__(self, "dst", dst)
+        self.__post_init__()
+        return (dst,)
+
 
 @dc.py_class("weave.WarpGroupReduce", structural_eq="tree")
 class WarpGroupReduce(Op, mnemonic="weave.WarpGroupReduce"):
@@ -351,6 +387,14 @@ class WarpGroupReduce(Op, mnemonic="weave.WarpGroupReduce"):
             num_warp_groups,
         )
         self.__post_init__()
+
+    def __ffi_update_var_name__(self, *name: str) -> tuple[std.Var, ...]:
+        if len(name) != 1:
+            raise TypeError(f"expected 1 binding target(s), got {len(name)}")
+        dst = std.Var(self.dst.ty, name[0])
+        object.__setattr__(self, "dst", dst)
+        self.__post_init__()
+        return (dst,)
 
 
 @dc.py_class("weave.StAsync", structural_eq="tree")

@@ -248,7 +248,7 @@ class RegionFactory(Frame):
             count = len(bind_vars)
             new_names = tuple(names[offset + i] for i in range(count))
             offset += count
-            vars.extend(bind.__ffi_update_var_name__(new_names[0] if count == 1 else new_names))
+            vars.extend(bind.__ffi_update_var_name__(*new_names))
         return tuple(vars)
 
     def to_dialect(self) -> std.Stmt:

@@ -38,14 +38,14 @@ from collections.abc import (
     MutableSequence,
     Sequence,
 )
-from typing import Any, ClassVar, Tuple, overload
+from typing import Any, ClassVar, overload
 from typing import cast as _typing_cast
 
 from typing_extensions import Never, Protocol, TypeAlias
 
-from tvm_ffi import Array, List, dtype
+from tvm_ffi import dtype
 from tvm_ffi.core import MISSING, Object, _lookup_type_attr
-from tvm_ffi.dataclasses import c_class, field, fields
+from tvm_ffi.dataclasses import c_class, field
 from tvm_ffi.pyast import PrinterConfig
 
 from . import _std_api
@@ -55,15 +55,12 @@ class _FactoryLike(Protocol):
     def to_dialect(self) -> Ty: ...
 
 
-DialectMnemonic: TypeAlias = "Tuple[str, str]"
 TyLike: TypeAlias = "Ty | str | _FactoryLike"
 AttrsLike: TypeAlias = "Attrs | Mapping[str, Any] | None"
 ExprLike: TypeAlias = "Expr | bool | int | float | str"
 RangeLike: TypeAlias = "Range | ExprLike"
 DefaultIntegerType: str = "int64"
 DefaultFloatType: str = "float32"
-_STD_BASE_PRINTER_CLASSES: tuple[type[Any], ...] = ()
-_STD_CONCRETE_PRINTER_CLASSES: tuple[type[Any], ...] = ()
 
 
 def collect_dialect_fields(obj: Any) -> FieldCollectionResult:
@@ -76,77 +73,6 @@ def collect_dialect_fields(obj: Any) -> FieldCollectionResult:
     if collector is None:
         raise RuntimeError("ffi.std.Node field collector is not registered")
     return _typing_cast(FieldCollectionResult, collector(obj))
-
-
-def _normalize_var_name_update(names: str | tuple[str, ...]) -> tuple[str, ...]:
-    if isinstance(names, str):
-        return (names,)
-    return tuple(names)
-
-
-def _vars_with_updated_names(vars: Sequence[Var], names: str | tuple[str, ...]) -> tuple[Var, ...]:
-    normalized_names = _normalize_var_name_update(names)
-    if len(normalized_names) != len(vars):
-        raise TypeError(f"expected {len(vars)} binding target(s), got {len(normalized_names)}")
-    return tuple(Var(var.ty, name) for var, name in zip(vars, normalized_names))
-
-
-def _update_var_sequence_names(
-    vars: MutableSequence[Var],
-    names: str | tuple[str, ...],
-) -> tuple[Var, ...]:
-    new_vars = _vars_with_updated_names(vars, names)
-    for i, var in enumerate(new_vars):
-        vars[i] = var
-    return new_vars
-
-
-def _field_var_defs(value: Any) -> list[Var]:
-    if value is None:
-        return []
-    if isinstance(value, Var):
-        return [value]
-    if isinstance(value, (Array, List, list, tuple)):
-        vars: list[Var] = []
-        for item in value:
-            vars.extend(_field_var_defs(item))
-        return vars
-    raise TypeError(f"expected std.Var or var-def sequence, got {type(value).__name__}")
-
-
-def _update_lang_kind_var_names(obj: Any, names: str | tuple[str, ...]) -> tuple[Var, ...]:
-    bind_vars: list[Var] = []
-    var_def_fields = []
-    for f in fields(type(obj)):
-        if f.lang_kind != "var_def" or f.name is None:
-            continue
-        value = getattr(obj, f.name)
-        bind_vars.extend(_field_var_defs(value))
-        var_def_fields.append((f.name, value))
-
-    new_vars = _vars_with_updated_names(bind_vars, names)
-    offset = 0
-    for field_name, value in var_def_fields:
-        if value is None:
-            continue
-        if isinstance(value, Var):
-            object.__setattr__(obj, field_name, new_vars[offset])
-            offset += 1
-            continue
-        count = len(value)
-        replacement = new_vars[offset : offset + count]
-        if isinstance(value, (tuple, Array)):
-            object.__setattr__(
-                obj,
-                field_name,
-                tuple(replacement) if isinstance(value, tuple) else Array(replacement),
-            )
-        else:
-            value[:] = replacement
-        offset += count
-    if offset != len(new_vars):
-        raise TypeError(f"unsupported bind type: {type(obj).__name__}")
-    return new_vars
 
 
 def normalize_ty(value: Any, default: Any = MISSING) -> Ty:
@@ -183,21 +109,6 @@ def _normalize_attrs(value: AttrsLike) -> Attrs | None:
     raise TypeError(f"expected std attrs, got {type(value).__name__}")
 
 
-def _binary_expr_ffi_init(self: Any, a: ExprLike, b: ExprLike, *, ty: TyLike) -> None:
-    self.__ffi_init__(a, b, normalize_ty(ty))
-
-
-def _unary_expr_ffi_init(self: Any, operand: ExprLike, *, ty: TyLike) -> None:
-    self.__ffi_init__(operand, normalize_ty(ty))
-
-
-def _first_mro_dict_owner(cls: type[Any], attr_name: str) -> type[Any] | None:
-    for parent in cls.__mro__[1:]:
-        if attr_name in parent.__dict__:
-            return parent
-    return None
-
-
 @c_class("ffi.std.Node", init=False)
 class Node(Object):
     """Base class for the standard dialect.
@@ -206,7 +117,7 @@ class Node(Object):
     ``mnemonic="dialect.Name"`` in the class definition.
     """
 
-    __ffi_dialect_mnemonic__: ClassVar[DialectMnemonic] = ("std", "Node")
+    __ffi_dialect_mnemonic__: ClassVar[tuple[str, str]] = ("std", "Node")
 
     # tvm-ffi-stubgen(begin): object/ffi.std.Node
     # fmt: off
@@ -230,31 +141,6 @@ class Node(Object):
             **cls.__dict__.get("__annotations__", {}),
             "__ffi_dialect_mnemonic__": ClassVar,
         }
-
-        if "__ffi_text_print__" not in cls.__dict__:
-            inherited_text_print_owner = _first_mro_dict_owner(cls, "__ffi_text_print__")
-            if (
-                inherited_text_print_owner is not None
-                and inherited_text_print_owner is not Node
-                and inherited_text_print_owner.__module__ != __name__
-                and inherited_text_print_owner not in _STD_BASE_PRINTER_CLASSES
-                and inherited_text_print_owner not in _STD_CONCRETE_PRINTER_CLASSES
-            ):
-                cls.__ffi_text_print__ = staticmethod(inherited_text_print_owner.__ffi_text_print__)
-
-        if "__ffi_text_print__" not in cls.__dict__:
-            mro = cls.__mro__
-            for base in _STD_BASE_PRINTER_CLASSES:
-                if base not in mro:
-                    continue
-                base_index = mro.index(base)
-                if not any(
-                    concrete in mro[:base_index] for concrete in _STD_CONCRETE_PRINTER_CLASSES
-                ):
-                    cls.__ffi_text_print__ = staticmethod(base.__ffi_text_print__)
-                    break
-            if "__ffi_text_print__" not in cls.__dict__ and cls.__module__ != __name__:
-                cls.__ffi_text_print__ = staticmethod(Node.__ffi_text_print__)
 
     def text(self, config: PrinterConfig | None = None) -> str:
         """Render this standard dialect node with the FFI text printer."""
@@ -845,8 +731,8 @@ class Add(Expr, mnemonic="std.Add"):
     # fmt: on
     # tvm-ffi-stubgen(end)
 
-    if not TYPE_CHECKING:
-        __init__ = _binary_expr_ffi_init
+    def __init__(self, a: ExprLike, b: ExprLike, *, ty: TyLike) -> None:
+        self.__ffi_init__(a, b, normalize_ty(ty))
 
 
 @c_class("ffi.std.Sub")
@@ -863,8 +749,8 @@ class Sub(Expr, mnemonic="std.Sub"):
     # fmt: on
     # tvm-ffi-stubgen(end)
 
-    if not TYPE_CHECKING:
-        __init__ = _binary_expr_ffi_init
+    def __init__(self, a: ExprLike, b: ExprLike, *, ty: TyLike) -> None:
+        self.__ffi_init__(a, b, normalize_ty(ty))
 
 
 @c_class("ffi.std.Mul")
@@ -881,8 +767,8 @@ class Mul(Expr, mnemonic="std.Mul"):
     # fmt: on
     # tvm-ffi-stubgen(end)
 
-    if not TYPE_CHECKING:
-        __init__ = _binary_expr_ffi_init
+    def __init__(self, a: ExprLike, b: ExprLike, *, ty: TyLike) -> None:
+        self.__ffi_init__(a, b, normalize_ty(ty))
 
 
 @c_class("ffi.std.CDiv")
@@ -904,8 +790,8 @@ class CDiv(Expr, mnemonic="std.CDiv"):
     # fmt: on
     # tvm-ffi-stubgen(end)
 
-    if not TYPE_CHECKING:
-        __init__ = _binary_expr_ffi_init
+    def __init__(self, a: ExprLike, b: ExprLike, *, ty: TyLike) -> None:
+        self.__ffi_init__(a, b, normalize_ty(ty))
 
 
 @c_class("ffi.std.FloorDiv")
@@ -927,8 +813,8 @@ class FloorDiv(Expr, mnemonic="std.FloorDiv"):
     # fmt: on
     # tvm-ffi-stubgen(end)
 
-    if not TYPE_CHECKING:
-        __init__ = _binary_expr_ffi_init
+    def __init__(self, a: ExprLike, b: ExprLike, *, ty: TyLike) -> None:
+        self.__ffi_init__(a, b, normalize_ty(ty))
 
 
 @c_class("ffi.std.FloorMod")
@@ -950,8 +836,8 @@ class FloorMod(Expr, mnemonic="std.FloorMod"):
     # fmt: on
     # tvm-ffi-stubgen(end)
 
-    if not TYPE_CHECKING:
-        __init__ = _binary_expr_ffi_init
+    def __init__(self, a: ExprLike, b: ExprLike, *, ty: TyLike) -> None:
+        self.__ffi_init__(a, b, normalize_ty(ty))
 
 
 @c_class("ffi.std.CMod")
@@ -973,8 +859,8 @@ class CMod(Expr, mnemonic="std.CMod"):
     # fmt: on
     # tvm-ffi-stubgen(end)
 
-    if not TYPE_CHECKING:
-        __init__ = _binary_expr_ffi_init
+    def __init__(self, a: ExprLike, b: ExprLike, *, ty: TyLike) -> None:
+        self.__ffi_init__(a, b, normalize_ty(ty))
 
 
 @c_class("ffi.std.Pow")
@@ -991,8 +877,8 @@ class Pow(Expr, mnemonic="std.Pow"):
     # fmt: on
     # tvm-ffi-stubgen(end)
 
-    if not TYPE_CHECKING:
-        __init__ = _binary_expr_ffi_init
+    def __init__(self, a: ExprLike, b: ExprLike, *, ty: TyLike) -> None:
+        self.__ffi_init__(a, b, normalize_ty(ty))
 
 
 @c_class("ffi.std.LShift")
@@ -1009,8 +895,8 @@ class LShift(Expr, mnemonic="std.LShift"):
     # fmt: on
     # tvm-ffi-stubgen(end)
 
-    if not TYPE_CHECKING:
-        __init__ = _binary_expr_ffi_init
+    def __init__(self, a: ExprLike, b: ExprLike, *, ty: TyLike) -> None:
+        self.__ffi_init__(a, b, normalize_ty(ty))
 
 
 @c_class("ffi.std.RShift")
@@ -1027,8 +913,8 @@ class RShift(Expr, mnemonic="std.RShift"):
     # fmt: on
     # tvm-ffi-stubgen(end)
 
-    if not TYPE_CHECKING:
-        __init__ = _binary_expr_ffi_init
+    def __init__(self, a: ExprLike, b: ExprLike, *, ty: TyLike) -> None:
+        self.__ffi_init__(a, b, normalize_ty(ty))
 
 
 @c_class("ffi.std.BitwiseAnd")
@@ -1045,8 +931,8 @@ class BitwiseAnd(Expr, mnemonic="std.BitwiseAnd"):
     # fmt: on
     # tvm-ffi-stubgen(end)
 
-    if not TYPE_CHECKING:
-        __init__ = _binary_expr_ffi_init
+    def __init__(self, a: ExprLike, b: ExprLike, *, ty: TyLike) -> None:
+        self.__ffi_init__(a, b, normalize_ty(ty))
 
 
 @c_class("ffi.std.BitwiseOr")
@@ -1063,8 +949,8 @@ class BitwiseOr(Expr, mnemonic="std.BitwiseOr"):
     # fmt: on
     # tvm-ffi-stubgen(end)
 
-    if not TYPE_CHECKING:
-        __init__ = _binary_expr_ffi_init
+    def __init__(self, a: ExprLike, b: ExprLike, *, ty: TyLike) -> None:
+        self.__ffi_init__(a, b, normalize_ty(ty))
 
 
 @c_class("ffi.std.BitwiseXor")
@@ -1081,8 +967,8 @@ class BitwiseXor(Expr, mnemonic="std.BitwiseXor"):
     # fmt: on
     # tvm-ffi-stubgen(end)
 
-    if not TYPE_CHECKING:
-        __init__ = _binary_expr_ffi_init
+    def __init__(self, a: ExprLike, b: ExprLike, *, ty: TyLike) -> None:
+        self.__ffi_init__(a, b, normalize_ty(ty))
 
 
 @c_class("ffi.std.Min")
@@ -1099,8 +985,8 @@ class Min(Expr, mnemonic="std.Min"):
     # fmt: on
     # tvm-ffi-stubgen(end)
 
-    if not TYPE_CHECKING:
-        __init__ = _binary_expr_ffi_init
+    def __init__(self, a: ExprLike, b: ExprLike, *, ty: TyLike) -> None:
+        self.__ffi_init__(a, b, normalize_ty(ty))
 
 
 @c_class("ffi.std.Max")
@@ -1117,8 +1003,8 @@ class Max(Expr, mnemonic="std.Max"):
     # fmt: on
     # tvm-ffi-stubgen(end)
 
-    if not TYPE_CHECKING:
-        __init__ = _binary_expr_ffi_init
+    def __init__(self, a: ExprLike, b: ExprLike, *, ty: TyLike) -> None:
+        self.__ffi_init__(a, b, normalize_ty(ty))
 
 
 @c_class("ffi.std.Eq")
@@ -1135,8 +1021,8 @@ class Eq(Expr, mnemonic="std.Eq"):
     # fmt: on
     # tvm-ffi-stubgen(end)
 
-    if not TYPE_CHECKING:
-        __init__ = _binary_expr_ffi_init
+    def __init__(self, a: ExprLike, b: ExprLike, *, ty: TyLike) -> None:
+        self.__ffi_init__(a, b, normalize_ty(ty))
 
 
 @c_class("ffi.std.Ne")
@@ -1153,8 +1039,8 @@ class Ne(Expr, mnemonic="std.Ne"):
     # fmt: on
     # tvm-ffi-stubgen(end)
 
-    if not TYPE_CHECKING:
-        __init__ = _binary_expr_ffi_init
+    def __init__(self, a: ExprLike, b: ExprLike, *, ty: TyLike) -> None:
+        self.__ffi_init__(a, b, normalize_ty(ty))
 
 
 @c_class("ffi.std.Le")
@@ -1171,8 +1057,8 @@ class Le(Expr, mnemonic="std.Le"):
     # fmt: on
     # tvm-ffi-stubgen(end)
 
-    if not TYPE_CHECKING:
-        __init__ = _binary_expr_ffi_init
+    def __init__(self, a: ExprLike, b: ExprLike, *, ty: TyLike) -> None:
+        self.__ffi_init__(a, b, normalize_ty(ty))
 
 
 @c_class("ffi.std.Ge")
@@ -1189,8 +1075,8 @@ class Ge(Expr, mnemonic="std.Ge"):
     # fmt: on
     # tvm-ffi-stubgen(end)
 
-    if not TYPE_CHECKING:
-        __init__ = _binary_expr_ffi_init
+    def __init__(self, a: ExprLike, b: ExprLike, *, ty: TyLike) -> None:
+        self.__ffi_init__(a, b, normalize_ty(ty))
 
 
 @c_class("ffi.std.Gt")
@@ -1207,8 +1093,8 @@ class Gt(Expr, mnemonic="std.Gt"):
     # fmt: on
     # tvm-ffi-stubgen(end)
 
-    if not TYPE_CHECKING:
-        __init__ = _binary_expr_ffi_init
+    def __init__(self, a: ExprLike, b: ExprLike, *, ty: TyLike) -> None:
+        self.__ffi_init__(a, b, normalize_ty(ty))
 
 
 @c_class("ffi.std.Lt")
@@ -1225,8 +1111,8 @@ class Lt(Expr, mnemonic="std.Lt"):
     # fmt: on
     # tvm-ffi-stubgen(end)
 
-    if not TYPE_CHECKING:
-        __init__ = _binary_expr_ffi_init
+    def __init__(self, a: ExprLike, b: ExprLike, *, ty: TyLike) -> None:
+        self.__ffi_init__(a, b, normalize_ty(ty))
 
 
 @c_class("ffi.std.And")
@@ -1243,8 +1129,8 @@ class And(Expr, mnemonic="std.And"):
     # fmt: on
     # tvm-ffi-stubgen(end)
 
-    if not TYPE_CHECKING:
-        __init__ = _binary_expr_ffi_init
+    def __init__(self, a: ExprLike, b: ExprLike, *, ty: TyLike) -> None:
+        self.__ffi_init__(a, b, normalize_ty(ty))
 
 
 @c_class("ffi.std.Or")
@@ -1261,8 +1147,8 @@ class Or(Expr, mnemonic="std.Or"):
     # fmt: on
     # tvm-ffi-stubgen(end)
 
-    if not TYPE_CHECKING:
-        __init__ = _binary_expr_ffi_init
+    def __init__(self, a: ExprLike, b: ExprLike, *, ty: TyLike) -> None:
+        self.__ffi_init__(a, b, normalize_ty(ty))
 
 
 @c_class("ffi.std.Not")
@@ -1278,8 +1164,8 @@ class Not(Expr, mnemonic="std.Not"):
     # fmt: on
     # tvm-ffi-stubgen(end)
 
-    if not TYPE_CHECKING:
-        __init__ = _unary_expr_ffi_init
+    def __init__(self, operand: ExprLike, *, ty: TyLike) -> None:
+        self.__ffi_init__(operand, normalize_ty(ty))
 
 
 @c_class("ffi.std.BitwiseNot")
@@ -1295,8 +1181,8 @@ class BitwiseNot(Expr, mnemonic="std.BitwiseNot"):
     # fmt: on
     # tvm-ffi-stubgen(end)
 
-    if not TYPE_CHECKING:
-        __init__ = _unary_expr_ffi_init
+    def __init__(self, operand: ExprLike, *, ty: TyLike) -> None:
+        self.__ffi_init__(operand, normalize_ty(ty))
 
 
 @c_class("ffi.std.Abs")
@@ -1312,8 +1198,8 @@ class Abs(Expr, mnemonic="std.Abs"):
     # fmt: on
     # tvm-ffi-stubgen(end)
 
-    if not TYPE_CHECKING:
-        __init__ = _unary_expr_ffi_init
+    def __init__(self, operand: ExprLike, *, ty: TyLike) -> None:
+        self.__ffi_init__(operand, normalize_ty(ty))
 
 
 @c_class("ffi.std.IfExpr")
@@ -1652,9 +1538,6 @@ class BaseBindExpr(Stmt, mnemonic="std.BaseBindExpr"):
     def __init__(self, expr: ExprLike) -> None:
         self.__ffi_init__(_normalize_expr(expr))
 
-    def __ffi_update_var_name__(self, names: str | tuple[str, ...]) -> tuple[Var, ...]:
-        return _update_lang_kind_var_names(self, names)
-
 
 @c_class("ffi.std.BindExpr")
 class BindExpr(BaseBindExpr, mnemonic="std.BindExpr"):
@@ -1676,8 +1559,13 @@ class BindExpr(BaseBindExpr, mnemonic="std.BindExpr"):
     def __init__(self, expr: ExprLike, *args: Var) -> None:
         self.__ffi_init__(list(args), _normalize_expr(expr))
 
-    def __ffi_update_var_name__(self, names: str | tuple[str, ...]) -> tuple[Var, ...]:
-        return _update_var_sequence_names(self.vars, names)
+    def __ffi_update_var_name__(self, *name: str) -> tuple[Var, ...]:
+        if len(name) != len(self.vars):
+            raise TypeError(f"expected {len(self.vars)} binding target(s), got {len(name)}")
+        new_vars = tuple(Var(var.ty, new_name) for var, new_name in zip(self.vars, name))
+        for i, var in enumerate(new_vars):
+            self.vars[i] = var
+        return new_vars
 
 
 @c_class("ffi.std.BaseVarDef")
@@ -1698,9 +1586,6 @@ class BaseVarDef(Stmt, mnemonic="std.BaseVarDef"):
 
     def __init__(self) -> None:
         self.__ffi_init__()
-
-    def __ffi_update_var_name__(self, names: str | tuple[str, ...]) -> tuple[Var, ...]:
-        return _update_lang_kind_var_names(self, names)
 
 
 @c_class("ffi.std.VarDef")
@@ -1724,8 +1609,13 @@ class VarDef(BaseVarDef, mnemonic="std.VarDef"):
         vars = [arg if isinstance(arg, Var) else Var(normalize_ty(arg), "") for arg in args]
         self.__ffi_init__(vars)
 
-    def __ffi_update_var_name__(self, names: str | tuple[str, ...]) -> tuple[Var, ...]:
-        return _update_var_sequence_names(self.vars, names)
+    def __ffi_update_var_name__(self, *name: str) -> tuple[Var, ...]:
+        if len(name) != len(self.vars):
+            raise TypeError(f"expected {len(self.vars)} binding target(s), got {len(name)}")
+        new_vars = tuple(Var(var.ty, new_name) for var, new_name in zip(self.vars, name))
+        for i, var in enumerate(new_vars):
+            self.vars[i] = var
+        return new_vars
 
 
 @c_class("ffi.std.Store")
@@ -2126,8 +2016,6 @@ def select(cond: ExprLike, then_expr: ExprLike, else_expr: ExprLike) -> Expr:
     return _typing_cast(Expr, _std_api.select(cond, then_expr, else_expr))
 
 
-_STD_BASE_PRINTER_CLASSES = (BaseFunc, BaseScope, BaseFor, BaseWhile, BaseBindExpr)
-_STD_CONCRETE_PRINTER_CLASSES = (Func, Scope, For, While, BindExpr, VarDef)
 __all__ = [
     "Abs",
     "Add",

@@ -23,6 +23,7 @@
 #include <tvm/ffi/base_details.h>
 #include <tvm/ffi/cast.h>
 #include <tvm/ffi/container/array.h>
+#include <tvm/ffi/container/list.h>
 #include <tvm/ffi/container/map.h>
 #include <tvm/ffi/extra/pyast.h>
 #include <tvm/ffi/reflection/accessor.h>
@@ -1843,6 +1844,15 @@ NodeAST IRPrintDispatch(AnyView obj, AnyView printer_view, AnyView path) {
 
   static reflection::TypeAttrColumn text_print_col(reflection::type_attr::kTextPrint);
   AnyView func_view = text_print_col[type_index];
+  if (func_view == nullptr) {
+    const TVMFFITypeInfo* type_info = TVMFFIGetTypeInfo(type_index);
+    for (int32_t i = type_info->type_depth - 1; i >= 0; --i) {
+      func_view = text_print_col[type_info->type_ancestors[i]->type_index];
+      if (func_view != nullptr) {
+        break;
+      }
+    }
+  }
   if (func_view != nullptr) {
     Function func = func_view.cast<Function>();
     Any ret;
@@ -2142,6 +2152,21 @@ TVM_FFI_STATIC_INIT_BLOCK() {
         List<text::ExprAST> elts;
         for (int64_t i = 0; i < n; ++i) {
           const Any& elem = arr->at(i);
+          elts.push_back(printer->operator()(Any(elem), path->ArrayItem(i)).cast<text::ExprAST>());
+        }
+        return text::ListAST(List<refl::AccessPath>{}, std::move(elts));
+      });
+
+  // ffi.List -> [e1, e2, ...]
+  refl::TypeAttrDef<ListObj>().def(
+      refl::type_attr::kTextPrint,
+      [](const ObjectRef& obj, const text::IRPrinter& printer,
+         const refl::AccessPath& path) -> text::NodeAST {
+        const ListObj* list = obj.as<ListObj>();
+        int64_t n = static_cast<int64_t>(list->size());
+        List<text::ExprAST> elts;
+        for (int64_t i = 0; i < n; ++i) {
+          const Any& elem = list->at(i);
           elts.push_back(printer->operator()(Any(elem), path->ArrayItem(i)).cast<text::ExprAST>());
         }
         return text::ListAST(List<refl::AccessPath>{}, std::move(elts));
