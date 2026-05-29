@@ -431,7 +431,10 @@ def _add_type_attr_class_attrs(
     """Install selected TypeAttrColumn values as Python class attributes."""
     if not type_attr_names:
         return
-    for name, value in core._lookup_type_attrs(type_info.type_index, type_attr_names).items():
+    for name in type_attr_names:
+        value = core._lookup_type_attr(type_info.type_index, name)
+        if value is None:
+            continue
         if name not in type_cls.__dict__:
             setattr(type_cls, name, value)
 

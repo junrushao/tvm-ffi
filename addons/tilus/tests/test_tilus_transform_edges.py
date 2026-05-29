@@ -824,7 +824,7 @@ def test_ir_rewriter_supports_delete_and_splice_in_nested_body_fields(stmt_kind:
 
 @pytest.mark.parametrize(
     "replacement",
-    [DELETE_STMT, StmtSplice([std.Return(std.IntImm(std.AnyTy(), 0))])],
+    [DELETE_STMT, StmtSplice([std.Return(_int_var("replacement"))])],
 )
 def test_ir_rewriter_rejects_delete_or_splice_outside_statement_bodies(
     replacement: object,

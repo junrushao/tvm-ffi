@@ -33,6 +33,7 @@
 #include <limits>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <type_traits>
 #include <utility>
 #include <vector>
@@ -389,20 +390,28 @@ text::ExprAST CallMnemonic(const text::PrinterConfig& cfg, const ObjectRef& obj)
 
 String DialectName(const AnyView& obj) { return DialectMnemonic(obj.type_index())[0]; }
 
+AnyView LookupTypeAttr(const refl::TypeAttrColumn& column, int32_t type_index, bool ancestor) {
+  AnyView result = column[type_index];
+  if (result != nullptr || !ancestor) {
+    return result;
+  }
+  const TVMFFITypeInfo* type_info = TVMFFIGetTypeInfo(type_index);
+  for (int32_t i = type_info->type_depth - 1; i >= 0; --i) {
+    result = column[type_info->type_ancestors[i]->type_index];
+    if (result != nullptr) {
+      return result;
+    }
+  }
+  return AnyView();
+}
+
 std::optional<FieldCollectionResult> CollectDialectFields(const ObjectRef& obj) {
   static refl::TypeAttrColumn field_collector_col(refl::type_attr::kDialectFieldCollector);
-  AnyView func_view = field_collector_col[obj->type_index()];
+  AnyView func_view = LookupTypeAttr(field_collector_col, obj->type_index(), /*ancestor=*/true);
   if (func_view == nullptr) {
     return std::nullopt;
   }
-  Function func = func_view.cast<Function>();
-  Any ret;
-  AnyView args[1] = {obj};
-  func.CallPacked(args, 1, &ret);
-  FieldCollectionResult fields = ret.cast<FieldCollectionResult>();
-  TVM_FFI_CHECK(fields.defined(), TypeError)
-      << "__ffi_dialect_field_collector__ must return a defined FieldCollectionResult";
-  return fields;
+  return func_view.cast<Function>()(obj).cast<FieldCollectionResult>();
 }
 
 FieldCollectionResult CollectRequiredDialectFields(const ObjectRef& obj) {
@@ -414,19 +423,120 @@ FieldCollectionResult CollectRequiredDialectFields(const ObjectRef& obj) {
   return fields.value();
 }
 
-FieldCollectionResult CollectBindExprFields(const BindExpr& obj) {
-  return FieldCollectionResult(List<Any>{}, DictAttrs(Dict<String, Any>{}), obj->vars,
-                               List<Node>{});
+FieldCollectionResult CollectLangKindFields(const ObjectRef& obj) {
+  List<Any> args;
+  Dict<String, Any> attrs;
+  List<Var> var_def;
+  List<Node> body;
+  static refl::TypeAttrColumn lang_kind_col(refl::type_attr::kDialectLangKind);
+  AnyView lang_kind_view = LookupTypeAttr(lang_kind_col, obj->type_index(), /*ancestor=*/false);
+  if (lang_kind_view == nullptr) {
+    return FieldCollectionResult(std::move(args), DictAttrs(std::move(attrs)), std::move(var_def),
+                                 std::move(body));
+  }
+  Map<String, Array<int64_t>> lang_kind_map = lang_kind_view.cast<Map<String, Array<int64_t>>>();
+  std::vector<const TVMFFIFieldInfo*> field_infos;
+  refl::ForEachFieldInfo(TVMFFIGetTypeInfo(obj->type_index()),
+                         [&](const TVMFFIFieldInfo* info) { field_infos.push_back(info); });
+  auto extend_values = [](List<Any>* target, const Any& value) {
+    if (value == nullptr) {
+      return;
+    }
+    if (std::optional<Array<Any>> values = value.try_cast<Array<Any>>()) {
+      for (const Any& item : *values) {
+        target->push_back(item);
+      }
+    } else {
+      target->push_back(value);
+    }
+  };
+  auto extend_attrs = [](Dict<String, Any>* attrs, const String& name, const Any& value) {
+    if (value == nullptr) {
+      return;
+    }
+    if (name == "attrs") {
+      if (std::optional<DictAttrs> dict_attrs = value.try_cast<DictAttrs>()) {
+        for (const auto& kv : (*dict_attrs)->values) {
+          attrs->Set(kv.first, kv.second);
+        }
+        return;
+      }
+      if (std::optional<Dict<String, Any>> dict = value.try_cast<Dict<String, Any>>()) {
+        for (const auto& kv : *dict) {
+          attrs->Set(kv.first, kv.second);
+        }
+        return;
+      }
+      if (std::optional<Map<String, Any>> map = value.try_cast<Map<String, Any>>()) {
+        for (const auto& kv : *map) {
+          attrs->Set(kv.first, kv.second);
+        }
+        return;
+      }
+    }
+    attrs->Set(name, value);
+  };
+  auto extend_var_def = [](auto&& self, List<Var>* var_def, const Any& value) -> void {
+    if (value == nullptr) {
+      return;
+    }
+    if (std::optional<Var> var = value.try_cast<Var>()) {
+      var_def->push_back(*var);
+      return;
+    }
+    if (std::optional<Array<Any>> values = value.try_cast<Array<Any>>()) {
+      for (const Any& item : *values) {
+        self(self, var_def, item);
+      }
+      return;
+    }
+    if (std::optional<ObjectRef> obj = value.try_cast<ObjectRef>()) {
+      FieldCollectionResult fields = CollectRequiredDialectFields(*obj);
+      for (const Var& var : fields->var_def) {
+        var_def->push_back(var);
+      }
+      return;
+    }
+    TVM_FFI_THROW(TypeError) << "expected std.Var or var-def node, got " << value.GetTypeKey();
+  };
+  for (const auto& kv : lang_kind_map) {
+    const String& lang_kind = kv.first;
+    for (int64_t index : kv.second) {
+      TVM_FFI_CHECK(index >= 0 && static_cast<size_t>(index) < field_infos.size(), ValueError)
+          << "__ffi_dialect_lang_kind__ index " << index << " for `" << lang_kind << "` on "
+          << obj->GetTypeKey() << " is out of range for " << field_infos.size() << " fields";
+      const TVMFFIFieldInfo* field_info = field_infos[static_cast<size_t>(index)];
+      String name(field_info->name);
+      Any value = refl::FieldGetter(field_info)(obj.get());
+      if (lang_kind == "arg") {
+        extend_values(&args, value);
+      } else if (lang_kind == "attr") {
+        extend_attrs(&attrs, name, value);
+      } else if (lang_kind == "var_def") {
+        extend_var_def(extend_var_def, &var_def, value);
+      } else if (lang_kind == "body") {
+        List<Any> body_values;
+        extend_values(&body_values, value);
+        for (const Any& item : body_values) {
+          body.push_back(item.cast<Node>());
+        }
+      } else {
+        TVM_FFI_THROW(ValueError) << "Invalid lang_kind `" << lang_kind << "` on "
+                                  << obj->GetTypeKey() << "." << name;
+      }
+    }
+  }
+  return FieldCollectionResult(std::move(args), DictAttrs(std::move(attrs)), std::move(var_def),
+                               std::move(body));
 }
 
-FieldCollectionResult CollectVarDefFields(const VarDef& obj) {
-  List<Any> args;
-  args.reserve(static_cast<int64_t>(obj->vars.size()));
-  for (const Var& var : obj->vars) {
-    args.push_back(var->ty);
+FieldCollectionResult CollectWithBaseArgs(const ObjectRef& obj, List<Any> args) {
+  FieldCollectionResult fields = CollectLangKindFields(obj);
+  for (const Any& arg : fields->args) {
+    args.push_back(arg);
   }
-  return FieldCollectionResult(std::move(args), DictAttrs(Dict<String, Any>{}), obj->vars,
-                               List<Node>{});
+  return FieldCollectionResult(std::move(args), fields->attrs, fields->var_def, fields->body,
+                               fields->ty);
 }
 
 template <typename T>
@@ -489,7 +599,8 @@ struct ExprBuilder {
     return ret;
   }
 
-  void AddOperands(const text::IRPrinter& printer, const List<Expr>& values, const Path& path) {
+  template <typename T>
+  void AddOperands(const text::IRPrinter& printer, const List<T>& values, const Path& path) {
     int64_t n = static_cast<int64_t>(values.size());
     operands.reserve(static_cast<int64_t>(operands.size()) + n);
     for (int64_t i = 0; i < n; ++i) {
@@ -626,12 +737,189 @@ List<ResultType> PrintList(const text::IRPrinter& printer, const InputType& valu
   return result;
 }
 
+bool IsStdType(int32_t type_index) {
+  TVMFFIByteArray type_key = TVMFFIGetTypeInfo(type_index)->type_key;
+  std::string_view actual(type_key.data, type_key.size);
+  return actual.rfind("ffi.std.", 0) == 0;
+}
+
+template <typename ObjType>
+bool IsExactType(const ObjectRef& obj) {
+  return obj->type_index() == ObjType::RuntimeTypeIndex();
+}
+
+text::ExprAST PrintDialectValue(const text::IRPrinter& printer, const Any& value, const Path& path);
+
+// Binding statements use assignment targets.  One var prints as "x", while
+// multiple vars print as a tuple target such as "x, y = rhs".
+text::ExprAST DefineVarTuple(const text::IRPrinter& printer, const List<Var>& vars);
+
+// Build the constructor-style expression used by the generic dialect printer.
+//
+// Example:
+//
+//   @py_class("testing.ExtValue")
+//   class ExtValue(std.Node, mnemonic="testing.ExtValue"):
+//       value: int = field(lang_kind="arg")
+//       tag: str = field(lang_kind="attr")
+//
+// For an object whose collector returns
+//
+//   FieldCollectionResult(args=[1], attrs={"tag": "demo"})
+//
+// this helper emits:
+//
+//   testing.ExtValue(1, tag="demo")
+//
+// `GenericDialectCall` only builds the call expression.  `TextPrint(Node)` wraps
+// that expression as a statement for Stmt nodes, or as an assignment when the
+// collected fields define a single var_def target.
+text::ExprAST GenericDialectCall(const ObjectRef& obj, const FieldCollectionResult& fields,
+                                 const text::IRPrinter& printer, const Path& path) {
+  Array<String> dialect_mnemonic = DialectMnemonic(obj->type_index());
+  Path args_path = path->Attr("args");
+  List<text::ExprAST> args;
+  int64_t n_args = static_cast<int64_t>(fields->args.size());
+  args.reserve(n_args);
+  for (int64_t i = 0; i < n_args; ++i) {
+    args.push_back(PrintDialectValue(printer, fields->args[i], args_path->ArrayItem(i)));
+  }
+
+  const Dict<String, Any>& attrs = fields->attrs->values;
+  std::vector<String> sorted_keys;
+  sorted_keys.reserve(attrs.size());
+  for (const auto& kv : attrs) {
+    sorted_keys.push_back(kv.first);
+  }
+  std::sort(sorted_keys.begin(), sorted_keys.end());
+
+  Path attrs_path = path->Attr("attrs");
+  List<String> kwargs_keys;
+  List<text::ExprAST> kwargs_values;
+  kwargs_keys.reserve(static_cast<int64_t>(sorted_keys.size()) + (fields->ty.has_value() ? 1 : 0));
+  kwargs_values.reserve(static_cast<int64_t>(sorted_keys.size()) +
+                        (fields->ty.has_value() ? 1 : 0));
+  for (const String& key : sorted_keys) {
+    kwargs_keys.push_back(key);
+    kwargs_values.push_back(PrintDialectValue(printer, attrs[key], attrs_path->Attr(key)));
+  }
+  if (fields->ty.has_value()) {
+    kwargs_keys.push_back("ty");
+    kwargs_values.push_back(PrintDialectValue(printer, fields->ty.value(), path->Attr("ty")));
+  }
+  return GetPrintedName(printer->cfg, dialect_mnemonic[0], dialect_mnemonic[1])
+      ->CallKw(std::move(args), std::move(kwargs_keys), std::move(kwargs_values));
+}
+
+text::NodeAST GenericDialectStmt(const ObjectRef& obj, const text::IRPrinter& printer,
+                                 const Path& path) {
+  FieldCollectionResult fields = CollectRequiredDialectFields(obj);
+  TVM_FFI_CHECK(fields->var_def.empty(), TypeError)
+      << obj->GetTypeKey() << " generic statement printer does not support var_def fields";
+  TVM_FFI_CHECK(fields->body.empty(), TypeError)
+      << obj->GetTypeKey() << " generic statement printer does not support body fields";
+  return text::ExprStmtAST(GenericDialectCall(obj, fields, printer, path));
+}
+
+// Print a value that appears inside the args, attrs, or ty of a generic dialect
+// call.
+//
+// `printer->ToExpr` is enough for ordinary expression values, types, literals,
+// and std nodes whose printers already produce ExprAST.  It is not enough for
+// extension dialect statements used as values, because their normal printer
+// entry point produces a StmtAST.
+//
+// Example:
+//
+//   @py_class("testing.ExtStmt")
+//   class ExtStmt(std.Stmt, mnemonic="testing.ExtStmt"):
+//       value: int = field(lang_kind="arg")
+//
+//   @py_class("testing.ExtOuter")
+//   class ExtOuter(std.Node, mnemonic="testing.ExtOuter"):
+//       arg_stmt: std.Stmt = field(lang_kind="arg")
+//       attr_stmt: std.Stmt = field(lang_kind="attr")
+//
+// Printing `ExtOuter(ExtStmt(2), attr_stmt=ExtStmt(4))` needs the nested
+// statements to be rendered as constructor expressions:
+//
+//   testing.ExtOuter(testing.ExtStmt(2), attr_stmt=testing.ExtStmt(4))
+//
+// This helper also recurses through Array and Map values, so containers such as
+// `[ExtStmt(1)]` and `{"stmt": ExtStmt(2)}` preserve the same nested dialect
+// representation.
+//
+// Builtin std statements are intentionally excluded from the nested generic
+// path.  They inherit the root std.Node collector through ancestor lookup, but
+// many of them have no exact generic field spec, or have collectors meant for
+// their custom statement syntax rather than constructor syntax.  Treating such
+// nodes as generic calls would silently drop fields, e.g.
+// `std.Store(lhs, rhs)` would become `std.Store()`.  Falling back to the
+// regular printer is the correct behavior for those statement-only std nodes.
+text::ExprAST PrintDialectValue(const text::IRPrinter& printer, const Any& value,
+                                const Path& path) {
+  if (value == nullptr) {
+    return printer->ToExpr(value, path);
+  }
+  if (std::optional<Array<Any>> values = value.try_cast<Array<Any>>()) {
+    List<text::ExprAST> printed;
+    int64_t n = static_cast<int64_t>(values->size());
+    printed.reserve(n);
+    for (int64_t i = 0; i < n; ++i) {
+      printed.push_back(PrintDialectValue(printer, (*values)[i], path->ArrayItem(i)));
+    }
+    return text::ListAST(std::move(printed));
+  }
+  if (std::optional<Map<Any, Any>> map = value.try_cast<Map<Any, Any>>()) {
+    List<text::ExprAST> keys;
+    List<text::ExprAST> values;
+    keys.reserve(static_cast<int64_t>(map->size()));
+    values.reserve(static_cast<int64_t>(map->size()));
+    for (const auto& kv : *map) {
+      Path item_path = path->MapItem(kv.first);
+      keys.push_back(printer->ToExpr(kv.first, item_path));
+      values.push_back(PrintDialectValue(printer, kv.second, item_path));
+    }
+    return text::DictAST(std::move(keys), std::move(values));
+  }
+  if (std::optional<Stmt> stmt = value.try_cast<Stmt>()) {
+    std::optional<FieldCollectionResult> fields = CollectDialectFields(*stmt);
+    if (fields.has_value() && fields.value()->var_def.empty() && fields.value()->body.empty() &&
+        !IsStdType((*stmt)->type_index())) {
+      return GenericDialectCall(*stmt, fields.value(), printer, path);
+    }
+  }
+  return printer->ToExpr(value, path);
+}
+
+text::NodeAST TextPrint(const Node& obj, const text::IRPrinter& printer, const Path& path) {
+  FieldCollectionResult fields = CollectRequiredDialectFields(obj);
+  List<Var> var_def = fields->var_def;
+  TVM_FFI_CHECK(fields->body.empty(), TypeError)
+      << obj->GetTypeKey() << " generic collector text printer does not support body fields";
+  TVM_FFI_CHECK(
+      var_def.empty() || obj.as<BaseBindExprObj>() != nullptr || obj.as<BaseVarDefObj>() != nullptr,
+      TypeError)
+      << obj->GetTypeKey() << " generic collector text printer does not support var_def fields; "
+      << "subclass std.BaseBindExpr or std.BaseVarDef";
+  text::ExprAST call = GenericDialectCall(obj, fields, printer, path);
+  if (!var_def.empty()) {
+    TVM_FFI_CHECK_EQ(var_def.size(), 1, TypeError)
+        << obj->GetTypeKey() << " generic collector text printer requires exactly one "
+        << "var_def target, got " << var_def.size();
+    return text::AssignAST(DefineVarTuple(printer, var_def), std::move(call));
+  }
+  if (obj.as<StmtObj>() != nullptr) {
+    return text::ExprStmtAST(std::move(call));
+  }
+  return call;
+}
+
 #define TVM_FFI_TEXT_PRINT_DISALLOW(TypeName)                                                    \
   text::NodeAST TextPrint(const TypeName& obj, const text::IRPrinter&, const Path&) {            \
     TVM_FFI_THROW(ValueError) << "No ffi.std text printer registered for " << obj->GetTypeKey(); \
     TVM_FFI_UNREACHABLE();                                                                       \
   }
-TVM_FFI_TEXT_PRINT_DISALLOW(Node)
 TVM_FFI_TEXT_PRINT_DISALLOW(Ty)
 TVM_FFI_TEXT_PRINT_DISALLOW(Stmt)
 TVM_FFI_TEXT_PRINT_DISALLOW(Attrs)
@@ -958,6 +1246,9 @@ Optional<text::ExprAST> StmtValue(List<text::ExprAST> operands) {
 }
 
 text::NodeAST TextPrint(const Assert& obj, const text::IRPrinter& printer, const Path& path) {
+  if (!IsExactType<AssertObj>(obj)) {
+    return GenericDialectStmt(obj, printer, path);
+  }
   ExprBuilder ctx;
   ctx.AddOperand(printer, obj->cond, path->Attr("cond"));
   if (ctx.ExprDerivable() || (ctx.dialects.empty() && ctx.StmtDerivable(printer, obj))) {
@@ -967,8 +1258,11 @@ text::NodeAST TextPrint(const Assert& obj, const text::IRPrinter& printer, const
 }
 
 text::NodeAST TextPrint(const Return& obj, const text::IRPrinter& printer, const Path& path) {
+  if (!IsExactType<ReturnObj>(obj)) {
+    return GenericDialectStmt(obj, printer, path);
+  }
   ExprBuilder ctx;
-  ctx.AddOperands(printer, obj->exprs, path->Attr("exprs"));
+  ctx.AddOperands(printer, obj->vars, path->Attr("vars"));
   if (ctx.ExprDerivable() || (ctx.dialects.empty() && ctx.StmtDerivable(printer, obj))) {
     return text::ReturnAST(StmtValue(std::move(ctx.operands)));
   }
@@ -976,8 +1270,11 @@ text::NodeAST TextPrint(const Return& obj, const text::IRPrinter& printer, const
 }
 
 text::NodeAST TextPrint(const Yield_& obj, const text::IRPrinter& printer, const Path& path) {
+  if (!IsExactType<YieldObj>(obj)) {
+    return GenericDialectStmt(obj, printer, path);
+  }
   ExprBuilder ctx;
-  ctx.AddOperands(printer, obj->exprs, path->Attr("exprs"));
+  ctx.AddOperands(printer, obj->vars, path->Attr("vars"));
   if (ctx.ExprDerivable() || (ctx.dialects.empty() && ctx.StmtDerivable(printer, obj))) {
     return text::ExprStmtAST(text::YieldAST(StmtValue(std::move(ctx.operands))));
   }
@@ -985,11 +1282,17 @@ text::NodeAST TextPrint(const Yield_& obj, const text::IRPrinter& printer, const
 }
 
 text::NodeAST TextPrint(const Break& obj, const text::IRPrinter& printer, const Path& path) {
+  if (!IsExactType<BreakObj>(obj)) {
+    return GenericDialectStmt(obj, printer, path);
+  }
   ExprBuilder ctx;
   return ctx.StmtDerivable(printer, obj) ? text::BreakAST() : ctx.StmtCall(printer, obj);
 }
 
 text::NodeAST TextPrint(const Continue& obj, const text::IRPrinter& printer, const Path& path) {
+  if (!IsExactType<ContinueObj>(obj)) {
+    return GenericDialectStmt(obj, printer, path);
+  }
   ExprBuilder ctx;
   return ctx.StmtDerivable(printer, obj) ? text::ContinueAST() : ctx.StmtCall(printer, obj);
 }
@@ -2266,6 +2569,7 @@ TVM_FFI_STATIC_INIT_BLOCK() {
   });
 
   refl::EnsureTypeAttrColumn(refl::type_attr::kDialectFieldCollector);
+  refl::EnsureTypeAttrColumn(refl::type_attr::kDialectLangKind);
 
 #undef TVM_FFI_STD_GLOBAL_COMPARISON
 #undef TVM_FFI_STD_GLOBAL_BINARY
@@ -2297,7 +2601,8 @@ TVM_FFI_STATIC_INIT_BLOCK() {
       .def_static(refl::type_attr::kInit, InitFunc)                          \
       .def_type_attr(refl::type_attr::kInit, InitFunc)
 
-  TVM_FFI_STD_OBJECT_DEF_BASE_INIT(NodeObj, Node, refl::init(false));
+  TVM_FFI_STD_OBJECT_DEF_BASE_INIT(NodeObj, Node, refl::init(false))
+      .def_type_attr(refl::type_attr::kDialectFieldCollector, CollectLangKindFields);
   TVM_FFI_STD_OBJECT_DEF_BASE_INIT(TyObj, Ty, refl::init(false));
   TVM_FFI_STD_OBJECT_DEF_BASE_INIT(StmtObj, Stmt, refl::init(false));
   TVM_FFI_STD_OBJECT_DEF_BASE_INIT(AttrsObj, Attrs, refl::init(false)).def_convert<Attrs>();
@@ -2402,12 +2707,25 @@ TVM_FFI_STATIC_INIT_BLOCK() {
   TVM_FFI_STD_OBJECT_DEF(BaseBindExprObj, BaseBindExpr, "BaseBindExpr")
       .def_rw("expr", &BaseBindExprObj::expr);
   TVM_FFI_STD_OBJECT_DEF(BindExprObj, BindExpr, "BindExpr")
-      .def_type_attr(refl::type_attr::kDialectFieldCollector, CollectBindExprFields)
+      .def_type_attr(refl::type_attr::kDialectFieldCollector,
+                     [](const BindExpr& obj) {
+                       return FieldCollectionResult(List<Any>{}, DictAttrs(Dict<String, Any>{}),
+                                                    obj->vars, List<Node>{});
+                     })
       .def(refl::init<List<Var>, Expr>())
       .def_rw("vars", &BindExprObj::vars, refl::AttachFieldFlag::SEqHashDefRecursive());
   TVM_FFI_STD_OBJECT_DEF(BaseVarDefObj, BaseVarDef, "BaseVarDef");
   TVM_FFI_STD_OBJECT_DEF(VarDefObj, VarDef, "VarDef")
-      .def_type_attr(refl::type_attr::kDialectFieldCollector, CollectVarDefFields)
+      .def_type_attr(refl::type_attr::kDialectFieldCollector,
+                     [](const VarDef& obj) {
+                       List<Any> args;
+                       args.reserve(static_cast<int64_t>(obj->vars.size()));
+                       for (const Var& var : obj->vars) {
+                         args.push_back(var->ty);
+                       }
+                       return FieldCollectionResult(std::move(args), DictAttrs(Dict<String, Any>{}),
+                                                    obj->vars, List<Node>{});
+                     })
       .def_rw("vars", &VarDefObj::vars, refl::AttachFieldFlag::SEqHashDefRecursive());
   TVM_FFI_STD_OBJECT_DEF(BaseScopeObj, BaseScope, "BaseScope");
   TVM_FFI_STD_OBJECT_DEF(ScopeObj, Scope, "Scope")
@@ -2438,12 +2756,39 @@ TVM_FFI_STATIC_INIT_BLOCK() {
       .def_rw("indices", &StoreObj::indices)
       .def_rw("rhs", &StoreObj::rhs);
   TVM_FFI_STD_OBJECT_DEF(AssertObj, Assert, "Assert")
+      .def_type_attr(
+          refl::type_attr::kDialectFieldCollector,
+          [](const Assert& obj) { return CollectWithBaseArgs(obj, List<Any>{obj->cond}); })
       .def(refl::init<Expr>())
       .def_rw("cond", &AssertObj::cond);
-  TVM_FFI_STD_OBJECT_DEF(ReturnObj, Return, "Return").def_rw("exprs", &ReturnObj::exprs);
-  TVM_FFI_STD_OBJECT_DEF(YieldObj, Yield_, "Yield").def_rw("exprs", &YieldObj::exprs);
-  TVM_FFI_STD_OBJECT_DEF(BreakObj, Break, "Break");
-  TVM_FFI_STD_OBJECT_DEF(ContinueObj, Continue, "Continue");
+  TVM_FFI_STD_OBJECT_DEF(ReturnObj, Return, "Return")
+      .def_type_attr(refl::type_attr::kDialectFieldCollector,
+                     [](const Return& obj) {
+                       List<Any> args;
+                       args.reserve(static_cast<int64_t>(obj->vars.size()));
+                       for (const Var& var : obj->vars) {
+                         args.push_back(var);
+                       }
+                       return CollectWithBaseArgs(obj, std::move(args));
+                     })
+      .def_rw("vars", &ReturnObj::vars);
+  TVM_FFI_STD_OBJECT_DEF(YieldObj, Yield_, "Yield")
+      .def_type_attr(refl::type_attr::kDialectFieldCollector,
+                     [](const Yield_& obj) {
+                       List<Any> args;
+                       args.reserve(static_cast<int64_t>(obj->vars.size()));
+                       for (const Var& var : obj->vars) {
+                         args.push_back(var);
+                       }
+                       return CollectWithBaseArgs(obj, std::move(args));
+                     })
+      .def_rw("vars", &YieldObj::vars);
+  TVM_FFI_STD_OBJECT_DEF(BreakObj, Break, "Break")
+      .def_type_attr(refl::type_attr::kDialectFieldCollector,
+                     [](const Break& obj) { return CollectWithBaseArgs(obj, List<Any>{}); });
+  TVM_FFI_STD_OBJECT_DEF(ContinueObj, Continue, "Continue")
+      .def_type_attr(refl::type_attr::kDialectFieldCollector,
+                     [](const Continue& obj) { return CollectWithBaseArgs(obj, List<Any>{}); });
   TVM_FFI_STD_OBJECT_DEF(DictAttrsObj, DictAttrs, "DictAttrs")
       .def_rw("values", &DictAttrsObj::values);
   TVM_FFI_STD_OBJECT_DEF(FieldCollectionResultObj, FieldCollectionResult, "FieldCollectionResult")

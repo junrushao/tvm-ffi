@@ -150,8 +150,8 @@ TEST(StdDialect, BaseStatementTextPrintSmoke) {
   stdir::BaseFunc base_func("base", {x}, ffi::Optional<stdir::Ty>(i32));
   std::string base_func_rendered = Render(base_func);
   EXPECT_NE(base_func_rendered.find("std.BaseFunc"), std::string::npos);
-  EXPECT_NE(base_func_rendered.find("\"base\""), std::string::npos);
-  EXPECT_NE(base_func_rendered.find("ret_type=std.i32"), std::string::npos);
+  EXPECT_NE(base_func_rendered.find("def base"), std::string::npos);
+  EXPECT_NE(base_func_rendered.find("-> std.i32"), std::string::npos);
 
   std::string func_rendered =
       Render(stdir::Func("main", {x}, ffi::Optional<stdir::Ty>(i32), {stdir::Return({x})}));
@@ -524,7 +524,9 @@ TEST(StdDialect, AbstractBaseTextPrintErrors) {
     printer->operator()(node, refl::AccessPath::Root());
     FAIL() << "Expected base std.Node text printing to fail";
   } catch (const std::exception& error) {
-    EXPECT_NE(std::string(error.what()).find("No ffi.std text printer registered for ffi.std.Node"),
+    EXPECT_NE(std::string(error.what())
+                  .find("No `__ffi_dialect_mnemonic__` registered for: "
+                        "ffi.std.Node"),
               std::string::npos);
   }
 }

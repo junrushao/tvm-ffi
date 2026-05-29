@@ -191,10 +191,11 @@ def test_c_class_ordering_different_type() -> None:
 def test_c_class_installs_cxx_type_attr_columns() -> None:
     """C++-registered TypeAttrColumn hooks become class attributes."""
     info: TypeInfo = getattr(TestCustomCompare, "__tvm_ffi_type_info__")
-    attrs = core._lookup_type_attrs(
-        info.type_index,
-        ("__ffi_hash__", "__ffi_eq__", "__ffi_compare__", "__ffi_repr__"),
-    )
+    attrs = {
+        name
+        for name in ("__ffi_hash__", "__ffi_eq__", "__ffi_compare__", "__ffi_repr__")
+        if core._lookup_type_attr(info.type_index, name) is not None
+    }
     assert set(attrs) == {"__ffi_hash__", "__ffi_eq__", "__ffi_compare__"}
 
     for cls, names in (

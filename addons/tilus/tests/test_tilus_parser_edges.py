@@ -39,6 +39,12 @@ _PUBLIC_TENSOR_CASES: tuple[
 )
 
 
+def _return_int_body(value: int = 1) -> list[std.Stmt]:
+    literal = std.IntImm.from_py(value)
+    result = std.Var(literal.ty, "result")
+    return [std.BindExpr(literal, result), std.Return(result)]
+
+
 def test_prints_public_constructor_names() -> None:
     ty = tensor.register_tensor("float32", (2, 2))
     lhs = std.Var(ty, "lhs")
@@ -461,15 +467,16 @@ def test_layout_bearing_tensor_text_uses_public_layout_keyword(
 def test_parse_thread_group_public_alias() -> None:
     source = """
 with tilus.ThreadGroup(1, 2):
-    return 1
+    result = 1
+    return result
 """
     expected = stmt.ThreadGroup(
         thread_begin=1,
         num_threads=2,
-        body=[std.Return(std.IntImm(std.AnyTy(), 1))],
+        body=_return_int_body(),
     )
 
     parsed = parse(source)
 
     assert tvm_ffi.structural_equal(parsed, expected)
-    assert expected.text() == "with tilus.ThreadGroup(1, 2):\n  return 1"
+    assert expected.text() == "with tilus.ThreadGroup(1, 2):\n  result = 1\n  return result"

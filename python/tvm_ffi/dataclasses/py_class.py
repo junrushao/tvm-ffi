@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import sys
 import typing
-from collections.abc import Callable
+from collections.abc import Callable, Mapping, Sequence
 from copy import copy
 from dataclasses import dataclass
 from typing import Any, ClassVar, TypeVar
@@ -85,6 +85,8 @@ _PENDING_CLASSES: list[_PendingClass] = []
 #: module work even before the second class is assigned to the module
 #: variable by Python.
 _PY_CLASS_BY_MODULE: dict[str, dict[str, type]] = {}
+
+_VALID_DIALECT_LANG_KINDS = frozenset({"arg", "attr", "var_def", "body"})
 
 # ---------------------------------------------------------------------------
 # Phase 1: type registration
@@ -346,6 +348,35 @@ def _validate_type_attr_value(cls: type, name: str, value: Any) -> None:
                 "tuple[str, str], "
                 f"got {type(value).__name__}.",
             )
+    elif name == "__ffi_dialect_lang_kind__":
+        if not isinstance(value, Mapping):
+            raise TypeError(
+                f"@py_class({cls.__name__!r}): {name!r} must be "
+                "Mapping[str, Sequence[int]], "
+                f"got {type(value).__name__}."
+            )
+        for kind, indices in value.items():
+            if kind not in _VALID_DIALECT_LANG_KINDS:
+                raise ValueError(
+                    f"@py_class({cls.__name__!r}): {name!r} key must be one of "
+                    f"{sorted(_VALID_DIALECT_LANG_KINDS)}, got {kind!r}."
+                )
+            if not isinstance(indices, Sequence) or isinstance(indices, (str, bytes)):
+                raise TypeError(
+                    f"@py_class({cls.__name__!r}): {name!r}[{kind!r}] must be "
+                    f"Sequence[int], got {type(indices).__name__}."
+                )
+            for index in indices:
+                if not isinstance(index, int) or isinstance(index, bool):
+                    raise TypeError(
+                        f"@py_class({cls.__name__!r}): {name!r}[{kind!r}] must contain "
+                        f"int indices, got {type(index).__name__}."
+                    )
+                if index < 0:
+                    raise ValueError(
+                        f"@py_class({cls.__name__!r}): {name!r}[{kind!r}] must contain "
+                        f"non-negative indices, got {index}."
+                    )
     elif name == "__ffi_dialect_field_collector__":
         if not callable(value):
             raise TypeError(
@@ -404,6 +435,36 @@ def _collect_py_methods(cls: type) -> list[tuple[str, Any, bool]] | None:
             _validate_type_attr_value(cls, name, func)
         methods.append((name, func, is_static))
     return methods if methods else None
+
+
+def _collect_lang_kind_type_attr(type_info: Any) -> dict[str, list[int]]:
+    """Collect ``field(lang_kind=...)`` annotations into reflected field indices."""
+    type_chain: list[Any] = []
+    cursor = type_info
+    while cursor is not None:
+        type_chain.append(cursor)
+        cursor = cursor.parent_type_info
+
+    lang_kind_map: dict[str, list[int]] = {}
+    field_index = 0
+    for info in reversed(type_chain):
+        for type_field in info.fields or ():
+            dataclass_field = type_field.dataclass_field
+            lang_kind = None if dataclass_field is None else dataclass_field.lang_kind
+            if lang_kind is not None:
+                lang_kind_map.setdefault(lang_kind, []).append(field_index)
+            field_index += 1
+    return lang_kind_map
+
+
+def _register_lang_kind_type_attr(type_info: Any) -> None:
+    """Register the compact dialect field-role map for this Python-defined type."""
+    lang_kind_map = _collect_lang_kind_type_attr(type_info)
+    if not lang_kind_map:
+        return
+    if core._lookup_type_attr(type_info.type_index, "__ffi_dialect_lang_kind__") is not None:
+        return
+    core._register_type_attr(type_info.type_index, "__ffi_dialect_lang_kind__", lang_kind_map)
 
 
 def _build_localns(cls: type, *, cross_module: bool = False) -> dict[str, Any]:
@@ -533,6 +594,7 @@ def _register_fields_into_type(
     # Non-callable entries whose names are in _FFI_TYPE_ATTR_NAMES are routed
     # to TVMFFITypeRegisterAttr by the Cython layer.
     type_info._register_py_methods(py_methods, type_attr_names=_FFI_TYPE_ATTR_NAMES)
+    _register_lang_kind_type_attr(type_info)
     _add_class_attrs(cls, type_info, type_attr_names=_FFI_TYPE_ATTR_NAMES)
 
     # Remove deferred __init__ and restore user-defined __init__ if saved
@@ -684,6 +746,7 @@ _FFI_TYPE_ATTR_NAMES: frozenset[str] = frozenset(
         "__ffi_text_print__",
         # IR dialect metadata
         "__ffi_dialect_mnemonic__",
+        "__ffi_dialect_lang_kind__",
         "__ffi_dialect_field_collector__",
     }
 )
