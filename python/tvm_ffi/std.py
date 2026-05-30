@@ -29,7 +29,9 @@ if TYPE_CHECKING:
 # fmt: on
 # tvm-ffi-stubgen(end)
 
+import contextlib
 from collections.abc import (
+    Generator,
     ItemsView,
     Iterator,
     KeysView,
@@ -38,13 +40,14 @@ from collections.abc import (
     MutableSequence,
     Sequence,
 )
-from typing import Any, ClassVar, overload
+from enum import IntEnum, IntFlag
+from typing import Any, ClassVar, Literal, overload
 from typing import cast as _typing_cast
 
 from typing_extensions import Never, Protocol, TypeAlias
 
 from tvm_ffi import dtype
-from tvm_ffi.core import MISSING, Object, _lookup_type_attr
+from tvm_ffi.core import MISSING, Function, Object, _lookup_type_attr
 from tvm_ffi.dataclasses import c_class, field
 from tvm_ffi.pyast import PrinterConfig
 
@@ -93,10 +96,14 @@ def normalize_ty(value: Any, default: Any = MISSING) -> Ty:
     raise TypeError(f"expected std type, got {type(value).__name__}")
 
 
-def _normalize_expr(value: ExprLike) -> Expr:
+def _normalize_expr(value: ExprLike, like: Expr | None = None) -> Expr:
     """Normalize Python literals to standard dialect immediate expressions."""
     if isinstance(value, Expr):
         return value
+    if like is not None:
+        ty = like.ty
+        if isinstance(ty, PrimTy):
+            return const(ty.dtype, _typing_cast(Any, value))
     return Expr.literal(value)
 
 
@@ -1821,6 +1828,237 @@ class FieldCollectionResult(Node, mnemonic="std.FieldCollectionResult"):
         self.__ffi_init__(list(args or []), attrs, list(var_def or []), list(body or []), ty)
 
 
+class ProofStrength(IntEnum):
+    """Strength level used by :meth:`Analyzer.can_prove`."""
+
+    DEFAULT = 0
+    SYMBOLIC_BOUND = 1
+
+
+class RewriteExtension(IntFlag):
+    """Optional rewrite simplifier extensions."""
+
+    NONE = 0
+    TRANSITIVELY_PROVE_INEQUALITIES = 1 << 0
+    CONVERT_BOOLEAN_TO_AND_OF_ORS = 1 << 1
+    APPLY_CONSTRAINTS_TO_BOOLEAN_BRANCHES = 1 << 2
+    COMPARISON_OF_PRODUCT_AND_SUM = 1 << 3
+
+
+@c_class("ffi.std.ConstIntBound")
+class ConstIntBound(Object):
+    """Closed integer interval inferred by constant integer bound analysis."""
+
+    min_value: int
+    max_value: int
+
+
+@c_class("ffi.std.ModularSet")
+class ModularSet(Object):
+    """Set of integers representable as ``coeff * x + base``."""
+
+    coeff: int
+    base: int
+
+
+@c_class("ffi.std.IntervalSet", init=False)
+class IntervalSet(Object):
+    """Symbolic interval set."""
+
+    min_value: Expr
+    max_value: Expr
+
+    if TYPE_CHECKING:
+
+        def __ffi_init__(self, min_value: Expr, max_value: Expr) -> None: ...
+
+    def __init__(self, min_value: ExprLike, max_value: ExprLike) -> None:
+        if isinstance(min_value, int) and isinstance(max_value, int):
+            lhs = const("int32", min_value)
+            rhs = const("int32", max_value)
+            self.__ffi_init__(lhs, rhs)
+            return
+        like = max_value if isinstance(max_value, Expr) else None
+        lhs = _normalize_expr(min_value, like)
+        rhs = _normalize_expr(max_value, lhs)
+        self.__ffi_init__(lhs, rhs)
+
+
+@c_class("ffi.std.Analyzer")
+class Analyzer(Object):
+    """Symbolic analyzer for scalar :class:`tvm_ffi.std.Expr` values."""
+
+    if TYPE_CHECKING:
+
+        def mark_global_non_neg_value(self, value: Expr) -> None:
+            """Mark an expression as globally non-negative."""
+            ...
+
+        def bind_expr(
+            self,
+            var: Var,
+            expr: Expr,
+            allow_override: bool = False,
+        ) -> None:
+            """Bind a variable to an expression."""
+            ...
+
+        def bind_range(
+            self,
+            var: Var,
+            range: Range,
+            allow_override: bool = False,
+        ) -> None:
+            """Bind a variable to a range."""
+            ...
+
+        def can_prove_greater_equal(self, expr: Expr, lower_bound: int) -> bool:
+            """Return whether ``expr >= lower_bound`` can be proven."""
+            ...
+
+        def can_prove_less(self, expr: Expr, upper_bound: int) -> bool:
+            """Return whether ``expr < upper_bound`` can be proven."""
+            ...
+
+        def can_prove_less_equal_than_symbolic_shape_value(
+            self,
+            lhs: Expr,
+            shape: Expr,
+        ) -> bool:
+            """Return whether ``lhs <= shape`` can be proven for shape values."""
+            ...
+
+    def bind(
+        self,
+        var: Var,
+        bound: Range | ExprLike,
+        allow_override: bool = False,
+    ) -> None:
+        """Bind ``var`` to an expression or range."""
+        if isinstance(bound, Range):
+            self.bind_range(var, bound, allow_override)
+        else:
+            self.bind_expr(var, _normalize_expr(bound, var), allow_override)
+
+    def can_prove(
+        self,
+        cond: Expr,
+        *,
+        strength: Literal["default", "symbolic_bound"] | ProofStrength = ProofStrength.DEFAULT,
+    ) -> bool:
+        """Return whether a boolean expression can be proven."""
+        if isinstance(strength, str):
+            strength = {
+                "default": ProofStrength.DEFAULT,
+                "symbolic_bound": ProofStrength.SYMBOLIC_BOUND,
+            }[strength]
+        return bool(_std_api._AnalyzerCanProve(self, cond, int(strength)))
+
+    def can_prove_equal(self, lhs: Expr, rhs: ExprLike) -> bool:
+        """Return whether two expressions can be proven equal."""
+        return bool(_std_api._AnalyzerCanProveEqual(self, lhs, _normalize_expr(rhs, lhs)))
+
+    def simplify(self, expr: Expr, *, steps: int = 2) -> Expr:
+        """Simplify an expression."""
+        return _typing_cast(Expr, _std_api._AnalyzerSimplify(self, expr, steps))
+
+
+def const(dtype: dtype | str, value: bool | int | float) -> Expr:
+    """Create a scalar constant with the requested dtype."""
+    ty = PrimTy(dtype)
+    if ty.dtype.is_bool:
+        return BoolImm(ty, bool(value))
+    if ty.dtype.is_float:
+        return FloatImm(ty, float(value))
+    return IntImm(ty, int(value))
+
+
+def min_value(dtype: dtype | str) -> Expr:
+    """Return the minimum integer value representable by ``dtype``."""
+    ty = PrimTy(dtype)
+    if not ty.dtype.is_integer:
+        raise TypeError("min_value only supports integer dtypes")
+    if str(ty.dtype).startswith("uint"):
+        return IntImm(ty, 0)
+    bits = ty.dtype.bits
+    return IntImm(ty, -(1 << (bits - 1)))
+
+
+def max_value(dtype: dtype | str) -> Expr:
+    """Return the maximum integer value representable by ``dtype``."""
+    ty = PrimTy(dtype)
+    if not ty.dtype.is_integer:
+        raise TypeError("max_value only supports integer dtypes")
+    bits = ty.dtype.bits
+    if str(ty.dtype).startswith("uint"):
+        return IntImm(ty, (1 << bits) - 1)
+    return IntImm(ty, (1 << (bits - 1)) - 1)
+
+
+def const_int_bound(analyzer: Analyzer, expr: Expr) -> ConstIntBound:
+    """Run constant integer bound analysis."""
+    return _typing_cast(ConstIntBound, _std_api._AnalyzerConstIntBound(analyzer, expr))
+
+
+def modular_set(analyzer: Analyzer, expr: Expr) -> ModularSet:
+    """Run modular set analysis."""
+    return _typing_cast(ModularSet, _std_api._AnalyzerModularSet(analyzer, expr))
+
+
+def rewrite_simplify(analyzer: Analyzer, expr: Expr) -> Expr:
+    """Run the rewrite simplifier only."""
+    return _typing_cast(Expr, _std_api._AnalyzerRewriteSimplify(analyzer, expr))
+
+
+def canonical_simplify(analyzer: Analyzer, expr: Expr) -> Expr:
+    """Run the canonical simplifier only."""
+    return _typing_cast(Expr, _std_api._AnalyzerCanonicalSimplify(analyzer, expr))
+
+
+def interval_set(
+    analyzer: Analyzer,
+    expr: Expr,
+    dom_map: Mapping[Var, IntervalSet],
+) -> IntervalSet:
+    """Evaluate the interval set of ``expr`` under ``dom_map``."""
+    return _typing_cast(IntervalSet, _std_api._AnalyzerIntervalSet(analyzer, expr, dict(dom_map)))
+
+
+def const_int_bound_update(
+    analyzer: Analyzer,
+    var: Var,
+    info: ConstIntBound,
+    allow_override: bool = False,
+) -> None:
+    """Update the analyzer's constant integer bound state."""
+    _std_api._AnalyzerConstIntBoundUpdate(analyzer, var, info, allow_override)
+
+
+def get_enabled_extensions(analyzer: Analyzer) -> RewriteExtension:
+    """Return enabled rewrite extensions."""
+    return RewriteExtension(_std_api._AnalyzerGetEnabledExtensions(analyzer))
+
+
+def set_enabled_extensions(analyzer: Analyzer, flags: RewriteExtension | int) -> None:
+    """Set enabled rewrite extensions."""
+    _std_api._AnalyzerSetEnabledExtensions(analyzer, int(flags))
+
+
+@contextlib.contextmanager
+def enter_constraint(analyzer: Analyzer, constraint: Expr | None) -> Generator[None, None, None]:
+    """Temporarily add a boolean constraint to analyzer state."""
+    if constraint is None:
+        yield
+        return
+    exit_constraint = _typing_cast(
+        Function, _std_api._AnalyzerEnterConstraint(analyzer, constraint)
+    )
+    try:
+        yield
+    finally:
+        exit_constraint()
+
+
 def cast(ty: TyLike, value: ExprLike) -> Expr:
     """Cast an expression to a standard dialect type."""
     return _typing_cast(Expr, _std_api.cast(normalize_ty(ty), value))
@@ -2020,6 +2258,7 @@ __all__ = [
     "Abs",
     "Add",
     "Aggregate",
+    "Analyzer",
     "And",
     "AnyTy",
     "Assert",
@@ -2041,6 +2280,7 @@ __all__ = [
     "CMod",
     "Call",
     "Cast",
+    "ConstIntBound",
     "Continue",
     "DictAttrs",
     "Eq",
@@ -2056,12 +2296,14 @@ __all__ = [
     "IfExpr",
     "IfStmt",
     "IntImm",
+    "IntervalSet",
     "LShift",
     "Le",
     "Load",
     "Lt",
     "Max",
     "Min",
+    "ModularSet",
     "Module",
     "Mul",
     "Ne",
@@ -2070,9 +2312,11 @@ __all__ = [
     "Or",
     "Pow",
     "PrimTy",
+    "ProofStrength",
     "RShift",
     "Range",
     "Return",
+    "RewriteExtension",
     "Scope",
     "Stmt",
     "Store",
@@ -2092,19 +2336,26 @@ __all__ = [
     "bitwise_not",
     "bitwise_or",
     "bitwise_xor",
+    "canonical_simplify",
     "cast",
     "cdiv",
     "cmod",
     "collect_dialect_fields",
+    "const",
+    "const_int_bound",
+    "const_int_bound_update",
+    "enter_constraint",
     "eq",
     "equal",
     "floordiv",
     "floormod",
     "ge",
+    "get_enabled_extensions",
     "greater",
     "greater_equal",
     "gt",
     "if_then_else",
+    "interval_set",
     "le",
     "left_shift",
     "less",
@@ -2114,15 +2365,20 @@ __all__ = [
     "logical_or",
     "lt",
     "max",
+    "max_value",
     "min",
+    "min_value",
+    "modular_set",
     "mul",
     "ne",
     "neg",
     "normalize_ty",
     "not_equal",
     "pow",
+    "rewrite_simplify",
     "right_shift",
     "select",
+    "set_enabled_extensions",
     "sub",
     "truncdiv",
     "truncmod",

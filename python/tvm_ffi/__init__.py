@@ -87,6 +87,7 @@ if TYPE_CHECKING or not _is_config_mode():
     from . import structural
     from . import cpp
     from . import std
+    from .std import Analyzer, ConstIntBound, IntervalSet, ModularSet
 
     # optional module to speedup dlpack conversion
     from . import _optional_torch_c_dlpack
@@ -135,13 +136,17 @@ except ImportError:
 
 __all__ = [
     "LIB",
+    "Analyzer",
     "Array",
+    "ConstIntBound",
     "DLDeviceType",
     "Device",
     "Dict",
     "Function",
+    "IntervalSet",
     "List",
     "Map",
+    "ModularSet",
     "Module",
     "Object",
     "ObjectConvertible",

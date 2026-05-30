@@ -70,10 +70,12 @@
 #include <tvm/ffi/container/list.h>
 #include <tvm/ffi/dtype.h>
 #include <tvm/ffi/extra/base.h>
+#include <tvm/ffi/extra/dataclass.h>
 #include <tvm/ffi/object.h>
 #include <tvm/ffi/optional.h>
 #include <tvm/ffi/string.h>
 
+#include <memory>
 #include <optional>
 #include <type_traits>
 #include <utility>
@@ -827,6 +829,78 @@ struct Cast : public Expr {
   Cast(Ty ty, Expr value) : Cast(make_object<CastObj>(std::move(ty), std::move(value))) {}
   /// \cond Doxygen_Suppress
   TVM_FFI_DEFINE_OBJECT_REF_METHODS_NULLABLE(Cast, Expr, CastObj);
+  /// \endcond
+};
+
+/*! \brief Symbolic analyzer object for ffi.std.Expr values. */
+struct AnalyzerObj : public Object {
+  /// \cond Doxygen_Suppress
+  static constexpr bool _type_mutable = true;
+  TVM_FFI_DECLARE_OBJECT_INFO("ffi.std.Analyzer", AnalyzerObj, Object);
+  /// \endcond
+
+  struct Impl;
+  struct Testing;
+
+  /*! \brief Proof strength used by boolean proof queries. */
+  enum class ProofStrength : int {
+    /*! \brief Default proof strength. */
+    kDefault = 0,
+
+    /*! \brief Enable symbolic-bound specific reasoning. */
+    kSymbolicBound = 1,
+  };
+
+  /*! \brief Construct an empty symbolic analyzer. */
+  TVM_FFI_EXTRA_CXX_API AnalyzerObj();
+
+  /*! \brief Destroy the symbolic analyzer. */
+  TVM_FFI_EXTRA_CXX_API ~AnalyzerObj();
+
+  /*! \brief Mark a value as globally non-negative. */
+  TVM_FFI_EXTRA_CXX_API void MarkGlobalNonNegValue(const Expr& value);
+
+  /*! \brief Bind a variable to an expression in the analyzer state. */
+  TVM_FFI_EXTRA_CXX_API void Bind(const Var& var, const Expr& expr, bool allow_override = false);
+
+  /*! \brief Bind a variable to a range in the analyzer state. */
+  TVM_FFI_EXTRA_CXX_API void Bind(const Var& var, const Range& range, bool allow_override = false);
+
+  /*! \brief Bind multiple variables to ranges in the analyzer state. */
+  TVM_FFI_EXTRA_CXX_API void Bind(const Dict<Var, Range>& variables, bool allow_override = false);
+
+  /*! \brief Return whether expr can be proven greater than or equal to lower_bound. */
+  TVM_FFI_EXTRA_CXX_API bool CanProveGreaterEqual(const Expr& expr, int64_t lower_bound);
+
+  /*! \brief Return whether expr can be proven strictly less than upper_bound. */
+  TVM_FFI_EXTRA_CXX_API bool CanProveLess(const Expr& expr, int64_t upper_bound);
+
+  /*! \brief Return whether lhs and rhs can be proven equal. */
+  TVM_FFI_EXTRA_CXX_API bool CanProveEqual(const Expr& lhs, const Expr& rhs);
+
+  /*! \brief Return whether lhs can be proven less than or equal to a symbolic shape value. */
+  TVM_FFI_EXTRA_CXX_API bool CanProveLessEqualThanSymbolicShapeValue(const Expr& lhs,
+                                                                     const Expr& shape);
+
+  /*! \brief Return whether cond can be proven true. */
+  TVM_FFI_EXTRA_CXX_API bool CanProve(const Expr& cond,
+                                      ProofStrength strength = ProofStrength::kDefault);
+
+  /*! \brief Simplify an expression using the analyzer. */
+  TVM_FFI_EXTRA_CXX_API Expr Simplify(const Expr& expr, int steps = 2);
+
+ private:
+  friend struct IRMutatorWithAnalyzer;
+  std::unique_ptr<Impl> impl_;
+};
+
+/*! \brief Reference type for symbolic analyzer objects. */
+struct Analyzer : public ObjectRef {
+  /*! \brief Construct an analyzer reference. */
+  Analyzer() : ObjectRef(make_object<AnalyzerObj>()) {}
+
+  /// \cond Doxygen_Suppress
+  TVM_FFI_DEFINE_OBJECT_REF_METHODS_NOTNULLABLE(Analyzer, ObjectRef, AnalyzerObj);
   /// \endcond
 };
 

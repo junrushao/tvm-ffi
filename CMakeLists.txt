@@ -89,6 +89,13 @@ set(_tvm_ffi_extra_objs_sources
     "${CMAKE_CURRENT_SOURCE_DIR}/src/ffi/extra/env_c_api.cc"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/ffi/extra/pyast_printer.cc"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/ffi/extra/std.cc"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/ffi/extra/sym/analyzer_canonical_simplify.cc"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/ffi/extra/sym/analyzer_const_int_bound.cc"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/ffi/extra/sym/analyzer_interval_set.cc"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/ffi/extra/sym/analyzer_modular_set.cc"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/ffi/extra/sym/analyzer_rewrite_simplify.cc"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/ffi/extra/sym/analyzer_transitive_comparisons.cc"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/ffi/extra/sym/sym.cc"
 )
 if (TVM_FFI_USE_EXTRA_CXX_API)
   list(APPEND _tvm_ffi_objs_sources ${_tvm_ffi_extra_objs_sources})
