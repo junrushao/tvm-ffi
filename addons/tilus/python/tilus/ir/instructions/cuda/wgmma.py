@@ -17,40 +17,95 @@
 
 from __future__ import annotations
 
-from typing import ClassVar
+from typing import Any
 
 from tvm_ffi import std
 from tvm_ffi.dataclasses import field, py_class
 
-from ...inst import Instruction
+from ...inst import (
+    Instruction,
+    make_output_var,
+    validate_nonnegative_int_attr,
+)
 
 
 @py_class("tilus.WgmmaFenceInst", structural_eq="tree")
 class WgmmaFenceInst(Instruction, mnemonic="tilus.WgmmaFence"):
-    EXPECTED_INPUTS: ClassVar[int] = 0
+    def outputs(self) -> tuple[std.Var, ...]:
+        return ()
 
 
 @py_class("tilus.WgmmaCommitGroupInst", structural_eq="tree")
 class WgmmaCommitGroupInst(Instruction, mnemonic="tilus.WgmmaCommitGroup"):
-    EXPECTED_INPUTS: ClassVar[int] = 0
+    def outputs(self) -> tuple[std.Var, ...]:
+        return ()
 
 
 @py_class("tilus.WgmmaWaitGroupInst", structural_eq="tree")
 class WgmmaWaitGroupInst(Instruction, mnemonic="tilus.WgmmaWaitGroup"):
-    EXPECTED_INPUTS: ClassVar[int] = 0
-    NONNEGATIVE_INT_ATTRS: ClassVar[tuple[str, ...]] = ("n",)
+    n: int = field(lang_kind="attr")
 
-    n: std.Expr = field(lang_kind="attr")
+    def __init__(self, n: int) -> None:
+        self.__ffi_init__(n=validate_nonnegative_int_attr(n, "n"))
+        self.__post_init__()
+
+    def outputs(self) -> tuple[std.Var, ...]:
+        return ()
+
+    def __post_init__(self) -> None:
+        self.n = validate_nonnegative_int_attr(self.n, "n")
 
 
 @py_class("tilus.WgmmaMmaSSInst", structural_eq="tree")
 class WgmmaMmaSSInst(Instruction, mnemonic="tilus.WgmmaMmaSS"):
-    EXPECTED_INPUTS: ClassVar[int] = 2
+    lhs: std.Expr = field(lang_kind="arg")
+    rhs: std.Expr = field(lang_kind="arg")
+    output: std.Var = field(
+        kw_only=True,
+        lang_kind="out",
+        structural_eq="def-recursive",
+    )
+
+    def __init__(
+        self,
+        lhs: std.Expr,
+        rhs: std.Expr,
+        *,
+        output: std.Var | None = None,
+        ty: Any = None,
+    ) -> None:
+        output = make_output_var(output, ty)
+        self.__ffi_init__(lhs, rhs, output=output)
+        self.__post_init__()
+
+    def outputs(self) -> tuple[std.Var, ...]:
+        return (self.output,)
 
 
 @py_class("tilus.WgmmaMmaRSInst", structural_eq="tree")
 class WgmmaMmaRSInst(Instruction, mnemonic="tilus.WgmmaMmaRS"):
-    EXPECTED_INPUTS: ClassVar[int] = 2
+    lhs: std.Expr = field(lang_kind="arg")
+    rhs: std.Expr = field(lang_kind="arg")
+    output: std.Var = field(
+        kw_only=True,
+        lang_kind="out",
+        structural_eq="def-recursive",
+    )
+
+    def __init__(
+        self,
+        lhs: std.Expr,
+        rhs: std.Expr,
+        *,
+        output: std.Var | None = None,
+        ty: Any = None,
+    ) -> None:
+        output = make_output_var(output, ty)
+        self.__ffi_init__(lhs, rhs, output=output)
+        self.__post_init__()
+
+    def outputs(self) -> tuple[std.Var, ...]:
+        return (self.output,)
 
 
 __all__ = [  # noqa: RUF022

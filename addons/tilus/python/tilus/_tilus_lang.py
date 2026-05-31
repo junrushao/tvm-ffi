@@ -20,21 +20,21 @@ from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from functools import partial
-from typing import Any, ClassVar
+from typing import Any, ClassVar, TypeVar, cast
 
 from tvm_ffi import dataclasses as dc
 from tvm_ffi import std
-from tvm_ffi._pyast_parser import Factory, Frame, FuncFrame, register_dialect
+from tvm_ffi._pyast_parser import Frame, FuncFrame, register_dialect
 from tvm_ffi._std_lang import (
     Std,
     bind_one_var,
     parse_func_args,
     std_generics,
 )
-from tvm_ffi.core import MISSING
 
 from .ir import func, inst, instructions, layout, stmt, tensor
+
+_TensorT = TypeVar("_TensorT", bound=tensor.Tensor)
 
 
 class TilusFrame(Frame):
@@ -79,23 +79,6 @@ class FunctionFactory(TilusFrame, FuncFrame):
         )
 
 
-class InstructionFactory(Factory):
-    """Parser-visible constructor for Tilus instructions."""
-
-    dialect = "tilus"
-
-    def __init__(self, cls: type[inst.Instruction]) -> None:
-        self.cls = cls
-
-    def __call__(
-        self,
-        *operands: Any,
-        output: std.Var | None = None,
-        **attrs: Any,
-    ) -> inst.Instruction:
-        return _make_instruction(self.cls, *operands, output=output, **attrs)
-
-
 @dataclass(frozen=True)
 class _TensorItemBuilder:
     __ffi_dialect_mnemonic__: ClassVar[tuple[str, str]] = ("tilus", "TensorItemBuilder")
@@ -113,49 +96,29 @@ class _TensorItemBuilder:
 
 
 def _make_tensor(
-    cls: type[tensor.Tensor],
+    cls: type[_TensorT],
     dtype: std.TyLike,
     shape_args: tuple[Any, ...],
     layout_value: layout.Layout | None,
-) -> tensor.Tensor:
-    return cls(
+) -> _TensorT:
+    return cast(Any, cls)(
         tensor._prim_ty(dtype),
         shape=tensor._shape(shape_args),
         optional_layout=layout_value,
     )
 
 
-def _make_instruction(
-    cls: type[inst.Instruction],
-    *operands: Any,
-    output: std.Var | None = None,
-    **attrs: Any,
-) -> inst.Instruction:
-    if "inputs" in attrs:
-        raise TypeError(
-            f"{cls.__name__} operands must be passed positionally; "
-            "`inputs` keyword is not supported"
-        )
-    ty = attrs.pop("ty", MISSING)
-    instruction = cls(inputs=list(operands), output=output, **attrs)
-    if not MISSING.is_(ty):
-        inst.validate_instruction_ty_hint(instruction, ty)
-    return instruction
-
-
 def _bind_expr(names: Sequence[str], ty: Any, expr: Any) -> Any:
     if isinstance(expr, inst.Instruction):
-        if expr.output is not None:
+        if any(output.name for output in expr.outputs()):
             raise TypeError("instruction RHS must not already define an output")
-        explicit_ty = inst.pop_instruction_ty_hint(expr)
-        if ty is None:
-            ty = explicit_ty or inst.infer_instruction_output_ty(expr)
-        if ty is None:
-            raise TypeError("instruction assignment requires an inferable output type")
-        bound = dc.replace(expr, output=bind_one_var(names, ty))
-        bound.__post_init__()
-        if explicit_ty is not None:
-            inst.validate_instruction_output_ty(bound, explicit_ty)
+        if ty is not None:
+            raise TypeError(
+                "constructor out assignment does not support type annotations; "
+                "pass type information to the constructor"
+            )
+        bound = dc.replace(expr)
+        bound.__ffi_update_var_name__(*names)
         return bound
     if isinstance(expr, _TensorItemBuilder):
         bind_ty = ty if ty is not None else expr.tensor_value
@@ -209,7 +172,20 @@ class TilusLang:
         axes: Any = None,
         offset: Any = 0,
     ) -> layout.GlobalLayout:
-        shape_tuple = tuple(shape_args)
+        if shape_args and isinstance(shape_args[0], (list, tuple)):
+            if len(shape_args) > 3:
+                raise TypeError("GlobalLayout accepts at most shape, size, and offset")
+            shape_tuple = tuple(shape_args[0])
+            if len(shape_args) >= 2:
+                if size is not None:
+                    raise TypeError("GlobalLayout size supplied both positionally and by keyword")
+                size = shape_args[1]
+            if len(shape_args) >= 3:
+                if offset != 0:
+                    raise TypeError("GlobalLayout offset supplied both positionally and by keyword")
+                offset = shape_args[2]
+        else:
+            shape_tuple = tuple(shape_args)
         if axes is None:
             axes = tuple(f"i{axis}" for axis in range(len(shape_tuple)))
         else:
@@ -305,7 +281,6 @@ class TilusLang:
     Analysis = func.Analysis
 
     Eval = stmt.Evaluate
-    Inst = stmt.InstStmt
 
     @staticmethod
     def TensorItemPtr(
@@ -318,95 +293,73 @@ class TilusLang:
     def TensorItemValue(tensor_value: tensor.Tensor) -> _TensorItemBuilder:
         return _TensorItemBuilder(stmt.TensorItemValue, tensor_value)
 
-    AtomicShared = partial(_make_instruction, instructions.AtomicSharedInst)
-    AtomicGlobal = partial(_make_instruction, instructions.AtomicGlobalInst)
-    AtomicScatterShared = partial(_make_instruction, instructions.AtomicScatterSharedInst)
-    AtomicScatterGlobal = partial(_make_instruction, instructions.AtomicScatterGlobalInst)
-    ClcTryCancel = partial(_make_instruction, instructions.ClusterLaunchControlTryCancelInst)
-    ClcQueryResponse = partial(
-        _make_instruction, instructions.ClusterLaunchControlQueryResponseInst
-    )
-    ClusterSyncThreads = partial(_make_instruction, instructions.ClusterSyncThreadsInst)
-    CopyAsync = partial(_make_instruction, instructions.CopyAsyncInst)
-    CopyAsyncGeneric = partial(_make_instruction, instructions.CopyAsyncGenericInst)
-    CopyAsyncCommitGroup = partial(_make_instruction, instructions.CopyAsyncCommitGroupInst)
-    CopyAsyncWaitGroup = partial(_make_instruction, instructions.CopyAsyncWaitGroupInst)
-    CopyAsyncWaitAll = partial(_make_instruction, instructions.CopyAsyncWaitAllInst)
-    CopyAsyncBulkGlobalToShared = partial(
-        _make_instruction, instructions.CopyAsyncBulkGlobalToSharedInst
-    )
-    CopyAsyncBulkGlobalToClusterShared = partial(
-        _make_instruction, instructions.CopyAsyncBulkGlobalToClusterSharedInst
-    )
-    CopyAsyncBulkSharedToGlobal = partial(
-        _make_instruction, instructions.CopyAsyncBulkSharedToGlobalInst
-    )
-    CopyAsyncBulkSharedToClusterShared = partial(
-        _make_instruction, instructions.CopyAsyncBulkSharedToClusterSharedInst
-    )
-    CopyAsyncBulkCommitGroup = partial(_make_instruction, instructions.CopyAsyncBulkCommitGroupInst)
-    CopyAsyncBulkWaitGroup = partial(_make_instruction, instructions.CopyAsyncBulkWaitGroupInst)
-    CopyAsyncTensorGlobalToShared = partial(
-        _make_instruction, instructions.CopyAsyncTensorGlobalToSharedInst
-    )
-    CopyAsyncTensorSharedToGlobal = partial(
-        _make_instruction, instructions.CopyAsyncTensorSharedToGlobalInst
-    )
-    CopyAsyncTensorCommitGroup = partial(
-        _make_instruction, instructions.CopyAsyncTensorCommitGroupInst
-    )
-    CopyAsyncTensorWaitGroup = partial(_make_instruction, instructions.CopyAsyncTensorWaitGroupInst)
-    FenceProxyAsync = partial(_make_instruction, instructions.FenceProxyAsync)
-    FenceProxyAsyncRelease = partial(_make_instruction, instructions.FenceProxyAsyncRelease)
-    MapSharedAddr = partial(_make_instruction, instructions.MapSharedAddrInst)
-    AllocBarrier = partial(_make_instruction, instructions.AllocBarrierInst)
-    ArriveBarrier = partial(_make_instruction, instructions.ArriveBarrierInst)
-    ArriveExpectTxBarrier = partial(_make_instruction, instructions.ArriveExpectTxBarrierInst)
-    WaitBarrier = partial(_make_instruction, instructions.WaitBarrierInst)
-    ArriveExpectTxMulticastBarrier = partial(
-        _make_instruction, instructions.ArriveExpectTxMulticastBarrierInst
-    )
-    ArriveExpectTxRemoteBarrier = partial(
-        _make_instruction, instructions.ArriveExpectTxRemoteBarrierInst
-    )
-    Dot = partial(_make_instruction, instructions.DotInst)
+    AtomicShared = instructions.AtomicSharedInst
+    AtomicGlobal = instructions.AtomicGlobalInst
+    AtomicScatterShared = instructions.AtomicScatterSharedInst
+    AtomicScatterGlobal = instructions.AtomicScatterGlobalInst
+    ClcTryCancel = instructions.ClusterLaunchControlTryCancelInst
+    ClcQueryResponse = instructions.ClusterLaunchControlQueryResponseInst
+    ClusterSyncThreads = instructions.ClusterSyncThreadsInst
+    CopyAsync = instructions.CopyAsyncInst
+    CopyAsyncGeneric = instructions.CopyAsyncGenericInst
+    CopyAsyncCommitGroup = instructions.CopyAsyncCommitGroupInst
+    CopyAsyncWaitGroup = instructions.CopyAsyncWaitGroupInst
+    CopyAsyncWaitAll = instructions.CopyAsyncWaitAllInst
+    CopyAsyncBulkGlobalToShared = instructions.CopyAsyncBulkGlobalToSharedInst
+    CopyAsyncBulkGlobalToClusterShared = instructions.CopyAsyncBulkGlobalToClusterSharedInst
+    CopyAsyncBulkSharedToGlobal = instructions.CopyAsyncBulkSharedToGlobalInst
+    CopyAsyncBulkSharedToClusterShared = instructions.CopyAsyncBulkSharedToClusterSharedInst
+    CopyAsyncBulkCommitGroup = instructions.CopyAsyncBulkCommitGroupInst
+    CopyAsyncBulkWaitGroup = instructions.CopyAsyncBulkWaitGroupInst
+    CopyAsyncTensorGlobalToShared = instructions.CopyAsyncTensorGlobalToSharedInst
+    CopyAsyncTensorSharedToGlobal = instructions.CopyAsyncTensorSharedToGlobalInst
+    CopyAsyncTensorCommitGroup = instructions.CopyAsyncTensorCommitGroupInst
+    CopyAsyncTensorWaitGroup = instructions.CopyAsyncTensorWaitGroupInst
+    FenceProxyAsync = instructions.FenceProxyAsync
+    FenceProxyAsyncRelease = instructions.FenceProxyAsyncRelease
+    MapSharedAddr = instructions.MapSharedAddrInst
+    AllocBarrier = instructions.AllocBarrierInst
+    ArriveBarrier = instructions.ArriveBarrierInst
+    ArriveExpectTxBarrier = instructions.ArriveExpectTxBarrierInst
+    WaitBarrier = instructions.WaitBarrierInst
+    ArriveExpectTxMulticastBarrier = instructions.ArriveExpectTxMulticastBarrierInst
+    ArriveExpectTxRemoteBarrier = instructions.ArriveExpectTxRemoteBarrierInst
+    Dot = instructions.DotInst
     AtomicMmaConfig = instructions.AtomicMmaConfig
-    LockSemaphore = partial(_make_instruction, instructions.LockSemaphoreInst)
-    ReleaseSemaphore = partial(_make_instruction, instructions.ReleaseSemaphoreInst)
-    SimtDot = partial(_make_instruction, instructions.SimtDotInst)
-    Tcgen05Alloc = partial(_make_instruction, instructions.Tcgen05AllocInst)
-    Tcgen05Dealloc = partial(_make_instruction, instructions.Tcgen05DeallocInst)
-    Tcgen05RelinquishAllocPermit = partial(
-        _make_instruction, instructions.Tcgen05RelinquishAllocPermitInst
-    )
-    Tcgen05Slice = partial(_make_instruction, instructions.Tcgen05SliceInst)
-    Tcgen05View = partial(_make_instruction, instructions.Tcgen05ViewInst)
-    Tcgen05Load = partial(_make_instruction, instructions.Tcgen05LoadInst)
-    Tcgen05Store = partial(_make_instruction, instructions.Tcgen05StoreInst)
-    Tcgen05Wait = partial(_make_instruction, instructions.Tcgen05WaitInst)
-    Tcgen05Copy = partial(_make_instruction, instructions.Tcgen05CopyInst)
-    Tcgen05Commit = partial(_make_instruction, instructions.Tcgen05CommitInst)
-    Tcgen05MmaSS = partial(_make_instruction, instructions.Tcgen05MmaSSInst)
-    Tcgen05MmaTS = partial(_make_instruction, instructions.Tcgen05MmaTSInst)
-    WgmmaFence = partial(_make_instruction, instructions.WgmmaFenceInst)
-    WgmmaCommitGroup = partial(_make_instruction, instructions.WgmmaCommitGroupInst)
-    WgmmaWaitGroup = partial(_make_instruction, instructions.WgmmaWaitGroupInst)
-    WgmmaMmaSS = partial(_make_instruction, instructions.WgmmaMmaSSInst)
-    WgmmaMmaRS = partial(_make_instruction, instructions.WgmmaMmaRSInst)
-    Add = partial(_make_instruction, instructions.AddInst)
-    Cast = partial(_make_instruction, instructions.CastInst)
-    Div = partial(_make_instruction, instructions.DivInst)
-    LoadGlobal = InstructionFactory(instructions.LoadGlobalInst)
-    LoadShared = InstructionFactory(instructions.LoadSharedInst)
-    Mul = partial(_make_instruction, instructions.MulInst)
-    Nop = partial(_make_instruction, instructions.NopInst)
-    Reduce = partial(_make_instruction, instructions.ReduceInst)
-    StoreGlobal = partial(_make_instruction, instructions.StoreGlobalInst)
-    StoreShared = partial(_make_instruction, instructions.StoreSharedInst)
-    Sub = partial(_make_instruction, instructions.SubInst)
-    SyncThreads = partial(_make_instruction, instructions.SyncThreadsInst)
-    AnnotateLayout = partial(_make_instruction, instructions.AnnotateLayoutInst)
-    Assume = partial(_make_instruction, instructions.AssumeInst)
+    LockSemaphore = instructions.LockSemaphoreInst
+    ReleaseSemaphore = instructions.ReleaseSemaphoreInst
+    SimtDot = instructions.SimtDotInst
+    Tcgen05Alloc = instructions.Tcgen05AllocInst
+    Tcgen05Dealloc = instructions.Tcgen05DeallocInst
+    Tcgen05RelinquishAllocPermit = instructions.Tcgen05RelinquishAllocPermitInst
+    Tcgen05Slice = instructions.Tcgen05SliceInst
+    Tcgen05View = instructions.Tcgen05ViewInst
+    Tcgen05Load = instructions.Tcgen05LoadInst
+    Tcgen05Store = instructions.Tcgen05StoreInst
+    Tcgen05Wait = instructions.Tcgen05WaitInst
+    Tcgen05Copy = instructions.Tcgen05CopyInst
+    Tcgen05Commit = instructions.Tcgen05CommitInst
+    Tcgen05MmaSS = instructions.Tcgen05MmaSSInst
+    Tcgen05MmaTS = instructions.Tcgen05MmaTSInst
+    WgmmaFence = instructions.WgmmaFenceInst
+    WgmmaCommitGroup = instructions.WgmmaCommitGroupInst
+    WgmmaWaitGroup = instructions.WgmmaWaitGroupInst
+    WgmmaMmaSS = instructions.WgmmaMmaSSInst
+    WgmmaMmaRS = instructions.WgmmaMmaRSInst
+    Add = instructions.AddInst
+    Cast = instructions.CastInst
+    Div = instructions.DivInst
+    LoadGlobal = instructions.LoadGlobalInst
+    LoadShared = instructions.LoadSharedInst
+    Mul = instructions.MulInst
+    Nop = instructions.NopInst
+    Reduce = instructions.ReduceInst
+    StoreGlobal = instructions.StoreGlobalInst
+    StoreShared = instructions.StoreSharedInst
+    Sub = instructions.SubInst
+    SyncThreads = instructions.SyncThreadsInst
+    AnnotateLayout = instructions.AnnotateLayoutInst
+    Assume = instructions.AssumeInst
 
 
 TilusLang.__ffi_globals__ = {

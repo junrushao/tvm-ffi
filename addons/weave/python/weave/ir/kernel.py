@@ -12,6 +12,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any
 
 from tvm_ffi import dataclasses as dc
@@ -40,11 +41,27 @@ from .handles import (
 )
 
 
-@dc.py_class("weave.Kernel", structural_eq="tree")
+def _normalize_int_map(value: Any, *, field_name: str) -> dict[str, int] | None:
+    if value is None:
+        return None
+    if not isinstance(value, Mapping):
+        raise TypeError(f"{field_name} must be a mapping from str to int")
+    result: dict[str, int] = {}
+    for key, item in value.items():
+        if not isinstance(key, str):
+            raise TypeError(f"{field_name} keys must be strings, got {key!r}")
+        if isinstance(item, bool) or not isinstance(item, int):
+            raise TypeError(f"{field_name}[{key!r}] must be an integer constant")
+        result[key] = item
+    return result
+
+
+@dc.py_class("weave.Kernel", structural_eq="tree", kw_only=True)
 class Kernel(std.BaseFunc, mnemonic="weave.Kernel"):
     """A Weave kernel function."""
 
-    body: list[std.Stmt] = dc.field(default_factory=list, lang_kind="body")
+    body: list[std.Stmt] = dc.field(default_factory=list, kw_only=False, lang_kind="body")
+    constants: Any = dc.field(default=None, kw_only=False, lang_kind="arg")
     pipeline: PipelineConfig | None = dc.field(default=None, lang_kind="attr")
     warps: WarpConfig | None = dc.field(default=None, lang_kind="attr")
     grid: GridConfig | None = dc.field(default=None, lang_kind="attr")
@@ -57,7 +74,6 @@ class Kernel(std.BaseFunc, mnemonic="weave.Kernel"):
     protocols: tuple[PipelineProtocol, ...] = dc.field(default_factory=tuple, lang_kind="attr")
     phase_domains: tuple[PhaseDomain, ...] = dc.field(default_factory=tuple, lang_kind="attr")
     params: tuple[ScalarParam, ...] | None = dc.field(default=None, lang_kind="attr")
-    constants: Any = dc.field(default=None, lang_kind="attr")
     constexpr_no_default: tuple[str, ...] = dc.field(default_factory=tuple, lang_kind="attr")
     tile_params: std.Node | None = dc.field(default=None, lang_kind="attr")
     body_local_constexprs: tuple[str, ...] = dc.field(default_factory=tuple, lang_kind="attr")
@@ -90,6 +106,14 @@ class Kernel(std.BaseFunc, mnemonic="weave.Kernel"):
             object.__setattr__(self, name, tuple(getattr(self, name)))
         if self.params is not None:
             object.__setattr__(self, "params", tuple(self.params))
+        object.__setattr__(
+            self, "reg_budgets", _normalize_int_map(self.reg_budgets, field_name="reg_budgets")
+        )
+        object.__setattr__(
+            self,
+            "tma_param_ndims",
+            _normalize_int_map(self.tma_param_ndims, field_name="tma_param_ndims"),
+        )
         for stmt in self.body:
             if not isinstance(stmt, std.Stmt):
                 raise TypeError(f"Kernel body expects std.Stmt, got {type(stmt).__name__}")

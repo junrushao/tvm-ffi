@@ -108,15 +108,15 @@ def normalize_domain(value: Any, valid: Sequence[str], *, field_name: str) -> st
     return value
 
 
-def collect_fields_with_var_def_ty(obj: Any) -> std.FieldCollectionResult:
+def collect_fields_with_out_ty(obj: Any) -> std.FieldCollectionResult:
     """Collect dialect fields and print the single defined variable type as ``ty=``."""
     fields = std.collect_dialect_fields(obj)
-    var_def = list(fields.var_def)
-    ty = var_def[0].ty if len(var_def) == 1 else None
+    outs = list(fields.outs)
+    ty = outs[0].ty if len(outs) == 1 else None
     return std.FieldCollectionResult(
         args=list(fields.args),
         attrs=fields.attrs,
-        var_def=var_def,
+        outs=outs,
         body=list(fields.body),
         ty=ty,
     )
@@ -142,16 +142,12 @@ def var_with_ty_hint(var: std.Var | None, ty: Any, *, field_name: str) -> std.Va
 
 def _collect_op_fields(obj: Any) -> std.FieldCollectionResult:
     fields = std.collect_dialect_fields(obj)
-    var_def = list(fields.var_def)
-    ty = (
-        var_def[0].ty
-        if len(var_def) == 1 and not type(obj).OUTPUT_TY_INFERABLE_FROM_INPUTS
-        else None
-    )
+    outs = list(fields.outs)
+    ty = outs[0].ty if len(outs) == 1 and not type(obj).OUTPUT_TY_INFERABLE_FROM_INPUTS else None
     return std.FieldCollectionResult(
         args=list(fields.args),
         attrs=fields.attrs,
-        var_def=var_def,
+        outs=outs,
         body=list(fields.body),
         ty=ty,
     )
@@ -193,7 +189,7 @@ __all__ = [
     "MarkerNode",
     "MarkerTy",
     "Op",
-    "collect_fields_with_var_def_ty",
+    "collect_fields_with_out_ty",
     "normalize_domain",
     "normalize_dtype",
     "normalize_expr",

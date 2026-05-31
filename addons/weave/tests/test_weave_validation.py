@@ -285,6 +285,22 @@ def test_domain_validators_reject_unknown_values(ctor: Callable[[], Any]) -> Non
         pytest.param(lambda: MmaTile(1, 2, 3, k_idx=4, cta_group=3), id="mma-tile-cta"),
         pytest.param(lambda: MmaTile(1, 2, 3, k_idx=4, cta_group=True), id="mma-tile-cta-bool"),
         pytest.param(lambda: FragmentOp("add", 1, size=-1), id="fragment-size"),
+        pytest.param(
+            lambda: Kernel("k", [], None, [], reg_budgets={"mma": std.Var(i32, "n")}),
+            id="kernel-reg-budget-expr",
+        ),
+        pytest.param(
+            lambda: Kernel("k", [], None, [], reg_budgets={"mma": True}),
+            id="kernel-reg-budget-bool",
+        ),
+        pytest.param(
+            lambda: Kernel("k", [], None, [], tma_param_ndims={1: 2}),
+            id="kernel-tma-param-key",
+        ),
+        pytest.param(
+            lambda: Kernel("k", [], None, [], tma_param_ndims=std.IntImm.from_py(1)),
+            id="kernel-tma-param-map",
+        ),
     ],
 )
 def test_numeric_and_cross_field_invariants(ctor: Callable[[], Any]) -> None:

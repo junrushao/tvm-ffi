@@ -70,8 +70,8 @@ class Tcgen05Cp(Op, mnemonic="weave.Tcgen05Cp"):
 @dc.py_class("weave.PackedF32x2", structural_eq="tree")
 class PackedF32x2(Op, mnemonic="weave.PackedF32x2"):
     op: str = dc.field(lang_kind="arg")
-    inputs: list[std.Expr] = dc.field(default_factory=list, lang_kind="attr")
-    output: std.Expr | None = dc.field(default=None, lang_kind="attr")
+    inputs: list[std.Expr] = dc.field(default_factory=list, lang_kind="arg")
+    output: std.Expr | None = dc.field(default=None, lang_kind="arg")
 
     EXPR_FIELDS: ClassVar[frozenset[str]] = frozenset(("output",))
     VALID_DOMAINS: ClassVar[dict[str, tuple[str, ...]]] = {"op": PACKED_F32X2_OPS}
@@ -87,7 +87,7 @@ class PackedF32x2(Op, mnemonic="weave.PackedF32x2"):
 class FragmentOp(Op, mnemonic="weave.FragmentOp"):
     op: str = dc.field(lang_kind="arg")
     dst: std.Expr = dc.field(lang_kind="arg")
-    srcs: list[std.Expr] = dc.field(default_factory=list, lang_kind="attr")
+    srcs: list[std.Expr] = dc.field(default_factory=list, lang_kind="arg")
     size: int = dc.field(default=0, lang_kind="attr")
     dtype: Any = dc.field(default=None, lang_kind="attr")
 
@@ -109,7 +109,7 @@ class MmaTile(Op, mnemonic="weave.MmaTile"):
     a_desc: std.Expr = dc.field(lang_kind="arg")
     b_desc: std.Expr = dc.field(lang_kind="arg")
     d_tmem: std.Expr = dc.field(lang_kind="arg")
-    k_idx: std.Expr = dc.field(lang_kind="attr")
+    k_idx: std.Expr = dc.field(lang_kind="arg")
     mode: str = dc.field(default="ss", lang_kind="attr")
     cta_group: Any = dc.field(default=1, lang_kind="attr")
     a_dtype: Any = dc.field(default=None, lang_kind="attr")

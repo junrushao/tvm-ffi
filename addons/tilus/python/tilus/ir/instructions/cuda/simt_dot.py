@@ -17,26 +17,63 @@
 
 from __future__ import annotations
 
-from typing import ClassVar
+from typing import Any
 
+from tvm_ffi import std
 from tvm_ffi.dataclasses import field, py_class
 
-from ...inst import Instruction
+from ...inst import (
+    Instruction,
+    make_output_var,
+    validate_matching_lengths,
+)
 
 
 @py_class("tilus.SimtDotInst", structural_eq="tree")
 class SimtDotInst(Instruction, mnemonic="tilus.SimtDot"):
-    EXPECTED_INPUTS: ClassVar[int] = 2
-    MATCHING_ATTR_LENGTHS: ClassVar[tuple[tuple[str, str], ...]] = (
-        ("warp_spatial", "warp_repeat"),
-        ("thread_spatial", "thread_repeat"),
-        ("warp_spatial", "thread_spatial"),
-    )
-
+    lhs: std.Expr = field(lang_kind="arg")
+    rhs: std.Expr = field(lang_kind="arg")
     warp_spatial: list[int] = field(lang_kind="attr")
     warp_repeat: list[int] = field(lang_kind="attr")
     thread_spatial: list[int] = field(lang_kind="attr")
     thread_repeat: list[int] = field(lang_kind="attr")
+    output: std.Var = field(
+        kw_only=True,
+        lang_kind="out",
+        structural_eq="def-recursive",
+    )
+
+    def __init__(
+        self,
+        lhs: std.Expr,
+        rhs: std.Expr,
+        warp_spatial: list[int],
+        warp_repeat: list[int],
+        thread_spatial: list[int],
+        thread_repeat: list[int],
+        *,
+        output: std.Var | None = None,
+        ty: Any = None,
+    ) -> None:
+        output = make_output_var(output, ty)
+        self.__ffi_init__(
+            lhs,
+            rhs,
+            warp_spatial=warp_spatial,
+            warp_repeat=warp_repeat,
+            thread_spatial=thread_spatial,
+            thread_repeat=thread_repeat,
+            output=output,
+        )
+        self.__post_init__()
+
+    def outputs(self) -> tuple[std.Var, ...]:
+        return (self.output,)
+
+    def __post_init__(self) -> None:
+        validate_matching_lengths(self, "warp_spatial", "warp_repeat")
+        validate_matching_lengths(self, "thread_spatial", "thread_repeat")
+        validate_matching_lengths(self, "warp_spatial", "thread_spatial")
 
 
 __all__ = [

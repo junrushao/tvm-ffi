@@ -17,12 +17,10 @@
 
 from __future__ import annotations
 
-from typing import ClassVar
-
 from tvm_ffi import std
 from tvm_ffi.dataclasses import field, py_class
 
-from ...inst import Instruction
+from ...inst import Instruction, validate_string_attr
 
 MBARRIER_ARRIVE_SEMS = ("release", "relaxed")
 MBARRIER_WAIT_SEMS = ("acquire", "relaxed")
@@ -31,73 +29,89 @@ MBARRIER_SCOPES = ("cta", "cluster")
 
 @py_class("tilus.AllocBarrierInst", structural_eq="tree")
 class AllocBarrierInst(Instruction, mnemonic="tilus.AllocBarrier"):
-    EXPECTED_INPUTS: ClassVar[int] = 0
+    counts: list[std.Expr | None] = field(lang_kind="arg")
 
-    counts: list[std.Expr | None] = field(lang_kind="attr")
+    def outputs(self) -> tuple[std.Var, ...]:
+        return ()
 
 
 @py_class("tilus.ArriveBarrierInst", structural_eq="tree")
 class ArriveBarrierInst(Instruction, mnemonic="tilus.ArriveBarrier"):
-    EXPECTED_INPUTS: ClassVar[int] = 0
-    VALID_SEMS: ClassVar[tuple[str, ...]] = MBARRIER_ARRIVE_SEMS
-    VALID_SCOPES: ClassVar[tuple[str, ...]] = MBARRIER_SCOPES
-
-    barrier: std.Expr = field(lang_kind="attr")
-    count: std.Expr = field(lang_kind="attr")
+    barrier: std.Expr = field(lang_kind="arg")
+    count: std.Expr = field(lang_kind="arg")
     sem: str = field(default="release", lang_kind="attr")
     scope: str = field(default="cta", lang_kind="attr")
+
+    def __post_init__(self) -> None:
+        validate_string_attr(self.sem, "sem", MBARRIER_ARRIVE_SEMS)
+        validate_string_attr(self.scope, "scope", MBARRIER_SCOPES)
+
+    def outputs(self) -> tuple[std.Var, ...]:
+        return ()
 
 
 @py_class("tilus.ArriveExpectTxBarrierInst", structural_eq="tree")
 class ArriveExpectTxBarrierInst(Instruction, mnemonic="tilus.ArriveExpectTxBarrier"):
-    EXPECTED_INPUTS: ClassVar[int] = 0
-    VALID_SEMS: ClassVar[tuple[str, ...]] = MBARRIER_ARRIVE_SEMS
-    VALID_SCOPES: ClassVar[tuple[str, ...]] = MBARRIER_SCOPES
-
-    barrier: std.Expr = field(lang_kind="attr")
-    transaction_bytes: std.Expr = field(lang_kind="attr")
+    barrier: std.Expr = field(lang_kind="arg")
+    transaction_bytes: std.Expr = field(lang_kind="arg")
     sem: str = field(default="release", lang_kind="attr")
     scope: str = field(default="cta", lang_kind="attr")
+
+    def __post_init__(self) -> None:
+        validate_string_attr(self.sem, "sem", MBARRIER_ARRIVE_SEMS)
+        validate_string_attr(self.scope, "scope", MBARRIER_SCOPES)
+
+    def outputs(self) -> tuple[std.Var, ...]:
+        return ()
 
 
 @py_class("tilus.WaitBarrierInst", structural_eq="tree")
 class WaitBarrierInst(Instruction, mnemonic="tilus.WaitBarrier"):
-    EXPECTED_INPUTS: ClassVar[int] = 0
-    VALID_SEMS: ClassVar[tuple[str, ...]] = MBARRIER_WAIT_SEMS
-    VALID_SCOPES: ClassVar[tuple[str, ...]] = MBARRIER_SCOPES
-
-    barrier: std.Expr = field(lang_kind="attr")
-    phase: std.Expr = field(lang_kind="attr")
+    barrier: std.Expr = field(lang_kind="arg")
+    phase: std.Expr = field(lang_kind="arg")
     sem: str = field(default="acquire", lang_kind="attr")
     scope: str = field(default="cta", lang_kind="attr")
+
+    def __post_init__(self) -> None:
+        validate_string_attr(self.sem, "sem", MBARRIER_WAIT_SEMS)
+        validate_string_attr(self.scope, "scope", MBARRIER_SCOPES)
+
+    def outputs(self) -> tuple[std.Var, ...]:
+        return ()
 
 
 @py_class("tilus.ArriveExpectTxMulticastBarrierInst", structural_eq="tree")
 class ArriveExpectTxMulticastBarrierInst(
     Instruction, mnemonic="tilus.ArriveExpectTxMulticastBarrier"
 ):
-    EXPECTED_INPUTS: ClassVar[int] = 0
-    VALID_SEMS: ClassVar[tuple[str, ...]] = MBARRIER_ARRIVE_SEMS
-    VALID_SCOPES: ClassVar[tuple[str, ...]] = MBARRIER_SCOPES
-
-    barrier: std.Expr = field(lang_kind="attr")
-    transaction_bytes: std.Expr = field(lang_kind="attr")
+    barrier: std.Expr = field(lang_kind="arg")
+    transaction_bytes: std.Expr = field(lang_kind="arg")
     multicast: int = field(lang_kind="attr")
     sem: str = field(default="release", lang_kind="attr")
     scope: str = field(default="cta", lang_kind="attr")
 
+    def __post_init__(self) -> None:
+        validate_string_attr(self.sem, "sem", MBARRIER_ARRIVE_SEMS)
+        validate_string_attr(self.scope, "scope", MBARRIER_SCOPES)
+
+    def outputs(self) -> tuple[std.Var, ...]:
+        return ()
+
 
 @py_class("tilus.ArriveExpectTxRemoteBarrierInst", structural_eq="tree")
 class ArriveExpectTxRemoteBarrierInst(Instruction, mnemonic="tilus.ArriveExpectTxRemoteBarrier"):
-    EXPECTED_INPUTS: ClassVar[int] = 0
-    VALID_SEMS: ClassVar[tuple[str, ...]] = MBARRIER_ARRIVE_SEMS
-    VALID_SCOPES: ClassVar[tuple[str, ...]] = MBARRIER_SCOPES
-
-    barrier: std.Expr = field(lang_kind="attr")
-    transaction_bytes: std.Expr = field(lang_kind="attr")
+    barrier: std.Expr = field(lang_kind="arg")
+    transaction_bytes: std.Expr = field(lang_kind="arg")
     target_rank: int = field(lang_kind="attr")
     sem: str = field(default="release", lang_kind="attr")
     scope: str = field(default="cta", lang_kind="attr")
+
+    def __post_init__(self) -> None:
+        validate_string_attr(self.sem, "sem", MBARRIER_ARRIVE_SEMS)
+        validate_string_attr(self.scope, "scope", MBARRIER_SCOPES)
+
+    def outputs(self) -> tuple[std.Var, ...]:
+        return ()
 
 
 __all__ = [  # noqa: RUF022

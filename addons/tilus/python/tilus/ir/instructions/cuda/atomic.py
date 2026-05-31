@@ -17,11 +17,10 @@
 
 from __future__ import annotations
 
-from typing import ClassVar
-
+from tvm_ffi import std
 from tvm_ffi.dataclasses import field, py_class
 
-from ...inst import Instruction
+from ...inst import Instruction, validate_string_attr
 
 ATOMIC_OPS = (
     "add",
@@ -43,52 +42,72 @@ ATOMIC_SCOPES = ("cta", "cluster", "gpu", "sys")
 
 @py_class("tilus.AtomicSharedInst", structural_eq="tree")
 class AtomicSharedInst(Instruction, mnemonic="tilus.AtomicShared"):
-    EXPECTED_INPUTS: ClassVar[int] = 2
-    VALID_OPS: ClassVar[tuple[str, ...]] = ATOMIC_OPS
-    VALID_SEMS: ClassVar[tuple[str, ...]] = ATOMIC_SEMS
-    VALID_SCOPES: ClassVar[tuple[str, ...]] = ATOMIC_SCOPES
-
+    ptr: std.Expr = field(lang_kind="arg")
+    value: std.Expr = field(lang_kind="arg")
     op: str = field(lang_kind="attr")
     sem: str = field(default="relaxed", lang_kind="attr")
     scope: str = field(default="cta", lang_kind="attr")
+
+    def __post_init__(self) -> None:
+        validate_string_attr(self.op, "op", ATOMIC_OPS)
+        validate_string_attr(self.sem, "sem", ATOMIC_SEMS)
+        validate_string_attr(self.scope, "scope", ATOMIC_SCOPES)
+
+    def outputs(self) -> tuple[std.Var, ...]:
+        return ()
 
 
 @py_class("tilus.AtomicGlobalInst", structural_eq="tree")
 class AtomicGlobalInst(Instruction, mnemonic="tilus.AtomicGlobal"):
-    EXPECTED_INPUTS: ClassVar[int] = 2
-    VALID_OPS: ClassVar[tuple[str, ...]] = ATOMIC_OPS
-    VALID_SEMS: ClassVar[tuple[str, ...]] = ATOMIC_SEMS
-    VALID_SCOPES: ClassVar[tuple[str, ...]] = ATOMIC_SCOPES
-
+    ptr: std.Expr = field(lang_kind="arg")
+    value: std.Expr = field(lang_kind="arg")
     op: str = field(lang_kind="attr")
     sem: str = field(default="relaxed", lang_kind="attr")
     scope: str = field(default="gpu", lang_kind="attr")
 
+    def __post_init__(self) -> None:
+        validate_string_attr(self.op, "op", ATOMIC_OPS)
+        validate_string_attr(self.sem, "sem", ATOMIC_SEMS)
+        validate_string_attr(self.scope, "scope", ATOMIC_SCOPES)
+
+    def outputs(self) -> tuple[std.Var, ...]:
+        return ()
+
 
 @py_class("tilus.AtomicScatterSharedInst", structural_eq="tree")
 class AtomicScatterSharedInst(Instruction, mnemonic="tilus.AtomicScatterShared"):
-    EXPECTED_INPUTS: ClassVar[int] = 2
-    VALID_OPS: ClassVar[tuple[str, ...]] = ("add", "sub", "min", "max")
-    VALID_SEMS: ClassVar[tuple[str, ...]] = ATOMIC_SEMS
-    VALID_SCOPES: ClassVar[tuple[str, ...]] = ATOMIC_SCOPES
-
+    ptr: std.Expr = field(lang_kind="arg")
+    value: std.Expr = field(lang_kind="arg")
     op: str = field(lang_kind="attr")
     dim: int = field(lang_kind="attr")
     sem: str = field(default="relaxed", lang_kind="attr")
     scope: str = field(default="cta", lang_kind="attr")
 
+    def __post_init__(self) -> None:
+        validate_string_attr(self.op, "op", ("add", "sub", "min", "max"))
+        validate_string_attr(self.sem, "sem", ATOMIC_SEMS)
+        validate_string_attr(self.scope, "scope", ATOMIC_SCOPES)
+
+    def outputs(self) -> tuple[std.Var, ...]:
+        return ()
+
 
 @py_class("tilus.AtomicScatterGlobalInst", structural_eq="tree")
 class AtomicScatterGlobalInst(Instruction, mnemonic="tilus.AtomicScatterGlobal"):
-    EXPECTED_INPUTS: ClassVar[int] = 2
-    VALID_OPS: ClassVar[tuple[str, ...]] = ("add", "sub", "min", "max")
-    VALID_SEMS: ClassVar[tuple[str, ...]] = ATOMIC_SEMS
-    VALID_SCOPES: ClassVar[tuple[str, ...]] = ATOMIC_SCOPES
-
+    ptr: std.Expr = field(lang_kind="arg")
+    value: std.Expr = field(lang_kind="arg")
     op: str = field(lang_kind="attr")
     dim: int = field(lang_kind="attr")
     sem: str = field(default="relaxed", lang_kind="attr")
     scope: str = field(default="gpu", lang_kind="attr")
+
+    def __post_init__(self) -> None:
+        validate_string_attr(self.op, "op", ("add", "sub", "min", "max"))
+        validate_string_attr(self.sem, "sem", ATOMIC_SEMS)
+        validate_string_attr(self.scope, "scope", ATOMIC_SCOPES)
+
+    def outputs(self) -> tuple[std.Var, ...]:
+        return ()
 
 
 __all__ = [  # noqa: RUF022

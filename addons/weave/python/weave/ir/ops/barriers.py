@@ -44,7 +44,7 @@ class BarrierTryWait(Op, mnemonic="weave.BarrierTryWait"):
     barrier: BarrierHandle = dc.field(lang_kind="arg")
     stage: std.Expr = dc.field(lang_kind="arg")
     phase: std.Expr = dc.field(lang_kind="arg")
-    dst: std.Var = dc.field(lang_kind="var_def", structural_eq="def-recursive")
+    dst: std.Var = dc.field(lang_kind="out", structural_eq="def-recursive")
     stage_is_deterministic: bool = dc.field(default=True, lang_kind="attr")
 
     EXPR_FIELDS: ClassVar[frozenset[str]] = frozenset(("stage", "phase"))
@@ -86,7 +86,7 @@ class BarrierWait(Op, mnemonic="weave.BarrierWait"):
     barrier: BarrierHandle = dc.field(lang_kind="arg")
     stage: std.Expr = dc.field(lang_kind="arg")
     phase: std.Expr = dc.field(lang_kind="arg")
-    token: std.Expr | None = dc.field(default=None, lang_kind="attr")
+    token: std.Expr | None = dc.field(default=None, lang_kind="arg")
     stage_is_deterministic: bool = dc.field(default=True, lang_kind="attr")
 
     EXPR_FIELDS: ClassVar[frozenset[str]] = frozenset(("stage", "phase", "token"))
@@ -101,8 +101,8 @@ class BarrierSignal(Op, mnemonic="weave.BarrierSignal"):
     barrier: BarrierHandle = dc.field(lang_kind="arg")
     action: str = dc.field(lang_kind="arg")
     stage: std.Expr = dc.field(lang_kind="arg")
-    tx_bytes: std.Expr | None = dc.field(default=None, lang_kind="attr")
-    arrive_count: std.Expr | None = dc.field(default=None, lang_kind="attr")
+    tx_bytes: std.Expr | None = dc.field(default=None, lang_kind="arg")
+    arrive_count: std.Expr | None = dc.field(default=None, lang_kind="arg")
     cta_group: Any = dc.field(default=1, lang_kind="attr")
     cluster: bool = dc.field(default=False, lang_kind="attr")
     stage_is_deterministic: bool = dc.field(default=True, lang_kind="attr")
@@ -212,7 +212,7 @@ class GridDepLaunch(Op, mnemonic="weave.GridDepLaunch"):
 class ClusterMapa(Op, mnemonic="weave.ClusterMapa"):
     src_addr: std.Expr = dc.field(lang_kind="arg")
     peer_rank: std.Expr = dc.field(lang_kind="arg")
-    dst: std.Var = dc.field(lang_kind="var_def", structural_eq="def-recursive")
+    dst: std.Var = dc.field(lang_kind="out", structural_eq="def-recursive")
 
     EXPR_FIELDS: ClassVar[frozenset[str]] = frozenset(("src_addr", "peer_rank"))
 
@@ -243,8 +243,8 @@ class ClusterMapa(Op, mnemonic="weave.ClusterMapa"):
 @dc.py_class("weave.ClusterBarrierArrive", structural_eq="tree")
 class ClusterBarrierArrive(Op, mnemonic="weave.ClusterBarrierArrive"):
     barrier: std.Expr = dc.field(lang_kind="arg")
-    tx_count: std.Expr | None = dc.field(default=None, lang_kind="attr")
-    peer_rank: std.Expr | None = dc.field(default=None, lang_kind="attr")
+    tx_count: std.Expr | None = dc.field(default=None, lang_kind="arg")
+    peer_rank: std.Expr | None = dc.field(default=None, lang_kind="arg")
 
     EXPR_FIELDS: ClassVar[frozenset[str]] = frozenset(("barrier", "tx_count", "peer_rank"))
 
@@ -254,8 +254,8 @@ class CpAsyncBulkSmem2SmemCluster(Op, mnemonic="weave.CpAsyncBulkSmem2SmemCluste
     dst_addr: std.Expr = dc.field(lang_kind="arg")
     src_addr: std.Expr = dc.field(lang_kind="arg")
     bytes: std.Expr = dc.field(lang_kind="arg")
-    barrier: BarrierHandle | None = dc.field(default=None, lang_kind="attr")
-    mbar_addr: std.Expr | None = dc.field(default=None, lang_kind="attr")
+    barrier: BarrierHandle | None = dc.field(default=None, lang_kind="arg")
+    mbar_addr: std.Expr | None = dc.field(default=None, lang_kind="arg")
 
     EXPR_FIELDS: ClassVar[frozenset[str]] = frozenset(
         ("dst_addr", "src_addr", "bytes", "mbar_addr")
@@ -271,7 +271,7 @@ class CpAsyncBulkSmem2SmemCluster(Op, mnemonic="weave.CpAsyncBulkSmem2SmemCluste
 class WarpReduce(Op, mnemonic="weave.WarpReduce"):
     val: std.Expr = dc.field(lang_kind="arg")
     op: str = dc.field(default="add", lang_kind="attr")
-    dst: std.Var | None = dc.field(default=None, lang_kind="var_def", structural_eq="def-recursive")
+    dst: std.Var | None = dc.field(default=None, lang_kind="out", structural_eq="def-recursive")
 
     EXPR_FIELDS: ClassVar[frozenset[str]] = frozenset(("val",))
     VALID_DOMAINS: ClassVar[dict[str, tuple[str, ...]]] = {"op": REDUCE_OPS}
@@ -320,7 +320,7 @@ class BlockReduce(Op, mnemonic="weave.BlockReduce"):
 class CrossWarpReduce(Op, mnemonic="weave.CrossWarpReduce"):
     src: std.Expr = dc.field(lang_kind="arg")
     smem: std.Expr = dc.field(lang_kind="arg")
-    dst: std.Var = dc.field(lang_kind="var_def", structural_eq="def-recursive")
+    dst: std.Var = dc.field(lang_kind="out", structural_eq="def-recursive")
     op: str = dc.field(default="add", lang_kind="attr")
     finalize: str = dc.field(default="none", lang_kind="attr")
 
@@ -362,7 +362,7 @@ class CrossWarpReduce(Op, mnemonic="weave.CrossWarpReduce"):
 class WarpGroupReduce(Op, mnemonic="weave.WarpGroupReduce"):
     src: std.Expr = dc.field(lang_kind="arg")
     smem: std.Expr = dc.field(lang_kind="arg")
-    dst: std.Var = dc.field(lang_kind="var_def", structural_eq="def-recursive")
+    dst: std.Var = dc.field(lang_kind="out", structural_eq="def-recursive")
     op: str = dc.field(default="add", lang_kind="attr")
     num_warp_groups: int = dc.field(default=2, lang_kind="attr")
 
@@ -400,9 +400,9 @@ class WarpGroupReduce(Op, mnemonic="weave.WarpGroupReduce"):
 @dc.py_class("weave.StAsync", structural_eq="tree")
 class StAsync(Op, mnemonic="weave.StAsync"):
     dst_addr: std.Expr = dc.field(lang_kind="arg")
-    srcs: list[std.Expr] = dc.field(default_factory=list, lang_kind="attr")
+    srcs: list[std.Expr] = dc.field(default_factory=list, lang_kind="arg")
+    barrier: std.Expr | None = dc.field(default=None, lang_kind="arg")
     bytes: int = dc.field(default=8, lang_kind="attr")
-    barrier: std.Expr | None = dc.field(default=None, lang_kind="attr")
     src_is_int: bool = dc.field(default=False, lang_kind="attr")
 
     EXPR_FIELDS: ClassVar[frozenset[str]] = frozenset(("dst_addr", "barrier"))

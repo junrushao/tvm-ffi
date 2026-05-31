@@ -23,19 +23,7 @@ from collections.abc import Sequence
 from tvm_ffi import dataclasses as dc
 from tvm_ffi import std, structural_equal
 
-from .inst import Instruction
 from .tensor import Tensor
-
-
-def _check_tensor_var(var: std.Var, field_name: str) -> None:
-    if not isinstance(var.ty, Tensor):
-        raise TypeError(f"{field_name} must be a std.Var whose ty is a Tilus Tensor")
-
-
-def _check_tensor_binding(tensor: Tensor, var: std.Var) -> None:
-    _check_tensor_var(var, "var")
-    if not structural_equal(var.ty, tensor):
-        raise TypeError("var.ty must match tensor")
 
 
 @dc.py_class("tilus.ThreadGroup", structural_eq="tree")
@@ -56,7 +44,7 @@ class Evaluate(std.Stmt, mnemonic="tilus.Eval"):
     """Evaluate an expression for side effects, optionally predicated."""
 
     expr: std.Expr = dc.field(lang_kind="arg")
-    pred: std.Expr | None = dc.field(default=None, lang_kind="attr")
+    pred: std.Expr | None = dc.field(default=None, lang_kind="arg")
 
 
 @dc.py_class("tilus.TensorItemPtr", structural_eq="tree")
@@ -64,7 +52,7 @@ class TensorItemPtr(std.BaseVarDef, mnemonic="tilus.TensorItemPtr"):
     """Bind a pointer to a tensor item."""
 
     tensor: Tensor = dc.field(lang_kind="arg")
-    var: std.Var = dc.field(lang_kind="var_def", structural_eq="def-recursive")
+    var: std.Var = dc.field(lang_kind="out", structural_eq="def-recursive")
     space: str | None = dc.field(default=None, lang_kind="attr")
 
     def __post_init__(self) -> None:
@@ -73,10 +61,9 @@ class TensorItemPtr(std.BaseVarDef, mnemonic="tilus.TensorItemPtr"):
     def __ffi_update_var_name__(self, *name: str) -> tuple[std.Var, ...]:
         if len(name) != 1:
             raise TypeError(f"expected 1 binding target(s), got {len(name)}")
-        var = std.Var(self.var.ty, name[0])
-        object.__setattr__(self, "var", var)
+        self.var.name = name[0]
         self.__post_init__()
-        return (var,)
+        return (self.var,)
 
 
 @dc.py_class("tilus.TensorItemValue", structural_eq="tree")
@@ -84,7 +71,7 @@ class TensorItemValue(std.BaseVarDef, mnemonic="tilus.TensorItemValue"):
     """Bind the scalar value of a tensor item."""
 
     tensor: Tensor = dc.field(lang_kind="arg")
-    var: std.Var = dc.field(lang_kind="var_def", structural_eq="def-recursive")
+    var: std.Var = dc.field(lang_kind="out", structural_eq="def-recursive")
 
     def __post_init__(self) -> None:
         _check_tensor_binding(self.tensor, self.var)
@@ -92,21 +79,9 @@ class TensorItemValue(std.BaseVarDef, mnemonic="tilus.TensorItemValue"):
     def __ffi_update_var_name__(self, *name: str) -> tuple[std.Var, ...]:
         if len(name) != 1:
             raise TypeError(f"expected 1 binding target(s), got {len(name)}")
-        var = std.Var(self.var.ty, name[0])
-        object.__setattr__(self, "var", var)
+        self.var.name = name[0]
         self.__post_init__()
-        return (var,)
-
-
-@dc.py_class("tilus.Inst", structural_eq="tree")
-class InstStmt(std.Stmt, mnemonic="tilus.Inst"):
-    """Execute a Tilus instruction."""
-
-    inst: Instruction = dc.field(lang_kind="arg")
-
-    def __post_init__(self) -> None:
-        if not isinstance(self.inst, Instruction):
-            raise TypeError("inst must be a Tilus Instruction")
+        return (self.var,)
 
 
 def thread_group(
@@ -118,9 +93,15 @@ def thread_group(
     return ThreadGroup(thread_begin, num_threads, list(body or ()))
 
 
+def _check_tensor_binding(tensor: Tensor, var: std.Var) -> None:
+    if not isinstance(var.ty, Tensor):
+        raise TypeError("`var` must be a std.Var whose ty is a Tilus Tensor")
+    if not structural_equal(var.ty, tensor):
+        raise TypeError("var.ty must match tensor")
+
+
 __all__ = [
     "Evaluate",
-    "InstStmt",
     "TensorItemPtr",
     "TensorItemValue",
     "ThreadGroup",

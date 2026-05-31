@@ -24,12 +24,22 @@ ELEMENTWISE_OPS = ("fma", "mul", "add", "sub", "fmax", "exp", "bitmask")
 
 @dc.py_class("weave.Elementwise", structural_eq="tree")
 class Elementwise(Op, mnemonic="weave.Elementwise"):
+    inputs: list[std.Expr] = dc.field(default_factory=list, lang_kind="arg")
+    output: std.Expr | None = dc.field(default=None, lang_kind="arg")
     op: str = dc.field(lang_kind="attr")
-    inputs: list[std.Expr] = dc.field(default_factory=list, lang_kind="attr")
-    output: std.Expr | None = dc.field(default=None, lang_kind="attr")
 
     EXPR_FIELDS: ClassVar[frozenset[str]] = frozenset(("output",))
     VALID_DOMAINS: ClassVar[dict[str, tuple[str, ...]]] = {"op": ELEMENTWISE_OPS}
+
+    def __init__(
+        self,
+        inputs: list[std.Expr] | None = None,
+        output: std.Expr | None = None,
+        *,
+        op: str,
+    ) -> None:
+        self.__ffi_init__(inputs=inputs or [], output=output, op=op)
+        self.__post_init__()
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -42,10 +52,10 @@ class Elementwise(Op, mnemonic="weave.Elementwise"):
 class PredicatedStore(Op, mnemonic="weave.PredicatedStore"):
     dst: std.Expr = dc.field(lang_kind="arg")
     src: std.Expr = dc.field(lang_kind="arg")
-    bound_m: std.Expr = dc.field(lang_kind="attr")
-    bound_n: std.Expr = dc.field(lang_kind="attr")
-    tile_offset_m: std.Expr = dc.field(lang_kind="attr")
-    tile_offset_n: std.Expr = dc.field(lang_kind="attr")
+    bound_m: std.Expr = dc.field(lang_kind="arg")
+    bound_n: std.Expr = dc.field(lang_kind="arg")
+    tile_offset_m: std.Expr = dc.field(lang_kind="arg")
+    tile_offset_n: std.Expr = dc.field(lang_kind="arg")
 
     EXPR_FIELDS: ClassVar[frozenset[str]] = frozenset(
         ("dst", "src", "bound_m", "bound_n", "tile_offset_m", "tile_offset_n")
@@ -70,8 +80,8 @@ class ThreshMask(Op, mnemonic="weave.ThreshMask"):
 class BitmaskFill(Op, mnemonic="weave.BitmaskFill"):
     array: std.Expr = dc.field(lang_kind="arg")
     mask: std.Expr = dc.field(lang_kind="arg")
-    fill_value: std.Expr | None = dc.field(default=None, lang_kind="attr")
-    offset: std.Expr | None = dc.field(default=None, lang_kind="attr")
+    fill_value: std.Expr | None = dc.field(default=None, lang_kind="arg")
+    offset: std.Expr | None = dc.field(default=None, lang_kind="arg")
     count: int = dc.field(default=32, lang_kind="attr")
 
     EXPR_FIELDS: ClassVar[frozenset[str]] = frozenset(("array", "mask", "fill_value", "offset"))
@@ -86,9 +96,9 @@ class BitmaskFill(Op, mnemonic="weave.BitmaskFill"):
 class MaskFill(Op, mnemonic="weave.MaskFill"):
     array: std.Expr = dc.field(lang_kind="arg")
     fill: std.Expr = dc.field(lang_kind="arg")
+    lo: std.Expr | None = dc.field(default=None, lang_kind="arg")
+    hi: std.Expr | None = dc.field(default=None, lang_kind="arg")
     size: int = dc.field(default=0, lang_kind="attr")
-    lo: std.Expr | None = dc.field(default=None, lang_kind="attr")
-    hi: std.Expr | None = dc.field(default=None, lang_kind="attr")
 
     EXPR_FIELDS: ClassVar[frozenset[str]] = frozenset(("array", "fill", "lo", "hi"))
 
@@ -102,12 +112,32 @@ class MaskFill(Op, mnemonic="weave.MaskFill"):
 class RegArrayCast(Op, mnemonic="weave.RegArrayCast"):
     src: std.Expr = dc.field(lang_kind="arg")
     dst: std.Expr = dc.field(lang_kind="arg")
+    offset: std.Expr | None = dc.field(default=None, lang_kind="arg")
     src_dtype: Any = dc.field(lang_kind="attr")
     dst_dtype: Any = dc.field(lang_kind="attr")
     count: int = dc.field(default=0, lang_kind="attr")
-    offset: std.Expr | None = dc.field(default=None, lang_kind="attr")
 
     EXPR_FIELDS: ClassVar[frozenset[str]] = frozenset(("src", "dst", "offset"))
+
+    def __init__(
+        self,
+        src: std.Expr,
+        dst: std.Expr,
+        offset: std.Expr | None = None,
+        *,
+        src_dtype: Any,
+        dst_dtype: Any,
+        count: int = 0,
+    ) -> None:
+        self.__ffi_init__(
+            src=src,
+            dst=dst,
+            offset=offset,
+            src_dtype=src_dtype,
+            dst_dtype=dst_dtype,
+            count=count,
+        )
+        self.__post_init__()
 
     def __post_init__(self) -> None:
         super().__post_init__()

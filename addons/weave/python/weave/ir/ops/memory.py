@@ -31,7 +31,7 @@ SmemBufferRef = StringLike | BufferRef | SmemView
 @dc.py_class("weave.BuiltinVar", structural_eq="tree")
 class BuiltinVar(Op, mnemonic="weave.BuiltinVar"):
     name: str = dc.field(lang_kind="arg")
-    dst: std.Expr | None = dc.field(default=None, lang_kind="attr")
+    dst: std.Expr | None = dc.field(default=None, lang_kind="arg")
 
     EXPR_FIELDS: ClassVar[frozenset[str]] = frozenset(("dst",))
 
@@ -39,12 +39,12 @@ class BuiltinVar(Op, mnemonic="weave.BuiltinVar"):
 @dc.py_class("weave.TmemRegionLoad", structural_eq="tree")
 class TmemRegionLoad(Op, mnemonic="weave.TmemRegionLoad"):
     region: TmemRegionRef = dc.field(lang_kind="arg")
-    dst: std.Expr | None = dc.field(default=None, lang_kind="attr")
-    col_offset: std.Expr | None = dc.field(default=None, lang_kind="attr")
+    dst: std.Expr | None = dc.field(default=None, lang_kind="arg")
+    col_offset: std.Expr | None = dc.field(default=None, lang_kind="arg")
+    row_base: std.Expr | None = dc.field(default=None, lang_kind="arg")
     num: int = dc.field(default=16, lang_kind="attr")
     dst_offset: int = dc.field(default=0, lang_kind="attr")
     wait: bool = dc.field(default=True, lang_kind="attr")
-    row_base: std.Expr | None = dc.field(default=None, lang_kind="attr")
 
     EXPR_FIELDS: ClassVar[frozenset[str]] = frozenset(("dst", "col_offset", "row_base"))
 
@@ -57,11 +57,11 @@ class TmemRegionLoad(Op, mnemonic="weave.TmemRegionLoad"):
 @dc.py_class("weave.TmemRegionStore", structural_eq="tree")
 class TmemRegionStore(Op, mnemonic="weave.TmemRegionStore"):
     region: TmemRegionRef = dc.field(lang_kind="arg")
-    src: std.Expr | None = dc.field(default=None, lang_kind="attr")
-    col_offset: std.Expr | None = dc.field(default=None, lang_kind="attr")
+    src: std.Expr | None = dc.field(default=None, lang_kind="arg")
+    col_offset: std.Expr | None = dc.field(default=None, lang_kind="arg")
+    row_base: std.Expr | None = dc.field(default=None, lang_kind="arg")
     num: int = dc.field(default=8, lang_kind="attr")
     dtype: Any = dc.field(default=None, lang_kind="attr")
-    row_base: std.Expr | None = dc.field(default=None, lang_kind="attr")
 
     EXPR_FIELDS: ClassVar[frozenset[str]] = frozenset(("src", "col_offset", "row_base"))
 
@@ -75,11 +75,11 @@ class TmemRegionStore(Op, mnemonic="weave.TmemRegionStore"):
 @dc.py_class("weave.SmemDesc", structural_eq="tree")
 class SmemDesc(Op, mnemonic="weave.SmemDesc"):
     buffer: SmemBufferRef = dc.field(lang_kind="arg")
-    k_idx: std.Expr | None = dc.field(default=None, lang_kind="attr")
+    k_idx: std.Expr | None = dc.field(default=None, lang_kind="arg")
+    dst: std.Expr | None = dc.field(default=None, lang_kind="arg")
+    step: std.Expr | None = dc.field(default=None, lang_kind="arg")
+    offset: std.Expr | None = dc.field(default=None, lang_kind="arg")
     mode: str = dc.field(default="k", lang_kind="attr")
-    dst: std.Expr | None = dc.field(default=None, lang_kind="attr")
-    step: std.Expr | None = dc.field(default=None, lang_kind="attr")
-    offset: std.Expr | None = dc.field(default=None, lang_kind="attr")
 
     EXPR_FIELDS: ClassVar[frozenset[str]] = frozenset(("k_idx", "dst", "step", "offset"))
     VALID_DOMAINS: ClassVar[dict[str, tuple[str, ...]]] = {"mode": SMEM_DESC_MODES}
@@ -89,13 +89,35 @@ class SmemDesc(Op, mnemonic="weave.SmemDesc"):
 class GmemLoad(Op, mnemonic="weave.GmemLoad"):
     src: std.Expr = dc.field(lang_kind="arg")
     dst: std.Expr = dc.field(lang_kind="arg")
+    dst_offset: std.Expr | None = dc.field(default=None, lang_kind="arg")
+    index: std.Expr | None = dc.field(default=None, lang_kind="arg")
     count: int = dc.field(lang_kind="attr")
     dtype: Any = dc.field(lang_kind="attr")
     dst_dtype: Any = dc.field(lang_kind="attr")
-    dst_offset: std.Expr | None = dc.field(default=None, lang_kind="attr")
-    index: std.Expr | None = dc.field(default=None, lang_kind="attr")
 
     EXPR_FIELDS: ClassVar[frozenset[str]] = frozenset(("src", "dst", "dst_offset", "index"))
+
+    def __init__(
+        self,
+        src: std.Expr,
+        dst: std.Expr,
+        dst_offset: std.Expr | None = None,
+        index: std.Expr | None = None,
+        *,
+        count: int,
+        dtype: Any,
+        dst_dtype: Any,
+    ) -> None:
+        self.__ffi_init__(
+            src=src,
+            dst=dst,
+            dst_offset=dst_offset,
+            index=index,
+            count=count,
+            dtype=dtype,
+            dst_dtype=dst_dtype,
+        )
+        self.__post_init__()
 
     def __post_init__(self) -> None:
         super().__post_init__()
@@ -109,18 +131,44 @@ class GmemLoad(Op, mnemonic="weave.GmemLoad"):
 class GmemStore(Op, mnemonic="weave.GmemStore"):
     src: std.Expr = dc.field(lang_kind="arg")
     dst: std.Expr = dc.field(lang_kind="arg")
+    src_offset: std.Expr | None = dc.field(default=None, lang_kind="arg")
+    index: std.Expr | None = dc.field(default=None, lang_kind="arg")
+    scale: std.Expr | None = dc.field(default=None, lang_kind="arg")
     count: int = dc.field(lang_kind="attr")
     dtype: Any = dc.field(lang_kind="attr")
     src_dtype: Any = dc.field(lang_kind="attr")
-    src_offset: std.Expr | None = dc.field(default=None, lang_kind="attr")
-    index: std.Expr | None = dc.field(default=None, lang_kind="attr")
-    scale: std.Expr | None = dc.field(default=None, lang_kind="attr")
     cache_hint: str = dc.field(default="none", lang_kind="attr")
 
     EXPR_FIELDS: ClassVar[frozenset[str]] = frozenset(
         ("src", "dst", "src_offset", "index", "scale")
     )
     VALID_DOMAINS: ClassVar[dict[str, tuple[str, ...]]] = {"cache_hint": GMEM_CACHE_HINTS}
+
+    def __init__(
+        self,
+        src: std.Expr,
+        dst: std.Expr,
+        src_offset: std.Expr | None = None,
+        index: std.Expr | None = None,
+        scale: std.Expr | None = None,
+        *,
+        count: int,
+        dtype: Any,
+        src_dtype: Any,
+        cache_hint: str = "none",
+    ) -> None:
+        self.__ffi_init__(
+            src=src,
+            dst=dst,
+            src_offset=src_offset,
+            index=index,
+            scale=scale,
+            count=count,
+            dtype=dtype,
+            src_dtype=src_dtype,
+            cache_hint=cache_hint,
+        )
+        self.__post_init__()
 
     def __post_init__(self) -> None:
         super().__post_init__()
@@ -134,8 +182,8 @@ class GmemStore(Op, mnemonic="weave.GmemStore"):
 class SmemStore(Op, mnemonic="weave.SmemStore"):
     src: std.Expr = dc.field(lang_kind="arg")
     dst: std.Expr = dc.field(lang_kind="arg")
-    predicate: std.Expr | None = dc.field(default=None, lang_kind="attr")
-    index: std.Expr | None = dc.field(default=None, lang_kind="attr")
+    predicate: std.Expr | None = dc.field(default=None, lang_kind="arg")
+    index: std.Expr | None = dc.field(default=None, lang_kind="arg")
 
     EXPR_FIELDS: ClassVar[frozenset[str]] = frozenset(("src", "dst", "predicate", "index"))
 
@@ -151,8 +199,8 @@ class SmemLoad(Op, mnemonic="weave.SmemLoad"):
 @dc.py_class("weave.SmemRead", structural_eq="tree")
 class SmemRead(Op, mnemonic="weave.SmemRead"):
     src: std.Expr = dc.field(lang_kind="arg")
-    dst: std.Expr | None = dc.field(default=None, lang_kind="attr")
-    index: std.Expr | None = dc.field(default=None, lang_kind="attr")
+    dst: std.Expr | None = dc.field(default=None, lang_kind="arg")
+    index: std.Expr | None = dc.field(default=None, lang_kind="arg")
 
     EXPR_FIELDS: ClassVar[frozenset[str]] = frozenset(("src", "dst", "index"))
 
@@ -177,7 +225,7 @@ class SmemLoadRegs(Op, mnemonic="weave.SmemLoadRegs"):
 class SmemWrite(Op, mnemonic="weave.SmemWrite"):
     src: std.Expr = dc.field(lang_kind="arg")
     dst: std.Expr = dc.field(lang_kind="arg")
-    index: std.Expr | None = dc.field(default=None, lang_kind="attr")
+    index: std.Expr | None = dc.field(default=None, lang_kind="arg")
 
     EXPR_FIELDS: ClassVar[frozenset[str]] = frozenset(("src", "dst", "index"))
 
@@ -186,8 +234,8 @@ class SmemWrite(Op, mnemonic="weave.SmemWrite"):
 class SmemLoadVec(Op, mnemonic="weave.SmemLoadVec"):
     dst: std.Expr = dc.field(lang_kind="arg")
     src_addr: std.Expr = dc.field(lang_kind="arg")
+    dst_offset: std.Expr | None = dc.field(default=None, lang_kind="arg")
     count: int = dc.field(default=1, lang_kind="attr")
-    dst_offset: std.Expr | None = dc.field(default=None, lang_kind="attr")
 
     EXPR_FIELDS: ClassVar[frozenset[str]] = frozenset(("dst", "src_addr", "dst_offset"))
 
@@ -228,9 +276,9 @@ class TmaGatherLoad(Op, mnemonic="weave.TmaGatherLoad"):
     src: std.Expr = dc.field(lang_kind="arg")
     dst: std.Expr = dc.field(lang_kind="arg")
     page_table: std.Expr = dc.field(lang_kind="arg")
+    mbar_expr: std.Expr | None = dc.field(default=None, lang_kind="arg")
+    token_offset: std.Expr | None = dc.field(default=None, lang_kind="arg")
     tokens_per_page: int = dc.field(default=64, lang_kind="attr")
-    mbar_expr: std.Expr | None = dc.field(default=None, lang_kind="attr")
-    token_offset: std.Expr | None = dc.field(default=None, lang_kind="attr")
 
     EXPR_FIELDS: ClassVar[frozenset[str]] = frozenset(
         ("src", "dst", "page_table", "mbar_expr", "token_offset")

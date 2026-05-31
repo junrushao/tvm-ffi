@@ -86,7 +86,7 @@ _PENDING_CLASSES: list[_PendingClass] = []
 #: variable by Python.
 _PY_CLASS_BY_MODULE: dict[str, dict[str, type]] = {}
 
-_VALID_DIALECT_LANG_KINDS = frozenset({"arg", "attr", "var_def", "body"})
+_VALID_DIALECT_LANG_KINDS = frozenset({"arg", "attr", "out", "body"})
 
 # ---------------------------------------------------------------------------
 # Phase 1: type registration

@@ -18,181 +18,337 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
-from typing import Any, ClassVar
+from typing import Any
 
 from tvm_ffi import dataclasses as dc
 from tvm_ffi import std
 from tvm_ffi.core import MISSING
+from tvm_ffi.structural import structural_equal
 
 from .. import tensor as tensor_mod
-from ..inst import Instruction, validate_instruction_ty_hint
+from ..inst import (
+    Instruction,
+    make_output_var,
+    validate_matching_lengths,
+    validate_string_attr,
+)
 
 
 @dc.py_class("tilus.LoadGlobalInst", structural_eq="tree")
 class LoadGlobalInst(Instruction, mnemonic="tilus.LoadGlobal"):
     """Load from a global tensor into a register tensor."""
 
-    EXPECTED_INPUTS: ClassVar[int] = 1
-    MATCHING_ATTR_LENGTHS: ClassVar[tuple[tuple[str, str], ...]] = (("offsets", "dims"),)
-    TY_INPUT_INDICES: ClassVar[tuple[int, ...]] = (0,)
-
-    offsets: list[std.Expr] = dc.field(default_factory=list, lang_kind="attr")
+    src: std.Expr = dc.field(lang_kind="arg")
+    offsets: list[std.Expr] = dc.field(default_factory=list, lang_kind="arg")
     dims: list[int] = dc.field(default_factory=list, lang_kind="attr")
-
-    @staticmethod
-    def input_ty_from_output_ty(output_ty: std.Ty) -> std.Ty:
-        if isinstance(output_ty, tensor_mod.GlobalTensor):
-            return output_ty
-        if not isinstance(output_ty, tensor_mod.Tensor):
-            raise TypeError(
-                f"LoadGlobalInst `ty` must be a Tilus tensor, got {type(output_ty).__name__}"
-            )
-        return tensor_mod.GlobalTensor(output_ty.dtype, shape=tuple(output_ty.shape))
-
-    @staticmethod
-    def output_ty_from_ty_hint(ty: std.Ty) -> std.Ty:
-        if isinstance(ty, tensor_mod.GlobalTensor):
-            return tensor_mod.RegisterTensor(ty.dtype, shape=tuple(ty.shape))
-        return ty
+    output: std.Var = dc.field(
+        kw_only=True,
+        lang_kind="out",
+        structural_eq="def-recursive",
+    )
 
     def __init__(
         self,
-        inputs: Sequence[std.Expr] | None = None,
-        output: std.Var | None = None,
-        offsets: Sequence[std.Expr] | None = None,
-        dims: Sequence[int] | None = None,
+        src: std.Expr,
+        offsets: Any = MISSING,
+        dims: Any = MISSING,
         *,
-        ty: Any = MISSING,
+        output: std.Var | None = None,
+        ty: Any = None,
     ) -> None:
-        self.__ffi_init__(
-            list(inputs) if inputs is not None else [],
-            output,
-            list(offsets) if offsets is not None else [],
-            list(dims) if dims is not None else [],
-        )
+        if MISSING.is_(offsets):
+            offsets = []
+        if MISSING.is_(dims):
+            dims = []
+        if ty is not None and output is None:
+            ty = std.normalize_ty(ty)
+            if not isinstance(src, std.Var):
+                raise TypeError("LoadGlobalInst `ty` keyword requires src to be std.Var")
+            if not isinstance(ty, (tensor_mod.RegisterTensor, tensor_mod.GlobalTensor)):
+                raise TypeError(
+                    f"LoadGlobalInst `ty` must be a register or global tensor, got {type(ty).__name__}"
+                )
+            if not isinstance(src.ty, tensor_mod.GlobalTensor) or not structural_equal(
+                src.ty.dtype, ty.dtype
+            ):
+                raise TypeError(
+                    "LoadGlobalInst `ty` keyword must match src dtype and storage scope"
+                )
+            ty = (
+                tensor_mod.RegisterTensor(ty.dtype, shape=tuple(ty.shape))
+                if isinstance(ty, tensor_mod.GlobalTensor)
+                else ty
+            )
+        output = make_output_var(output, ty)
+        self.__ffi_init__(src, offsets=offsets, dims=dims, output=output)
         self.__post_init__()
-        if not MISSING.is_(ty):
-            validate_instruction_ty_hint(self, ty)
+
+    def __post_init__(self) -> None:
+        validate_matching_lengths(self, "offsets", "dims")
+
+    def outputs(self) -> tuple[std.Var, ...]:
+        return (self.output,)
 
 
 @dc.py_class("tilus.StoreGlobalInst", structural_eq="tree")
 class StoreGlobalInst(Instruction, mnemonic="tilus.StoreGlobal"):
     """Store a register tensor into a global tensor."""
 
-    EXPECTED_INPUTS: ClassVar[int] = 2
-    MATCHING_ATTR_LENGTHS: ClassVar[tuple[tuple[str, str], ...]] = (("offsets", "dims"),)
-
-    offsets: list[std.Expr] = dc.field(default_factory=list, lang_kind="attr")
+    dst: std.Expr = dc.field(lang_kind="arg")
+    value: std.Expr = dc.field(lang_kind="arg")
+    offsets: list[std.Expr] = dc.field(default_factory=list, lang_kind="arg")
     dims: list[int] = dc.field(default_factory=list, lang_kind="attr")
+
+    def __post_init__(self) -> None:
+        validate_matching_lengths(self, "offsets", "dims")
+
+    def outputs(self) -> tuple[std.Var, ...]:
+        return ()
 
 
 @dc.py_class("tilus.LoadSharedInst", structural_eq="tree")
 class LoadSharedInst(Instruction, mnemonic="tilus.LoadShared"):
     """Load from shared memory."""
 
-    EXPECTED_INPUTS: ClassVar[int] = 1
-    TY_INPUT_INDICES: ClassVar[tuple[int, ...]] = (0,)
-
-    @staticmethod
-    def input_ty_from_output_ty(output_ty: std.Ty) -> std.Ty:
-        if isinstance(output_ty, tensor_mod.SharedTensor):
-            return output_ty
-        if not isinstance(output_ty, tensor_mod.Tensor):
-            raise TypeError(
-                f"LoadSharedInst `ty` must be a Tilus tensor, got {type(output_ty).__name__}"
-            )
-        return tensor_mod.SharedTensor(output_ty.dtype, shape=tuple(output_ty.shape))
-
-    @staticmethod
-    def output_ty_from_ty_hint(ty: std.Ty) -> std.Ty:
-        if isinstance(ty, tensor_mod.SharedTensor):
-            return tensor_mod.RegisterTensor(ty.dtype, shape=tuple(ty.shape))
-        return ty
+    src: std.Expr = dc.field(lang_kind="arg")
+    output: std.Var = dc.field(
+        kw_only=True,
+        lang_kind="out",
+        structural_eq="def-recursive",
+    )
 
     def __init__(
         self,
-        inputs: Sequence[std.Expr] | None = None,
-        output: std.Var | None = None,
+        src: std.Expr,
         *,
-        ty: Any = MISSING,
+        output: std.Var | None = None,
+        ty: Any = None,
     ) -> None:
-        self.__ffi_init__(list(inputs) if inputs is not None else [], output)
+        if ty is not None and output is None:
+            ty = std.normalize_ty(ty)
+            if not isinstance(src, std.Var):
+                raise TypeError("LoadSharedInst `ty` keyword requires src to be std.Var")
+            if not isinstance(ty, (tensor_mod.RegisterTensor, tensor_mod.SharedTensor)):
+                raise TypeError(
+                    f"LoadSharedInst `ty` must be a register or shared tensor, got {type(ty).__name__}"
+                )
+            if not isinstance(src.ty, tensor_mod.SharedTensor) or not structural_equal(
+                src.ty.dtype, ty.dtype
+            ):
+                raise TypeError(
+                    "LoadSharedInst `ty` keyword must match src dtype and storage scope"
+                )
+            ty = (
+                tensor_mod.RegisterTensor(ty.dtype, shape=tuple(ty.shape))
+                if isinstance(ty, tensor_mod.SharedTensor)
+                else ty
+            )
+        output = make_output_var(output, ty)
+        self.__ffi_init__(src, output=output)
         self.__post_init__()
-        if not MISSING.is_(ty):
-            validate_instruction_ty_hint(self, ty)
+
+    def outputs(self) -> tuple[std.Var, ...]:
+        return (self.output,)
 
 
 @dc.py_class("tilus.StoreSharedInst", structural_eq="tree")
 class StoreSharedInst(Instruction, mnemonic="tilus.StoreShared"):
     """Store to shared memory."""
 
-    EXPECTED_INPUTS: ClassVar[int] = 2
+    dst: std.Expr = dc.field(lang_kind="arg")
+    value: std.Expr = dc.field(lang_kind="arg")
+
+    def outputs(self) -> tuple[std.Var, ...]:
+        return ()
 
 
 @dc.py_class("tilus.CastInst", structural_eq="tree")
 class CastInst(Instruction, mnemonic="tilus.Cast"):
     """Cast a tensor."""
 
-    EXPECTED_INPUTS: ClassVar[int] = 1
+    src: std.Expr = dc.field(lang_kind="arg")
+    output: std.Var = dc.field(
+        kw_only=True,
+        lang_kind="out",
+        structural_eq="def-recursive",
+    )
+
+    def __init__(
+        self,
+        src: std.Expr,
+        *,
+        output: std.Var | None = None,
+        ty: Any = None,
+    ) -> None:
+        output = make_output_var(output, ty)
+        self.__ffi_init__(src, output=output)
+        self.__post_init__()
+
+    def outputs(self) -> tuple[std.Var, ...]:
+        return (self.output,)
 
 
 @dc.py_class("tilus.AddInst", structural_eq="tree")
 class AddInst(Instruction, mnemonic="tilus.Add"):
     """Elementwise addition."""
 
-    EXPECTED_INPUTS: ClassVar[int] = 2
-    OUTPUT_TY_INFERABLE_FROM_INPUTS: ClassVar[bool] = True
+    lhs: std.Expr = dc.field(lang_kind="arg")
+    rhs: std.Expr = dc.field(lang_kind="arg")
+    output: std.Var = dc.field(
+        kw_only=True,
+        lang_kind="out",
+        structural_eq="def-recursive",
+    )
+
+    def __init__(
+        self,
+        lhs: std.Expr,
+        rhs: std.Expr,
+        *,
+        output: std.Var | None = None,
+        ty: Any = None,
+    ) -> None:
+        output = make_output_var(output, ty)
+        self.__ffi_init__(lhs, rhs, output=output)
+        self.__post_init__()
+
+    def outputs(self) -> tuple[std.Var, ...]:
+        return (self.output,)
 
 
 @dc.py_class("tilus.SubInst", structural_eq="tree")
 class SubInst(Instruction, mnemonic="tilus.Sub"):
     """Elementwise subtraction."""
 
-    EXPECTED_INPUTS: ClassVar[int] = 2
-    OUTPUT_TY_INFERABLE_FROM_INPUTS: ClassVar[bool] = True
+    lhs: std.Expr = dc.field(lang_kind="arg")
+    rhs: std.Expr = dc.field(lang_kind="arg")
+    output: std.Var = dc.field(
+        kw_only=True,
+        lang_kind="out",
+        structural_eq="def-recursive",
+    )
+
+    def __init__(
+        self,
+        lhs: std.Expr,
+        rhs: std.Expr,
+        *,
+        output: std.Var | None = None,
+        ty: Any = None,
+    ) -> None:
+        output = make_output_var(output, ty)
+        self.__ffi_init__(lhs, rhs, output=output)
+        self.__post_init__()
+
+    def outputs(self) -> tuple[std.Var, ...]:
+        return (self.output,)
 
 
 @dc.py_class("tilus.MulInst", structural_eq="tree")
 class MulInst(Instruction, mnemonic="tilus.Mul"):
     """Elementwise multiplication."""
 
-    EXPECTED_INPUTS: ClassVar[int] = 2
-    OUTPUT_TY_INFERABLE_FROM_INPUTS: ClassVar[bool] = True
+    lhs: std.Expr = dc.field(lang_kind="arg")
+    rhs: std.Expr = dc.field(lang_kind="arg")
+    output: std.Var = dc.field(
+        kw_only=True,
+        lang_kind="out",
+        structural_eq="def-recursive",
+    )
+
+    def __init__(
+        self,
+        lhs: std.Expr,
+        rhs: std.Expr,
+        *,
+        output: std.Var | None = None,
+        ty: Any = None,
+    ) -> None:
+        output = make_output_var(output, ty)
+        self.__ffi_init__(lhs, rhs, output=output)
+        self.__post_init__()
+
+    def outputs(self) -> tuple[std.Var, ...]:
+        return (self.output,)
 
 
 @dc.py_class("tilus.DivInst", structural_eq="tree")
 class DivInst(Instruction, mnemonic="tilus.Div"):
     """Elementwise division."""
 
-    EXPECTED_INPUTS: ClassVar[int] = 2
-    OUTPUT_TY_INFERABLE_FROM_INPUTS: ClassVar[bool] = True
+    lhs: std.Expr = dc.field(lang_kind="arg")
+    rhs: std.Expr = dc.field(lang_kind="arg")
+    output: std.Var = dc.field(
+        kw_only=True,
+        lang_kind="out",
+        structural_eq="def-recursive",
+    )
+
+    def __init__(
+        self,
+        lhs: std.Expr,
+        rhs: std.Expr,
+        *,
+        output: std.Var | None = None,
+        ty: Any = None,
+    ) -> None:
+        output = make_output_var(output, ty)
+        self.__ffi_init__(lhs, rhs, output=output)
+        self.__post_init__()
+
+    def outputs(self) -> tuple[std.Var, ...]:
+        return (self.output,)
 
 
 @dc.py_class("tilus.ReduceInst", structural_eq="tree")
 class ReduceInst(Instruction, mnemonic="tilus.Reduce"):
     """Tensor reduction."""
 
-    EXPECTED_INPUTS: ClassVar[int] = 1
-    VALID_OPS: ClassVar[tuple[str, ...]] = ("sum", "max", "min")
-
+    src: std.Expr = dc.field(lang_kind="arg")
     dim: int = dc.field(default=0, lang_kind="attr")
     op: str = dc.field(default="sum", lang_kind="attr")
     keepdim: bool = dc.field(default=False, lang_kind="attr")
+    output: std.Var = dc.field(
+        kw_only=True,
+        lang_kind="out",
+        structural_eq="def-recursive",
+    )
+
+    def __init__(
+        self,
+        src: std.Expr,
+        dim: int = 0,
+        op: str = "sum",
+        keepdim: bool = False,
+        *,
+        output: std.Var | None = None,
+        ty: Any = None,
+    ) -> None:
+        output = make_output_var(output, ty)
+        self.__ffi_init__(src, dim=dim, op=op, keepdim=keepdim, output=output)
+        self.__post_init__()
+
+    def outputs(self) -> tuple[std.Var, ...]:
+        return (self.output,)
+
+    def __post_init__(self) -> None:
+        validate_string_attr(self.op, "op", ("sum", "max", "min"))
 
 
 @dc.py_class("tilus.SyncThreadsInst", structural_eq="tree")
 class SyncThreadsInst(Instruction, mnemonic="tilus.SyncThreads"):
     """Synchronize all threads."""
 
-    EXPECTED_INPUTS: ClassVar[int] = 0
+    def outputs(self) -> tuple[std.Var, ...]:
+        return ()
 
 
 @dc.py_class("tilus.NopInst", structural_eq="tree")
 class NopInst(Instruction, mnemonic="tilus.Nop"):
     """No-op instruction."""
 
-    EXPECTED_INPUTS: ClassVar[int] = 0
+    def outputs(self) -> tuple[std.Var, ...]:
+        return ()
 
 
 __all__ = [

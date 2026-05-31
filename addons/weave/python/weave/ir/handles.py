@@ -26,6 +26,7 @@ SwizzleSpec = StringLike | Swizzle | None
 
 SIGNALING_MODES = ("elected", "hw_commit", "all_warps", "tma_expect_tx")
 MEMORY_SPACES = ("gmem", "smem", "tmem", "regs", "local", "param", "symm")
+_MISSING = object()
 
 
 @dc.py_class("weave.TmemRegion", structural_eq="tree")
@@ -89,7 +90,7 @@ class TmaDescriptor(std.Node, mnemonic="weave.TmaDescriptor"):
     """TMA tensor map descriptor."""
 
     ndim: int = dc.field(lang_kind="arg")
-    box_shape: tuple[ShapeDim, ...] = dc.field(lang_kind="attr")
+    box_shape: tuple[ShapeDim, ...] = dc.field(lang_kind="arg")
     swizzle: SwizzleSpec = dc.field(default="128B", lang_kind="attr")
     global_shape: tuple[StringLike, ...] = dc.field(default_factory=tuple, lang_kind="attr")
     global_strides: tuple[StringLike, ...] = dc.field(default_factory=tuple, lang_kind="attr")
@@ -110,7 +111,7 @@ class BufferRef(std.Node, mnemonic="weave.Buffer"):
 
     name: str = dc.field(lang_kind="arg")
     dtype: Any = dc.field(lang_kind="arg")
-    shape: tuple[ShapeDim, ...] = dc.field(lang_kind="attr")
+    shape: tuple[ShapeDim, ...] = dc.field(lang_kind="arg")
     space: str = dc.field(default="gmem", lang_kind="attr")
     tmem_col: int | None = dc.field(default=None, lang_kind="attr")
     smem_offset: int | None = dc.field(default=None, lang_kind="attr")
@@ -159,13 +160,54 @@ class SmemView(std.Node, mnemonic="weave.SmemView"):
     name: str = dc.field(lang_kind="arg")
     pool: SmemPool | StringLike = dc.field(lang_kind="arg")
     offset: ExprOrInt = dc.field(lang_kind="arg")
-    shape: tuple[ShapeDim, ...] = dc.field(lang_kind="attr")
+    shape: tuple[ShapeDim, ...] = dc.field(lang_kind="arg")
+    stride: ExprOrInt | None = dc.field(default=None, lang_kind="arg")
     dtype: Any = dc.field(lang_kind="attr")
     stage: int | None = dc.field(default=None, lang_kind="attr")
-    stride: ExprOrInt | None = dc.field(default=None, lang_kind="attr")
     swizzle: SwizzleSpec = dc.field(default=None, lang_kind="attr")
     layout: str = dc.field(default="", lang_kind="attr")
     alias_of: str = dc.field(default="", lang_kind="attr")
+
+    def __init__(
+        self,
+        name: str,
+        pool: SmemPool | StringLike,
+        offset: ExprOrInt,
+        shape: tuple[ShapeDim, ...],
+        *args: Any,
+        dtype: Any = _MISSING,
+        stage: int | None = None,
+        stride: ExprOrInt | None = None,
+        swizzle: SwizzleSpec = None,
+        layout: str = "",
+        alias_of: str = "",
+    ) -> None:
+        if len(args) > 2:
+            raise TypeError(f"SmemView() takes at most 6 positional arguments, got {4 + len(args)}")
+        if args:
+            if dtype is _MISSING:
+                dtype = args[0]
+                if len(args) == 2:
+                    stage = args[1]
+            else:
+                stride = args[0]
+                if len(args) == 2:
+                    stage = args[1]
+        if dtype is _MISSING:
+            raise TypeError("SmemView() missing required argument: 'dtype'")
+        self.__ffi_init__(
+            name=name,
+            pool=pool,
+            offset=offset,
+            shape=shape,
+            stride=stride,
+            dtype=dtype,
+            stage=stage,
+            swizzle=swizzle,
+            layout=layout,
+            alias_of=alias_of,
+        )
+        self.__post_init__()
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "shape", tuple(self.shape))
@@ -177,8 +219,8 @@ class PhaseVar(std.Node, mnemonic="weave.PhaseVar"):
     """Rotating phase variable metadata."""
 
     name: str = dc.field(lang_kind="arg")
+    init_value: ExprOrInt = dc.field(default=0, lang_kind="arg")
     dtype: Any = dc.field(default_factory=lambda: std.PrimTy("int32"), lang_kind="attr")
-    init_value: ExprOrInt = dc.field(default=0, lang_kind="attr")
     rotation_rule: str = dc.field(default="", lang_kind="attr")
     rotation_trigger: str = dc.field(default="", lang_kind="attr")
 
@@ -283,7 +325,7 @@ class SymmetricMemory(std.Node, mnemonic="weave.SymmetricMemory"):
 
     name: str = dc.field(lang_kind="arg")
     dtype: Any = dc.field(lang_kind="arg")
-    shape: tuple[ShapeDim, ...] = dc.field(lang_kind="attr")
+    shape: tuple[ShapeDim, ...] = dc.field(lang_kind="arg")
     group: ProcessGroup | StringLike = dc.field(lang_kind="attr")
 
     def __post_init__(self) -> None:

@@ -17,8 +17,7 @@
 
 from __future__ import annotations
 
-from typing import ClassVar
-
+from tvm_ffi import std
 from tvm_ffi.dataclasses import py_class
 
 from ...inst import Instruction
@@ -26,7 +25,8 @@ from ...inst import Instruction
 
 @py_class("tilus.ClusterSyncThreadsInst", structural_eq="tree")
 class ClusterSyncThreadsInst(Instruction, mnemonic="tilus.ClusterSyncThreads"):
-    EXPECTED_INPUTS: ClassVar[int] = 0
+    def outputs(self) -> tuple[std.Var, ...]:
+        return ()
 
 
 __all__ = [

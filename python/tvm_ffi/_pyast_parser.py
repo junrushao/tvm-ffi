@@ -574,7 +574,7 @@ class Parser:
         if isinstance(rhs, (std.BaseBindExpr, std.BaseVarDef)):
             if ty is not None:
                 raise TypeError(
-                    "constructor var-def assignment does not support type annotations; "
+                    "constructor out assignment does not support type annotations; "
                     "pass type information to the constructor"
                 )
             self._emit_named_bound_stmt(rhs, names)

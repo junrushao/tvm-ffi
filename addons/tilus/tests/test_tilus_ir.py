@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import importlib
 
+import pytest
 import tilus  # Registers the Tilus dialect.
 import tvm_ffi
 from tilus.ir.functors import IRRewriter, IRVisitor
@@ -59,8 +60,12 @@ class CollectLeaves(IRVisitor):
 
 
 def _input_vars(node: object) -> dict[str, std.Var]:
-    inputs = getattr(node, "inputs", ())
-    return {value.name: value for value in inputs if isinstance(value, std.Var)}
+    values = (
+        getattr(node, field.name)
+        for field in dc.fields(type(node))
+        if field.lang_kind == "arg" and field.name is not None
+    )
+    return {value.name: value for value in values if isinstance(value, std.Var)}
 
 
 def _round_trip(node: object) -> None:
@@ -174,7 +179,7 @@ def test_instruction_round_trip() -> None:
     )
     dst = std.Var(dst_ty, "dst")
     src = std.Var(src_ty, "src")
-    inst = inst_mod.LoadGlobalInst(inputs=[src], output=dst, offsets=[0, 0], dims=[0, 1])
+    inst = inst_mod.LoadGlobalInst(src, output=dst, offsets=[0, 0], dims=[0, 1])
     _round_trip(inst)
     assert "inputs=" not in inst.text()
     assert "dst: " not in inst.text()
@@ -198,7 +203,7 @@ def test_hint_and_cuda_instruction_round_trip() -> None:
     nodes = [
         hints_mod.AssumeInst(condition=True),
         cuda_mod.CopyAsyncCommitGroupInst(),
-        cuda_mod.CopyAsyncInst(inputs=[src, dst], offsets=[0, 1], dims=[0, 1]),
+        cuda_mod.CopyAsyncInst(src, dst, offsets=[0, 1], dims=[0, 1]),
         cuda_mod.CopyAsyncGenericInst(ptr="ptr", axes=["i", "j"], offset=0),
     ]
     for node in nodes:
@@ -265,6 +270,13 @@ def test_metadata_round_trip() -> None:
     )
 
 
+def test_metadata_grid_blocks_reject_expr() -> None:
+    func_mod = _import("tilus.ir.func")
+
+    with pytest.raises(TypeError, match=r"expected int, got ffi\.std\.Var"):
+        func_mod.Metadata(grid_blocks=[std.Var(std.PrimTy("int32"), "n"), 1, 1])
+
+
 def test_tensor_optional_layout_alias_is_rejected() -> None:
     layout_mod = _import("tilus.ir.layout")
     tensor_mod = _import("tilus.ir.tensor")
@@ -318,23 +330,12 @@ def test_public_printed_name_constructors_are_callable() -> None:
     assert "ty=tilus.RegTensor" in load_shared.text()
 
 
-def test_inst_stmt_requires_instruction() -> None:
-    stmt_mod = _import("tilus.ir.stmt")
-
-    try:
-        stmt_mod.InstStmt(123)
-    except TypeError:
-        pass
-    else:
-        raise AssertionError("expected non-instruction InstStmt to fail")
-
-
-def test_eval_and_inst_stmt_round_trip() -> None:
+def test_eval_and_instruction_round_trip() -> None:
     stmt_mod = _import("tilus.ir.stmt")
     inst_mod = _import("tilus.ir.instructions.generic")
 
     _round_trip(stmt_mod.Evaluate(std.IntImm(std.AnyTy(), 1)))
-    _round_trip(stmt_mod.InstStmt(inst_mod.NopInst()))
+    _round_trip(inst_mod.NopInst())
 
 
 def test_function_round_trip() -> None:

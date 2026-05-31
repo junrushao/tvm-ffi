@@ -150,11 +150,9 @@ def _collect_shared_layout_fields(obj: SharedLayout) -> std.FieldCollectionResul
 
 def _collect_global_layout_fields(obj: GlobalLayout) -> std.FieldCollectionResult:
     return std.FieldCollectionResult(
-        args=list(obj.shape),
+        args=[list(obj.shape), obj.size, obj.offset],
         attrs={
             "axes": obj.axes,
-            "offset": obj.offset,
-            "size": obj.size,
         },
     )
 
@@ -315,10 +313,10 @@ class GlobalLayout(Layout, mnemonic="tilus.GlobalLayout"):
 
     __ffi_dialect_field_collector__ = staticmethod(_collect_global_layout_fields)
 
-    shape: tuple[std.Expr, ...] = dc.field(default_factory=tuple, lang_kind="attr")
-    size: std.Expr = dc.field(default_factory=lambda: std.IntImm.from_py(1), lang_kind="attr")
+    shape: tuple[std.Expr, ...] = dc.field(default_factory=tuple, lang_kind="arg")
+    size: std.Expr = dc.field(default_factory=lambda: std.IntImm.from_py(1), lang_kind="arg")
+    offset: std.Expr = dc.field(default_factory=lambda: std.IntImm.from_py(0), lang_kind="arg")
     axes: tuple[str, ...] = dc.field(default_factory=tuple, lang_kind="attr")
-    offset: std.Expr = dc.field(default_factory=lambda: std.IntImm.from_py(0), lang_kind="attr")
 
     def __post_init__(self) -> None:
         if len(self.shape) != len(self.axes):

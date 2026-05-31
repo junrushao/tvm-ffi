@@ -20,12 +20,13 @@ Common rules:
 - Store enum-like domains as canonical strings, not Python `Enum` instances.
 - Use `std.Expr` fields for dynamic operands and reject raw strings in those
   fields unless the field is explicitly a name/callee/type spelling.
+- Use `arg` for dynamic operands and reserve `attr` for compile-time metadata,
+  constants, and configuration records.
 - Use `std.BaseFunc`, `std.BaseScope`, and `std.BaseFor` for body-bearing
   constructs. Generic body fields on plain `std.Node` / `std.Stmt` are not
   printable.
-- Avoid positional list fields where std's collector would flatten the list;
-  put such fields in `attr` unless a custom parser factory deliberately gathers
-  varargs.
+- Use custom collectors when a node needs vararg presentation or a shape-like
+  list should be grouped differently from ordinary positional fields.
 
 ## Bucket 1: Expr, DTypes, Type System
 
@@ -43,11 +44,11 @@ Additional nodes:
 | `Deref` / `weave.Deref` | `std.Expr` | args: `expr`; attrs: `result_ty` |
 | `ReinterpretCast` / `weave.ReinterpretCast` | `std.Expr` | args: `expr`, `target_type` |
 | `SmemSwizzleOffset` / `weave.SmemSwizzleOffset` | `std.Expr` | args: `expr`; attrs: `swizzle`, `result_ty` |
-| `SmemSwizzleAddress` / `weave.SmemSwizzleAddress` | `std.Expr` | args: `expr`; attrs: `swizzle`, `view`, `row_stride_bytes`, `layout`, `coord_row`, `coord_col`, `coord_col_unit`, `tcgen05_tile_height`, `tcgen05_k_elements`, `addr_space`, `result_ty` |
-| `TmemRef` / `weave.TmemRef` | `std.Expr` | args: `region`; attrs: `offset`, `result_ty` |
-| `SmemRef` / `weave.SmemRef` | `std.Expr` | args: `buffer`; attrs: `offset`, `result_ty` |
+| `SmemSwizzleAddress` / `weave.SmemSwizzleAddress` | `std.Expr` | args: `expr`, `row_stride_bytes`, `coord_row`, `coord_col`; attrs: `swizzle`, `view`, `layout`, `coord_col_unit`, `tcgen05_tile_height`, `tcgen05_k_elements`, `addr_space`, `result_ty` |
+| `TmemRef` / `weave.TmemRef` | `std.Expr` | args: `region`, `offset`; attrs: `result_ty` |
+| `SmemRef` / `weave.SmemRef` | `std.Expr` | args: `buffer`, `offset`; attrs: `result_ty` |
 | `SmemDescRef` / `weave.SmemDescRef` | `std.Expr` | args: `buffer`, `k_idx`; attrs: `mode`, `result_ty` |
-| `BarrierRef` / `weave.BarrierRef` | `std.Expr` | args: `barrier`; attrs: `stage`, `result_ty` |
+| `BarrierRef` / `weave.BarrierRef` | `std.Expr` | args: `barrier`, `stage`; attrs: `result_ty` |
 | `BuiltinRef` / `weave.BuiltinRef` | `std.Expr` | args: `name`; attrs: `result_ty` |
 | `UniformTy` / `weave.UniformTy` | `std.Ty` | args: `base` |
 | `RawTy`, `ConstexprTy`, `TmaTy`, `TmaGatherTy`, `TmaReduceTy`, `GridCounterTy`, `Ue4m3Ty` | `std.Ty` | small type marker nodes |
@@ -79,32 +80,32 @@ Config and handle records are `std.Node` unless otherwise noted.
 | `TmemConfig` / `weave.TmemConfig` | attrs: `buffering`, `regions`, `total_cols`, `allocator_warp` |
 | `EpilogueConfig` / `weave.EpilogueConfig` | args: `style`; attrs: `vectorized`, `num_epilogue_warps` |
 | `SmemPool` / `weave.SmemPool` | args: `name`, `size` |
-| `SmemView` / `weave.SmemView` | args: `name`, `pool`, `offset`, `shape`, `dtype`; attrs: `stage`, `stride`, `swizzle`, `layout`, `alias_of` |
-| `PhaseVar` / `weave.PhaseVar` | args: `name`; attrs: `dtype`, `init_value`, `rotation_rule`, `rotation_trigger` |
+| `SmemView` / `weave.SmemView` | args: `name`, `pool`, `offset`, `shape`, `stride`; attrs: `dtype`, `stage`, `swizzle`, `layout`, `alias_of` |
+| `PhaseVar` / `weave.PhaseVar` | args: `name`, `init_value`; attrs: `dtype`, `rotation_rule`, `rotation_trigger` |
 | `PhaseDomain` / `weave.PhaseDomain` | args: `pipeline`, `stage_var`, `num_stages`; attrs: `phase_vars`, `owner_role`, `stage_ctype`, `stage_init` |
 | `MmaParams` / `weave.MmaParams` | args: `k_steps_per_group`, `k_groups`, `group_lo_offset`; attrs: `cta_group`, `tile_m`, `tile_n`, `dtype` |
 | `SoftmaxParams` / `weave.SoftmaxParams` | args: `tile_n`; attrs: `num_load_chunks`, `num_store_chunks` |
 | `EpilogueParams` / `weave.EpilogueParams` | args: `head_dim`, `num_chunks_16`; attrs: `use_tma_store` |
 | `TmaLoadParams` / `weave.TmaLoadParams` | args: `pipeline_name`; attrs: `num_stages`, `src_buffers`, `dst_buffers`, `full_barrier`, `empty_barrier`, `stage_var`, `phase_vars` |
 | `TaskTiming`, `BarrierEdge`, `SmemAllocation`, `TmemAllocation` | attrs-only analysis artifacts |
-| `NamedBarrierSpec`, `ProcessGroup`, `SymmetricMemory` | additional explicit handle-intent nodes for Loom surfaces not represented in `weave_ir.py` |
+| `NamedBarrierSpec`, `ProcessGroup`, `SymmetricMemory` | additional explicit handle-intent nodes for Loom surfaces not represented in `weave_ir.py`; `SymmetricMemory.shape` is an arg |
 
 `Kernel` maps `WeaveIR` to `std.BaseFunc` with `symbol`, args, optional return
 type, body scopes, and attrs for pipeline/warps/grid/tmem/epilogue/buffers/
-mbarriers/smem pools/views/protocols/phase domains/params/constants and
-analysis artifacts.
+mbarriers/smem pools/views/protocols/phase domains/params and analysis
+artifacts; `constants` is an arg because it may carry expression constants.
 
 ## Bucket 3: Tasks and Control Flow
 
 | Class / mnemonic | Parent | Fields |
 | --- | --- | --- |
-| `TaskSpec` / `weave.TaskSpec` | `std.BaseScope` | args: `name`, `kind`, `assigned_role`; attrs: `pipeline`, `inputs`, `outputs`, `depends_on`, `sync_before`, `sync_after`; body |
-| `ForLoop` / `weave.ForLoop` | `std.BaseFor` | inherited `extent`, `var`; attrs: `start`, `step`, `step_expr`, `constexpr`, `unroll`, `ctype`; body |
+| `TaskSpec` / `weave.TaskSpec` | `std.BaseScope` | args: `name`, `kind`, `assigned_role`, `sync_before`, `sync_after`; attrs: `pipeline`, `inputs`, `outputs`, `depends_on`; body |
+| `ForLoop` / `weave.ForLoop` | `std.BaseFor` | inherited `extent`, `var`, `start`, `step_expr`; attrs: `step`, `constexpr`, `unroll`, `ctype`; body |
 | `Block` / `weave.Block` | `std.BaseScope` | body |
 | `LeaderCtaBlock` / `weave.LeaderCtaBlock` | `std.BaseScope` | body |
 | `ElectedThreadBlock` / `weave.ElectedThreadBlock` | `std.BaseScope` | body |
-| `ConditionalIteration` / `weave.ConditionalIteration` | `std.BaseScope` | args: `iter_var`; attrs: `last_expr`; body as a canonicalized common body |
-| `VarDecl` / `weave.VarDecl` | `std.BaseVarDef` | var_def: `var`; args: `ctype`; attrs: `init`, `array_size`, `uniform`, `zero_init` |
+| `ConditionalIteration` / `weave.ConditionalIteration` | `std.BaseScope` | args: `iter_var`, `last_expr`; body as a canonicalized common body |
+| `VarDecl` / `weave.VarDecl` | `std.BaseVarDef` | out: `var`; args: `ctype`, `init`, `array_size`; attrs: `uniform`, `zero_init` |
 | `Assign` / `weave.Assign` | `std.Stmt` | args: `target`, `expr`; attrs: `op` |
 
 `IfElse` and `Break` use `std.IfStmt` and `std.Break` directly as the canonical
@@ -116,30 +117,30 @@ All nodes inherit `weave.Op(std.Stmt)` and print as generic call statements.
 
 | Class / mnemonic | Fields |
 | --- | --- |
-| `BuiltinVar` | args: `name`; attrs: `dst` |
-| `TmemRegionLoad` | args: `region`; attrs: `dst`, `col_offset`, `num`, `dst_offset`, `wait`, `row_base` |
-| `TmemRegionStore` | args: `region`; attrs: `src`, `col_offset`, `num`, `dtype`, `row_base` |
-| `SmemDesc` | args: `buffer`; attrs: `k_idx`, `mode`, `dst`, `step`, `offset` |
-| `GmemLoad` | args: `src`, `dst`; attrs: `count`, `dtype`, `dst_dtype`, `dst_offset`, `index` |
-| `GmemStore` | args: `src`, `dst`; attrs: `count`, `dtype`, `src_dtype`, `src_offset`, `index`, `scale`, `cache_hint` |
-| `SmemStore` | args: `src`, `dst`; attrs: `predicate`, `index` |
+| `BuiltinVar` | args: `name`, `dst` |
+| `TmemRegionLoad` | args: `region`, `dst`, `col_offset`, `row_base`; attrs: `num`, `dst_offset`, `wait` |
+| `TmemRegionStore` | args: `region`, `src`, `col_offset`, `row_base`; attrs: `num`, `dtype` |
+| `SmemDesc` | args: `buffer`, `k_idx`, `dst`, `step`, `offset`; attrs: `mode` |
+| `GmemLoad` | args: `src`, `dst`, `dst_offset`, `index`; attrs: `count`, `dtype`, `dst_dtype` |
+| `GmemStore` | args: `src`, `dst`, `src_offset`, `index`, `scale`; attrs: `count`, `dtype`, `src_dtype`, `cache_hint` |
+| `SmemStore` | args: `src`, `dst`, `predicate`, `index` |
 | `SmemLoad` | args: `src`, `dst` |
-| `SmemRead` | args: `src`; attrs: `dst`, `index` |
+| `SmemRead` | args: `src`, `dst`, `index` |
 | `SmemLoadRegs` | args: `name`, `src_expr`; attrs: `count`, `dtype` |
-| `SmemWrite` | args: `src`, `dst`; attrs: `index` |
-| `SmemLoadVec` | args: `dst`, `src_addr`; attrs: `count`, `dst_offset` |
+| `SmemWrite` | args: `src`, `dst`, `index` |
+| `SmemLoadVec` | args: `dst`, `src_addr`, `dst_offset`; attrs: `count` |
 | `SmemStoreVec` | args: `dst_addr`, `src` |
 | `TmaStore` | args: `src`, `dst` |
 | `TmaReduceOp` | args: `src`, `dst`; attrs: `op` |
-| `TmaGatherLoad` | args: `src`, `dst`, `page_table`; attrs: `tokens_per_page`, `mbar_expr`, `token_offset` |
+| `TmaGatherLoad` | args: `src`, `dst`, `page_table`, `mbar_expr`, `token_offset`; attrs: `tokens_per_page` |
 | `ScaleFactorCopy` | args: `src`, `dst`; attrs: `cta_group`, `sbo`, `elected` |
 | `MetadataCopy` | args: `src`, `dst`; attrs: `cta_group` |
-| `Elementwise` | attrs: `op`, `inputs`, `output` |
-| `PredicatedStore` | args: `dst`, `src`; attrs: `bound_m`, `bound_n`, `tile_offset_m`, `tile_offset_n` |
+| `Elementwise` | args: `inputs`, `output`; attrs: `op` |
+| `PredicatedStore` | args: `dst`, `src`, `bound_m`, `bound_n`, `tile_offset_m`, `tile_offset_n` |
 | `ThreshMask` | args: `dst`, `limit`; attrs: `width` |
-| `BitmaskFill` | args: `array`, `mask`; attrs: `fill_value`, `offset`, `count` |
-| `MaskFill` | args: `array`, `fill`; attrs: `size`, `lo`, `hi` |
-| `RegArrayCast` | args: `src`, `dst`; attrs: `src_dtype`, `dst_dtype`, `count`, `offset` |
+| `BitmaskFill` | args: `array`, `mask`, `fill_value`, `offset`; attrs: `count` |
+| `MaskFill` | args: `array`, `fill`, `lo`, `hi`; attrs: `size` |
+| `RegArrayCast` | args: `src`, `dst`, `offset`; attrs: `src_dtype`, `dst_dtype`, `count` |
 
 ## Bucket 5: Barriers, Fences, Sync, Reductions
 
@@ -148,9 +149,9 @@ All nodes inherit `weave.Op(std.Stmt)`.
 | Class / mnemonic | Fields |
 | --- | --- |
 | `BarrierSync` | attrs: `barrier_id` |
-| `BarrierTryWait` | args: `barrier`, `stage`, `phase`; var_def: `dst`; attrs: `stage_is_deterministic` |
-| `BarrierWait` | args: `barrier`, `stage`, `phase`; attrs: `token`, `stage_is_deterministic` |
-| `BarrierSignal` | args: `barrier`, `action`, `stage`; attrs: `tx_bytes`, `arrive_count`, `cta_group`, `cluster`, `stage_is_deterministic`, `elected`, `transaction_group` |
+| `BarrierTryWait` | args: `barrier`, `stage`, `phase`; out: `dst`; attrs: `stage_is_deterministic` |
+| `BarrierWait` | args: `barrier`, `stage`, `phase`, `token`; attrs: `stage_is_deterministic` |
+| `BarrierSignal` | args: `barrier`, `action`, `stage`, `tx_bytes`, `arrive_count`; attrs: `cta_group`, `cluster`, `stage_is_deterministic`, `elected`, `transaction_group` |
 | `MBarrierArrive` | args: `addr` |
 | `PeerArriveCommit` | args: `barrier`, `stage`; attrs: `cta_group`, `elected` |
 | `MulticastCommit` | args: `barrier`, `stage`, `multicast_mask`; attrs: `cta_group`, `elected` |
@@ -158,14 +159,14 @@ All nodes inherit `weave.Op(std.Stmt)`.
 | `Fence` | attrs: `kind` |
 | `ThreadFence` | attrs: `scope` |
 | `ClusterSync`, `GridSync`, `GridDepSync`, `GridDepLaunch` | no fields |
-| `ClusterMapa` | args: `src_addr`, `peer_rank`; var_def: `dst` |
-| `ClusterBarrierArrive` | args: `barrier`; attrs: `tx_count`, `peer_rank` |
-| `CpAsyncBulkSmem2SmemCluster` | args: `dst_addr`, `src_addr`, `bytes`; attrs: `barrier`, `mbar_addr` |
-| `WarpReduce` | args: `val`; attrs: `op`, optional var_def `dst` |
+| `ClusterMapa` | args: `src_addr`, `peer_rank`; out: `dst` |
+| `ClusterBarrierArrive` | args: `barrier`, `tx_count`, `peer_rank` |
+| `CpAsyncBulkSmem2SmemCluster` | args: `dst_addr`, `src_addr`, `bytes`, `barrier`, `mbar_addr` |
+| `WarpReduce` | args: `val`; attrs: `op`, optional out `dst` |
 | `BlockReduce` | args: `val`, `smem`; attrs: `op` |
-| `CrossWarpReduce` | args: `src`, `smem`; var_def: `dst`; attrs: `op`, `finalize` |
-| `WarpGroupReduce` | args: `src`, `smem`; var_def: `dst`; attrs: `op`, `num_warp_groups` |
-| `StAsync` | args: `dst_addr`, `srcs`; attrs: `bytes`, `barrier`, `src_is_int` |
+| `CrossWarpReduce` | args: `src`, `smem`; out: `dst`; attrs: `op`, `finalize` |
+| `WarpGroupReduce` | args: `src`, `smem`; out: `dst`; attrs: `op`, `num_warp_groups` |
+| `StAsync` | args: `dst_addr`, `srcs`, `barrier`; attrs: `bytes`, `src_is_int` |
 
 ## Bucket 6: MMA, TMEM, Atomics, Multimem, CLC
 
@@ -174,12 +175,13 @@ All executable nodes inherit `weave.Op(std.Stmt)`.
 | Class / mnemonic | Fields |
 | --- | --- |
 | `Tcgen05Cp` | args: `src`, `dst`; attrs: `shape`, `cta_group`, `sbo`, `elected` |
-| `PackedF32x2` | args: `op`; attrs: `inputs`, `output` |
-| `FragmentOp` | args: `op`, `dst`; attrs: `srcs`, `size`, `dtype` |
-| `AtomicOp` | args: `op`, `src`, `dst`; attrs: `space`, `index`, `dtype` |
-| `AtomicFetchAdd` | args: `dst`, `addr`, `val`; attrs: `index`, `dtype` |
+| `PackedF32x2` | args: `op`, `inputs`, `output` |
+| `FragmentOp` | args: `op`, `dst`, `srcs`; attrs: `size`, `dtype` |
+| `MmaTile` | args: `a_desc`, `b_desc`, `d_tmem`, `k_idx`; attrs: `mode`, `cta_group`, `a_dtype`, `b_dtype`, `acc_dtype` |
+| `AtomicOp` | args: `op`, `src`, `dst`, `index`; attrs: `space`, `dtype` |
+| `AtomicFetchAdd` | args: `dst`, `addr`, `val`, `index`; attrs: `dtype` |
 | `RelaxedFmax` | args: `addr`, `val`; attrs: `space` |
-| `AtomicMaxF32Positive` | args: `addr`, `val`; attrs: `index`, `dst` |
+| `AtomicMaxF32Positive` | args: `addr`, `val`, `index`, `dst` |
 | `AtomicMaxFloatEncode`, `AtomicMaxFloatDecode` | args: `dst`, `src` |
 | `SysVolatileLoad128` | args: `addr`, `dst` |
 | `SysVolatileStore128` | args: `addr`, `src` |

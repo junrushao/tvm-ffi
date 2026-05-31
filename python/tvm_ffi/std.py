@@ -1569,10 +1569,9 @@ class BindExpr(BaseBindExpr, mnemonic="std.BindExpr"):
     def __ffi_update_var_name__(self, *name: str) -> tuple[Var, ...]:
         if len(name) != len(self.vars):
             raise TypeError(f"expected {len(self.vars)} binding target(s), got {len(name)}")
-        new_vars = tuple(Var(var.ty, new_name) for var, new_name in zip(self.vars, name))
-        for i, var in enumerate(new_vars):
-            self.vars[i] = var
-        return new_vars
+        for var, new_name in zip(self.vars, name):
+            var.name = new_name
+        return tuple(self.vars)
 
 
 @c_class("ffi.std.BaseVarDef")
@@ -1619,10 +1618,9 @@ class VarDef(BaseVarDef, mnemonic="std.VarDef"):
     def __ffi_update_var_name__(self, *name: str) -> tuple[Var, ...]:
         if len(name) != len(self.vars):
             raise TypeError(f"expected {len(self.vars)} binding target(s), got {len(name)}")
-        new_vars = tuple(Var(var.ty, new_name) for var, new_name in zip(self.vars, name))
-        for i, var in enumerate(new_vars):
-            self.vars[i] = var
-        return new_vars
+        for var, new_name in zip(self.vars, name):
+            var.name = new_name
+        return tuple(self.vars)
 
 
 @c_class("ffi.std.Store")
@@ -1800,12 +1798,12 @@ class FieldCollectionResult(Node, mnemonic="std.FieldCollectionResult"):
     # fmt: off
     args: MutableSequence[Any]
     attrs: DictAttrs
-    var_def: MutableSequence[Var]
+    outs: MutableSequence[Var]
     body: MutableSequence[Node]
     ty: Ty | None
     if TYPE_CHECKING:
-        def __init__(self, args: MutableSequence[Any], attrs: DictAttrs, var_def: MutableSequence[Var], body: MutableSequence[Node], ty: Ty | None) -> None: ...
-        def __ffi_init__(self, args: MutableSequence[Any], attrs: DictAttrs, var_def: MutableSequence[Var], body: MutableSequence[Node], ty: Ty | None) -> None: ...  # ty: ignore[invalid-method-override]
+        def __init__(self, args: MutableSequence[Any], attrs: DictAttrs, outs: MutableSequence[Var], body: MutableSequence[Node], ty: Ty | None) -> None: ...
+        def __ffi_init__(self, args: MutableSequence[Any], attrs: DictAttrs, outs: MutableSequence[Var], body: MutableSequence[Node], ty: Ty | None) -> None: ...  # ty: ignore[invalid-method-override]
     # fmt: on
     # tvm-ffi-stubgen(end)
 
@@ -1817,7 +1815,7 @@ class FieldCollectionResult(Node, mnemonic="std.FieldCollectionResult"):
         self,
         args: Sequence[Any] | None = None,
         attrs: DictAttrs | Mapping[str, Any] | None = None,
-        var_def: Sequence[Var] | None = None,
+        outs: Sequence[Var] | None = None,
         body: Sequence[Node] | None = None,
         ty: Ty | None = None,
     ) -> None:
@@ -1825,7 +1823,7 @@ class FieldCollectionResult(Node, mnemonic="std.FieldCollectionResult"):
             attrs = DictAttrs()
         elif isinstance(attrs, Mapping):
             attrs = DictAttrs(**attrs)
-        self.__ffi_init__(list(args or []), attrs, list(var_def or []), list(body or []), ty)
+        self.__ffi_init__(list(args or []), attrs, list(outs or []), list(body or []), ty)
 
 
 class ProofStrength(IntEnum):

@@ -23,8 +23,9 @@ import pytest
 import tilus  # Registers the Tilus dialect.
 import tvm_ffi
 from tilus.ir import layout, stmt, tensor
-from tilus.ir.inst import InstructionError
+from tilus.ir.inst import Instruction
 from tilus.ir.instructions import generic
+from tvm_ffi import dataclasses as dc
 from tvm_ffi import std
 from tvm_ffi._pyast_parser import parse
 
@@ -49,10 +50,11 @@ def test_prints_public_constructor_names() -> None:
     ty = tensor.register_tensor("float32", (2, 2))
     lhs = std.Var(ty, "lhs")
     rhs = std.Var(ty, "rhs")
-    inst = generic.AddInst(inputs=[lhs, rhs])
+    inst = tilus.Add(lhs, rhs, ty=ty)
 
+    assert tilus.Add is generic.AddInst
     assert ty.text() == "tilus.RegTensor(std.f32, 2, 2)"
-    assert inst.text() == "tilus.Add(lhs, rhs)"
+    assert inst.text() == "v = tilus.Add(lhs, rhs, ty=tilus.RegTensor(std.f32, 2, 2))"
     assert tvm_ffi.structural_equal(parse(ty.text()), ty)
     assert tvm_ffi.structural_equal(parse(inst.text(), extra_vars={"lhs": lhs, "rhs": rhs}), inst)
 
@@ -83,7 +85,7 @@ def test_parse_positional_instruction_inputs_with_attrs() -> None:
     ty = tensor.register_tensor("float32", (2,))
     lhs = std.Var(ty, "lhs")
     rhs = std.Var(ty, "rhs")
-    expected = generic.StoreGlobalInst(inputs=[lhs, rhs], offsets=[0], dims=[0])
+    expected = generic.StoreGlobalInst(lhs, rhs, offsets=[0], dims=[0])
 
     parsed = parse(
         "tilus.StoreGlobal(lhs, rhs, offsets=[0], dims=[0])",
@@ -91,7 +93,7 @@ def test_parse_positional_instruction_inputs_with_attrs() -> None:
     )
 
     assert tvm_ffi.structural_equal(parsed, expected)
-    assert expected.text() == "tilus.StoreGlobal(lhs, rhs, dims=[0], offsets=[0])"
+    assert expected.text() == "tilus.StoreGlobal(lhs, rhs, [0], dims=[0])"
 
 
 def test_public_instruction_constructors_reject_input_mode_errors() -> None:
@@ -99,29 +101,29 @@ def test_public_instruction_constructors_reject_input_mode_errors() -> None:
     lhs = std.Var(ty, "lhs")
     rhs = std.Var(ty, "rhs")
 
-    with pytest.raises(InstructionError, match="AddInst expects 2 input"):
+    with pytest.raises(TypeError, match=r"missing.*rhs"):
         tilus.Add(lhs)
-    with pytest.raises(TypeError, match=r"inputs.*not supported"):
+    with pytest.raises(TypeError, match=r"unexpected keyword argument 'inputs'"):
         tilus.Add(lhs, inputs=[lhs, rhs])
-    with pytest.raises(TypeError, match=r"inputs.*not supported"):
+    with pytest.raises(TypeError, match=r"unexpected keyword argument 'inputs'"):
         tilus.Add(lhs, rhs, inputs=None)
-    with pytest.raises(TypeError, match=r"inputs.*not supported"):
+    with pytest.raises(TypeError, match=r"unexpected keyword argument 'inputs'"):
         tilus.Add(inputs=1)
-    with pytest.raises(TypeError, match=r"inputs.*not supported"):
+    with pytest.raises(TypeError, match=r"unexpected keyword argument 'inputs'"):
         tilus.SyncThreads(inputs=None)
-    with pytest.raises(InstructionError, match="SyncThreadsInst expects 0 input"):
+    with pytest.raises(TypeError, match="takes at most 0 positional"):
         tilus.SyncThreads(lhs)
 
 
 @pytest.mark.parametrize(
     "source,exc,message",
     [
-        ("tilus.Add(lhs)", InstructionError, "AddInst expects 2 input"),
-        ("tilus.Add(lhs, inputs=[lhs, rhs])", TypeError, "inputs.*not supported"),
-        ("tilus.Add(lhs, rhs, inputs=None)", TypeError, "inputs.*not supported"),
-        ("tilus.Add(inputs=1)", TypeError, "inputs.*not supported"),
-        ("tilus.SyncThreads(inputs=None)", TypeError, "inputs.*not supported"),
-        ("tilus.SyncThreads(lhs)", InstructionError, "SyncThreadsInst expects 0 input"),
+        ("tilus.Add(lhs)", TypeError, "missing.*rhs"),
+        ("tilus.Add(lhs, inputs=[lhs, rhs])", TypeError, "unexpected keyword argument 'inputs'"),
+        ("tilus.Add(lhs, rhs, inputs=None)", TypeError, "unexpected keyword argument 'inputs'"),
+        ("tilus.Add(inputs=1)", TypeError, "unexpected keyword argument 'inputs'"),
+        ("tilus.SyncThreads(inputs=None)", TypeError, "unexpected keyword argument 'inputs'"),
+        ("tilus.SyncThreads(lhs)", TypeError, "takes at most 0 positional"),
     ],
 )
 def test_parse_public_instruction_constructors_reject_input_mode_errors(
@@ -138,19 +140,19 @@ def test_parse_public_instruction_constructors_reject_input_mode_errors(
 @pytest.mark.parametrize(
     "source,message",
     [
-        ("tilus.CopyAsyncCommitGroup(lhs)", "CopyAsyncCommitGroupInst expects 0 input"),
+        ("tilus.CopyAsyncCommitGroup(lhs)", "takes at most 0 positional"),
         (
-            "tilus.Tcgen05Slice(offsets=[0], slice_dims=[0])",
-            "Tcgen05SliceInst expects 1 input",
+            "tilus.Tcgen05Slice(ty=tilus.TMemoryTensor(std.f32, 2), offsets=[0], slice_dims=[0])",
+            "missing.*src",
         ),
-        ("tilus.CopyAsync(lhs, offsets=[0], dims=[0])", "CopyAsyncInst expects 2 input"),
+        ("tilus.CopyAsync(lhs, offsets=[0], dims=[0])", "missing required argument: 'dst'"),
     ],
 )
 def test_parse_representative_cuda_instruction_arity_errors(source: str, message: str) -> None:
     ty = tensor.register_tensor("float32", (2,))
     lhs = std.Var(ty, "lhs")
 
-    with pytest.raises(InstructionError, match=message):
+    with pytest.raises(TypeError, match=message):
         parse(source, extra_vars={"lhs": lhs})
 
 
@@ -159,7 +161,10 @@ def test_parse_reduce_rejects_invalid_op_domain() -> None:
     lhs = std.Var(ty, "lhs")
 
     with pytest.raises(ValueError, match="op must be one of"):
-        parse('tilus.Reduce(lhs, dim=0, op="median")', extra_vars={"lhs": lhs})
+        parse(
+            'tilus.Reduce(lhs, ty=tilus.RegTensor(std.f32, 2), dim=0, op="median")',
+            extra_vars={"lhs": lhs},
+        )
 
 
 def test_parse_cta_group_rejects_bool_domain_value() -> None:
@@ -167,23 +172,66 @@ def test_parse_cta_group_rejects_bool_domain_value() -> None:
         parse("tilus.Tcgen05Alloc(cta_group=True)")
 
 
-def test_parse_instruction_assignment_infers_output_type() -> None:
+def test_parse_instruction_assignment_uses_constructor_ty() -> None:
     ty = tensor.register_tensor("float32", (2,))
     lhs = std.Var(ty, "lhs")
     rhs = std.Var(ty, "rhs")
 
-    parsed = parse("out = tilus.Add(lhs, rhs)", extra_vars={"lhs": lhs, "rhs": rhs})
+    parsed = parse(
+        "out = tilus.Add(lhs, rhs, ty=tilus.RegTensor(std.f32, 2))",
+        extra_vars={"lhs": lhs, "rhs": rhs},
+    )
 
     assert isinstance(parsed, generic.AddInst)
     assert parsed.output is not None
     assert tvm_ffi.structural_equal(parsed.output.ty, ty)
 
 
-def test_parse_instruction_assignment_renames_prebound_output() -> None:
+def test_parse_instruction_assignment_requires_ty_or_output() -> None:
+    ty = tensor.register_tensor("float32", (2,))
+    lhs = std.Var(ty, "lhs")
+
+    with pytest.raises(TypeError, match="exactly one of `ty` and `output`"):
+        parse("out = tilus.Cast(lhs)", extra_vars={"lhs": lhs})
+
+
+def test_instruction_subclass_can_define_multiple_outputs() -> None:
+    @dc.py_class("test_tilus.ParserEdgesMultiOutputInst", structural_eq="tree")
+    class MultiOutputInst(Instruction, mnemonic="test_tilus.MultiOutputInst"):
+        src: std.Expr = dc.field(lang_kind="arg")
+        lhs_output: std.Var = dc.field(lang_kind="out")
+        rhs_output: std.Var = dc.field(lang_kind="out")
+
+        def outputs(self) -> tuple[std.Var, ...]:
+            return (self.lhs_output, self.rhs_output)
+
+        def __ffi_update_var_name__(self, *name: str) -> tuple[std.Var, ...]:
+            if len(name) != 2:
+                raise TypeError(f"expected 2 binding target(s), got {len(name)}")
+            self.lhs_output.name = name[0]
+            self.rhs_output.name = name[1]
+            return (self.lhs_output, self.rhs_output)
+
+    ty = tensor.register_tensor("float32", (2,))
+    src = std.Var(ty, "src")
+    lhs_output = std.Var(ty, "")
+    rhs_output = std.Var(ty, "")
+    inst = MultiOutputInst(src, lhs_output, rhs_output)
+
+    assert not hasattr(inst, "output")
+    outputs = inst.__ffi_update_var_name__("lhs", "rhs")
+    assert [var.name for var in outputs] == ["lhs", "rhs"]
+    assert lhs_output.name == "lhs"
+    assert rhs_output.name == "rhs"
+    assert list(inst.outputs()) == list(outputs)
+    assert list(std.collect_dialect_fields(inst).outs) == list(outputs)
+
+
+def test_parse_instruction_assignment_renames_unbound_output() -> None:
     ty = tensor.register_tensor("float32", (2,))
     lhs = std.Var(ty, "lhs")
     rhs = std.Var(ty, "rhs")
-    out = std.Var(ty, "out")
+    out = std.Var(ty, "")
 
     parsed = parse(
         "bound = tilus.Add(lhs, rhs, output=out)",
@@ -193,6 +241,7 @@ def test_parse_instruction_assignment_renames_prebound_output() -> None:
     assert isinstance(parsed, generic.AddInst)
     assert parsed.output is not None
     assert parsed.output.name == "bound"
+    assert out.name == "bound"
     assert tvm_ffi.structural_equal(parsed.output.ty, ty)
 
 
@@ -200,10 +249,12 @@ def test_instruction_update_var_name_mutates_in_place() -> None:
     ty = tensor.register_tensor("float32", (2,))
     lhs = std.Var(ty, "lhs")
     rhs = std.Var(ty, "rhs")
-    inst = generic.AddInst([lhs, rhs])
+    inst = tilus.Add(lhs, rhs, ty=ty)
+    output = inst.output
 
     bind_vars = inst.__ffi_update_var_name__("out")
     assert inst.output is not None
+    assert output.name == "out"
     assert inst.output.name == "out"
     assert tvm_ffi.structural_equal(inst.output.ty, ty)
     assert bind_vars == (inst.output,)
@@ -288,8 +339,6 @@ def test_parse_tensor_rejects_non_integral_shape_extents() -> None:
         "tilus.GlobalLayout(1.5)",
         'tilus.GlobalLayout("2")',
         "tilus.GlobalLayout(True)",
-        "tilus.GlobalLayout([2, 3])",
-        "tilus.GlobalLayout((2, 3))",
     ],
 )
 def test_parse_global_layout_rejects_non_integral_shape_extents(source: str) -> None:
@@ -362,8 +411,6 @@ def test_public_layout_constructors_match_parser_forms() -> None:
         lambda: tilus.RegisterLayout((2, 3)),
         lambda: tilus.SharedLayout([2, 3]),
         lambda: tilus.SharedLayout((2, 3)),
-        lambda: tilus.GlobalLayout([2, 3]),
-        lambda: tilus.GlobalLayout((2, 3)),
         lambda: tilus.TMemoryLayout([32, 8]),
         lambda: tilus.TMemoryLayout((32, 8)),
     ],
@@ -442,7 +489,7 @@ def test_public_tensor_constructor_rejects_non_integral_shape_extents() -> None:
         (
             tensor.global_tensor("float32", (2, 2), layout=layout.global_row_major(2, 2)),
             "tilus.GlobalTensor(std.f32, 2, 2, layout=tilus.GlobalLayout("
-            '2, 2, axes=["i0", "i1"], offset=0, size=4'
+            '[2, 2], 4, 0, axes=["i0", "i1"]'
             "))",
         ),
         (

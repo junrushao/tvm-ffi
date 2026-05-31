@@ -396,7 +396,7 @@ inline constexpr const char* kDialectMnemonic = "__ffi_dialect_mnemonic__";
  * \brief Dialect field role metadata for auto-generated field collectors.
  *
  * The C++ value is a ``Map<String, Array<int64_t>>``. Keys are ``"arg"``,
- * ``"attr"``, ``"var_def"``, or ``"body"``. Each integer is an index into
+ * ``"attr"``, ``"out"``, or ``"body"``. Each integer is an index into
  * the reflected fields of the corresponding type in parent-first order.
  */
 inline constexpr const char* kDialectLangKind = "__ffi_dialect_lang_kind__";
@@ -407,7 +407,7 @@ inline constexpr const char* kDialectLangKind = "__ffi_dialect_lang_kind__";
  * Custom hooks can override that behavior by returning a
  * ``std_::FieldCollectionResult`` in C++, or
  * ``tvm_ffi.std.FieldCollectionResult`` in Python, containing positional
- * arguments, keyword attributes, variables defined by the node, body nodes,
+ * arguments, keyword attributes, output variables defined by the node, body nodes,
  * and optional ``ty=`` print metadata.
  *
  * Signature: ``(TSelf self) -> ffi.std.FieldCollectionResult``.

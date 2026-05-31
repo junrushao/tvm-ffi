@@ -17,26 +17,29 @@
 
 from __future__ import annotations
 
-from typing import ClassVar
-
+from tvm_ffi import std
 from tvm_ffi.dataclasses import field, py_class
 
-from ...inst import Instruction
+from ...inst import Instruction, validate_string_attr
 
 FENCE_PROXY_ASYNC_SPACES = ("shared::cta", "shared::cluster", "global")
 
 
 @py_class("tilus.FenceProxyAsync", structural_eq="tree")
 class FenceProxyAsync(Instruction, mnemonic="tilus.FenceProxyAsync"):
-    EXPECTED_INPUTS: ClassVar[int] = 0
-    VALID_SPACES: ClassVar[tuple[str, ...]] = FENCE_PROXY_ASYNC_SPACES
-
     space: str = field(lang_kind="attr")
+
+    def __post_init__(self) -> None:
+        validate_string_attr(self.space, "space", FENCE_PROXY_ASYNC_SPACES)
+
+    def outputs(self) -> tuple[std.Var, ...]:
+        return ()
 
 
 @py_class("tilus.FenceProxyAsyncRelease", structural_eq="tree")
 class FenceProxyAsyncRelease(Instruction, mnemonic="tilus.FenceProxyAsyncRelease"):
-    EXPECTED_INPUTS: ClassVar[int] = 0
+    def outputs(self) -> tuple[std.Var, ...]:
+        return ()
 
 
 __all__ = [

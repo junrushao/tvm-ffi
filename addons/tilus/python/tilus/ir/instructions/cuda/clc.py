@@ -17,8 +17,6 @@
 
 from __future__ import annotations
 
-from typing import ClassVar
-
 from tvm_ffi import std
 from tvm_ffi.dataclasses import field, py_class
 
@@ -27,15 +25,17 @@ from ...inst import Instruction
 
 @py_class("tilus.ClusterLaunchControlTryCancelInst", structural_eq="tree")
 class ClusterLaunchControlTryCancelInst(Instruction, mnemonic="tilus.ClcTryCancel"):
-    EXPECTED_INPUTS: ClassVar[int] = 0
+    mbarrier: std.Expr = field(lang_kind="arg")
+    multicast: std.Expr = field(lang_kind="arg")
 
-    mbarrier: std.Expr = field(lang_kind="attr")
-    multicast: std.Expr = field(lang_kind="attr")
+    def outputs(self) -> tuple[std.Var, ...]:
+        return ()
 
 
 @py_class("tilus.ClusterLaunchControlQueryResponseInst", structural_eq="tree")
 class ClusterLaunchControlQueryResponseInst(Instruction, mnemonic="tilus.ClcQueryResponse"):
-    EXPECTED_INPUTS: ClassVar[int] = 0
+    def outputs(self) -> tuple[std.Var, ...]:
+        return ()
 
 
 __all__ = [  # noqa: RUF022

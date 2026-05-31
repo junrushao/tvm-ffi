@@ -57,7 +57,6 @@ __all__ = [
     "tmemory_layout",
     "tmemory_row_major",
     "Evaluate",
-    "InstStmt",
     "TensorItemPtr",
     "TensorItemValue",
     "ThreadGroup",
