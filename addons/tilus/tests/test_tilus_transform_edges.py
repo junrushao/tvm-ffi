@@ -44,7 +44,7 @@ from tilus.ir.instructions.generic import (
     SubInst,
     SyncThreadsInst,
 )
-from tilus.ir.stmt import Evaluate, InstStmt, TensorItemValue, ThreadGroup
+from tilus.ir.stmt import Evaluate, TensorItemValue, ThreadGroup
 from tilus.ir.tensor import register_tensor
 from tilus.transforms import (
     DeadCodeElimination,
@@ -59,14 +59,13 @@ from tvm_ffi.container import Array
 
 @dc.py_class("test.tilus.DCEEdgeBindExpr", structural_eq="tree")
 class DCEEdgeBindExpr(std.BaseBindExpr, mnemonic="test_tilus.DCEEdgeBindExpr"):
-    target: std.Var = dc.field(lang_kind="var_def")
+    target: std.Var = dc.field(lang_kind="out")
 
     def __ffi_update_var_name__(self, *name: str) -> tuple[std.Var, ...]:
         if len(name) != 1:
             raise TypeError(f"expected 1 binding target(s), got {len(name)}")
-        target = std.Var(self.target.ty, name[0])
-        object.__setattr__(self, "target", target)
-        return (target,)
+        self.target.name = name[0]
+        return (self.target,)
 
 
 @dc.py_class("test.tilus.DCEEdgeWhile", structural_eq="tree")
@@ -99,13 +98,8 @@ def _int_var(name: str) -> std.Var:
 def _stmt_labels(body: list[std.Stmt]) -> list[str]:
     labels = []
     for stmt in body:
-        if isinstance(stmt, InstStmt):
-            if stmt.inst.output is not None:
-                labels.append(f"InstStmt({stmt.inst.output.name})")
-            else:
-                labels.append(f"InstStmt({type(stmt.inst).__name__})")
-        elif isinstance(stmt, Instruction) and stmt.output is not None:
-            labels.append(stmt.output.name)
+        if isinstance(stmt, Instruction) and (output := getattr(stmt, "output", None)) is not None:
+            labels.append(output.name)
         else:
             labels.append(type(stmt).__name__)
     return labels
@@ -115,19 +109,19 @@ def test_dce_instruction_purity_classification_breadth() -> None:
     x = _reg_var("x")
 
     pure_insts = [
-        AddInst(inputs=[x, x], output=_reg_var("add")),
-        CastInst(inputs=[x], output=_reg_var("cast")),
-        DivInst(inputs=[x, x], output=_reg_var("div")),
-        LoadGlobalInst(inputs=[x], output=_reg_var("load_global")),
-        LoadSharedInst(inputs=[x], output=_reg_var("load_shared")),
-        MulInst(inputs=[x, x], output=_reg_var("mul")),
+        AddInst(x, x, output=_reg_var("add")),
+        CastInst(x, output=_reg_var("cast")),
+        DivInst(x, x, output=_reg_var("div")),
+        LoadGlobalInst(x, output=_reg_var("load_global")),
+        LoadSharedInst(x, output=_reg_var("load_shared")),
+        MulInst(x, x, output=_reg_var("mul")),
         NopInst(),
-        ReduceInst(inputs=[x], output=_reg_var("reduce")),
-        SubInst(inputs=[x, x], output=_reg_var("sub")),
+        ReduceInst(x, output=_reg_var("reduce")),
+        SubInst(x, x, output=_reg_var("sub")),
     ]
     effectful_insts = [
-        StoreGlobalInst(inputs=[x, x]),
-        StoreSharedInst(inputs=[x, x]),
+        StoreGlobalInst(x, x),
+        StoreSharedInst(x, x),
         SyncThreadsInst(),
         ClusterSyncThreadsInst(),
         CopyAsyncCommitGroupInst(),
@@ -146,13 +140,13 @@ def test_dce_rewrites_if_branch_bodies_independently() -> None:
     branch = std.IfStmt(
         True,
         [
-            AddInst(inputs=[x, x], output=_reg_var("then_dead")),
-            AddInst(inputs=[x, x], output=then_live),
+            AddInst(x, x, output=_reg_var("then_dead")),
+            AddInst(x, x, output=then_live),
             std.Return(then_live),
         ],
         [
-            AddInst(inputs=[x, x], output=_reg_var("else_dead")),
-            StoreGlobalInst(inputs=[x, x]),
+            AddInst(x, x, output=_reg_var("else_dead")),
+            StoreGlobalInst(x, x),
         ],
     )
     func = Function(symbol="kernel", args=[x], ret_type=None, body=[branch], metadata=None)
@@ -172,9 +166,8 @@ def test_dce_preserves_side_effects_and_drops_pure_no_output_instructions() -> N
         ret_type=None,
         body=[
             NopInst(),
-            InstStmt(NopInst()),
             SyncThreadsInst(),
-            InstStmt(StoreGlobalInst(inputs=[x, x])),
+            StoreGlobalInst(x, x),
         ],
         metadata=None,
     )
@@ -183,7 +176,7 @@ def test_dce_preserves_side_effects_and_drops_pure_no_output_instructions() -> N
 
     assert _stmt_labels(list(rewritten.body)) == [
         "SyncThreadsInst",
-        "InstStmt(StoreGlobalInst)",
+        "StoreGlobalInst",
     ]
 
 
@@ -193,14 +186,14 @@ def test_dce_keeps_if_branch_defs_used_after_region() -> None:
     else_live = _reg_var("else_live")
     branch = std.IfStmt(
         True,
-        [AddInst(inputs=[x, x], output=then_live)],
-        [AddInst(inputs=[x, x], output=else_live)],
+        [AddInst(x, x, output=then_live)],
+        [AddInst(x, x, output=else_live)],
     )
     func = Function(
         symbol="kernel",
         args=[x],
         ret_type=None,
-        body=[branch, StoreGlobalInst(inputs=[then_live, else_live])],
+        body=[branch, StoreGlobalInst(then_live, else_live)],
         metadata=None,
     )
 
@@ -220,9 +213,9 @@ def test_dce_keeps_if_condition_producer() -> None:
         args=[x, i0],
         ret_type=None,
         body=[
-            AddInst(inputs=[i0, i0], output=_bool_var("dead")),
-            AddInst(inputs=[i0, i0], output=cond_live),
-            std.IfStmt(cond_live, [StoreGlobalInst(inputs=[x, x])], []),
+            AddInst(i0, i0, output=_bool_var("dead")),
+            AddInst(i0, i0, output=cond_live),
+            std.IfStmt(cond_live, [StoreGlobalInst(x, x)], []),
         ],
         metadata=None,
     )
@@ -235,12 +228,12 @@ def test_dce_keeps_if_condition_producer() -> None:
 def test_dce_keeps_thread_group_defs_used_after_region() -> None:
     x = _reg_var("x")
     group_live = _reg_var("group_live")
-    group = ThreadGroup(0, 32, [AddInst(inputs=[x, x], output=group_live)])
+    group = ThreadGroup(0, 32, [AddInst(x, x, output=group_live)])
     func = Function(
         symbol="kernel",
         args=[x],
         ret_type=None,
-        body=[group, StoreGlobalInst(inputs=[group_live, x])],
+        body=[group, StoreGlobalInst(group_live, x)],
         metadata=None,
     )
 
@@ -260,8 +253,8 @@ def test_dce_keeps_defs_used_only_by_scope_binds() -> None:
         args=[x],
         ret_type=None,
         body=[
-            AddInst(inputs=[x, x], output=_reg_var("dead")),
-            AddInst(inputs=[x, x], output=scope_live),
+            AddInst(x, x, output=_reg_var("dead")),
+            AddInst(x, x, output=scope_live),
             scope,
         ],
         metadata=None,
@@ -281,8 +274,8 @@ def test_dce_keeps_defs_used_by_direct_bind_expr() -> None:
         args=[x],
         ret_type=None,
         body=[
-            AddInst(inputs=[x, x], output=_reg_var("dead")),
-            AddInst(inputs=[x, x], output=source),
+            AddInst(x, x, output=_reg_var("dead")),
+            AddInst(x, x, output=source),
             std.BindExpr(source, bound),
             std.Return(bound),
         ],
@@ -294,7 +287,7 @@ def test_dce_keeps_defs_used_by_direct_bind_expr() -> None:
     assert _stmt_labels(list(rewritten.body)) == ["source", "BindExpr", "Return"]
 
 
-def test_dce_handles_inststmt_live_and_dead_wrappers() -> None:
+def test_dce_handles_live_and_dead_instructions() -> None:
     x = _reg_var("x")
     live = _reg_var("live")
     func = Function(
@@ -302,8 +295,8 @@ def test_dce_handles_inststmt_live_and_dead_wrappers() -> None:
         args=[x],
         ret_type=None,
         body=[
-            InstStmt(AddInst(inputs=[x, x], output=_reg_var("dead"))),
-            InstStmt(AddInst(inputs=[x, x], output=live)),
+            AddInst(x, x, output=_reg_var("dead")),
+            AddInst(x, x, output=live),
             std.Return(live),
         ],
         metadata=None,
@@ -311,7 +304,7 @@ def test_dce_handles_inststmt_live_and_dead_wrappers() -> None:
 
     rewritten = dead_code_elimination(func)
 
-    assert _stmt_labels(list(rewritten.body)) == ["InstStmt(live)", "Return"]
+    assert _stmt_labels(list(rewritten.body)) == ["live", "Return"]
 
 
 def test_dce_distinguishes_same_name_different_handles() -> None:
@@ -325,8 +318,8 @@ def test_dce_distinguishes_same_name_different_handles() -> None:
         args=[x],
         ret_type=None,
         body=[
-            AddInst(inputs=[x, x], output=live),
-            AddInst(inputs=[x, x], output=dead_same_name),
+            AddInst(x, x, output=live),
+            AddInst(x, x, output=dead_same_name),
             std.Return(live),
         ],
         metadata=None,
@@ -350,7 +343,7 @@ def test_dce_matches_same_handle_var_wrappers() -> None:
         args=[x],
         ret_type=None,
         body=[
-            AddInst(inputs=[x, x], output=live),
+            AddInst(x, x, output=live),
             std.Return(live_wrapper),
         ],
         metadata=None,
@@ -371,10 +364,10 @@ def test_dce_keeps_defs_used_only_by_attrs_and_pred() -> None:
         args=[x, i0],
         ret_type=None,
         body=[
-            AddInst(inputs=[i0, i0], output=_int_var("dead")),
-            AddInst(inputs=[i0, i0], output=attr_live),
-            StoreGlobalInst(inputs=[x, x], offsets=[attr_live], dims=[0]),
-            AddInst(inputs=[i0, i0], output=pred_live),
+            AddInst(i0, i0, output=_int_var("dead")),
+            AddInst(i0, i0, output=attr_live),
+            StoreGlobalInst(x, x, offsets=[attr_live], dims=[0]),
+            AddInst(i0, i0, output=pred_live),
             Evaluate(std.IntImm(std.PrimTy("int32"), 0), pred=pred_live),
         ],
         metadata=None,
@@ -402,15 +395,15 @@ def test_dce_keeps_defs_used_only_by_loop_bounds() -> None:
         args=[x, i0],
         ret_type=None,
         body=[
-            AddInst(inputs=[i0, i0], output=_int_var("dead")),
-            AddInst(inputs=[i0, i0], output=start_live),
-            AddInst(inputs=[i0, i0], output=extent_live),
-            AddInst(inputs=[i0, i0], output=step_live),
+            AddInst(i0, i0, output=_int_var("dead")),
+            AddInst(i0, i0, output=start_live),
+            AddInst(i0, i0, output=extent_live),
+            AddInst(i0, i0, output=step_live),
             std.For(
                 start_live,
                 extent_live,
                 loop_var,
-                [StoreGlobalInst(inputs=[x, x])],
+                [StoreGlobalInst(x, x)],
                 step=step_live,
             ),
         ],
@@ -437,12 +430,12 @@ def test_dce_custom_base_for_extent_is_live_and_loop_var_kills_old_def() -> None
         args=[x, i0],
         ret_type=None,
         body=[
-            AddInst(inputs=[i0, i0], output=loop_var),
-            AddInst(inputs=[i0, i0], output=extent_live),
+            AddInst(i0, i0, output=loop_var),
+            AddInst(i0, i0, output=extent_live),
             DCEEdgeFor(
                 extent=extent_live,
                 var=loop_var,
-                body=[StoreGlobalInst(inputs=[x, x], offsets=[loop_var], dims=[0])],
+                body=[StoreGlobalInst(x, x, offsets=[loop_var], dims=[0])],
             ),
         ],
         metadata=None,
@@ -465,17 +458,17 @@ def test_dce_custom_base_for_rewrites_body_with_outer_live_out() -> None:
         args=[x, i0],
         ret_type=None,
         body=[
-            AddInst(inputs=[i0, i0], output=loop_var),
-            AddInst(inputs=[i0, i0], output=extent_live),
+            AddInst(i0, i0, output=loop_var),
+            AddInst(i0, i0, output=extent_live),
             DCEEdgeFor(
                 extent=extent_live,
                 var=loop_var,
                 body=[
-                    AddInst(inputs=[x, x], output=_reg_var("body_dead")),
-                    AddInst(inputs=[x, x], output=body_live),
+                    AddInst(x, x, output=_reg_var("body_dead")),
+                    AddInst(x, x, output=body_live),
                 ],
             ),
-            StoreGlobalInst(inputs=[x, body_live]),
+            StoreGlobalInst(x, body_live),
         ],
         metadata=None,
     )
@@ -500,8 +493,8 @@ def test_dce_std_for_loop_var_def_kills_pre_loop_producer() -> None:
         args=[x, i0],
         ret_type=None,
         body=[
-            AddInst(inputs=[i0, i0], output=loop_var),
-            std.For(0, 2, loop_var, [StoreGlobalInst(inputs=[x, x], offsets=[loop_var], dims=[0])]),
+            AddInst(i0, i0, output=loop_var),
+            std.For(0, 2, loop_var, [StoreGlobalInst(x, x, offsets=[loop_var], dims=[0])]),
         ],
         metadata=None,
     )
@@ -522,9 +515,9 @@ def test_dce_keeps_defs_used_only_by_while_condition() -> None:
         args=[x, i0],
         ret_type=None,
         body=[
-            AddInst(inputs=[i0, i0], output=_bool_var("dead")),
-            AddInst(inputs=[i0, i0], output=cond_live),
-            std.While(cond_live, [StoreGlobalInst(inputs=[x, x])]),
+            AddInst(i0, i0, output=_bool_var("dead")),
+            AddInst(i0, i0, output=cond_live),
+            std.While(cond_live, [StoreGlobalInst(x, x)]),
         ],
         metadata=None,
     )
@@ -542,12 +535,12 @@ def test_dce_keeps_while_body_redefinition_of_condition() -> None:
         args=[i0],
         ret_type=None,
         body=[
-            AddInst(inputs=[i0, i0], output=cond),
+            AddInst(i0, i0, output=cond),
             std.While(
                 cond,
                 [
-                    AddInst(inputs=[i0, i0], output=_bool_var("body_dead")),
-                    AddInst(inputs=[i0, i0], output=cond),
+                    AddInst(i0, i0, output=_bool_var("body_dead")),
+                    AddInst(i0, i0, output=cond),
                 ],
             ),
         ],
@@ -569,12 +562,12 @@ def test_dce_custom_base_while_keeps_body_redefinition_of_condition() -> None:
         args=[i0],
         ret_type=None,
         body=[
-            AddInst(inputs=[i0, i0], output=cond),
+            AddInst(i0, i0, output=cond),
             DCEEdgeWhile(
                 cond=cond,
                 body=[
-                    AddInst(inputs=[i0, i0], output=_bool_var("body_dead")),
-                    AddInst(inputs=[i0, i0], output=cond),
+                    AddInst(i0, i0, output=_bool_var("body_dead")),
+                    AddInst(i0, i0, output=cond),
                 ],
             ),
         ],
@@ -597,12 +590,12 @@ def test_dce_keeps_while_condition_update_with_effectful_body() -> None:
         args=[x, i0],
         ret_type=None,
         body=[
-            AddInst(inputs=[i0, i0], output=cond),
+            AddInst(i0, i0, output=cond),
             std.While(
                 cond,
                 [
-                    StoreGlobalInst(inputs=[x, x]),
-                    AddInst(inputs=[i0, i0], output=cond),
+                    StoreGlobalInst(x, x),
+                    AddInst(i0, i0, output=cond),
                 ],
             ),
         ],
@@ -626,13 +619,13 @@ def test_dce_keeps_while_loop_carried_value_used_before_redefinition() -> None:
         args=[x, i0],
         ret_type=None,
         body=[
-            AddInst(inputs=[i0, i0], output=cond),
-            AddInst(inputs=[x, x], output=value),
+            AddInst(i0, i0, output=cond),
+            AddInst(x, x, output=value),
             std.While(
                 cond,
                 [
-                    StoreGlobalInst(inputs=[value, x]),
-                    AddInst(inputs=[x, x], output=value),
+                    StoreGlobalInst(value, x),
+                    AddInst(x, x, output=value),
                 ],
             ),
         ],
@@ -655,9 +648,9 @@ def test_dce_keeps_custom_base_bind_expr_rhs_producer() -> None:
         args=[i0],
         ret_type=None,
         body=[
-            AddInst(inputs=[i0, i0], output=old_target),
-            AddInst(inputs=[i0, i0], output=_int_var("dead")),
-            AddInst(inputs=[i0, i0], output=rhs_live),
+            AddInst(i0, i0, output=old_target),
+            AddInst(i0, i0, output=_int_var("dead")),
+            AddInst(i0, i0, output=rhs_live),
             DCEEdgeBindExpr(expr=rhs_live, target=old_target),
             std.Return(old_target),
         ],
@@ -678,7 +671,7 @@ def test_dce_scope_tensor_item_value_bind_shadows_outer_producer() -> None:
         args=[],
         ret_type=None,
         body=[
-            AddInst(inputs=[value, value], output=value),
+            AddInst(value, value, output=value),
             std.Scope([TensorItemValue(tensor, value)], [std.Return(value)]),
         ],
         metadata=None,
@@ -700,9 +693,9 @@ def test_dce_keeps_custom_base_while_condition_producer() -> None:
         args=[x, i0],
         ret_type=None,
         body=[
-            AddInst(inputs=[i0, i0], output=_bool_var("dead")),
-            AddInst(inputs=[i0, i0], output=cond_live),
-            DCEEdgeWhile(cond=cond_live, body=[StoreGlobalInst(inputs=[x, x])]),
+            AddInst(i0, i0, output=_bool_var("dead")),
+            AddInst(i0, i0, output=cond_live),
+            DCEEdgeWhile(cond=cond_live, body=[StoreGlobalInst(x, x)]),
         ],
         metadata=None,
     )
@@ -721,8 +714,8 @@ def test_dead_code_elimination_pass_accepts_function_subclass() -> None:
         args=[x],
         ret_type=None,
         body=[
-            AddInst(inputs=[x, x], output=_reg_var("dead")),
-            AddInst(inputs=[x, x], output=live),
+            AddInst(x, x, output=_reg_var("dead")),
+            AddInst(x, x, output=live),
             std.Return(live),
         ],
         metadata=None,
@@ -764,7 +757,7 @@ def test_function_pass_call_validates_type_and_allows_structural_result() -> Non
 
 def test_rewriters_preserve_identity_for_unchanged_nested_bodies() -> None:
     x = _reg_var("x")
-    group = ThreadGroup(0, 32, [StoreGlobalInst(inputs=[x, x])])
+    group = ThreadGroup(0, 32, [StoreGlobalInst(x, x)])
     func = Function(symbol="kernel", args=[x], ret_type=None, body=[group], metadata=None)
 
     assert IRRewriter()(func) is func
@@ -774,12 +767,12 @@ def test_rewriters_preserve_identity_for_unchanged_nested_bodies() -> None:
 def test_dce_preserves_identity_for_unchanged_nested_live_out_body() -> None:
     x = _reg_var("x")
     live = _reg_var("live")
-    group = ThreadGroup(0, 32, [AddInst(inputs=[x, x], output=live)])
+    group = ThreadGroup(0, 32, [AddInst(x, x, output=live)])
     func = Function(
         symbol="kernel",
         args=[x],
         ret_type=None,
-        body=[group, StoreGlobalInst(inputs=[live, x])],
+        body=[group, StoreGlobalInst(live, x)],
         metadata=None,
     )
 
@@ -792,8 +785,8 @@ def test_ir_rewriter_supports_delete_and_splice_in_nested_body_fields(stmt_kind:
 
     def make_body(prefix: str) -> list[std.Stmt]:
         return [
-            AddInst(inputs=[x, x], output=_reg_var(f"{prefix}_drop")),
-            AddInst(inputs=[x, x], output=_reg_var(f"{prefix}_keep")),
+            AddInst(x, x, output=_reg_var(f"{prefix}_drop")),
+            AddInst(x, x, output=_reg_var(f"{prefix}_keep")),
         ]
 
     if stmt_kind == "if":

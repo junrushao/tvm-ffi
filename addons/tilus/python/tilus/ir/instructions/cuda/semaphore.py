@@ -17,8 +17,6 @@
 
 from __future__ import annotations
 
-from typing import ClassVar
-
 from tvm_ffi import std
 from tvm_ffi.dataclasses import field, py_class
 
@@ -27,18 +25,20 @@ from ...inst import Instruction
 
 @py_class("tilus.LockSemaphoreInst", structural_eq="tree")
 class LockSemaphoreInst(Instruction, mnemonic="tilus.LockSemaphore"):
-    EXPECTED_INPUTS: ClassVar[int] = 0
+    semaphore: std.Expr = field(lang_kind="arg")
+    value: std.Expr = field(lang_kind="arg")
 
-    semaphore: std.Expr = field(lang_kind="attr")
-    value: std.Expr = field(lang_kind="attr")
+    def outputs(self) -> tuple[std.Var, ...]:
+        return ()
 
 
 @py_class("tilus.ReleaseSemaphoreInst", structural_eq="tree")
 class ReleaseSemaphoreInst(Instruction, mnemonic="tilus.ReleaseSemaphore"):
-    EXPECTED_INPUTS: ClassVar[int] = 0
+    semaphore: std.Expr = field(lang_kind="arg")
+    value: std.Expr = field(lang_kind="arg")
 
-    semaphore: std.Expr = field(lang_kind="attr")
-    value: std.Expr = field(lang_kind="attr")
+    def outputs(self) -> tuple[std.Var, ...]:
+        return ()
 
 
 __all__ = [

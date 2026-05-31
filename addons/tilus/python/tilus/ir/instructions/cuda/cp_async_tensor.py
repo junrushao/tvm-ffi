@@ -17,54 +17,119 @@
 
 from __future__ import annotations
 
-from typing import ClassVar
+from typing import Any
 
 from tvm_ffi import std
 from tvm_ffi.dataclasses import field, py_class
 
-from ...inst import Instruction
+from ...inst import (
+    Instruction,
+    validate_int_attr,
+    validate_matching_lengths,
+    validate_nonnegative_int_attr,
+)
 
 
 @py_class("tilus.CopyAsyncTensorGlobalToSharedInst", structural_eq="tree")
 class CopyAsyncTensorGlobalToSharedInst(
     Instruction, mnemonic="tilus.CopyAsyncTensorGlobalToShared"
 ):
-    EXPECTED_INPUTS: ClassVar[int] = 2
-    MATCHING_ATTR_LENGTHS: ClassVar[tuple[tuple[str, str], ...]] = (("offsets", "dims"),)
-    VALID_CTA_GROUPS: ClassVar[tuple[int, ...]] = (1, 2)
+    src: std.Expr = field(lang_kind="arg")
+    dst: std.Expr = field(lang_kind="arg")
+    offsets: list[std.Expr] = field(lang_kind="arg")
+    mbarrier: std.Expr = field(lang_kind="arg")
+    dims: list[int] = field(kw_only=True, lang_kind="attr")
+    cta_group: Any = field(kw_only=True, lang_kind="attr")
+    multicast_mask: std.Expr | None = field(default=None, lang_kind="arg")
+    cache_policy: std.Expr | None = field(default=None, lang_kind="arg")
 
-    offsets: list[std.Expr] = field(lang_kind="attr")
-    dims: list[int] = field(lang_kind="attr")
-    mbarrier: std.Expr = field(lang_kind="attr")
-    cta_group: std.Expr = field(lang_kind="attr")
-    multicast_mask: std.Expr | None = field(default=None, lang_kind="attr")
-    cache_policy: std.Expr | None = field(default=None, lang_kind="attr")
+    def __init__(
+        self,
+        src: std.Expr,
+        dst: std.Expr,
+        offsets: list[std.Expr],
+        mbarrier: std.Expr,
+        multicast_mask: std.Expr | None = None,
+        cache_policy: std.Expr | None = None,
+        *,
+        dims: list[int],
+        cta_group: Any,
+    ) -> None:
+        self.__ffi_init__(
+            src=src,
+            dst=dst,
+            offsets=offsets,
+            mbarrier=mbarrier,
+            multicast_mask=multicast_mask,
+            cache_policy=cache_policy,
+            dims=dims,
+            cta_group=cta_group,
+        )
+        self.__post_init__()
+
+    def __post_init__(self) -> None:
+        validate_matching_lengths(self, "offsets", "dims")
+        self.cta_group = validate_int_attr(self.cta_group, "cta_group", (1, 2))
+
+    def outputs(self) -> tuple[std.Var, ...]:
+        return ()
 
 
 @py_class("tilus.CopyAsyncTensorSharedToGlobalInst", structural_eq="tree")
 class CopyAsyncTensorSharedToGlobalInst(
     Instruction, mnemonic="tilus.CopyAsyncTensorSharedToGlobal"
 ):
-    EXPECTED_INPUTS: ClassVar[int] = 2
-    MATCHING_ATTR_LENGTHS: ClassVar[tuple[tuple[str, str], ...]] = (("offsets", "dims"),)
+    src: std.Expr = field(lang_kind="arg")
+    dst: std.Expr = field(lang_kind="arg")
+    offsets: list[std.Expr] = field(lang_kind="arg")
+    dims: list[int] = field(kw_only=True, lang_kind="attr")
+    cache_policy: std.Expr | None = field(default=None, lang_kind="arg")
 
-    offsets: list[std.Expr] = field(lang_kind="attr")
-    dims: list[int] = field(lang_kind="attr")
-    cache_policy: std.Expr | None = field(default=None, lang_kind="attr")
+    def __init__(
+        self,
+        src: std.Expr,
+        dst: std.Expr,
+        offsets: list[std.Expr],
+        cache_policy: std.Expr | None = None,
+        *,
+        dims: list[int],
+    ) -> None:
+        self.__ffi_init__(
+            src=src,
+            dst=dst,
+            offsets=offsets,
+            cache_policy=cache_policy,
+            dims=dims,
+        )
+        self.__post_init__()
+
+    def __post_init__(self) -> None:
+        validate_matching_lengths(self, "offsets", "dims")
+
+    def outputs(self) -> tuple[std.Var, ...]:
+        return ()
 
 
 @py_class("tilus.CopyAsyncTensorCommitGroupInst", structural_eq="tree")
 class CopyAsyncTensorCommitGroupInst(Instruction, mnemonic="tilus.CopyAsyncTensorCommitGroup"):
-    EXPECTED_INPUTS: ClassVar[int] = 0
+    def outputs(self) -> tuple[std.Var, ...]:
+        return ()
 
 
 @py_class("tilus.CopyAsyncTensorWaitGroupInst", structural_eq="tree")
 class CopyAsyncTensorWaitGroupInst(Instruction, mnemonic="tilus.CopyAsyncTensorWaitGroup"):
-    EXPECTED_INPUTS: ClassVar[int] = 0
-    NONNEGATIVE_INT_ATTRS: ClassVar[tuple[str, ...]] = ("n",)
-
     n: int = field(lang_kind="attr")
     read: bool = field(default=False, lang_kind="attr")
+
+    def __init__(self, n: int, read: bool = False) -> None:
+        self.__ffi_init__(n=validate_nonnegative_int_attr(n, "n"), read=read)
+        self.__post_init__()
+
+    def __post_init__(self) -> None:
+        self.n = validate_nonnegative_int_attr(self.n, "n")
+
+    def outputs(self) -> tuple[std.Var, ...]:
+        return ()
 
 
 __all__ = [  # noqa: RUF022

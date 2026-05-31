@@ -35,7 +35,7 @@ class Analysis(std.Attrs, mnemonic="tilus.Analysis"):
 class Metadata(std.Attrs, mnemonic="tilus.Metadata"):
     """Tilus kernel launch and analysis metadata."""
 
-    grid_blocks: list[std.Expr] = dc.field(default_factory=list, lang_kind="attr")
+    grid_blocks: list[int] = dc.field(default_factory=list, lang_kind="attr")
     cluster_blocks: list[int] = dc.field(default_factory=list, lang_kind="attr")
     block_indices: list[str] = dc.field(default_factory=list, lang_kind="attr")
     num_warps: int | None = dc.field(default=None, lang_kind="attr")
@@ -50,6 +50,13 @@ class Metadata(std.Attrs, mnemonic="tilus.Metadata"):
         ):
             if values and len(values) != 3:
                 raise ValueError(f"{name} must be empty or have 3 entries")
+        for name, values in (
+            ("grid_blocks", self.grid_blocks),
+            ("cluster_blocks", self.cluster_blocks),
+        ):
+            for value in values:
+                if isinstance(value, bool) or not isinstance(value, int):
+                    raise TypeError(f"{name} entries must be integers, got {value!r}")
 
 
 @dc.py_class("tilus.Function", structural_eq="tree")

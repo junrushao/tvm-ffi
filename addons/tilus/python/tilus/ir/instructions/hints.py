@@ -17,26 +17,46 @@
 
 from __future__ import annotations
 
-from typing import ClassVar
+from typing import Any
 
 from tvm_ffi import std
 from tvm_ffi.dataclasses import field, py_class
 
-from ..inst import Instruction
+from ..inst import Instruction, make_output_var
 
 
 @py_class("tilus.AnnotateLayoutInst", structural_eq="tree")
 class AnnotateLayoutInst(Instruction, mnemonic="tilus.AnnotateLayout"):
-    EXPECTED_INPUTS: ClassVar[int] = 1
-
+    src: std.Expr = field(lang_kind="arg")
     layout: std.Node = field(lang_kind="attr")
+    output: std.Var = field(
+        kw_only=True,
+        lang_kind="out",
+        structural_eq="def-recursive",
+    )
+
+    def __init__(
+        self,
+        src: std.Expr,
+        layout: std.Node,
+        *,
+        output: std.Var | None = None,
+        ty: Any = None,
+    ) -> None:
+        output = make_output_var(output, ty)
+        self.__ffi_init__(src, layout=layout, output=output)
+        self.__post_init__()
+
+    def outputs(self) -> tuple[std.Var, ...]:
+        return (self.output,)
 
 
 @py_class("tilus.AssumeInst", structural_eq="tree")
 class AssumeInst(Instruction, mnemonic="tilus.Assume"):
-    EXPECTED_INPUTS: ClassVar[int] = 0
+    condition: std.Expr = field(lang_kind="arg")
 
-    condition: std.Expr = field(lang_kind="attr")
+    def outputs(self) -> tuple[std.Var, ...]:
+        return ()
 
 
 __all__ = [

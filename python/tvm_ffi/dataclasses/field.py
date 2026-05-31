@@ -24,7 +24,7 @@ from typing import Any, ClassVar, Literal, get_args
 
 from ..core import MISSING, TypeSchema
 
-LangKind = Literal["arg", "attr", "var_def", "body"]
+LangKind = Literal["arg", "attr", "out", "body"]
 
 # Re-export the stdlib KW_ONLY sentinel so type checkers recognise
 # ``_: KW_ONLY`` as a keyword-only boundary rather than a real field.
@@ -83,7 +83,7 @@ class Field:
         ``None`` means "inherit from the decorator-level *kw_only* flag".
     lang_kind : str | None
         Optional language role for dialect text-format field collection.
-        Valid values are ``"arg"``, ``"attr"``, ``"var_def"``, and ``"body"``.
+        Valid values are ``"arg"``, ``"attr"``, ``"out"``, and ``"body"``.
     structural_eq : str | None
         Structural equality/hashing annotation for this field.  Valid
         values are:
@@ -260,8 +260,7 @@ def field(  # noqa: PLR0913
         ``None`` means "inherit from the decorator-level ``kw_only`` flag".
     lang_kind
         Optional language role for dialect text-format field collection.
-        Supported values are ``"arg"``, ``"attr"``, ``"var_def"``, and
-        ``"body"``.
+        Supported values are ``"arg"``, ``"attr"``, ``"out"``, and ``"body"``.
     structural_eq
         Structural equality/hashing annotation. ``None`` (default) means
         the field participates normally. ``"ignore"`` excludes the field

@@ -17,19 +17,38 @@
 
 from __future__ import annotations
 
-from typing import ClassVar
+from typing import Any
 
 from tvm_ffi import std
 from tvm_ffi.dataclasses import field, py_class
 
-from ...inst import Instruction
+from ...inst import Instruction, make_output_var
 
 
 @py_class("tilus.MapSharedAddrInst", structural_eq="tree")
 class MapSharedAddrInst(Instruction, mnemonic="tilus.MapSharedAddr"):
-    EXPECTED_INPUTS: ClassVar[int] = 1
+    src: std.Expr = field(lang_kind="arg")
+    target_rank: std.Expr = field(lang_kind="arg")
+    output: std.Var = field(
+        kw_only=True,
+        lang_kind="out",
+        structural_eq="def-recursive",
+    )
 
-    target_rank: std.Expr = field(lang_kind="attr")
+    def __init__(
+        self,
+        src: std.Expr,
+        target_rank: std.Expr,
+        *,
+        output: std.Var | None = None,
+        ty: Any = None,
+    ) -> None:
+        output = make_output_var(output, ty)
+        self.__ffi_init__(src, target_rank=target_rank, output=output)
+        self.__post_init__()
+
+    def outputs(self) -> tuple[std.Var, ...]:
+        return (self.output,)
 
 
 __all__ = [

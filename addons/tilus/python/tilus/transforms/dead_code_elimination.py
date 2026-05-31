@@ -39,7 +39,6 @@ from tilus.ir.instructions.generic import (
     ReduceInst,
     SubInst,
 )
-from tilus.ir.stmt import InstStmt
 
 from .base import FunctionPass
 
@@ -68,15 +67,11 @@ def is_pure_instruction(inst: Instruction) -> bool:
 def _instruction_from_stmt(stmt: std.Stmt) -> Instruction | None:
     if isinstance(stmt, Instruction):
         return stmt
-    if isinstance(stmt, InstStmt):
-        return stmt.inst
     return None
 
 
-def _output_key(inst: Instruction) -> Hashable | None:
-    if inst.output is None:
-        return None
-    return _node_key(inst.output)
+def _output_keys(inst: Instruction) -> set[Hashable]:
+    return {_node_key(output) for output in inst.outputs()}
 
 
 def _is_same_value(lhs: Any, rhs: Any) -> bool:
@@ -186,11 +181,7 @@ def _collect_uses(node: Any, *, include_bodies: bool = True) -> set[Hashable]:
 
 def _collect_defs(node: Any) -> set[Hashable]:
     if isinstance(node, Instruction):
-        output = _output_key(node)
-        return set() if output is None else {output}
-    if isinstance(node, InstStmt):
-        output = _output_key(node.inst)
-        return set() if output is None else {output}
+        return _output_keys(node)
     if isinstance(node, std.BindExpr):
         return {_node_key(var) for var in node.vars}
     if isinstance(node, std.VarDef):
@@ -208,7 +199,7 @@ def _collect_defs(node: Any) -> set[Hashable]:
     collector = _dialect_field_collector(node)
     if collector is None:
         return set()
-    return {_node_key(var) for var in collector(node).var_def}
+    return {_node_key(var) for var in collector(node).outs}
 
 
 class _DeadCodeEliminator(IRRewriter):
@@ -324,8 +315,8 @@ class _DeadCodeEliminator(IRRewriter):
     def _can_drop(self, inst: Instruction, live: set[Hashable]) -> bool:
         if not is_pure_instruction(inst):
             return False
-        output = _output_key(inst)
-        return output is None or output not in live
+        outputs = _output_keys(inst)
+        return not outputs or outputs.isdisjoint(live)
 
 
 class DeadCodeElimination(FunctionPass):

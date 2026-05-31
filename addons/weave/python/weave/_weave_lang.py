@@ -38,7 +38,9 @@ class WeaveFrame(Frame):
 class KernelFactory(WeaveFrame, FuncFrame):
     """Parser frame for ``@weave.Kernel`` function definitions."""
 
-    def __init__(self, **attrs: Any) -> None:
+    def __init__(self, constants: Any = None, **attrs: Any) -> None:
+        if constants is not None:
+            attrs.setdefault("constants", constants)
         self.attrs = attrs
         self.symbol = ""
         self.args: list[std.Var] = []
@@ -62,10 +64,20 @@ class KernelFactory(WeaveFrame, FuncFrame):
 class TaskSpecFactory(WeaveFrame):
     """Parser frame for ``with weave.TaskSpec(...):``."""
 
-    def __init__(self, name: str, kind: str, assigned_role: Any, **attrs: Any) -> None:
+    def __init__(
+        self,
+        name: str,
+        kind: str,
+        assigned_role: Any,
+        sync_before: Any = (),
+        sync_after: Any = (),
+        **attrs: Any,
+    ) -> None:
         self.name = name
         self.kind = kind
         self.assigned_role = assigned_role
+        attrs.setdefault("sync_before", sync_before)
+        attrs.setdefault("sync_after", sync_after)
         self.attrs = attrs
         self.body: list[Any] = []
 
@@ -107,7 +119,7 @@ class ElectedThreadBlockFactory(_ScopeFactory):
 class ConditionalIterationFactory(WeaveFrame):
     """Parser frame for ``with weave.ConditionalIteration(...):``."""
 
-    def __init__(self, iter_var: Any, *, last_expr: Any = None) -> None:
+    def __init__(self, iter_var: Any, last_expr: Any = None) -> None:
         self.iter_var = iter_var
         self.last_expr = last_expr
         self.body: list[Any] = []
@@ -122,10 +134,10 @@ class ForLoopFactory(WeaveFrame):
     def __init__(
         self,
         extent: Any,
-        *,
         start: Any = None,
-        step: int | None = None,
         step_expr: Any = None,
+        *,
+        step: int | None = None,
         constexpr: bool | None = None,
         unroll: int | None = None,
         ctype: str | None = None,

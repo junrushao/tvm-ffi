@@ -17,98 +17,200 @@
 
 from __future__ import annotations
 
-from typing import ClassVar
+from typing import Any
 
 from tvm_ffi import std
 from tvm_ffi.dataclasses import field, py_class
 
-from ...inst import Instruction
+from ...inst import (
+    Instruction,
+    make_output_var,
+    validate_int_attr,
+    validate_matching_lengths,
+)
 
 
 @py_class("tilus.Tcgen05AllocInst", structural_eq="tree")
 class Tcgen05AllocInst(Instruction, mnemonic="tilus.Tcgen05Alloc"):
-    EXPECTED_INPUTS: ClassVar[int] = 0
-    VALID_CTA_GROUPS: ClassVar[tuple[int, ...]] = (1, 2)
+    cta_group: Any = field(lang_kind="attr")
 
-    cta_group: std.Expr = field(lang_kind="attr")
+    def __post_init__(self) -> None:
+        self.cta_group = validate_int_attr(self.cta_group, "cta_group", (1, 2))
+
+    def outputs(self) -> tuple[std.Var, ...]:
+        return ()
 
 
 @py_class("tilus.Tcgen05DeallocInst", structural_eq="tree")
 class Tcgen05DeallocInst(Instruction, mnemonic="tilus.Tcgen05Dealloc"):
-    EXPECTED_INPUTS: ClassVar[int] = 0
+    def outputs(self) -> tuple[std.Var, ...]:
+        return ()
 
 
 @py_class("tilus.Tcgen05RelinquishAllocPermitInst", structural_eq="tree")
 class Tcgen05RelinquishAllocPermitInst(Instruction, mnemonic="tilus.Tcgen05RelinquishAllocPermit"):
-    EXPECTED_INPUTS: ClassVar[int] = 0
-    VALID_CTA_GROUPS: ClassVar[tuple[int, ...]] = (1, 2)
+    cta_group: Any = field(default=1, lang_kind="attr")
 
-    cta_group: std.Expr = field(default_factory=lambda: std.IntImm.from_py(1), lang_kind="attr")
+    def __post_init__(self) -> None:
+        self.cta_group = validate_int_attr(self.cta_group, "cta_group", (1, 2))
+
+    def outputs(self) -> tuple[std.Var, ...]:
+        return ()
 
 
 @py_class("tilus.Tcgen05SliceInst", structural_eq="tree")
 class Tcgen05SliceInst(Instruction, mnemonic="tilus.Tcgen05Slice"):
-    EXPECTED_INPUTS: ClassVar[int] = 1
-    MATCHING_ATTR_LENGTHS: ClassVar[tuple[tuple[str, str], ...]] = (("offsets", "slice_dims"),)
-
-    offsets: list[std.Expr] = field(lang_kind="attr")
+    src: std.Expr = field(lang_kind="arg")
+    offsets: list[std.Expr] = field(lang_kind="arg")
     slice_dims: list[int] = field(lang_kind="attr")
+    output: std.Var = field(
+        kw_only=True,
+        lang_kind="out",
+        structural_eq="def-recursive",
+    )
+
+    def __init__(
+        self,
+        src: std.Expr,
+        offsets: list[std.Expr],
+        slice_dims: list[int],
+        *,
+        output: std.Var | None = None,
+        ty: Any = None,
+    ) -> None:
+        output = make_output_var(output, ty)
+        self.__ffi_init__(src, offsets=offsets, slice_dims=slice_dims, output=output)
+        self.__post_init__()
+
+    def outputs(self) -> tuple[std.Var, ...]:
+        return (self.output,)
+
+    def __post_init__(self) -> None:
+        validate_matching_lengths(self, "offsets", "slice_dims")
 
 
 @py_class("tilus.Tcgen05ViewInst", structural_eq="tree")
 class Tcgen05ViewInst(Instruction, mnemonic="tilus.Tcgen05View"):
-    EXPECTED_INPUTS: ClassVar[int] = 0
+    def outputs(self) -> tuple[std.Var, ...]:
+        return ()
 
 
 @py_class("tilus.Tcgen05LoadInst", structural_eq="tree")
 class Tcgen05LoadInst(Instruction, mnemonic="tilus.Tcgen05Load"):
-    EXPECTED_INPUTS: ClassVar[int] = 0
+    def outputs(self) -> tuple[std.Var, ...]:
+        return ()
 
 
 @py_class("tilus.Tcgen05StoreInst", structural_eq="tree")
 class Tcgen05StoreInst(Instruction, mnemonic="tilus.Tcgen05Store"):
-    EXPECTED_INPUTS: ClassVar[int] = 0
+    def outputs(self) -> tuple[std.Var, ...]:
+        return ()
 
 
 @py_class("tilus.Tcgen05WaitInst", structural_eq="tree")
 class Tcgen05WaitInst(Instruction, mnemonic="tilus.Tcgen05Wait"):
-    EXPECTED_INPUTS: ClassVar[int] = 0
-
     wait_load: bool = field(lang_kind="attr")
     wait_store: bool = field(lang_kind="attr")
+
+    def outputs(self) -> tuple[std.Var, ...]:
+        return ()
 
 
 @py_class("tilus.Tcgen05CopyInst", structural_eq="tree")
 class Tcgen05CopyInst(Instruction, mnemonic="tilus.Tcgen05Copy"):
-    EXPECTED_INPUTS: ClassVar[int] = 0
+    def outputs(self) -> tuple[std.Var, ...]:
+        return ()
 
 
 @py_class("tilus.Tcgen05CommitInst", structural_eq="tree")
 class Tcgen05CommitInst(Instruction, mnemonic="tilus.Tcgen05Commit"):
-    EXPECTED_INPUTS: ClassVar[int] = 0
-    VALID_CTA_GROUPS: ClassVar[tuple[int, ...]] = (1, 2)
-
-    mbarrier: std.Expr = field(lang_kind="attr")
-    cta_group: std.Expr = field(lang_kind="attr")
+    mbarrier: std.Expr = field(lang_kind="arg")
+    cta_group: Any = field(lang_kind="attr")
     multicast_mask: int | None = field(default=None, lang_kind="attr")
+
+    def __post_init__(self) -> None:
+        self.cta_group = validate_int_attr(self.cta_group, "cta_group", (1, 2))
+
+    def outputs(self) -> tuple[std.Var, ...]:
+        return ()
 
 
 @py_class("tilus.Tcgen05MmaSSInst", structural_eq="tree")
 class Tcgen05MmaSSInst(Instruction, mnemonic="tilus.Tcgen05MmaSS"):
-    EXPECTED_INPUTS: ClassVar[int] = 2
-    VALID_CTA_GROUPS: ClassVar[tuple[int, ...]] = (1, 2)
+    lhs: std.Expr = field(lang_kind="arg")
+    rhs: std.Expr = field(lang_kind="arg")
+    enable_input_d: std.Expr = field(lang_kind="arg")
+    cta_group: Any = field(lang_kind="attr")
+    output: std.Var = field(
+        kw_only=True,
+        lang_kind="out",
+        structural_eq="def-recursive",
+    )
 
-    enable_input_d: std.Expr = field(lang_kind="attr")
-    cta_group: std.Expr = field(lang_kind="attr")
+    def __init__(
+        self,
+        lhs: std.Expr,
+        rhs: std.Expr,
+        enable_input_d: std.Expr,
+        cta_group: Any,
+        *,
+        output: std.Var | None = None,
+        ty: Any = None,
+    ) -> None:
+        output = make_output_var(output, ty)
+        self.__ffi_init__(
+            lhs,
+            rhs,
+            enable_input_d=enable_input_d,
+            cta_group=cta_group,
+            output=output,
+        )
+        self.__post_init__()
+
+    def outputs(self) -> tuple[std.Var, ...]:
+        return (self.output,)
+
+    def __post_init__(self) -> None:
+        self.cta_group = validate_int_attr(self.cta_group, "cta_group", (1, 2))
 
 
 @py_class("tilus.Tcgen05MmaTSInst", structural_eq="tree")
 class Tcgen05MmaTSInst(Instruction, mnemonic="tilus.Tcgen05MmaTS"):
-    EXPECTED_INPUTS: ClassVar[int] = 2
-    VALID_CTA_GROUPS: ClassVar[tuple[int, ...]] = (1, 2)
+    lhs: std.Expr = field(lang_kind="arg")
+    rhs: std.Expr = field(lang_kind="arg")
+    enable_input_d: std.Expr = field(lang_kind="arg")
+    cta_group: Any = field(lang_kind="attr")
+    output: std.Var = field(
+        kw_only=True,
+        lang_kind="out",
+        structural_eq="def-recursive",
+    )
 
-    enable_input_d: std.Expr = field(lang_kind="attr")
-    cta_group: std.Expr = field(lang_kind="attr")
+    def __init__(
+        self,
+        lhs: std.Expr,
+        rhs: std.Expr,
+        enable_input_d: std.Expr,
+        cta_group: Any,
+        *,
+        output: std.Var | None = None,
+        ty: Any = None,
+    ) -> None:
+        output = make_output_var(output, ty)
+        self.__ffi_init__(
+            lhs,
+            rhs,
+            enable_input_d=enable_input_d,
+            cta_group=cta_group,
+            output=output,
+        )
+        self.__post_init__()
+
+    def outputs(self) -> tuple[std.Var, ...]:
+        return (self.output,)
+
+    def __post_init__(self) -> None:
+        self.cta_group = validate_int_attr(self.cta_group, "cta_group", (1, 2))
 
 
 __all__ = [  # noqa: RUF022

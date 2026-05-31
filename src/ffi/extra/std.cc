@@ -426,18 +426,19 @@ FieldCollectionResult CollectRequiredDialectFields(const ObjectRef& obj) {
 FieldCollectionResult CollectLangKindFields(const ObjectRef& obj) {
   List<Any> args;
   Dict<String, Any> attrs;
-  List<Var> var_def;
+  List<Var> outs;
   List<Node> body;
   static refl::TypeAttrColumn lang_kind_col(refl::type_attr::kDialectLangKind);
   AnyView lang_kind_view = LookupTypeAttr(lang_kind_col, obj->type_index(), /*ancestor=*/false);
   if (lang_kind_view == nullptr) {
-    return FieldCollectionResult(std::move(args), DictAttrs(std::move(attrs)), std::move(var_def),
+    return FieldCollectionResult(std::move(args), DictAttrs(std::move(attrs)), std::move(outs),
                                  std::move(body));
   }
   Map<String, Array<int64_t>> lang_kind_map = lang_kind_view.cast<Map<String, Array<int64_t>>>();
   std::vector<const TVMFFIFieldInfo*> field_infos;
   refl::ForEachFieldInfo(TVMFFIGetTypeInfo(obj->type_index()),
                          [&](const TVMFFIFieldInfo* info) { field_infos.push_back(info); });
+  auto append_value = [](List<Any>* target, const Any& value) { target->push_back(value); };
   auto extend_values = [](List<Any>* target, const Any& value) {
     if (value == nullptr) {
       return;
@@ -476,28 +477,28 @@ FieldCollectionResult CollectLangKindFields(const ObjectRef& obj) {
     }
     attrs->Set(name, value);
   };
-  auto extend_var_def = [](auto&& self, List<Var>* var_def, const Any& value) -> void {
+  auto extend_outs = [](auto&& self, List<Var>* outs, const Any& value) -> void {
     if (value == nullptr) {
       return;
     }
     if (std::optional<Var> var = value.try_cast<Var>()) {
-      var_def->push_back(*var);
+      outs->push_back(*var);
       return;
     }
     if (std::optional<Array<Any>> values = value.try_cast<Array<Any>>()) {
       for (const Any& item : *values) {
-        self(self, var_def, item);
+        self(self, outs, item);
       }
       return;
     }
     if (std::optional<ObjectRef> obj = value.try_cast<ObjectRef>()) {
       FieldCollectionResult fields = CollectRequiredDialectFields(*obj);
-      for (const Var& var : fields->var_def) {
-        var_def->push_back(var);
+      for (const Var& var : fields->outs) {
+        outs->push_back(var);
       }
       return;
     }
-    TVM_FFI_THROW(TypeError) << "expected std.Var or var-def node, got " << value.GetTypeKey();
+    TVM_FFI_THROW(TypeError) << "expected std.Var or out node, got " << value.GetTypeKey();
   };
   for (const auto& kv : lang_kind_map) {
     const String& lang_kind = kv.first;
@@ -509,11 +510,11 @@ FieldCollectionResult CollectLangKindFields(const ObjectRef& obj) {
       String name(field_info->name);
       Any value = refl::FieldGetter(field_info)(obj.get());
       if (lang_kind == "arg") {
-        extend_values(&args, value);
+        append_value(&args, value);
       } else if (lang_kind == "attr") {
         extend_attrs(&attrs, name, value);
-      } else if (lang_kind == "var_def") {
-        extend_var_def(extend_var_def, &var_def, value);
+      } else if (lang_kind == "out") {
+        extend_outs(extend_outs, &outs, value);
       } else if (lang_kind == "body") {
         List<Any> body_values;
         extend_values(&body_values, value);
@@ -526,7 +527,10 @@ FieldCollectionResult CollectLangKindFields(const ObjectRef& obj) {
       }
     }
   }
-  return FieldCollectionResult(std::move(args), DictAttrs(std::move(attrs)), std::move(var_def),
+  while (!args.empty() && args.back() == nullptr) {
+    args.pop_back();
+  }
+  return FieldCollectionResult(std::move(args), DictAttrs(std::move(attrs)), std::move(outs),
                                std::move(body));
 }
 
@@ -535,7 +539,7 @@ FieldCollectionResult CollectWithBaseArgs(const ObjectRef& obj, List<Any> args) 
   for (const Any& arg : fields->args) {
     args.push_back(arg);
   }
-  return FieldCollectionResult(std::move(args), fields->attrs, fields->var_def, fields->body,
+  return FieldCollectionResult(std::move(args), fields->attrs, fields->outs, fields->body,
                                fields->ty);
 }
 
@@ -774,7 +778,7 @@ text::ExprAST DefineVarTuple(const text::IRPrinter& printer, const List<Var>& va
 //
 // `GenericDialectCall` only builds the call expression.  `TextPrint(Node)` wraps
 // that expression as a statement for Stmt nodes, or as an assignment when the
-// collected fields define a single var_def target.
+// collected fields define a single out target.
 text::ExprAST GenericDialectCall(const ObjectRef& obj, const FieldCollectionResult& fields,
                                  const text::IRPrinter& printer, const Path& path) {
   Array<String> dialect_mnemonic = DialectMnemonic(obj->type_index());
@@ -815,8 +819,8 @@ text::ExprAST GenericDialectCall(const ObjectRef& obj, const FieldCollectionResu
 text::NodeAST GenericDialectStmt(const ObjectRef& obj, const text::IRPrinter& printer,
                                  const Path& path) {
   FieldCollectionResult fields = CollectRequiredDialectFields(obj);
-  TVM_FFI_CHECK(fields->var_def.empty(), TypeError)
-      << obj->GetTypeKey() << " generic statement printer does not support var_def fields";
+  TVM_FFI_CHECK(fields->outs.empty(), TypeError)
+      << obj->GetTypeKey() << " generic statement printer does not support out fields";
   TVM_FFI_CHECK(fields->body.empty(), TypeError)
       << obj->GetTypeKey() << " generic statement printer does not support body fields";
   return text::ExprStmtAST(GenericDialectCall(obj, fields, printer, path));
@@ -907,7 +911,7 @@ text::ExprAST PrintDialectValue(const text::IRPrinter& printer, const Any& value
   }
   if (std::optional<Stmt> stmt = value.try_cast<Stmt>()) {
     std::optional<FieldCollectionResult> fields = CollectDialectFields(*stmt);
-    if (fields.has_value() && fields.value()->var_def.empty() && fields.value()->body.empty() &&
+    if (fields.has_value() && fields.value()->outs.empty() && fields.value()->body.empty() &&
         !IsStdType((*stmt)->type_index())) {
       return GenericDialectCall(*stmt, fields.value(), printer, path);
     }
@@ -917,20 +921,20 @@ text::ExprAST PrintDialectValue(const text::IRPrinter& printer, const Any& value
 
 text::NodeAST TextPrint(const Node& obj, const text::IRPrinter& printer, const Path& path) {
   FieldCollectionResult fields = CollectRequiredDialectFields(obj);
-  List<Var> var_def = fields->var_def;
+  List<Var> outs = fields->outs;
   TVM_FFI_CHECK(fields->body.empty(), TypeError)
       << obj->GetTypeKey() << " generic collector text printer does not support body fields";
   TVM_FFI_CHECK(
-      var_def.empty() || obj.as<BaseBindExprObj>() != nullptr || obj.as<BaseVarDefObj>() != nullptr,
+      outs.empty() || obj.as<BaseBindExprObj>() != nullptr || obj.as<BaseVarDefObj>() != nullptr,
       TypeError)
-      << obj->GetTypeKey() << " generic collector text printer does not support var_def fields; "
+      << obj->GetTypeKey() << " generic collector text printer does not support out fields; "
       << "subclass std.BaseBindExpr or std.BaseVarDef";
   text::ExprAST call = GenericDialectCall(obj, fields, printer, path);
-  if (!var_def.empty()) {
-    TVM_FFI_CHECK_EQ(var_def.size(), 1, TypeError)
+  if (!outs.empty()) {
+    TVM_FFI_CHECK_EQ(outs.size(), 1, TypeError)
         << obj->GetTypeKey() << " generic collector text printer requires exactly one "
-        << "var_def target, got " << var_def.size();
-    return text::AssignAST(DefineVarTuple(printer, var_def), std::move(call));
+        << "out target, got " << outs.size();
+    return text::AssignAST(DefineVarTuple(printer, outs), std::move(call));
   }
   if (obj.as<StmtObj>() != nullptr) {
     return text::ExprStmtAST(std::move(call));
@@ -1414,7 +1418,7 @@ std::pair<text::ExprAST, List<Var>> ScopeBindingCall(const text::IRPrinter& prin
   return {CallMnemonic(printer->cfg, bind)
               ->CallKw(std::move(ctx.operands), std::move(ctx.kwargs_keys),
                        std::move(ctx.kwargs_values)),
-          fields->var_def};
+          fields->outs};
 }
 
 text::NodeAST TextPrint(const BaseBindExpr& obj, const text::IRPrinter& printer, const Path& path) {
@@ -1431,10 +1435,10 @@ text::NodeAST TextPrint(const BaseBindExpr& obj, const text::IRPrinter& printer,
   text::ExprAST rhs = CallMnemonic(printer->cfg, obj)
                           ->CallKw(std::move(ctx.operands), std::move(ctx.kwargs_keys),
                                    std::move(ctx.kwargs_values));
-  if (fields->var_def.empty()) {
+  if (fields->outs.empty()) {
     return text::ExprStmtAST(std::move(rhs));
   }
-  return text::AssignAST(DefineVarTuple(printer, fields->var_def), std::move(rhs));
+  return text::AssignAST(DefineVarTuple(printer, fields->outs), std::move(rhs));
 }
 
 text::NodeAST TextPrint(const BindExpr& obj, const text::IRPrinter& printer, const Path& path) {
@@ -1452,10 +1456,10 @@ text::NodeAST TextPrint(const BindExpr& obj, const text::IRPrinter& printer, con
                           : CallMnemonic(printer->cfg, obj)
                                 ->CallKw(std::move(ctx.operands), std::move(ctx.kwargs_keys),
                                          std::move(ctx.kwargs_values));
-  if (fields->var_def.empty()) {
+  if (fields->outs.empty()) {
     return text::ExprStmtAST(std::move(rhs));
   }
-  return text::AssignAST(DefineVarTuple(printer, fields->var_def), std::move(rhs));
+  return text::AssignAST(DefineVarTuple(printer, fields->outs), std::move(rhs));
 }
 
 text::NodeAST TextPrint(const BaseVarDef& obj, const text::IRPrinter& printer, const Path& path) {
@@ -1468,11 +1472,11 @@ text::NodeAST TextPrint(const BaseVarDef& obj, const text::IRPrinter& printer, c
   TVM_FFI_CHECK(fields->body.empty(), TypeError)
       << "ffi.std.BaseVarDef text printer does not support body fields";
   ctx.AddDialectFields(printer, fields, path);
-  if (!fields->var_def.empty()) {
-    TVM_FFI_CHECK_EQ(fields->var_def.size(), 1, TypeError)
+  if (!fields->outs.empty()) {
+    TVM_FFI_CHECK_EQ(fields->outs.size(), 1, TypeError)
         << obj->GetTypeKey() << " generic collector text printer requires exactly one "
-        << "var_def target, got " << fields->var_def.size();
-    return text::AssignAST(DefineVarTuple(printer, fields->var_def),
+        << "out target, got " << fields->outs.size();
+    return text::AssignAST(DefineVarTuple(printer, fields->outs),
                            CallMnemonic(printer->cfg, obj)
                                ->CallKw(std::move(ctx.operands), std::move(ctx.kwargs_keys),
                                         std::move(ctx.kwargs_values)));
@@ -1486,7 +1490,7 @@ text::NodeAST TextPrint(const VarDef& obj, const text::IRPrinter& printer, const
   TVM_FFI_CHECK(fields->body.empty(), TypeError)
       << "ffi.std.VarDef text printer does not support body fields";
   ctx.AddDialectFields(printer, fields, path);
-  if (fields->var_def.empty()) {
+  if (fields->outs.empty()) {
     if (ctx.kwargs_keys.empty()) {
       return text::ExprStmtAST(text::IdAST("pass"));
     }
@@ -1497,7 +1501,7 @@ text::NodeAST TextPrint(const VarDef& obj, const text::IRPrinter& printer, const
                           : CallMnemonic(printer->cfg, obj)
                                 ->CallKw(std::move(ctx.operands), std::move(ctx.kwargs_keys),
                                          std::move(ctx.kwargs_values));
-  return text::AssignAST(DefineVarTuple(printer, fields->var_def), std::move(rhs));
+  return text::AssignAST(DefineVarTuple(printer, fields->outs), std::move(rhs));
 }
 
 /*****************************************************************/
@@ -1524,8 +1528,8 @@ text::NodeAST TextPrint(const BaseWhile& obj, const text::IRPrinter& printer, co
     return ctx.StmtCall(printer, obj);
   }
   const FieldCollectionResult& fields = collected.value();
-  TVM_FFI_CHECK(fields->var_def.empty(), TypeError)
-      << "ffi.std.BaseWhile text printer does not support var_def fields";
+  TVM_FFI_CHECK(fields->outs.empty(), TypeError)
+      << "ffi.std.BaseWhile text printer does not support out fields";
   ScopeBuilder scope("while_", DialectName(obj), printer->cfg);
   scope.scope_call = CallMnemonic(printer->cfg, obj);
   scope.operands.push_back(printer->ToExpr(obj->cond, path->Attr("cond")));
@@ -1543,8 +1547,8 @@ text::NodeAST TextPrint(const BaseFor& obj, const text::IRPrinter& printer, cons
     return ctx.StmtCall(printer, obj);
   }
   const FieldCollectionResult& fields = collected.value();
-  TVM_FFI_CHECK(fields->var_def.empty(), TypeError)
-      << "ffi.std.BaseFor text printer does not support var_def fields";
+  TVM_FFI_CHECK(fields->outs.empty(), TypeError)
+      << "ffi.std.BaseFor text printer does not support out fields";
   ScopeBuilder scope("range", "", printer->cfg);
   scope.scope_call = CallMnemonic(printer->cfg, obj);
   scope.AddTargets(printer, {obj->var});
@@ -1583,8 +1587,8 @@ text::NodeAST TextPrint(const BaseFunc& obj, const text::IRPrinter& printer, con
                      std::move(kwargs_keys), std::move(kwargs_values)));
   }
   const FieldCollectionResult& fields = collected.value();
-  TVM_FFI_CHECK(fields->var_def.empty(), TypeError)
-      << "ffi.std.BaseFunc text printer does not support var_def fields";
+  TVM_FFI_CHECK(fields->outs.empty(), TypeError)
+      << "ffi.std.BaseFunc text printer does not support out fields";
 
   ScopeBuilder scope("func", DialectName(obj), printer->cfg);
   scope.scope_call = CallMnemonic(printer->cfg, obj);
@@ -1617,7 +1621,7 @@ text::NodeAST TextPrint(const BaseScope& obj, const text::IRPrinter& printer, co
   ScopeBuilder scope("scope", DialectName(obj), printer->cfg);
   scope.scope_call = CallMnemonic(printer->cfg, obj);
   scope.AddDialectArgsAttrs(printer, fields, path);
-  scope.AddTargets(printer, fields->var_def);
+  scope.AddTargets(printer, fields->outs);
   scope.AddBodyStmts(printer, fields->body, path->Attr("body"));
   return text::WithAST(scope.Target(/*create_placeholder_for_none=*/false), scope.StmtCall(false),
                        std::move(scope.body));
@@ -1626,8 +1630,8 @@ text::NodeAST TextPrint(const BaseScope& obj, const text::IRPrinter& printer, co
 text::NodeAST TextPrint(const While& obj, const text::IRPrinter& printer, const Path& path) {
   ScopeBuilder ctx("while_", DialectName(obj), printer->cfg);
   FieldCollectionResult fields = CollectRequiredDialectFields(obj);
-  TVM_FFI_CHECK(fields->var_def.empty(), TypeError)
-      << "ffi.std.While text printer does not support var_def fields";
+  TVM_FFI_CHECK(fields->outs.empty(), TypeError)
+      << "ffi.std.While text printer does not support out fields";
   ctx.AddDialectArgsAttrs(printer, fields, path);
   ctx.AddAttrs(printer, obj->attrs, path->Attr("attrs"));
   ctx.AddBodyStmts(printer, fields->body, path->Attr("body"));
@@ -1643,8 +1647,8 @@ text::NodeAST TextPrint(const While& obj, const text::IRPrinter& printer, const 
 text::NodeAST TextPrint(const For& obj, const text::IRPrinter& printer, const Path& path) {
   ScopeBuilder ctx("range", "", printer->cfg);
   FieldCollectionResult fields = CollectRequiredDialectFields(obj);
-  TVM_FFI_CHECK(fields->var_def.empty(), TypeError)
-      << "ffi.std.For text printer does not support var_def fields";
+  TVM_FFI_CHECK(fields->outs.empty(), TypeError)
+      << "ffi.std.For text printer does not support out fields";
   ctx.AddTargets(printer, {obj->var});
   // ----------- "range" section ----------- //
   Ty inferred_ty = PrimTy(kDefaultIntLiteralType);
@@ -1684,8 +1688,8 @@ text::NodeAST TextPrint(const Func& obj, const text::IRPrinter& printer, const P
   // TODO(@junrushao): Handle dynamic shape, where a VarDef may contain other variable definition.
   ScopeBuilder ctx("func", DialectName(obj), printer->cfg);
   FieldCollectionResult fields = CollectRequiredDialectFields(obj);
-  TVM_FFI_CHECK(fields->var_def.empty(), TypeError)
-      << "ffi.std.Func text printer does not support var_def fields";
+  TVM_FFI_CHECK(fields->outs.empty(), TypeError)
+      << "ffi.std.Func text printer does not support out fields";
   ctx.AddDialectArgsAttrs(printer, fields, path);
   ctx.AddAttrs(printer, obj->attrs, path->Attr("attrs"));
   // ----------- "args" section ----------- //
@@ -1711,8 +1715,8 @@ text::NodeAST TextPrint(const Func& obj, const text::IRPrinter& printer, const P
 text::NodeAST TextPrint(const Scope& obj, const text::IRPrinter& printer, const Path& path) {
   ScopeBuilder ctx("scope", DialectName(obj), printer->cfg);
   FieldCollectionResult fields = CollectRequiredDialectFields(obj);
-  TVM_FFI_CHECK(fields->var_def.empty(), TypeError)
-      << "ffi.std.Scope text printer does not support var_def fields";
+  TVM_FFI_CHECK(fields->outs.empty(), TypeError)
+      << "ffi.std.Scope text printer does not support out fields";
   int64_t n = static_cast<int64_t>(obj->binds.size());
   ctx.operands.reserve(n);
   Path binds_path = path->Attr("binds");
@@ -2826,8 +2830,7 @@ TVM_FFI_STATIC_INIT_BLOCK() {
   TVM_FFI_STD_OBJECT_DEF(FieldCollectionResultObj, FieldCollectionResult, "FieldCollectionResult")
       .def_rw("args", &FieldCollectionResultObj::args)
       .def_rw("attrs", &FieldCollectionResultObj::attrs)
-      .def_rw("var_def", &FieldCollectionResultObj::var_def,
-              refl::AttachFieldFlag::SEqHashDefRecursive())
+      .def_rw("outs", &FieldCollectionResultObj::outs, refl::AttachFieldFlag::SEqHashDefRecursive())
       .def_rw("body", &FieldCollectionResultObj::body)
       .def_rw("ty", &FieldCollectionResultObj::ty);
 

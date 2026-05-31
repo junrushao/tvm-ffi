@@ -452,8 +452,7 @@ def test_symbolic_global_layout_expression_inside_function_roundtrips() -> None:
         """
     )
 
-    assert "offset=" in printed
-    assert "tilus.GlobalLayout(m + std.i32(1)," in printed
+    assert "tilus.GlobalLayout([m + std.i32(1)]," in printed
 
 
 def test_multi_function_layout_unit_roundtrips() -> None:
@@ -555,7 +554,7 @@ def test_multi_function_layout_unit_roundtrips() -> None:
                 reread = tilus.LoadShared(scratch, ty=tilus.RegTensor(std.f32, 16))
                 tilus.StoreGlobal(dst, reread, offsets=[0], dims=[0])
             """,
-            ("tilus.GlobalTensor", "tilus.SharedTensor", "tilus.RegTensor"),
+            ("tilus.GlobalTensor", "tilus.SharedTensor"),
             id="global-shared-register-function-body",
         ),
         pytest.param(
@@ -2220,7 +2219,7 @@ def test_default_instruction_attrs_stabilize_inside_function_bodies() -> None:
         "cluster_blocks=[]",
         "grid_blocks=[]",
         "dims=[]",
-        "offsets=[]",
+        "tilus.LoadGlobal(src, []",
         "dim=0",
         "keepdim=False",
         'op="sum"',
@@ -2353,7 +2352,7 @@ def test_symbolic_global_layout_attrs_inside_function_roundtrip() -> None:
     )
 
     assert "tilus.GlobalLayout" in printed
-    assert "offset=" in printed
+    assert "base + col" in printed
 
 
 def test_predicate_and_scope_expression_attrs_inside_function_roundtrip() -> None:
@@ -2381,7 +2380,7 @@ def test_predicate_and_scope_expression_attrs_inside_function_roundtrip() -> Non
     )
 
     assert "predicate=" in printed
-    assert "pred=" in printed
+    assert "tilus.Eval(" in printed
 
 
 def test_barrier_and_bulk_copy_expression_attrs_inside_function_roundtrip() -> None:
@@ -2463,8 +2462,8 @@ def test_tensor_copy_expression_attrs_inside_function_roundtrip() -> None:
         """
     )
 
-    assert "multicast_mask=" in printed
-    assert "cache_policy=" in printed
+    assert "tilus.CopyAsyncTensorGlobalToShared(" in printed
+    assert "tilus.CopyAsyncTensorSharedToGlobal(" in printed
 
 
 def test_reduce_and_layout_attr_lists_inside_function_roundtrip() -> None:

@@ -32,12 +32,25 @@ class AtomicOp(Op, mnemonic="weave.AtomicOp"):
     op: str = dc.field(lang_kind="arg")
     src: std.Expr = dc.field(lang_kind="arg")
     dst: std.Expr = dc.field(lang_kind="arg")
+    index: std.Expr | None = dc.field(default=None, lang_kind="arg")
     space: str = dc.field(lang_kind="attr")
-    index: std.Expr | None = dc.field(default=None, lang_kind="attr")
     dtype: Any = dc.field(default=None, lang_kind="attr")
 
     EXPR_FIELDS: ClassVar[frozenset[str]] = frozenset(("src", "dst", "index"))
     VALID_DOMAINS: ClassVar[dict[str, tuple[str, ...]]] = {"op": ATOMIC_OPS, "space": MEM_SPACES}
+
+    def __init__(
+        self,
+        op: str,
+        src: std.Expr,
+        dst: std.Expr,
+        index: std.Expr | None = None,
+        *,
+        space: str,
+        dtype: Any = None,
+    ) -> None:
+        self.__ffi_init__(op=op, src=src, dst=dst, index=index, space=space, dtype=dtype)
+        self.__post_init__()
 
     def __post_init__(self) -> None:
         super().__post_init__()
@@ -49,7 +62,7 @@ class AtomicFetchAdd(Op, mnemonic="weave.AtomicFetchAdd"):
     dst: std.Expr = dc.field(lang_kind="arg")
     addr: std.Expr = dc.field(lang_kind="arg")
     val: std.Expr = dc.field(lang_kind="arg")
-    index: std.Expr | None = dc.field(default=None, lang_kind="attr")
+    index: std.Expr | None = dc.field(default=None, lang_kind="arg")
     dtype: Any = dc.field(default=None, lang_kind="attr")
 
     EXPR_FIELDS: ClassVar[frozenset[str]] = frozenset(("dst", "addr", "val", "index"))
@@ -73,8 +86,8 @@ class RelaxedFmax(Op, mnemonic="weave.RelaxedFmax"):
 class AtomicMaxF32Positive(Op, mnemonic="weave.AtomicMaxF32Positive"):
     addr: std.Expr = dc.field(lang_kind="arg")
     val: std.Expr = dc.field(lang_kind="arg")
-    index: std.Expr | None = dc.field(default=None, lang_kind="attr")
-    dst: std.Expr | None = dc.field(default=None, lang_kind="attr")
+    index: std.Expr | None = dc.field(default=None, lang_kind="arg")
+    dst: std.Expr | None = dc.field(default=None, lang_kind="arg")
 
     EXPR_FIELDS: ClassVar[frozenset[str]] = frozenset(("addr", "val", "index", "dst"))
 

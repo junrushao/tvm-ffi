@@ -210,7 +210,7 @@ def test_fully_decorated_kernel_source_round_trip() -> None:
 
     assert "pipeline=weave.PipelineConfig" in printed
     assert "buffers=[weave.Buffer" in printed
-    assert 'constants={"BLOCK_M": 64}' in printed
+    assert '@weave.Kernel({"BLOCK_M": 64}' in printed
     assert 'params=[weave.Param("m", "int")]' in printed
     assert "tile_params=weave.MmaParams" in printed
     assert 'reg_budgets={"mma": 128}' in printed

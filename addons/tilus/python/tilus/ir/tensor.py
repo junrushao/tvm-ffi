@@ -76,7 +76,7 @@ def _collect_tensor_fields(obj: Tensor) -> std.FieldCollectionResult:
     return std.FieldCollectionResult(
         args=[obj.dtype, *obj.shape],
         attrs=attrs,
-        var_def=[],
+        outs=[],
         body=[],
     )
 

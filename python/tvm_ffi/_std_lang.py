@@ -538,7 +538,7 @@ def _field_bind_vars(value: TypingAny) -> list[std.Var]:
         for item in value:
             vars.extend(_field_bind_vars(item))
         return vars
-    raise TypeError(f"expected std.Var or var-def sequence, got {type(value).__name__}")
+    raise TypeError(f"expected std.Var or out sequence, got {type(value).__name__}")
 
 
 def _bind_vars(bind: std.Stmt) -> list[std.Var]:
@@ -547,7 +547,7 @@ def _bind_vars(bind: std.Stmt) -> list[std.Var]:
         return list(bind.vars)
     bind_vars: list[std.Var] = []
     for field in fields(type(bind)):
-        if field.lang_kind == "var_def" and field.name is not None:
+        if field.lang_kind == "out" and field.name is not None:
             bind_vars.extend(_field_bind_vars(getattr(bind, field.name)))
     if not bind_vars:
         raise TypeError(f"unsupported bind type: {type(bind).__name__}")

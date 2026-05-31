@@ -141,7 +141,7 @@ def test_elementwise_and_mask_ops_text_round_trip(node: Any) -> None:
         pytest.param(wi.BarrierSync(barrier_id=1), id="barrier-sync"),
         pytest.param(
             wi.BarrierTryWait(_barrier(), 0, 1, _v("tok"), stage_is_deterministic=False),
-            id="barrier-try-wait-var-def",
+            id="barrier-try-wait-out",
         ),
         pytest.param(
             wi.BarrierWait(_barrier(), 0, 1, token=2, stage_is_deterministic=False),
@@ -176,7 +176,7 @@ def test_elementwise_and_mask_ops_text_round_trip(node: Any) -> None:
         pytest.param(wi.GridSync(), id="grid-sync"),
         pytest.param(wi.GridDepSync(), id="grid-dep-sync"),
         pytest.param(wi.GridDepLaunch(), id="grid-dep-launch"),
-        pytest.param(wi.ClusterMapa(1, 2, _v("remote", wi.u32)), id="cluster-mapa-var-def"),
+        pytest.param(wi.ClusterMapa(1, 2, _v("remote", wi.u32)), id="cluster-mapa-out"),
         pytest.param(
             wi.ClusterBarrierArrive(1, tx_count=16, peer_rank=0), id="cluster-barrier-arrive"
         ),

@@ -906,7 +906,7 @@ class TestDialectFieldCollectorParserInteractions:
             ty: std.Ty = dc.field(lang_kind="arg")
             targets: List[std.Var] = dc.field(  # noqa: UP006
                 default_factory=list,
-                lang_kind="var_def",
+                lang_kind="out",
                 structural_eq="def-recursive",
             )
             tag: str = dc.field(default="local", lang_kind="attr")
@@ -927,11 +927,9 @@ class TestDialectFieldCollectorParserInteractions:
                     raise TypeError(
                         f"expected {len(self.targets)} binding target(s), got {len(name)}"
                     )
-                targets = [
-                    std.Var(target.ty, new_name) for target, new_name in zip(self.targets, name)
-                ]
-                object.__setattr__(self, "targets", targets)
-                return tuple(targets)
+                for target, new_name in zip(self.targets, name):
+                    target.name = new_name
+                return tuple(self.targets)
 
         class ParserProbe:
             __ffi_globals__: ClassVar[dict[str, Any]] = {}
@@ -958,7 +956,7 @@ class TestDialectFieldCollectorParserInteractions:
             ty: std.Ty = dc.field(lang_kind="arg")
             targets: List[std.Var] = dc.field(  # noqa: UP006
                 default_factory=list,
-                lang_kind="var_def",
+                lang_kind="out",
                 structural_eq="def-recursive",
             )
 
