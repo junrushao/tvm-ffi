@@ -17,8 +17,6 @@
 
 from __future__ import annotations
 
-from typing import Any
-
 from tvm_ffi import std
 from tvm_ffi.dataclasses import field, py_class
 
@@ -32,7 +30,11 @@ from ...inst import (
 
 @py_class("tilus.Tcgen05AllocInst", structural_eq="tree")
 class Tcgen05AllocInst(Instruction, mnemonic="tilus.Tcgen05Alloc"):
-    cta_group: Any = field(lang_kind="attr")
+    cta_group: int = field(lang_kind="attr")
+
+    def __init__(self, cta_group: int) -> None:
+        self.__ffi_init__(cta_group=validate_int_attr(cta_group, "cta_group", (1, 2)))
+        self.__post_init__()
 
     def __post_init__(self) -> None:
         self.cta_group = validate_int_attr(self.cta_group, "cta_group", (1, 2))
@@ -49,7 +51,11 @@ class Tcgen05DeallocInst(Instruction, mnemonic="tilus.Tcgen05Dealloc"):
 
 @py_class("tilus.Tcgen05RelinquishAllocPermitInst", structural_eq="tree")
 class Tcgen05RelinquishAllocPermitInst(Instruction, mnemonic="tilus.Tcgen05RelinquishAllocPermit"):
-    cta_group: Any = field(default=1, lang_kind="attr")
+    cta_group: int = field(default=1, lang_kind="attr")
+
+    def __init__(self, cta_group: int = 1) -> None:
+        self.__ffi_init__(cta_group=validate_int_attr(cta_group, "cta_group", (1, 2)))
+        self.__post_init__()
 
     def __post_init__(self) -> None:
         self.cta_group = validate_int_attr(self.cta_group, "cta_group", (1, 2))
@@ -76,7 +82,7 @@ class Tcgen05SliceInst(Instruction, mnemonic="tilus.Tcgen05Slice"):
         slice_dims: list[int],
         *,
         output: std.Var | None = None,
-        ty: Any = None,
+        ty: std.TyLike | None = None,
     ) -> None:
         output = make_output_var(output, ty)
         self.__ffi_init__(src, offsets=offsets, slice_dims=slice_dims, output=output)
@@ -125,8 +131,21 @@ class Tcgen05CopyInst(Instruction, mnemonic="tilus.Tcgen05Copy"):
 @py_class("tilus.Tcgen05CommitInst", structural_eq="tree")
 class Tcgen05CommitInst(Instruction, mnemonic="tilus.Tcgen05Commit"):
     mbarrier: std.Expr = field(lang_kind="arg")
-    cta_group: Any = field(lang_kind="attr")
+    cta_group: int = field(lang_kind="attr")
     multicast_mask: int | None = field(default=None, lang_kind="attr")
+
+    def __init__(
+        self,
+        mbarrier: std.Expr,
+        cta_group: int,
+        multicast_mask: int | None = None,
+    ) -> None:
+        self.__ffi_init__(
+            mbarrier=mbarrier,
+            cta_group=validate_int_attr(cta_group, "cta_group", (1, 2)),
+            multicast_mask=multicast_mask,
+        )
+        self.__post_init__()
 
     def __post_init__(self) -> None:
         self.cta_group = validate_int_attr(self.cta_group, "cta_group", (1, 2))
@@ -140,7 +159,7 @@ class Tcgen05MmaSSInst(Instruction, mnemonic="tilus.Tcgen05MmaSS"):
     lhs: std.Expr = field(lang_kind="arg")
     rhs: std.Expr = field(lang_kind="arg")
     enable_input_d: std.Expr = field(lang_kind="arg")
-    cta_group: Any = field(lang_kind="attr")
+    cta_group: int = field(lang_kind="attr")
     output: std.Var = field(
         kw_only=True,
         lang_kind="out",
@@ -152,17 +171,17 @@ class Tcgen05MmaSSInst(Instruction, mnemonic="tilus.Tcgen05MmaSS"):
         lhs: std.Expr,
         rhs: std.Expr,
         enable_input_d: std.Expr,
-        cta_group: Any,
+        cta_group: int,
         *,
         output: std.Var | None = None,
-        ty: Any = None,
+        ty: std.TyLike | None = None,
     ) -> None:
         output = make_output_var(output, ty)
         self.__ffi_init__(
             lhs,
             rhs,
             enable_input_d=enable_input_d,
-            cta_group=cta_group,
+            cta_group=validate_int_attr(cta_group, "cta_group", (1, 2)),
             output=output,
         )
         self.__post_init__()
@@ -179,7 +198,7 @@ class Tcgen05MmaTSInst(Instruction, mnemonic="tilus.Tcgen05MmaTS"):
     lhs: std.Expr = field(lang_kind="arg")
     rhs: std.Expr = field(lang_kind="arg")
     enable_input_d: std.Expr = field(lang_kind="arg")
-    cta_group: Any = field(lang_kind="attr")
+    cta_group: int = field(lang_kind="attr")
     output: std.Var = field(
         kw_only=True,
         lang_kind="out",
@@ -191,17 +210,17 @@ class Tcgen05MmaTSInst(Instruction, mnemonic="tilus.Tcgen05MmaTS"):
         lhs: std.Expr,
         rhs: std.Expr,
         enable_input_d: std.Expr,
-        cta_group: Any,
+        cta_group: int,
         *,
         output: std.Var | None = None,
-        ty: Any = None,
+        ty: std.TyLike | None = None,
     ) -> None:
         output = make_output_var(output, ty)
         self.__ffi_init__(
             lhs,
             rhs,
             enable_input_d=enable_input_d,
-            cta_group=cta_group,
+            cta_group=validate_int_attr(cta_group, "cta_group", (1, 2)),
             output=output,
         )
         self.__post_init__()

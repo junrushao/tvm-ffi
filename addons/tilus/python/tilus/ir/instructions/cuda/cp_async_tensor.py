@@ -17,8 +17,6 @@
 
 from __future__ import annotations
 
-from typing import Any
-
 from tvm_ffi import std
 from tvm_ffi.dataclasses import field, py_class
 
@@ -39,7 +37,7 @@ class CopyAsyncTensorGlobalToSharedInst(
     offsets: list[std.Expr] = field(lang_kind="arg")
     mbarrier: std.Expr = field(lang_kind="arg")
     dims: list[int] = field(kw_only=True, lang_kind="attr")
-    cta_group: Any = field(kw_only=True, lang_kind="attr")
+    cta_group: int = field(kw_only=True, lang_kind="attr")
     multicast_mask: std.Expr | None = field(default=None, lang_kind="arg")
     cache_policy: std.Expr | None = field(default=None, lang_kind="arg")
 
@@ -53,7 +51,7 @@ class CopyAsyncTensorGlobalToSharedInst(
         cache_policy: std.Expr | None = None,
         *,
         dims: list[int],
-        cta_group: Any,
+        cta_group: int,
     ) -> None:
         self.__ffi_init__(
             src=src,
@@ -63,7 +61,7 @@ class CopyAsyncTensorGlobalToSharedInst(
             multicast_mask=multicast_mask,
             cache_policy=cache_policy,
             dims=dims,
-            cta_group=cta_group,
+            cta_group=validate_int_attr(cta_group, "cta_group", (1, 2)),
         )
         self.__post_init__()
 

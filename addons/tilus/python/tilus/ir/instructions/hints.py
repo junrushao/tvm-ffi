@@ -17,18 +17,17 @@
 
 from __future__ import annotations
 
-from typing import Any
-
 from tvm_ffi import std
 from tvm_ffi.dataclasses import field, py_class
 
 from ..inst import Instruction, make_output_var
+from ..layout import Layout
 
 
 @py_class("tilus.AnnotateLayoutInst", structural_eq="tree")
 class AnnotateLayoutInst(Instruction, mnemonic="tilus.AnnotateLayout"):
     src: std.Expr = field(lang_kind="arg")
-    layout: std.Node = field(lang_kind="attr")
+    layout: Layout = field(lang_kind="attr")
     output: std.Var = field(
         kw_only=True,
         lang_kind="out",
@@ -38,10 +37,10 @@ class AnnotateLayoutInst(Instruction, mnemonic="tilus.AnnotateLayout"):
     def __init__(
         self,
         src: std.Expr,
-        layout: std.Node,
+        layout: Layout,
         *,
         output: std.Var | None = None,
-        ty: Any = None,
+        ty: std.TyLike | None = None,
     ) -> None:
         output = make_output_var(output, ty)
         self.__ffi_init__(src, layout=layout, output=output)

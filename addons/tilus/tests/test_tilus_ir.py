@@ -218,8 +218,8 @@ def test_hint_and_cuda_instruction_round_trip() -> None:
         la=layout_mod.register_row_major(16, 32),
         lb=layout_mod.register_row_major(32, 8),
         lc=layout_mod.register_row_major(16, 8),
-        operand_type=std.PrimTy("float16"),
-        acc_type=std.PrimTy("float32"),
+        operand_type=tvm_ffi.dtype("float16"),
+        acc_type=tvm_ffi.dtype("float32"),
     )
     _round_trip(config)
 
@@ -235,11 +235,23 @@ def test_tensor_item_round_trip() -> None:
     tensor_mod = _import("tilus.ir.tensor")
     stmt_mod = _import("tilus.ir.stmt")
 
-    ty = tensor_mod.register_tensor("float32", (2, 2))
-    value = stmt_mod.TensorItemValue(ty, std.Var(ty, "v"))
-    ptr = stmt_mod.TensorItemPtr(ty, std.Var(ty, "p"), space="shared")
+    value_ty = tensor_mod.register_tensor("float32", (2, 2))
+    ptr_ty = tensor_mod.shared_tensor("float32", (2, 2))
+    value = stmt_mod.TensorItemValue(std.Var(value_ty, "v"))
+    ptr = stmt_mod.TensorItemPtr(std.Var(ptr_ty, "p"))
     for node in (value, ptr):
+        assert tvm_ffi.structural_equal(node.tensor, node.var.ty)
         _round_trip(node)
+
+    assert ptr.space == "shared"
+    assert stmt_mod.TensorItemPtr(std.Var(ptr_ty, "direct")).space == "shared"
+    assert tvm_ffi.structural_equal(
+        stmt_mod.TensorItemValue(std.Var(value_ty, "direct")).tensor, value_ty
+    )
+    with pytest.raises(TypeError, match="whose ty is a Tilus Tensor"):
+        stmt_mod.TensorItemValue(std.Var(std.PrimTy("int32"), "bad"))
+    with pytest.raises(TypeError, match="TensorItemPtr requires"):
+        stmt_mod.TensorItemPtr(std.Var(value_ty, "bad"))
 
 
 def test_tensor_item_scope_round_trip() -> None:
@@ -249,7 +261,7 @@ def test_tensor_item_scope_round_trip() -> None:
     ty = tensor_mod.register_tensor("float32", (2, 2))
     value = std.Var(ty, "v")
     scope = std.Scope(
-        [stmt_mod.TensorItemValue(ty, value)],
+        [stmt_mod.TensorItemValue(value)],
         [std.Return(value)],
     )
 

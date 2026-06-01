@@ -18,7 +18,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import cast
 
 from tvm_ffi import dataclasses as dc
 from tvm_ffi import std
@@ -39,22 +39,22 @@ class LoadGlobalInst(Instruction, mnemonic="tilus.LoadGlobal"):
     """Load from a global tensor into a register tensor."""
 
     src: std.Expr = dc.field(lang_kind="arg")
-    offsets: list[std.Expr] = dc.field(default_factory=list, lang_kind="arg")
-    dims: list[int] = dc.field(default_factory=list, lang_kind="attr")
     output: std.Var = dc.field(
         kw_only=True,
         lang_kind="out",
         structural_eq="def-recursive",
     )
+    offsets: list[std.Expr] = dc.field(default_factory=list, lang_kind="arg")
+    dims: list[int] = dc.field(default_factory=list, lang_kind="attr")
 
     def __init__(
         self,
         src: std.Expr,
-        offsets: Any = MISSING,
-        dims: Any = MISSING,
+        offsets: list[std.ExprLike] | object = MISSING,
+        dims: list[int] | object = MISSING,
         *,
         output: std.Var | None = None,
-        ty: Any = None,
+        ty: std.TyLike | None = None,
     ) -> None:
         if MISSING.is_(offsets):
             offsets = []
@@ -80,7 +80,12 @@ class LoadGlobalInst(Instruction, mnemonic="tilus.LoadGlobal"):
                 else ty
             )
         output = make_output_var(output, ty)
-        self.__ffi_init__(src, offsets=offsets, dims=dims, output=output)
+        self.__ffi_init__(
+            src,
+            offsets=cast(list[std.ExprLike], offsets),
+            dims=cast(list[int], dims),
+            output=output,
+        )
         self.__post_init__()
 
     def __post_init__(self) -> None:
@@ -122,7 +127,7 @@ class LoadSharedInst(Instruction, mnemonic="tilus.LoadShared"):
         src: std.Expr,
         *,
         output: std.Var | None = None,
-        ty: Any = None,
+        ty: std.TyLike | None = None,
     ) -> None:
         if ty is not None and output is None:
             ty = std.normalize_ty(ty)
@@ -178,7 +183,7 @@ class CastInst(Instruction, mnemonic="tilus.Cast"):
         src: std.Expr,
         *,
         output: std.Var | None = None,
-        ty: Any = None,
+        ty: std.TyLike | None = None,
     ) -> None:
         output = make_output_var(output, ty)
         self.__ffi_init__(src, output=output)
@@ -206,7 +211,7 @@ class AddInst(Instruction, mnemonic="tilus.Add"):
         rhs: std.Expr,
         *,
         output: std.Var | None = None,
-        ty: Any = None,
+        ty: std.TyLike | None = None,
     ) -> None:
         output = make_output_var(output, ty)
         self.__ffi_init__(lhs, rhs, output=output)
@@ -234,7 +239,7 @@ class SubInst(Instruction, mnemonic="tilus.Sub"):
         rhs: std.Expr,
         *,
         output: std.Var | None = None,
-        ty: Any = None,
+        ty: std.TyLike | None = None,
     ) -> None:
         output = make_output_var(output, ty)
         self.__ffi_init__(lhs, rhs, output=output)
@@ -262,7 +267,7 @@ class MulInst(Instruction, mnemonic="tilus.Mul"):
         rhs: std.Expr,
         *,
         output: std.Var | None = None,
-        ty: Any = None,
+        ty: std.TyLike | None = None,
     ) -> None:
         output = make_output_var(output, ty)
         self.__ffi_init__(lhs, rhs, output=output)
@@ -290,7 +295,7 @@ class DivInst(Instruction, mnemonic="tilus.Div"):
         rhs: std.Expr,
         *,
         output: std.Var | None = None,
-        ty: Any = None,
+        ty: std.TyLike | None = None,
     ) -> None:
         output = make_output_var(output, ty)
         self.__ffi_init__(lhs, rhs, output=output)
@@ -305,14 +310,14 @@ class ReduceInst(Instruction, mnemonic="tilus.Reduce"):
     """Tensor reduction."""
 
     src: std.Expr = dc.field(lang_kind="arg")
-    dim: int = dc.field(default=0, lang_kind="attr")
-    op: str = dc.field(default="sum", lang_kind="attr")
-    keepdim: bool = dc.field(default=False, lang_kind="attr")
     output: std.Var = dc.field(
         kw_only=True,
         lang_kind="out",
         structural_eq="def-recursive",
     )
+    dim: int = dc.field(default=0, lang_kind="attr")
+    op: str = dc.field(default="sum", lang_kind="attr")
+    keepdim: bool = dc.field(default=False, lang_kind="attr")
 
     def __init__(
         self,
@@ -322,7 +327,7 @@ class ReduceInst(Instruction, mnemonic="tilus.Reduce"):
         keepdim: bool = False,
         *,
         output: std.Var | None = None,
-        ty: Any = None,
+        ty: std.TyLike | None = None,
     ) -> None:
         output = make_output_var(output, ty)
         self.__ffi_init__(src, dim=dim, op=op, keepdim=keepdim, output=output)

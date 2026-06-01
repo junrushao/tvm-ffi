@@ -17,12 +17,11 @@
 
 from __future__ import annotations
 
-from typing import Any
-
-from tvm_ffi import std
+from tvm_ffi import dtype, std
 from tvm_ffi.dataclasses import field, py_class
 
 from ...inst import Instruction, make_output_var
+from ...layout import Layout
 
 
 @py_class("tilus.DotInst", structural_eq="tree")
@@ -41,7 +40,7 @@ class DotInst(Instruction, mnemonic="tilus.Dot"):
         rhs: std.Expr,
         *,
         output: std.Var | None = None,
-        ty: Any = None,
+        ty: std.TyLike | None = None,
     ) -> None:
         output = make_output_var(output, ty)
         self.__ffi_init__(lhs, rhs, output=output)
@@ -52,17 +51,17 @@ class DotInst(Instruction, mnemonic="tilus.Dot"):
 
 
 @py_class("tilus.AtomicMmaConfig", structural_eq="tree")
-class AtomicMmaConfig(std.Node, mnemonic="tilus.AtomicMmaConfig"):
+class AtomicMmaConfig(std.Attrs, mnemonic="tilus.AtomicMmaConfig"):
     name: str = field(lang_kind="attr")
     m: int = field(lang_kind="attr")
     n: int = field(lang_kind="attr")
     k: int = field(lang_kind="attr")
     vec_k: int = field(lang_kind="attr")
-    la: std.Node = field(lang_kind="attr")
-    lb: std.Node = field(lang_kind="attr")
-    lc: std.Node = field(lang_kind="attr")
-    operand_type: std.Ty = field(lang_kind="attr")
-    acc_type: std.Ty = field(lang_kind="attr")
+    la: Layout = field(lang_kind="attr")
+    lb: Layout = field(lang_kind="attr")
+    lc: Layout = field(lang_kind="attr")
+    operand_type: dtype = field(lang_kind="attr")
+    acc_type: dtype = field(lang_kind="attr")
 
 
 __all__ = [  # noqa: RUF022

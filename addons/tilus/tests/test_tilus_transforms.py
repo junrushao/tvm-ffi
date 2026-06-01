@@ -137,7 +137,7 @@ def test_ir_rewriter_rejects_delete_in_scope_binds() -> None:
 
     from tilus.ir.stmt import TensorItemValue
 
-    scope = std.Scope([TensorItemValue(x.ty, x)], [std.Return(x)])
+    scope = std.Scope([TensorItemValue(x)], [std.Return(x)])
 
     try:
         DropBindings()(scope)

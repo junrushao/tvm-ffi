@@ -53,30 +53,36 @@ def test_prints_public_constructor_names() -> None:
     inst = tilus.Add(lhs, rhs, ty=ty)
 
     assert tilus.Add is generic.AddInst
-    assert ty.text() == "tilus.RegTensor(std.f32, 2, 2)"
-    assert inst.text() == "v = tilus.Add(lhs, rhs, ty=tilus.RegTensor(std.f32, 2, 2))"
+    assert ty.text() == "tilus.RegTensor(dtype=std.f32, shape=[2, 2])"
+    assert inst.text() == (
+        "v = tilus.Add(lhs, rhs, ty=tilus.RegTensor(dtype=std.f32, shape=[2, 2]))"
+    )
     assert tvm_ffi.structural_equal(parse(ty.text()), ty)
     assert tvm_ffi.structural_equal(parse(inst.text(), extra_vars={"lhs": lhs, "rhs": rhs}), inst)
 
 
 @pytest.mark.parametrize(
-    "ctor", ["RegisterTensor", "SharedTensor", "GlobalTensor", "TMemoryTensor"]
+    "ctor_name,make_expected",
+    _PUBLIC_TENSOR_CASES,
 )
-def test_parse_tensor_optional_layout_alias_is_rejected_for_public_aliases(ctor: str) -> None:
-    source = f"tilus.{ctor}(std.f32, 2, optional_layout=None)"
+def test_parse_tensor_keyword_fields_match_default_printer(
+    ctor_name: str,
+    make_expected: Callable[[std.TyLike, tuple[int, ...]], tensor.Tensor],
+) -> None:
+    source = f"tilus.{ctor_name}(dtype=std.f32, shape=[2], optional_layout=None)"
+    expected = make_expected("float32", (2,))
 
-    with pytest.raises(TypeError, match="unexpected keyword argument 'optional_layout'"):
-        parse(source)
+    assert tvm_ffi.structural_equal(parse(source), expected)
 
 
 def test_parse_tensor_item_ptr_scope_binding() -> None:
     source = """
-with std.scope(tilus.TensorItemPtr(tilus.SharedTensor(std.f32, 4), space="shared")) as ptr:
+with std.scope(tilus.TensorItemPtr(tilus.SharedTensor(std.f32, 4))) as ptr:
     return ptr
 """
     ty = tensor.shared_tensor("float32", (4,))
     ptr = std.Var(ty, "ptr")
-    expected = std.Scope([stmt.TensorItemPtr(ty, ptr, space="shared")], [std.Return(ptr)])
+    expected = std.Scope([stmt.TensorItemPtr(ptr)], [std.Return(ptr)])
 
     assert tvm_ffi.structural_equal(parse(source), expected)
 
@@ -295,11 +301,6 @@ def test_public_tensor_constructor_shape_forms(
     "source,exc,message",
     [
         (
-            "tilus.RegTensor(std.f32, shape=[2])",
-            TypeError,
-            "unexpected keyword argument 'shape'",
-        ),
-        (
             "tilus.RegTensor(std.f32, [2, 3])",
             TypeError,
             "shape extents must be integers",
@@ -347,17 +348,18 @@ def test_parse_global_layout_rejects_non_integral_shape_extents(source: str) -> 
 
 
 @pytest.mark.parametrize(
-    "source",
+    "source,expected",
     [
-        "tilus.RegisterLayout(shape=[2])",
-        "tilus.SharedLayout(shape=[2])",
-        "tilus.GlobalLayout(shape=[2])",
-        "tilus.TMemoryLayout(shape=[32, 8])",
+        ("tilus.RegisterLayout(shape=[2])", layout.register_layout((2,))),
+        ("tilus.SharedLayout(shape=[2])", layout.shared_layout((2,))),
+        ("tilus.GlobalLayout(shape=[2])", layout.global_layout((2,))),
+        ("tilus.TMemoryLayout(shape=[32, 8])", layout.tmemory_layout((32, 8))),
     ],
 )
-def test_parse_layout_shape_keyword_is_rejected(source: str) -> None:
-    with pytest.raises(TypeError, match="unexpected keyword argument 'shape'"):
-        parse(source)
+def test_parse_layout_shape_keyword_matches_default_printer(
+    source: str, expected: layout.Layout
+) -> None:
+    assert tvm_ffi.structural_equal(parse(source), expected)
 
 
 @pytest.mark.parametrize(
@@ -424,11 +426,6 @@ def test_public_layout_constructors_reject_aggregate_shape_args(make) -> None:
     "make,exc,message",
     [
         (
-            lambda: tilus.RegTensor("float32", shape=[2]),
-            TypeError,
-            "unexpected keyword argument 'shape'",
-        ),
-        (
             lambda: tilus.RegTensor("float32", [2, 3]),
             TypeError,
             "shape extents must be integers",
@@ -476,38 +473,37 @@ def test_public_tensor_constructor_rejects_non_integral_shape_extents() -> None:
     [
         (
             tensor.register_tensor("float32", (2, 2), layout=layout.register_row_major(2, 2)),
-            "tilus.RegTensor(std.f32, 2, 2, layout=tilus.RegisterLayout("
-            "2, 2, local_modes=[0, 1], mode_shape=[2, 2], spatial_modes=[]"
-            "))",
+            "tilus.RegTensor(dtype=std.f32, optional_layout=tilus.RegisterLayout("
+            "local_modes=[0, 1], mode_shape=[2, 2], shape=[2, 2], spatial_modes=[]"
+            "), shape=[2, 2])",
         ),
         (
             tensor.shared_tensor("float32", (2, 2), layout=layout.shared_row_major(2, 2)),
-            "tilus.SharedTensor(std.f32, 2, 2, layout=tilus.SharedLayout("
-            "2, 2, mode_shape=[2, 2], mode_strides=[2, 1]"
-            "))",
+            "tilus.SharedTensor(dtype=std.f32, optional_layout=tilus.SharedLayout("
+            "mode_shape=[2, 2], mode_strides=[2, 1], shape=[2, 2]"
+            "), shape=[2, 2])",
         ),
         (
             tensor.global_tensor("float32", (2, 2), layout=layout.global_row_major(2, 2)),
-            "tilus.GlobalTensor(std.f32, 2, 2, layout=tilus.GlobalLayout("
+            "tilus.GlobalTensor(dtype=std.f32, optional_layout=tilus.GlobalLayout("
             '[2, 2], 4, 0, axes=["i0", "i1"]'
-            "))",
+            "), shape=[2, 2])",
         ),
         (
             tensor.tmemory_tensor("float32", (32, 8), layout=layout.tmemory_row_major((32, 8))),
-            "tilus.TMemoryTensor(std.f32, 32, 8, layout=tilus.TMemoryLayout("
-            "32, 8, column_strides=[0, 1], lane_offset=0"
-            "))",
+            "tilus.TMemoryTensor(dtype=std.f32, optional_layout=tilus.TMemoryLayout("
+            "column_strides=[0, 1], lane_offset=0, shape=[32, 8]"
+            "), shape=[32, 8])",
         ),
     ],
 )
-def test_layout_bearing_tensor_text_uses_public_layout_keyword(
+def test_layout_bearing_tensor_text_uses_default_field_names(
     ty: tensor.Tensor, expected_text: str
 ) -> None:
     text = ty.text()
 
     assert text == expected_text
-    assert "optional_layout=" not in text
-    assert "layout=" in text
+    assert "optional_layout=" in text
     assert tvm_ffi.structural_equal(parse(text), ty)
 
 
@@ -526,4 +522,6 @@ with tilus.ThreadGroup(1, 2):
     parsed = parse(source)
 
     assert tvm_ffi.structural_equal(parsed, expected)
-    assert expected.text() == "with tilus.ThreadGroup(1, 2):\n  result = 1\n  return result"
+    assert expected.text() == (
+        "with tilus.ThreadGroup(num_threads=2, thread_begin=1):\n  result = 1\n  return result"
+    )

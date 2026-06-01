@@ -29,7 +29,7 @@ MBARRIER_SCOPES = ("cta", "cluster")
 
 @py_class("tilus.AllocBarrierInst", structural_eq="tree")
 class AllocBarrierInst(Instruction, mnemonic="tilus.AllocBarrier"):
-    counts: list[std.Expr | None] = field(lang_kind="arg")
+    counts: list[std.Expr] = field(lang_kind="arg")
 
     def outputs(self) -> tuple[std.Var, ...]:
         return ()
@@ -86,7 +86,7 @@ class ArriveExpectTxMulticastBarrierInst(
 ):
     barrier: std.Expr = field(lang_kind="arg")
     transaction_bytes: std.Expr = field(lang_kind="arg")
-    multicast: int = field(lang_kind="attr")
+    multicast_mask: std.Expr = field(lang_kind="arg")
     sem: str = field(default="release", lang_kind="attr")
     scope: str = field(default="cta", lang_kind="attr")
 
@@ -102,7 +102,7 @@ class ArriveExpectTxMulticastBarrierInst(
 class ArriveExpectTxRemoteBarrierInst(Instruction, mnemonic="tilus.ArriveExpectTxRemoteBarrier"):
     barrier: std.Expr = field(lang_kind="arg")
     transaction_bytes: std.Expr = field(lang_kind="arg")
-    target_rank: int = field(lang_kind="attr")
+    target_rank: std.Expr = field(lang_kind="arg")
     sem: str = field(default="release", lang_kind="attr")
     scope: str = field(default="cta", lang_kind="attr")
 

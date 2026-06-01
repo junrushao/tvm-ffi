@@ -17,8 +17,6 @@
 
 from __future__ import annotations
 
-from typing import Any
-
 from tvm_ffi import std
 from tvm_ffi.dataclasses import field, py_class
 
@@ -72,7 +70,7 @@ class WgmmaMmaSSInst(Instruction, mnemonic="tilus.WgmmaMmaSS"):
         rhs: std.Expr,
         *,
         output: std.Var | None = None,
-        ty: Any = None,
+        ty: std.TyLike | None = None,
     ) -> None:
         output = make_output_var(output, ty)
         self.__ffi_init__(lhs, rhs, output=output)
@@ -98,7 +96,7 @@ class WgmmaMmaRSInst(Instruction, mnemonic="tilus.WgmmaMmaRS"):
         rhs: std.Expr,
         *,
         output: std.Var | None = None,
-        ty: Any = None,
+        ty: std.TyLike | None = None,
     ) -> None:
         output = make_output_var(output, ty)
         self.__ffi_init__(lhs, rhs, output=output)

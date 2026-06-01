@@ -17,8 +17,6 @@
 
 from __future__ import annotations
 
-from typing import Any
-
 from tvm_ffi import std
 from tvm_ffi.dataclasses import field, py_class
 
@@ -53,7 +51,7 @@ class SimtDotInst(Instruction, mnemonic="tilus.SimtDot"):
         thread_repeat: list[int],
         *,
         output: std.Var | None = None,
-        ty: Any = None,
+        ty: std.TyLike | None = None,
     ) -> None:
         output = make_output_var(output, ty)
         self.__ffi_init__(

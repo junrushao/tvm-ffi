@@ -616,9 +616,9 @@ def test_multi_function_layout_unit_roundtrips() -> None:
             def tensor_item_bindings():
                 with std.scope(
                     tilus.TensorItemValue(tilus.RegTensor(std.f32, 1)),
-                    tilus.TensorItemPtr(tilus.SharedTensor(std.f32, 1), space="shared"),
-                    tilus.TensorItemPtr(tilus.GlobalTensor(std.f32, 1), space="global"),
-                    tilus.TensorItemPtr(tilus.TMemoryTensor(std.f32, 1), space="tmem"),
+                    tilus.TensorItemPtr(tilus.SharedTensor(std.f32, 1)),
+                    tilus.TensorItemPtr(tilus.GlobalTensor(std.f32, 1)),
+                    tilus.TensorItemPtr(tilus.TMemoryTensor(std.f32, 1)),
                 ) as (value, shared_ptr, global_ptr, tmem_ptr):
                     return value
             """,
@@ -750,7 +750,7 @@ def test_tensor_return_types_round_trip_inside_std_module() -> None:
                     dims=[0],
                 )
                 with std.scope(
-                    tilus.TensorItemPtr(tilus.SharedTensor(std.f16, 8), space="shared")
+                    tilus.TensorItemPtr(tilus.SharedTensor(std.f16, 8))
                 ) as shared:
                     tilus.StoreShared(shared, loaded)
                     tilus.SyncThreads()
@@ -887,7 +887,7 @@ def test_cp_async_functions_round_trip(source: str) -> None:
                 dst: tilus.SharedTensor(std.f16, 16, 16),
                 barrier: std.i32,
             ):
-                tilus.AllocBarrier(counts=[1, None, 4])
+                tilus.AllocBarrier(counts=[1, 4])
                 tilus.ArriveExpectTxBarrier(
                     barrier=barrier,
                     transaction_bytes=512,
@@ -926,7 +926,7 @@ def test_cp_async_functions_round_trip(source: str) -> None:
                 tilus.ArriveExpectTxMulticastBarrier(
                     barrier=barrier,
                     transaction_bytes=256,
-                    multicast=3,
+                    multicast_mask=3,
                     sem="relaxed",
                     scope="cluster",
                 )
@@ -1289,7 +1289,7 @@ def test_thread_group_functions_text_round_trip(source: str) -> None:
             @tilus.Function
             def tensor_item_ptr_load() -> tilus.RegTensor(std.f32, 4):
                 with std.scope(
-                    tilus.TensorItemPtr(tilus.SharedTensor(std.f32, 4), space="shared")
+                    tilus.TensorItemPtr(tilus.SharedTensor(std.f32, 4))
                 ) as ptr:
                     loaded = tilus.LoadShared(ptr, ty=tilus.RegTensor(std.f32, 4))
                     return loaded
@@ -1302,7 +1302,7 @@ def test_thread_group_functions_text_round_trip(source: str) -> None:
             def mixed_tensor_item_scope() -> tilus.RegTensor(std.i32, 1):
                 with std.scope(
                     tilus.TensorItemValue(tilus.RegTensor(std.i32, 1)),
-                    tilus.TensorItemPtr(tilus.SharedTensor(std.i32, 1), space="shared"),
+                    tilus.TensorItemPtr(tilus.SharedTensor(std.i32, 1)),
                     role="mixed",
                 ) as (value, ptr):
                     tilus.StoreShared(ptr, value)
@@ -1400,7 +1400,7 @@ def test_scoped_functions_inside_module_text_round_trip() -> None:
                 src: tilus.RegTensor(std.f16, 8),
             ):
                 with std.scope(
-                    tilus.TensorItemPtr(tilus.SharedTensor(std.f16, 8), space="shared"),
+                    tilus.TensorItemPtr(tilus.SharedTensor(std.f16, 8)),
                     stage="shared",
                 ) as shared:
                     tilus.StoreShared(shared, src)
@@ -1723,7 +1723,7 @@ def test_multi_function_hint_metadata_translation_unit_roundtrip() -> None:
             """
             @tilus.Function
             def barrier_lifecycle(barrier: std.i32, phase: std.i32, bytes: std.i32):
-                tilus.AllocBarrier(counts=[1, None, 4])
+                tilus.AllocBarrier(counts=[1, 4])
                 tilus.ArriveBarrier(
                     barrier=barrier,
                     count=2,
@@ -1745,7 +1745,7 @@ def test_multi_function_hint_metadata_translation_unit_roundtrip() -> None:
                 tilus.ArriveExpectTxMulticastBarrier(
                     barrier=barrier + 2,
                     transaction_bytes=bytes * 2,
-                    multicast=3,
+                    multicast_mask=3,
                     sem="release",
                     scope="cluster",
                 )
@@ -1787,7 +1787,7 @@ def test_multi_function_hint_metadata_translation_unit_roundtrip() -> None:
                 rank: std.i32,
             ):
                 with std.scope(
-                    tilus.TensorItemPtr(tilus.SharedTensor(std.u32, 8), space="shared"),
+                    tilus.TensorItemPtr(tilus.SharedTensor(std.u32, 8)),
                     role="remote_smem",
                 ) as shared:
                     mapped = tilus.MapSharedAddr(
@@ -1825,7 +1825,7 @@ def test_cuda_sync_atomic_functions_inside_std_module_round_trip() -> None:
 
             @tilus.Function
             def barrier_and_semaphore(barrier: std.i32, semaphore: std.i32):
-                tilus.AllocBarrier(counts=[None, 2])
+                tilus.AllocBarrier(counts=[2])
                 tilus.ArriveBarrier(
                     barrier=barrier,
                     count=1,
@@ -1898,7 +1898,7 @@ def test_cuda_sync_atomic_functions_inside_std_module_round_trip() -> None:
                 dst: tilus.GlobalTensor(std.f16, 64, 64),
             ):
                 with std.scope(
-                    tilus.TensorItemPtr(tilus.SharedTensor(std.f16, 16, 16), space="shared"),
+                    tilus.TensorItemPtr(tilus.SharedTensor(std.f16, 16, 16)),
                     pragma="stage_shared",
                 ) as tile:
                     for phase in range(0, 2, tag="phase"):
@@ -2396,7 +2396,7 @@ def test_barrier_and_bulk_copy_expression_attrs_inside_function_roundtrip() -> N
             stride: std.i32,
             mbarrier: std.i32,
         ):
-            tilus.AllocBarrier(counts=[(row + col) * 4, None, (phase + 1) * 16])
+            tilus.AllocBarrier(counts=[(row + col) * 4, (phase + 1) * 16])
             tilus.ArriveExpectTxBarrier(
                 barrier=mbarrier + phase,
                 transaction_bytes=((row + 1) * stride + col) * 2,

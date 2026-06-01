@@ -108,14 +108,14 @@ def _atomic_mma_config() -> instructions.AtomicMmaConfig:
         la=layout.register_row_major(16, 32),
         lb=layout.register_row_major(32, 8),
         lc=layout.register_row_major(16, 8),
-        operand_type=std.PrimTy("float16"),
-        acc_type=std.PrimTy("float32"),
+        operand_type=tvm_ffi.dtype("float16"),
+        acc_type=tvm_ffi.dtype("float32"),
     )
 
 
 _CATALOG_FACTORIES: dict[str, Callable[[], object]] = {
     "AddInst": lambda: _binary_tensor_inst(instructions.AddInst),
-    "AllocBarrierInst": lambda: instructions.AllocBarrierInst(counts=[1, None, 4]),
+    "AllocBarrierInst": lambda: instructions.AllocBarrierInst(counts=[1, 4]),
     "AnnotateLayoutInst": lambda: instructions.AnnotateLayoutInst(
         _reg_value("src"),
         layout=_reg_layout(),
@@ -129,7 +129,7 @@ _CATALOG_FACTORIES: dict[str, Callable[[], object]] = {
     "ArriveExpectTxMulticastBarrierInst": lambda: instructions.ArriveExpectTxMulticastBarrierInst(
         barrier=0,
         transaction_bytes=16,
-        multicast=3,
+        multicast_mask=3,
     ),
     "ArriveExpectTxRemoteBarrierInst": lambda: instructions.ArriveExpectTxRemoteBarrierInst(
         barrier=0,

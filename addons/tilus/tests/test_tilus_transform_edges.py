@@ -672,7 +672,7 @@ def test_dce_scope_tensor_item_value_bind_shadows_outer_producer() -> None:
         ret_type=None,
         body=[
             AddInst(value, value, output=value),
-            std.Scope([TensorItemValue(tensor, value)], [std.Return(value)]),
+            std.Scope([TensorItemValue(value)], [std.Return(value)]),
         ],
         metadata=None,
     )

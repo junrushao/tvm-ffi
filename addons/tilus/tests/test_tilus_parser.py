@@ -179,17 +179,13 @@ dst = tilus.LoadGlobal(
         parse(source, extra_vars={"src": src})
 
 
-def test_parse_tensor_optional_layout_alias_is_rejected() -> None:
+def test_parse_tensor_optional_layout_alias_matches_default_printer() -> None:
     _import("tilus._tilus_lang")
 
     source = "tilus.RegTensor(std.f32, 2, 2, optional_layout=None)"
+    expected = tilus.RegTensor("float32", 2, 2)
 
-    try:
-        parse(source)
-    except TypeError as err:
-        assert "unexpected keyword argument 'optional_layout'" in str(err)
-    else:
-        raise AssertionError("expected optional_layout alias to fail")
+    assert tvm_ffi.structural_equal(parse(source), expected)
 
 
 def test_parse_instruction_binding_inside_function() -> None:
@@ -234,7 +230,7 @@ with std.scope(tilus.TensorItemValue(tilus.RegTensor(std.f32, 2, 2))) as v:
 """
     ty = tensor_mod.register_tensor("float32", (2, 2))
     v = std.Var(ty, "v")
-    expected = std.Scope([stmt_mod.TensorItemValue(ty, v)], [std.Return(v)])
+    expected = std.Scope([stmt_mod.TensorItemValue(v)], [std.Return(v)])
 
     parsed = parse(source)
     assert tvm_ffi.structural_equal(parsed, expected)

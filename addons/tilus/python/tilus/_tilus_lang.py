@@ -85,22 +85,34 @@ class _TensorItemBuilder:
 
     cls: type
     tensor_value: tensor.Tensor
-    space: str | None = None
 
     def __ffi_scope_bind__(self) -> std.Stmt:
         """Build a placeholder tensor-item binding for ``std.scope(... ) as``."""
         var = std.Var(self.tensor_value, "")
         if self.cls is stmt.TensorItemPtr:
-            return stmt.TensorItemPtr(self.tensor_value, var, self.space)
-        return stmt.TensorItemValue(self.tensor_value, var)
+            return stmt.TensorItemPtr(var)
+        return stmt.TensorItemValue(var)
 
 
 def _make_tensor(
     cls: type[_TensorT],
-    dtype: std.TyLike,
+    dtype: std.TyLike | None,
     shape_args: tuple[Any, ...],
     layout_value: layout.Layout | None,
+    *,
+    shape: Any = None,
+    optional_layout: layout.Layout | None = None,
 ) -> _TensorT:
+    if dtype is None:
+        raise TypeError("missing required argument 'dtype'")
+    if shape is not None:
+        if shape_args:
+            raise TypeError("tensor shape supplied both positionally and by keyword")
+        shape_args = tuple(shape)
+    if optional_layout is not None:
+        if layout_value is not None:
+            raise TypeError("tensor layout supplied both as layout and optional_layout")
+        layout_value = optional_layout
     return cast(Any, cls)(
         tensor._prim_ty(dtype),
         shape=tensor._shape(shape_args),
@@ -124,8 +136,8 @@ def _bind_expr(names: Sequence[str], ty: Any, expr: Any) -> Any:
         bind_ty = ty if ty is not None else expr.tensor_value
         var = bind_one_var(names, bind_ty)
         if expr.cls is stmt.TensorItemPtr:
-            return stmt.TensorItemPtr(expr.tensor_value, var, expr.space)
-        return stmt.TensorItemValue(expr.tensor_value, var)
+            return stmt.TensorItemPtr(var)
+        return stmt.TensorItemValue(var)
     return Std.__ffi_generics__["__bind_expr__"](names, ty, expr)
 
 
@@ -140,10 +152,15 @@ class TilusLang:
     @staticmethod
     def RegisterLayout(
         *shape_args: Any,
+        shape: Any = None,
         mode_shape: Any = None,
         spatial_modes: Any = None,
         local_modes: Any = None,
     ) -> layout.RegisterLayout:
+        if shape is not None:
+            if shape_args:
+                raise TypeError("RegisterLayout shape supplied both positionally and by keyword")
+            shape_args = tuple(shape)
         return layout.register_layout(
             shape_args,
             mode_shape=mode_shape,
@@ -154,10 +171,15 @@ class TilusLang:
     @staticmethod
     def SharedLayout(
         *shape_args: Any,
+        shape: Any = None,
         mode_shape: Any = None,
         mode_strides: Any = None,
         optional_swizzle: layout.Swizzle | None = None,
     ) -> layout.SharedLayout:
+        if shape is not None:
+            if shape_args:
+                raise TypeError("SharedLayout shape supplied both positionally and by keyword")
+            shape_args = tuple(shape)
         return layout.shared_layout(
             shape_args,
             mode_shape=mode_shape,
@@ -168,10 +190,15 @@ class TilusLang:
     @staticmethod
     def GlobalLayout(
         *shape_args: Any,
+        shape: Any = None,
         size: Any = None,
         axes: Any = None,
         offset: Any = 0,
     ) -> layout.GlobalLayout:
+        if shape is not None:
+            if shape_args:
+                raise TypeError("GlobalLayout shape supplied both positionally and by keyword")
+            shape_args = (shape,)
         if shape_args and isinstance(shape_args[0], (list, tuple)):
             if len(shape_args) > 3:
                 raise TypeError("GlobalLayout accepts at most shape, size, and offset")
@@ -207,9 +234,14 @@ class TilusLang:
     @staticmethod
     def TMemoryLayout(
         *shape_args: Any,
+        shape: Any = None,
         column_strides: Any = None,
         lane_offset: Any = 0,
     ) -> layout.TMemoryLayout:
+        if shape is not None:
+            if shape_args:
+                raise TypeError("TMemoryLayout shape supplied both positionally and by keyword")
+            shape_args = tuple(shape)
         shape = tuple(shape_args)
         if column_strides is None and lane_offset == 0:
             return layout.tmemory_layout(shape)
@@ -221,56 +253,72 @@ class TilusLang:
 
     @staticmethod
     def RegTensor(
-        dtype: std.TyLike,
+        dtype: std.TyLike | None = None,
         *shape_args: Any,
         layout: layout.Layout | None = None,
+        optional_layout: layout.Layout | None = None,
+        shape: Any = None,
     ) -> tensor.RegisterTensor:
         return _make_tensor(
             tensor.RegisterTensor,
             dtype,
             shape_args,
             layout,
+            shape=shape,
+            optional_layout=optional_layout,
         )
 
     RegisterTensor = RegTensor
 
     @staticmethod
     def SharedTensor(
-        dtype: std.TyLike,
+        dtype: std.TyLike | None = None,
         *shape_args: Any,
         layout: layout.Layout | None = None,
+        optional_layout: layout.Layout | None = None,
+        shape: Any = None,
     ) -> tensor.SharedTensor:
         return _make_tensor(
             tensor.SharedTensor,
             dtype,
             shape_args,
             layout,
+            shape=shape,
+            optional_layout=optional_layout,
         )
 
     @staticmethod
     def GlobalTensor(
-        dtype: std.TyLike,
+        dtype: std.TyLike | None = None,
         *shape_args: Any,
         layout: layout.Layout | None = None,
+        optional_layout: layout.Layout | None = None,
+        shape: Any = None,
     ) -> tensor.GlobalTensor:
         return _make_tensor(
             tensor.GlobalTensor,
             dtype,
             shape_args,
             layout,
+            shape=shape,
+            optional_layout=optional_layout,
         )
 
     @staticmethod
     def TMemoryTensor(
-        dtype: std.TyLike,
+        dtype: std.TyLike | None = None,
         *shape_args: Any,
         layout: layout.Layout | None = None,
+        optional_layout: layout.Layout | None = None,
+        shape: Any = None,
     ) -> tensor.TMemoryTensor:
         return _make_tensor(
             tensor.TMemoryTensor,
             dtype,
             shape_args,
             layout,
+            shape=shape,
+            optional_layout=optional_layout,
         )
 
     ThreadGroup = ThreadGroupFactory
@@ -284,13 +332,30 @@ class TilusLang:
 
     @staticmethod
     def TensorItemPtr(
-        tensor_value: tensor.Tensor,
-        space: str | None = None,
+        tensor_value: tensor.Tensor | None = None,
+        *,
+        ty: tensor.Tensor | None = None,
     ) -> _TensorItemBuilder:
-        return _TensorItemBuilder(stmt.TensorItemPtr, tensor_value, space)
+        if ty is not None:
+            if tensor_value is not None:
+                raise TypeError("TensorItemPtr type supplied both positionally and by keyword")
+            tensor_value = ty
+        if tensor_value is None:
+            raise TypeError("missing required tensor type")
+        return _TensorItemBuilder(stmt.TensorItemPtr, tensor_value)
 
     @staticmethod
-    def TensorItemValue(tensor_value: tensor.Tensor) -> _TensorItemBuilder:
+    def TensorItemValue(
+        tensor_value: tensor.Tensor | None = None,
+        *,
+        ty: tensor.Tensor | None = None,
+    ) -> _TensorItemBuilder:
+        if ty is not None:
+            if tensor_value is not None:
+                raise TypeError("TensorItemValue type supplied both positionally and by keyword")
+            tensor_value = ty
+        if tensor_value is None:
+            raise TypeError("missing required tensor type")
         return _TensorItemBuilder(stmt.TensorItemValue, tensor_value)
 
     AtomicShared = instructions.AtomicSharedInst

@@ -19,6 +19,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from typing import cast
 
 from tvm_ffi import dataclasses as dc
 from tvm_ffi import std
@@ -29,10 +30,10 @@ from .layout import GlobalLayout, Layout, RegisterLayout, SharedLayout, TMemoryL
 def _prim_ty(dtype: std.TyLike) -> std.PrimTy:
     if isinstance(dtype, std.Ty):
         ty = dtype
-    elif hasattr(dtype, "to_dialect"):
-        ty = dtype.to_dialect()
+    elif callable(to_dialect := getattr(dtype, "to_dialect", None)):
+        ty = to_dialect()
     else:
-        ty = std.PrimTy(dtype)
+        ty = std.PrimTy(cast(str, dtype))
     if not isinstance(ty, std.PrimTy):
         raise TypeError(f"expected primitive dtype, got {type(ty).__name__}")
     return ty
@@ -50,15 +51,18 @@ def _shape(values: Sequence[int]) -> tuple[int, ...]:
 
 
 def _layout_shape(layout: Layout) -> tuple[int, ...] | None:
-    shape = layout.shape
     if isinstance(layout, GlobalLayout):
+        shape = layout.shape
         extents = []
         for extent in shape:
             if not isinstance(extent, std.IntImm):
                 return None
             extents.append(int(extent.value))
         return tuple(extents)
-    return tuple(int(extent) for extent in shape)
+    if isinstance(layout, (RegisterLayout, SharedLayout, TMemoryLayout)):
+        shape = layout.shape
+        return tuple(int(extent) for extent in shape)
+    raise TypeError(f"expected Tilus layout, got {type(layout).__name__}")
 
 
 def _check_layout_shape(tensor_shape: tuple[int, ...], layout: Layout | None) -> None:
@@ -69,25 +73,11 @@ def _check_layout_shape(tensor_shape: tuple[int, ...], layout: Layout | None) ->
         raise ValueError(f"tensor shape {tensor_shape} must match layout shape {layout_shape}")
 
 
-def _collect_tensor_fields(obj: Tensor) -> std.FieldCollectionResult:
-    attrs: dict[str, object] = {}
-    if obj.optional_layout is not None:
-        attrs["layout"] = obj.optional_layout
-    return std.FieldCollectionResult(
-        args=[obj.dtype, *obj.shape],
-        attrs=attrs,
-        outs=[],
-        body=[],
-    )
-
-
 @dc.py_class("tilus.Tensor", structural_eq="tree", init=False)
 class Tensor(std.Ty, mnemonic="tilus.Tensor"):
     """Base class for Tilus memory-space tensor types."""
 
-    __ffi_dialect_field_collector__ = staticmethod(_collect_tensor_fields)
-
-    dtype: std.PrimTy = dc.field(lang_kind="arg")
+    dtype: std.PrimTy = dc.field(lang_kind="attr")
     shape: tuple[int, ...] = dc.field(default_factory=tuple, lang_kind="attr")
     optional_layout: Layout | None = dc.field(default=None, lang_kind="attr")
 

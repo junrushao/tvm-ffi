@@ -20,3 +20,15 @@
 This addon provides the Tilus IR package implemented on top of TVM-FFI's `std`
 dialect. Install it from this checkout after installing `apache-tvm-ffi`:
 `python -m pip install -e addons/tilus`.
+
+## IR Construction Notes
+
+Tilus expression operands use `lang_kind="arg"` and should be `std.Expr`
+instances or lists of `std.Expr` instances. Compile-time descriptors such as
+layouts, tensor shapes, static dimensions, and scalar configuration values use
+`lang_kind="attr"` instead.
+
+`TensorItemValue` and `TensorItemPtr` define their binding variable directly:
+construct them from a `std.Var` whose `ty` is the tensor type. `TensorItemPtr`
+derives its `space` property from that tensor type (`SharedTensor`,
+`GlobalTensor`, or `TMemoryTensor`) rather than storing a separate space field.

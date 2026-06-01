@@ -18,8 +18,6 @@
 
 from __future__ import annotations
 
-from typing import Any
-
 from tvm_ffi import dataclasses as dc
 from tvm_ffi import std
 
@@ -34,7 +32,7 @@ def _format_valid_values(values: tuple[str, ...]) -> str:
 
 def make_output_var(
     output: std.Var | None,
-    ty: Any,
+    ty: std.TyLike | None,
 ) -> std.Var:
     """Return an existing output var or allocate one from ``ty``."""
     if output is not None:
@@ -46,7 +44,7 @@ def make_output_var(
     return std.Var(std.normalize_ty(ty), "")
 
 
-def _collect_instruction_fields(obj: Any) -> std.FieldCollectionResult:
+def _collect_instruction_fields(obj: Instruction) -> std.FieldCollectionResult:
     fields = std.collect_dialect_fields(obj)
     ty: std.Ty | None = None
     outputs = obj.outputs()
@@ -110,7 +108,7 @@ def validate_string_attr(value: str | None, attr_name: str, valid_values: tuple[
         )
 
 
-def validate_int_attr(value: Any, attr_name: str, valid_values: tuple[int, ...]) -> int:
+def validate_int_attr(value: object, attr_name: str, valid_values: tuple[int, ...]) -> int:
     """Validate and return an integer-valued instruction attribute."""
     int_value = _int_value(value)
     if int_value is None or int_value not in valid_values:
@@ -118,7 +116,7 @@ def validate_int_attr(value: Any, attr_name: str, valid_values: tuple[int, ...])
     return int_value
 
 
-def validate_nonnegative_int_attr(value: Any, attr_name: str) -> int:
+def validate_nonnegative_int_attr(value: object, attr_name: str) -> int:
     """Validate and return a non-negative integer instruction attribute."""
     int_value = _int_value(value)
     if int_value is None or int_value < 0:
@@ -126,7 +124,7 @@ def validate_nonnegative_int_attr(value: Any, attr_name: str) -> int:
     return int_value
 
 
-def _int_value(value: Any) -> int | None:
+def _int_value(value: object) -> int | None:
     if isinstance(value, bool):
         return None
     if isinstance(value, int):
