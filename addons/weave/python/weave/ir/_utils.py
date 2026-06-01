@@ -25,10 +25,8 @@ from tvm_ffi import dtype as tvm_dtype
 from tvm_ffi import std
 
 
-def normalize_dtype(value: std.TyLike | tvm_dtype | None, *, field_name: str) -> tvm_dtype | None:
+def normalize_dtype(value: std.TyLike | tvm_dtype, *, field_name: str) -> tvm_dtype:
     """Normalize scalar dtype attributes while rejecting ambiguous raw strings."""
-    if value is None:
-        return None
     if isinstance(value, tvm_dtype):
         return value
     if isinstance(value, str):
@@ -42,14 +40,6 @@ def normalize_dtype(value: std.TyLike | tvm_dtype | None, *, field_name: str) ->
     return ty.dtype
 
 
-def normalize_required_dtype(value: std.TyLike | tvm_dtype, *, field_name: str) -> tvm_dtype:
-    """Normalize a required scalar dtype attribute."""
-    dtype = normalize_dtype(value, field_name=field_name)
-    if dtype is None:
-        raise TypeError(f"{field_name} is required")
-    return dtype
-
-
 def validate_cta_group(value: int, *, field_name: str = "cta_group") -> int:
     """Validate CTA group ids without accepting bool-as-int values."""
     if type(value) is not int or value not in (1, 2):
@@ -57,8 +47,8 @@ def validate_cta_group(value: int, *, field_name: str = "cta_group") -> int:
     return value
 
 
-def normalize_domain(value: str, valid: Sequence[str], *, field_name: str) -> str:
-    """Normalize a string-like domain value and validate it."""
+def validate_candidate_value(value: str, valid: Sequence[str], *, field_name: str) -> str:
+    """Validate that a string field is one of the supported candidates."""
     if not isinstance(value, str):
         raise TypeError(f"{field_name} must be a string, got {type(value).__name__}")
     if value not in valid:
@@ -124,9 +114,8 @@ __all__ = [
     "Op",
     "OutputOp",
     "collect_fields_with_out_ty",
-    "normalize_domain",
     "normalize_dtype",
-    "normalize_required_dtype",
+    "validate_candidate_value",
     "validate_cta_group",
     "var_with_ty_hint",
 ]

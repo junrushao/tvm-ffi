@@ -35,7 +35,7 @@ def prod(values: Iterable[ExprLike]) -> ExprLike:
     return result
 
 
-def _strict_int(value: object, field_name: str) -> int:
+def _strict_int(value: ExprLike, field_name: str) -> int:
     if isinstance(value, bool) or not isinstance(value, int):
         raise TypeError(f"{field_name} must be an integer, got {value!r}")
     return value

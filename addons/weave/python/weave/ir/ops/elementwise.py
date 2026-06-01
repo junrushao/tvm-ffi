@@ -16,7 +16,7 @@ from tvm_ffi import dataclasses as dc
 from tvm_ffi import dtype as tvm_dtype
 from tvm_ffi import std
 
-from .._utils import Op, normalize_domain, normalize_required_dtype
+from .._utils import Op, normalize_dtype, validate_candidate_value
 
 ELEMENTWISE_OPS = ("fma", "mul", "add", "sub", "fmax", "exp", "bitmask")
 
@@ -34,11 +34,8 @@ class Elementwise(Op, mnemonic="weave.Elementwise"):
         *,
         op: str,
     ) -> None:
+        op = validate_candidate_value(op, ELEMENTWISE_OPS, field_name="op")
         self.__ffi_init__(inputs=inputs or [], output=output, op=op)
-        self.__post_init__()
-
-    def __post_init__(self) -> None:
-        self.op = normalize_domain(self.op, ELEMENTWISE_OPS, field_name="op")
 
 
 @dc.py_class("weave.PredicatedStore", structural_eq="tree")
@@ -107,8 +104,12 @@ class RegArrayCast(Op, mnemonic="weave.RegArrayCast"):
         dst_dtype: std.TyLike,
         count: int = 0,
     ) -> None:
-        src_dtype = normalize_required_dtype(src_dtype, field_name="src_dtype")
-        dst_dtype = normalize_required_dtype(dst_dtype, field_name="dst_dtype")
+        if src_dtype is None:
+            raise TypeError("src_dtype is required")
+        if dst_dtype is None:
+            raise TypeError("dst_dtype is required")
+        src_dtype = normalize_dtype(src_dtype, field_name="src_dtype")
+        dst_dtype = normalize_dtype(dst_dtype, field_name="dst_dtype")
         self.__ffi_init__(
             src=src,
             dst=dst,
@@ -117,11 +118,6 @@ class RegArrayCast(Op, mnemonic="weave.RegArrayCast"):
             dst_dtype=dst_dtype,
             count=count,
         )
-        self.__post_init__()
-
-    def __post_init__(self) -> None:
-        self.src_dtype = normalize_required_dtype(self.src_dtype, field_name="src_dtype")
-        self.dst_dtype = normalize_required_dtype(self.dst_dtype, field_name="dst_dtype")
 
 
 __all__ = [  # noqa: RUF022

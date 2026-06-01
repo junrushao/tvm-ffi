@@ -44,7 +44,6 @@ class DotInst(Instruction, mnemonic="tilus.Dot"):
     ) -> None:
         output = make_output_var(output, ty)
         self.__ffi_init__(lhs, rhs, output=output)
-        self.__post_init__()
 
     def outputs(self) -> tuple[std.Var, ...]:
         return (self.output,)

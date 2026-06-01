@@ -383,18 +383,6 @@ def test_kernel_constants_preserve_primitive_python_values() -> None:
     }
 
 
-@pytest.mark.parametrize("field_name", ["reg_budgets", "tma_param_ndims"])
-@pytest.mark.parametrize("bad_value", [True, 1.5])
-def test_kernel_int_maps_reject_invalid_values_after_field_conversion(
-    field_name: str, bad_value: object
-) -> None:
-    kernel = Kernel("k", [], None, [])
-    setattr(kernel, field_name, {"x": bad_value})
-
-    with pytest.raises(TypeError, match=rf"{field_name}\['x'\] must be an integer constant"):
-        kernel.__post_init__()
-
-
 @pytest.mark.parametrize(
     "ctor",
     [

@@ -18,8 +18,8 @@ from tvm_ffi import std
 
 from .._utils import (
     Op,
-    normalize_domain,
     normalize_dtype,
+    validate_candidate_value,
     validate_cta_group,
 )
 
@@ -70,14 +70,11 @@ class Tcgen05Cp(Op, mnemonic="weave.Tcgen05Cp"):
         sbo: int = 128,
         elected: bool = False,
     ) -> None:
-        self.__ffi_init__(src, dst, shape, validate_cta_group(cta_group), sbo, elected)
-        self.__post_init__()
-
-    def __post_init__(self) -> None:
-        self.shape = normalize_domain(self.shape, TCGEN05_CP_SHAPES, field_name="shape")
-        self.cta_group = validate_cta_group(self.cta_group)
-        if self.sbo <= 0 or self.sbo % 16:
+        shape = validate_candidate_value(shape, TCGEN05_CP_SHAPES, field_name="shape")
+        cta_group = validate_cta_group(cta_group)
+        if sbo <= 0 or sbo % 16:
             raise ValueError("sbo must be a positive multiple of 16")
+        self.__ffi_init__(src, dst, shape, cta_group, sbo, elected)
 
 
 @dc.py_class("weave.PackedF32x2", structural_eq="tree")
@@ -87,7 +84,7 @@ class PackedF32x2(Op, mnemonic="weave.PackedF32x2"):
     output: std.Expr | None = dc.field(default=None, lang_kind="arg")
 
     def __post_init__(self) -> None:
-        self.op = normalize_domain(self.op, PACKED_F32X2_OPS, field_name="op")
+        self.op = validate_candidate_value(self.op, PACKED_F32X2_OPS, field_name="op")
 
 
 @dc.py_class("weave.FragmentOp", structural_eq="tree")
@@ -107,20 +104,18 @@ class FragmentOp(Op, mnemonic="weave.FragmentOp"):
         size: int = 0,
         dtype: std.TyLike | None = None,
     ) -> None:
+        op = validate_candidate_value(op, FRAGMENT_OPS, field_name="op")
+        if dtype is not None:
+            dtype = normalize_dtype(dtype, field_name="dtype")
+        if size < 0:
+            raise ValueError("size must be non-negative")
         self.__ffi_init__(
             op=op,
             dst=dst,
             srcs=srcs or [],
             size=size,
-            dtype=normalize_dtype(dtype, field_name="dtype"),
+            dtype=dtype,
         )
-        self.__post_init__()
-
-    def __post_init__(self) -> None:
-        self.op = normalize_domain(self.op, FRAGMENT_OPS, field_name="op")
-        self.dtype = normalize_dtype(self.dtype, field_name="dtype")
-        if self.size < 0:
-            raise ValueError("size must be non-negative")
 
 
 @dc.py_class("weave.MmaTile", structural_eq="tree")
@@ -149,25 +144,25 @@ class MmaTile(Op, mnemonic="weave.MmaTile"):
         b_dtype: std.TyLike | None = None,
         acc_dtype: std.TyLike | None = None,
     ) -> None:
+        mode = validate_candidate_value(mode, MMA_TILE_MODES, field_name="mode")
+        cta_group = validate_cta_group(cta_group)
+        if a_dtype is not None:
+            a_dtype = normalize_dtype(a_dtype, field_name="a_dtype")
+        if b_dtype is not None:
+            b_dtype = normalize_dtype(b_dtype, field_name="b_dtype")
+        if acc_dtype is not None:
+            acc_dtype = normalize_dtype(acc_dtype, field_name="acc_dtype")
         self.__ffi_init__(
             a_desc,
             b_desc,
             d_tmem,
             k_idx,
             mode,
-            validate_cta_group(cta_group),
-            normalize_dtype(a_dtype, field_name="a_dtype"),
-            normalize_dtype(b_dtype, field_name="b_dtype"),
-            normalize_dtype(acc_dtype, field_name="acc_dtype"),
+            cta_group,
+            a_dtype,
+            b_dtype,
+            acc_dtype,
         )
-        self.__post_init__()
-
-    def __post_init__(self) -> None:
-        self.mode = normalize_domain(self.mode, MMA_TILE_MODES, field_name="mode")
-        self.cta_group = validate_cta_group(self.cta_group)
-        self.a_dtype = normalize_dtype(self.a_dtype, field_name="a_dtype")
-        self.b_dtype = normalize_dtype(self.b_dtype, field_name="b_dtype")
-        self.acc_dtype = normalize_dtype(self.acc_dtype, field_name="acc_dtype")
 
 
 __all__ = [  # noqa: RUF022

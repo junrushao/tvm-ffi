@@ -23,7 +23,7 @@ import tvm_ffi
 import weave
 import weave.ir as wi
 from tvm_ffi._pyast_parser import parse
-from weave.ir import config, dtypes, functors, handles, kernel, ops, task
+from weave.ir import config, expr, functors, handles, kernel, ops, swizzle, task, types
 from weave.ir.ops import atomic, barriers, clc, elementwise, memory, mma
 
 OP_EXPORTS = {
@@ -96,7 +96,7 @@ OP_EXPORTS = {
     clc: {"ClcFenceRelease", "ClcQueryCancel", "ClcQueryCancelGetCtaId", "ClcTryCancel"},
 }
 
-IR_MODULES = (config, dtypes, functors, handles, kernel, ops, task)
+IR_MODULES = (config, types, expr, swizzle, functors, handles, kernel, ops, task)
 
 
 @pytest.mark.parametrize("module, expected", OP_EXPORTS.items())
@@ -109,6 +109,7 @@ def test_weave_ir_does_not_export_imported_typing_or_helper_names() -> None:
     for leaked_name in ("Any", "ClassVar", "Op", "std", "dc"):
         assert leaked_name not in wi.__all__, leaked_name
         assert leaked_name not in weave.__all__, leaked_name
+    assert "lm" not in wi.__all__
     assert not any(name.startswith("_") for name in wi.__all__)
     assert set(weave.__all__) == set(wi.__all__)
 
@@ -126,6 +127,7 @@ def test_weave_ir_public_exports_match_declared_module_surfaces() -> None:
 def test_weave_top_level_reexports_public_ir_names() -> None:
     for name in wi.__all__:
         assert getattr(weave, name) is getattr(wi, name)
+    assert not hasattr(weave, "lm")
 
 
 def test_public_op_exports_are_reachable_from_weave_ir() -> None:

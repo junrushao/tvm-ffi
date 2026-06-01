@@ -18,7 +18,7 @@ from tvm_ffi import std
 from .._utils import (
     Op,
     OutputOp,
-    normalize_domain,
+    validate_candidate_value,
     validate_cta_group,
     var_with_ty_hint,
 )
@@ -59,6 +59,7 @@ class BarrierTryWait(OutputOp, mnemonic="weave.BarrierTryWait"):
         barrier: MbarrierSpec,
         ty: std.TyLike | None = None,
     ) -> None:
+        _check_mbarrier(barrier, "barrier")
         self.__ffi_init__(
             stage=stage,
             phase=phase,
@@ -66,16 +67,11 @@ class BarrierTryWait(OutputOp, mnemonic="weave.BarrierTryWait"):
             stage_is_deterministic=stage_is_deterministic,
             barrier=barrier,
         )
-        self.__post_init__()
-
-    def __post_init__(self) -> None:
-        _check_mbarrier(self.barrier, "barrier")
 
     def __ffi_update_var_name__(self, *name: str) -> tuple[std.Var, ...]:
         if len(name) != 1:
             raise TypeError(f"expected 1 binding target(s), got {len(name)}")
         self.dst.name = name[0]
-        self.__post_init__()
         return (self.dst,)
 
 
@@ -118,24 +114,21 @@ class BarrierSignal(Op, mnemonic="weave.BarrierSignal"):
         elected: bool = False,
         transaction_group: str = "",
     ) -> None:
+        _check_mbarrier(barrier, "barrier")
+        action = validate_candidate_value(action, SIGNAL_ACTIONS, field_name="action")
+        cta_group = validate_cta_group(cta_group)
         self.__ffi_init__(
             stage=stage,
             tx_bytes=tx_bytes,
             arrive_count=arrive_count,
             action=action,
             barrier=barrier,
-            cta_group=validate_cta_group(cta_group),
+            cta_group=cta_group,
             cluster=cluster,
             stage_is_deterministic=stage_is_deterministic,
             elected=elected,
             transaction_group=transaction_group,
         )
-        self.__post_init__()
-
-    def __post_init__(self) -> None:
-        _check_mbarrier(self.barrier, "barrier")
-        self.action = normalize_domain(self.action, SIGNAL_ACTIONS, field_name="action")
-        self.cta_group = validate_cta_group(self.cta_group)
 
 
 @dc.py_class("weave.MBarrierArrive", structural_eq="tree")
@@ -158,17 +151,14 @@ class PeerArriveCommit(Op, mnemonic="weave.PeerArriveCommit"):
         cta_group: int = 2,
         elected: bool = False,
     ) -> None:
+        _check_mbarrier(barrier, "barrier")
+        cta_group = validate_cta_group(cta_group)
         self.__ffi_init__(
             stage=stage,
             barrier=barrier,
-            cta_group=validate_cta_group(cta_group),
+            cta_group=cta_group,
             elected=elected,
         )
-        self.__post_init__()
-
-    def __post_init__(self) -> None:
-        _check_mbarrier(self.barrier, "barrier")
-        self.cta_group = validate_cta_group(self.cta_group)
 
 
 @dc.py_class("weave.MulticastCommit", structural_eq="tree")
@@ -188,18 +178,15 @@ class MulticastCommit(Op, mnemonic="weave.MulticastCommit"):
         cta_group: int = 2,
         elected: bool = False,
     ) -> None:
+        _check_mbarrier(barrier, "barrier")
+        cta_group = validate_cta_group(cta_group)
         self.__ffi_init__(
             stage=stage,
             multicast_mask=multicast_mask,
             barrier=barrier,
-            cta_group=validate_cta_group(cta_group),
+            cta_group=cta_group,
             elected=elected,
         )
-        self.__post_init__()
-
-    def __post_init__(self) -> None:
-        _check_mbarrier(self.barrier, "barrier")
-        self.cta_group = validate_cta_group(self.cta_group)
 
 
 @dc.py_class("weave.DualCommit", structural_eq="tree")
@@ -221,20 +208,17 @@ class DualCommit(Op, mnemonic="weave.DualCommit"):
         cta_group: int = 1,
         elected: bool = False,
     ) -> None:
+        _check_mbarrier(barrier_0, "barrier_0")
+        _check_mbarrier(barrier_1, "barrier_1")
+        cta_group = validate_cta_group(cta_group)
         self.__ffi_init__(
             stage_0=stage_0,
             stage_1=stage_1,
             barrier_0=barrier_0,
             barrier_1=barrier_1,
-            cta_group=validate_cta_group(cta_group),
+            cta_group=cta_group,
             elected=elected,
         )
-        self.__post_init__()
-
-    def __post_init__(self) -> None:
-        _check_mbarrier(self.barrier_0, "barrier_0")
-        _check_mbarrier(self.barrier_1, "barrier_1")
-        self.cta_group = validate_cta_group(self.cta_group)
 
 
 @dc.py_class("weave.Fence", structural_eq="tree")
@@ -242,7 +226,7 @@ class Fence(Op, mnemonic="weave.Fence"):
     kind: str = dc.field(default="after_thread_sync", lang_kind="attr")
 
     def __post_init__(self) -> None:
-        self.kind = normalize_domain(self.kind, FENCE_KINDS, field_name="kind")
+        self.kind = validate_candidate_value(self.kind, FENCE_KINDS, field_name="kind")
 
 
 @dc.py_class("weave.ThreadFence", structural_eq="tree")
@@ -250,7 +234,7 @@ class ThreadFence(Op, mnemonic="weave.ThreadFence"):
     scope: str = dc.field(default="device", lang_kind="attr")
 
     def __post_init__(self) -> None:
-        self.scope = normalize_domain(self.scope, THREAD_FENCE_SCOPES, field_name="scope")
+        self.scope = validate_candidate_value(self.scope, THREAD_FENCE_SCOPES, field_name="scope")
 
 
 @dc.py_class("weave.ClusterSync", structural_eq="tree")
@@ -334,21 +318,17 @@ class WarpReduce(OutputOp, mnemonic="weave.WarpReduce"):
         *,
         ty: std.TyLike | None = None,
     ) -> None:
+        op = validate_candidate_value(op, REDUCE_OPS, field_name="op")
         self.__ffi_init__(
             val,
             var_with_ty_hint(dst, ty, field_name="dst"),
             op,
         )
-        self.__post_init__()
-
-    def __post_init__(self) -> None:
-        self.op = normalize_domain(self.op, REDUCE_OPS, field_name="op")
 
     def __ffi_update_var_name__(self, *name: str) -> tuple[std.Var, ...]:
         if len(name) != 1:
             raise TypeError(f"expected 1 binding target(s), got {len(name)}")
         self.dst.name = name[0]
-        self.__post_init__()
         return (self.dst,)
 
 
@@ -359,7 +339,7 @@ class BlockReduce(Op, mnemonic="weave.BlockReduce"):
     op: str = dc.field(default="add", lang_kind="attr")
 
     def __post_init__(self) -> None:
-        self.op = normalize_domain(self.op, REDUCE_OPS, field_name="op")
+        self.op = validate_candidate_value(self.op, REDUCE_OPS, field_name="op")
 
 
 @dc.py_class("weave.CrossWarpReduce", structural_eq="tree")
@@ -380,6 +360,8 @@ class CrossWarpReduce(OutputOp, mnemonic="weave.CrossWarpReduce"):
         *,
         ty: std.TyLike | None = None,
     ) -> None:
+        op = validate_candidate_value(op, REDUCE_OPS, field_name="op")
+        finalize = validate_candidate_value(finalize, FINALIZE_MODES, field_name="finalize")
         self.__ffi_init__(
             src,
             smem,
@@ -387,17 +369,11 @@ class CrossWarpReduce(OutputOp, mnemonic="weave.CrossWarpReduce"):
             op,
             finalize,
         )
-        self.__post_init__()
-
-    def __post_init__(self) -> None:
-        self.op = normalize_domain(self.op, REDUCE_OPS, field_name="op")
-        self.finalize = normalize_domain(self.finalize, FINALIZE_MODES, field_name="finalize")
 
     def __ffi_update_var_name__(self, *name: str) -> tuple[std.Var, ...]:
         if len(name) != 1:
             raise TypeError(f"expected 1 binding target(s), got {len(name)}")
         self.dst.name = name[0]
-        self.__post_init__()
         return (self.dst,)
 
 
@@ -419,6 +395,7 @@ class WarpGroupReduce(OutputOp, mnemonic="weave.WarpGroupReduce"):
         *,
         ty: std.TyLike | None = None,
     ) -> None:
+        op = validate_candidate_value(op, REDUCE_OPS, field_name="op")
         self.__ffi_init__(
             src,
             smem,
@@ -426,16 +403,11 @@ class WarpGroupReduce(OutputOp, mnemonic="weave.WarpGroupReduce"):
             op,
             num_warp_groups,
         )
-        self.__post_init__()
-
-    def __post_init__(self) -> None:
-        self.op = normalize_domain(self.op, REDUCE_OPS, field_name="op")
 
     def __ffi_update_var_name__(self, *name: str) -> tuple[std.Var, ...]:
         if len(name) != 1:
             raise TypeError(f"expected 1 binding target(s), got {len(name)}")
         self.dst.name = name[0]
-        self.__post_init__()
         return (self.dst,)
 
 

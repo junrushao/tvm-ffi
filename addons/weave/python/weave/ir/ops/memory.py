@@ -18,9 +18,8 @@ from tvm_ffi import std
 
 from .._utils import (
     Op,
-    normalize_domain,
     normalize_dtype,
-    normalize_required_dtype,
+    validate_candidate_value,
     validate_cta_group,
 )
 from ..handles import BufferRef, SmemView, TmemRegion
@@ -67,6 +66,9 @@ class TmemRegionLoad(Op, mnemonic="weave.TmemRegionLoad"):
         dst_offset: int = 0,
         wait: bool = True,
     ) -> None:
+        _check_named_ref(region, field_name="region")
+        if num not in (8, 16, 32):
+            raise ValueError("num must be one of 8, 16, 32")
         self.__ffi_init__(
             dst=dst,
             col_offset=col_offset,
@@ -76,12 +78,6 @@ class TmemRegionLoad(Op, mnemonic="weave.TmemRegionLoad"):
             dst_offset=dst_offset,
             wait=wait,
         )
-        self.__post_init__()
-
-    def __post_init__(self) -> None:
-        _check_named_ref(self.region, field_name="region")
-        if self.num not in (8, 16, 32):
-            raise ValueError("num must be one of 8, 16, 32")
 
 
 @dc.py_class("weave.TmemRegionStore", structural_eq="tree")
@@ -103,21 +99,19 @@ class TmemRegionStore(Op, mnemonic="weave.TmemRegionStore"):
         num: int = 8,
         dtype: std.TyLike | None = None,
     ) -> None:
+        _check_named_ref(region, field_name="region")
+        if num not in (8, 16):
+            raise ValueError("num must be 8 or 16")
+        if dtype is not None:
+            dtype = normalize_dtype(dtype, field_name="dtype")
         self.__ffi_init__(
             src=src,
             col_offset=col_offset,
             row_base=row_base,
             region=region,
             num=num,
-            dtype=normalize_dtype(dtype, field_name="dtype"),
+            dtype=dtype,
         )
-        self.__post_init__()
-
-    def __post_init__(self) -> None:
-        _check_named_ref(self.region, field_name="region")
-        if self.num not in (8, 16):
-            raise ValueError("num must be 8 or 16")
-        self.dtype = normalize_dtype(self.dtype, field_name="dtype")
 
 
 @dc.py_class("weave.SmemDesc", structural_eq="tree")
@@ -139,6 +133,8 @@ class SmemDesc(Op, mnemonic="weave.SmemDesc"):
         buffer: SmemBufferRef,
         mode: str = "k",
     ) -> None:
+        _check_named_ref(buffer, field_name="buffer")
+        mode = validate_candidate_value(mode, SMEM_DESC_MODES, field_name="mode")
         self.__ffi_init__(
             k_idx=k_idx,
             dst=dst,
@@ -147,11 +143,6 @@ class SmemDesc(Op, mnemonic="weave.SmemDesc"):
             buffer=buffer,
             mode=mode,
         )
-        self.__post_init__()
-
-    def __post_init__(self) -> None:
-        _check_named_ref(self.buffer, field_name="buffer")
-        self.mode = normalize_domain(self.mode, SMEM_DESC_MODES, field_name="mode")
 
 
 @dc.py_class("weave.GmemLoad", structural_eq="tree")
@@ -175,8 +166,12 @@ class GmemLoad(Op, mnemonic="weave.GmemLoad"):
         dtype: std.TyLike,
         dst_dtype: std.TyLike,
     ) -> None:
-        dtype = normalize_required_dtype(dtype, field_name="dtype")
-        dst_dtype = normalize_required_dtype(dst_dtype, field_name="dst_dtype")
+        if dtype is None:
+            raise TypeError("dtype is required")
+        if dst_dtype is None:
+            raise TypeError("dst_dtype is required")
+        dtype = normalize_dtype(dtype, field_name="dtype")
+        dst_dtype = normalize_dtype(dst_dtype, field_name="dst_dtype")
         self.__ffi_init__(
             src=src,
             dst=dst,
@@ -186,11 +181,6 @@ class GmemLoad(Op, mnemonic="weave.GmemLoad"):
             dtype=dtype,
             dst_dtype=dst_dtype,
         )
-        self.__post_init__()
-
-    def __post_init__(self) -> None:
-        self.dtype = normalize_required_dtype(self.dtype, field_name="dtype")
-        self.dst_dtype = normalize_required_dtype(self.dst_dtype, field_name="dst_dtype")
 
 
 @dc.py_class("weave.GmemStore", structural_eq="tree")
@@ -218,8 +208,13 @@ class GmemStore(Op, mnemonic="weave.GmemStore"):
         src_dtype: std.TyLike,
         cache_hint: str = "none",
     ) -> None:
-        dtype = normalize_required_dtype(dtype, field_name="dtype")
-        src_dtype = normalize_required_dtype(src_dtype, field_name="src_dtype")
+        if dtype is None:
+            raise TypeError("dtype is required")
+        if src_dtype is None:
+            raise TypeError("src_dtype is required")
+        dtype = normalize_dtype(dtype, field_name="dtype")
+        src_dtype = normalize_dtype(src_dtype, field_name="src_dtype")
+        cache_hint = validate_candidate_value(cache_hint, GMEM_CACHE_HINTS, field_name="cache_hint")
         self.__ffi_init__(
             src=src,
             dst=dst,
@@ -230,14 +225,6 @@ class GmemStore(Op, mnemonic="weave.GmemStore"):
             dtype=dtype,
             src_dtype=src_dtype,
             cache_hint=cache_hint,
-        )
-        self.__post_init__()
-
-    def __post_init__(self) -> None:
-        self.dtype = normalize_required_dtype(self.dtype, field_name="dtype")
-        self.src_dtype = normalize_required_dtype(self.src_dtype, field_name="src_dtype")
-        self.cache_hint = normalize_domain(
-            self.cache_hint, GMEM_CACHE_HINTS, field_name="cache_hint"
         )
 
 
@@ -277,14 +264,12 @@ class SmemLoadRegs(Op, mnemonic="weave.SmemLoadRegs"):
         count: int = 0,
         dtype: std.TyLike = std.PrimTy("float32"),
     ) -> None:
-        dtype = normalize_required_dtype(dtype, field_name="dtype")
-        self.__ffi_init__(src_expr=src_expr, name=name, count=count, dtype=dtype)
-        self.__post_init__()
-
-    def __post_init__(self) -> None:
-        self.dtype = normalize_required_dtype(self.dtype, field_name="dtype")
-        if self.count < 0:
+        if dtype is None:
+            raise TypeError("dtype is required")
+        dtype = normalize_dtype(dtype, field_name="dtype")
+        if count < 0:
             raise ValueError("count must be non-negative")
+        self.__ffi_init__(src_expr=src_expr, name=name, count=count, dtype=dtype)
 
 
 @dc.py_class("weave.SmemWrite", structural_eq="tree")
@@ -325,7 +310,7 @@ class TmaReduceOp(Op, mnemonic="weave.TmaReduceOp"):
     op: str = dc.field(default="add", lang_kind="attr")
 
     def __post_init__(self) -> None:
-        self.op = normalize_domain(self.op, TMA_REDUCE_OPS, field_name="op")
+        self.op = validate_candidate_value(self.op, TMA_REDUCE_OPS, field_name="op")
 
 
 @dc.py_class("weave.TmaGatherLoad", structural_eq="tree")
@@ -354,13 +339,10 @@ class ScaleFactorCopy(Op, mnemonic="weave.ScaleFactorCopy"):
         sbo: int = 256,
         elected: bool = False,
     ) -> None:
-        self.__ffi_init__(src, dst, validate_cta_group(cta_group), sbo, elected)
-        self.__post_init__()
-
-    def __post_init__(self) -> None:
-        self.cta_group = validate_cta_group(self.cta_group)
-        if self.sbo <= 0 or self.sbo % 16:
+        cta_group = validate_cta_group(cta_group)
+        if sbo <= 0 or sbo % 16:
             raise ValueError("sbo must be a positive multiple of 16")
+        self.__ffi_init__(src, dst, cta_group, sbo, elected)
 
 
 @dc.py_class("weave.MetadataCopy", structural_eq="tree")
@@ -371,10 +353,6 @@ class MetadataCopy(Op, mnemonic="weave.MetadataCopy"):
 
     def __init__(self, src: std.Expr, dst: std.Expr, cta_group: int = 1) -> None:
         self.__ffi_init__(src, dst, validate_cta_group(cta_group))
-        self.__post_init__()
-
-    def __post_init__(self) -> None:
-        self.cta_group = validate_cta_group(self.cta_group)
 
 
 __all__ = [  # noqa: RUF022

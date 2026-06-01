@@ -78,14 +78,10 @@ class TensorItemPtr(std.BaseVarDef, mnemonic="tilus.TensorItemPtr"):
     def space(self) -> str:
         return _derive_tensor_ptr_space(self.tensor)
 
-    def __post_init__(self) -> None:
-        _check_tensor_ptr_var(self.var)
-
     def __ffi_update_var_name__(self, *name: str) -> tuple[std.Var, ...]:
         if len(name) != 1:
             raise TypeError(f"expected 1 binding target(s), got {len(name)}")
         self.var.name = name[0]
-        self.__post_init__()
         return (self.var,)
 
 
@@ -105,14 +101,10 @@ class TensorItemValue(std.BaseVarDef, mnemonic="tilus.TensorItemValue"):
     def tensor(self) -> Tensor:
         return _check_tensor_var(self.var)
 
-    def __post_init__(self) -> None:
-        _check_tensor_var(self.var)
-
     def __ffi_update_var_name__(self, *name: str) -> tuple[std.Var, ...]:
         if len(name) != 1:
             raise TypeError(f"expected 1 binding target(s), got {len(name)}")
         self.var.name = name[0]
-        self.__post_init__()
         return (self.var,)
 
 

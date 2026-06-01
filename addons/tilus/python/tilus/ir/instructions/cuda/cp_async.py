@@ -64,11 +64,8 @@ class CopyAsyncGenericInst(Instruction, mnemonic="tilus.CopyAsyncGeneric"):
         axes: list[str],
         evict: str | None = None,
     ) -> None:
+        validate_string_attr(evict, "evict", CACHE_EVICTS)
         self.__ffi_init__(offset=offset, mask=mask, ptr=ptr, axes=axes, evict=evict)
-        self.__post_init__()
-
-    def __post_init__(self) -> None:
-        validate_string_attr(self.evict, "evict", CACHE_EVICTS)
 
     def outputs(self) -> tuple[std.Var, ...]:
         return ()
@@ -86,10 +83,6 @@ class CopyAsyncWaitGroupInst(Instruction, mnemonic="tilus.CopyAsyncWaitGroup"):
 
     def __init__(self, n: int) -> None:
         self.__ffi_init__(n=validate_nonnegative_int_attr(n, "n"))
-        self.__post_init__()
-
-    def __post_init__(self) -> None:
-        self.n = validate_nonnegative_int_attr(self.n, "n")
 
     def outputs(self) -> tuple[std.Var, ...]:
         return ()

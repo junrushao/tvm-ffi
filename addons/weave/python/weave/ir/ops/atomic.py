@@ -16,7 +16,7 @@ from tvm_ffi import dataclasses as dc
 from tvm_ffi import dtype as tvm_dtype
 from tvm_ffi import std
 
-from .._utils import Op, normalize_domain, normalize_dtype
+from .._utils import Op, normalize_dtype, validate_candidate_value
 
 ATOMIC_OPS = ("add", "max", "min")
 MEM_SPACES = ("gmem", "smem")
@@ -45,14 +45,11 @@ class AtomicOp(Op, mnemonic="weave.AtomicOp"):
         space: str,
         dtype: std.TyLike | None = None,
     ) -> None:
-        dtype = normalize_dtype(dtype, field_name="dtype")
+        op = validate_candidate_value(op, ATOMIC_OPS, field_name="op")
+        space = validate_candidate_value(space, MEM_SPACES, field_name="space")
+        if dtype is not None:
+            dtype = normalize_dtype(dtype, field_name="dtype")
         self.__ffi_init__(op=op, src=src, dst=dst, index=index, space=space, dtype=dtype)
-        self.__post_init__()
-
-    def __post_init__(self) -> None:
-        self.op = normalize_domain(self.op, ATOMIC_OPS, field_name="op")
-        self.space = normalize_domain(self.space, MEM_SPACES, field_name="space")
-        self.dtype = normalize_dtype(self.dtype, field_name="dtype")
 
 
 @dc.py_class("weave.AtomicFetchAdd", structural_eq="tree")
@@ -71,17 +68,15 @@ class AtomicFetchAdd(Op, mnemonic="weave.AtomicFetchAdd"):
         index: std.Expr | None = None,
         dtype: std.TyLike | None = None,
     ) -> None:
+        if dtype is not None:
+            dtype = normalize_dtype(dtype, field_name="dtype")
         self.__ffi_init__(
             dst,
             addr,
             val,
             index,
-            normalize_dtype(dtype, field_name="dtype"),
+            dtype,
         )
-        self.__post_init__()
-
-    def __post_init__(self) -> None:
-        self.dtype = normalize_dtype(self.dtype, field_name="dtype")
 
 
 @dc.py_class("weave.RelaxedFmax", structural_eq="tree")
@@ -91,7 +86,7 @@ class RelaxedFmax(Op, mnemonic="weave.RelaxedFmax"):
     space: str = dc.field(default="gmem", lang_kind="attr")
 
     def __post_init__(self) -> None:
-        self.space = normalize_domain(self.space, MEM_SPACES, field_name="space")
+        self.space = validate_candidate_value(self.space, MEM_SPACES, field_name="space")
 
 
 @dc.py_class("weave.AtomicMaxF32Positive", structural_eq="tree")
@@ -121,7 +116,9 @@ class MultimemLdReduce(Op, mnemonic="weave.MultimemLdReduce"):
     payload: str = dc.field(default="f32x4", lang_kind="attr")
 
     def __post_init__(self) -> None:
-        self.payload = normalize_domain(self.payload, MULTIMEM_LOAD_PAYLOADS, field_name="payload")
+        self.payload = validate_candidate_value(
+            self.payload, MULTIMEM_LOAD_PAYLOADS, field_name="payload"
+        )
 
 
 @dc.py_class("weave.MultimemStore", structural_eq="tree")
@@ -131,7 +128,9 @@ class MultimemStore(Op, mnemonic="weave.MultimemStore"):
     payload: str = dc.field(default="f32x4", lang_kind="attr")
 
     def __post_init__(self) -> None:
-        self.payload = normalize_domain(self.payload, MULTIMEM_STORE_PAYLOADS, field_name="payload")
+        self.payload = validate_candidate_value(
+            self.payload, MULTIMEM_STORE_PAYLOADS, field_name="payload"
+        )
 
 
 @dc.py_class("weave.MultimemRedAddI32", structural_eq="tree")
@@ -142,8 +141,8 @@ class MultimemRedAddI32(Op, mnemonic="weave.MultimemRedAddI32"):
     scope: str = dc.field(default="sys", lang_kind="attr")
 
     def __post_init__(self) -> None:
-        self.sem = normalize_domain(self.sem, MULTIMEM_SEMS, field_name="sem")
-        self.scope = normalize_domain(self.scope, MULTIMEM_SCOPES, field_name="scope")
+        self.sem = validate_candidate_value(self.sem, MULTIMEM_SEMS, field_name="sem")
+        self.scope = validate_candidate_value(self.scope, MULTIMEM_SCOPES, field_name="scope")
 
 
 @dc.py_class("weave.AtomicMaxFloatEncode", structural_eq="tree")

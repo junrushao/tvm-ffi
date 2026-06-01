@@ -63,15 +63,12 @@ class SimtDotInst(Instruction, mnemonic="tilus.SimtDot"):
             thread_repeat=thread_repeat,
             output=output,
         )
-        self.__post_init__()
-
-    def outputs(self) -> tuple[std.Var, ...]:
-        return (self.output,)
-
-    def __post_init__(self) -> None:
         validate_matching_lengths(self, "warp_spatial", "warp_repeat")
         validate_matching_lengths(self, "thread_spatial", "thread_repeat")
         validate_matching_lengths(self, "warp_spatial", "thread_spatial")
+
+    def outputs(self) -> tuple[std.Var, ...]:
+        return (self.output,)
 
 
 __all__ = [

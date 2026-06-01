@@ -15,7 +15,7 @@ from __future__ import annotations
 from tvm_ffi import dataclasses as dc
 from tvm_ffi import std
 
-from .._utils import Op, normalize_domain
+from .._utils import Op, validate_candidate_value
 
 CTA_DIMS = ("x", "y", "z")
 
@@ -40,7 +40,7 @@ class ClcQueryCancelGetCtaId(Op, mnemonic="weave.ClcQueryCancelGetCtaId"):
     dim: str = dc.field(default="x", lang_kind="attr")
 
     def __post_init__(self) -> None:
-        self.dim = normalize_domain(self.dim, CTA_DIMS, field_name="dim")
+        self.dim = validate_candidate_value(self.dim, CTA_DIMS, field_name="dim")
 
 
 @dc.py_class("weave.ClcFenceRelease", structural_eq="tree")

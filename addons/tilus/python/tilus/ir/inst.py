@@ -66,9 +66,6 @@ class Instruction(std.BaseVarDef, mnemonic="tilus.Instruction"):
 
     __ffi_dialect_field_collector__ = staticmethod(_collect_instruction_fields)
 
-    def __post_init__(self) -> None:
-        pass
-
     def outputs(self) -> tuple[std.Var, ...]:
         """Return the variables defined by this instruction."""
         raise NotImplementedError(f"{type(self).__name__}.outputs() is not implemented")
@@ -81,7 +78,6 @@ class Instruction(std.BaseVarDef, mnemonic="tilus.Instruction"):
             raise TypeError(f"expected 1 binding target(s), got {len(name)}")
         current_output = outputs[0]
         current_output.name = name[0]
-        self.__post_init__()
         return (current_output,)
 
 
@@ -108,7 +104,7 @@ def validate_string_attr(value: str | None, attr_name: str, valid_values: tuple[
         )
 
 
-def validate_int_attr(value: object, attr_name: str, valid_values: tuple[int, ...]) -> int:
+def validate_int_attr(value: int, attr_name: str, valid_values: tuple[int, ...]) -> int:
     """Validate and return an integer-valued instruction attribute."""
     int_value = _int_value(value)
     if int_value is None or int_value not in valid_values:
@@ -116,7 +112,7 @@ def validate_int_attr(value: object, attr_name: str, valid_values: tuple[int, ..
     return int_value
 
 
-def validate_nonnegative_int_attr(value: object, attr_name: str) -> int:
+def validate_nonnegative_int_attr(value: int, attr_name: str) -> int:
     """Validate and return a non-negative integer instruction attribute."""
     int_value = _int_value(value)
     if int_value is None or int_value < 0:
@@ -124,7 +120,7 @@ def validate_nonnegative_int_attr(value: object, attr_name: str) -> int:
     return int_value
 
 
-def _int_value(value: object) -> int | None:
+def _int_value(value: int) -> int | None:
     if isinstance(value, bool):
         return None
     if isinstance(value, int):

@@ -34,10 +34,6 @@ class Tcgen05AllocInst(Instruction, mnemonic="tilus.Tcgen05Alloc"):
 
     def __init__(self, cta_group: int) -> None:
         self.__ffi_init__(cta_group=validate_int_attr(cta_group, "cta_group", (1, 2)))
-        self.__post_init__()
-
-    def __post_init__(self) -> None:
-        self.cta_group = validate_int_attr(self.cta_group, "cta_group", (1, 2))
 
     def outputs(self) -> tuple[std.Var, ...]:
         return ()
@@ -55,10 +51,6 @@ class Tcgen05RelinquishAllocPermitInst(Instruction, mnemonic="tilus.Tcgen05Relin
 
     def __init__(self, cta_group: int = 1) -> None:
         self.__ffi_init__(cta_group=validate_int_attr(cta_group, "cta_group", (1, 2)))
-        self.__post_init__()
-
-    def __post_init__(self) -> None:
-        self.cta_group = validate_int_attr(self.cta_group, "cta_group", (1, 2))
 
     def outputs(self) -> tuple[std.Var, ...]:
         return ()
@@ -86,13 +78,10 @@ class Tcgen05SliceInst(Instruction, mnemonic="tilus.Tcgen05Slice"):
     ) -> None:
         output = make_output_var(output, ty)
         self.__ffi_init__(src, offsets=offsets, slice_dims=slice_dims, output=output)
-        self.__post_init__()
+        validate_matching_lengths(self, "offsets", "slice_dims")
 
     def outputs(self) -> tuple[std.Var, ...]:
         return (self.output,)
-
-    def __post_init__(self) -> None:
-        validate_matching_lengths(self, "offsets", "slice_dims")
 
 
 @py_class("tilus.Tcgen05ViewInst", structural_eq="tree")
@@ -145,10 +134,6 @@ class Tcgen05CommitInst(Instruction, mnemonic="tilus.Tcgen05Commit"):
             cta_group=validate_int_attr(cta_group, "cta_group", (1, 2)),
             multicast_mask=multicast_mask,
         )
-        self.__post_init__()
-
-    def __post_init__(self) -> None:
-        self.cta_group = validate_int_attr(self.cta_group, "cta_group", (1, 2))
 
     def outputs(self) -> tuple[std.Var, ...]:
         return ()
@@ -184,13 +169,9 @@ class Tcgen05MmaSSInst(Instruction, mnemonic="tilus.Tcgen05MmaSS"):
             cta_group=validate_int_attr(cta_group, "cta_group", (1, 2)),
             output=output,
         )
-        self.__post_init__()
 
     def outputs(self) -> tuple[std.Var, ...]:
         return (self.output,)
-
-    def __post_init__(self) -> None:
-        self.cta_group = validate_int_attr(self.cta_group, "cta_group", (1, 2))
 
 
 @py_class("tilus.Tcgen05MmaTSInst", structural_eq="tree")
@@ -223,13 +204,9 @@ class Tcgen05MmaTSInst(Instruction, mnemonic="tilus.Tcgen05MmaTS"):
             cta_group=validate_int_attr(cta_group, "cta_group", (1, 2)),
             output=output,
         )
-        self.__post_init__()
 
     def outputs(self) -> tuple[std.Var, ...]:
         return (self.output,)
-
-    def __post_init__(self) -> None:
-        self.cta_group = validate_int_attr(self.cta_group, "cta_group", (1, 2))
 
 
 __all__ = [  # noqa: RUF022

@@ -48,7 +48,7 @@ TileParams = MmaParams | SoftmaxParams | EpilogueParams | TmaLoadParams
 PrimitiveConstant = bool | int | float | str
 
 
-def _normalize_constants(
+def _validate_constants(
     value: Mapping[str, PrimitiveConstant] | None,
 ) -> dict[str, PrimitiveConstant]:
     if value is None:
@@ -65,7 +65,7 @@ def _normalize_constants(
     return result
 
 
-def _normalize_int_map(value: Mapping[str, int] | None, *, field_name: str) -> dict[str, int]:
+def _validate_int_map(value: Mapping[str, int] | None, *, field_name: str) -> dict[str, int]:
     if value is None:
         return {}
     if not isinstance(value, Mapping):
@@ -112,12 +112,8 @@ class Kernel(std.BaseFunc, mnemonic="weave.Kernel"):
     barriers: tuple[BarrierEdge, ...] = dc.field(default_factory=tuple, lang_kind="attr")
     smem_alloc: tuple[SmemAllocation, ...] = dc.field(default_factory=tuple, lang_kind="attr")
     tmem_alloc: tuple[TmemAllocation, ...] = dc.field(default_factory=tuple, lang_kind="attr")
-    if TYPE_CHECKING:
-        reg_budgets: dict[str, int]
-        tma_param_ndims: dict[str, int]
-    else:
-        reg_budgets: dict = dc.field(default_factory=dict, lang_kind="attr")
-        tma_param_ndims: dict = dc.field(default_factory=dict, lang_kind="attr")
+    reg_budgets: dict[str, int] = dc.field(default_factory=dict, lang_kind="attr")
+    tma_param_ndims: dict[str, int] = dc.field(default_factory=dict, lang_kind="attr")
 
     def __init__(
         self,
@@ -153,12 +149,17 @@ class Kernel(std.BaseFunc, mnemonic="weave.Kernel"):
         reg_budgets: Mapping[str, int] | None = None,
         tma_param_ndims: Mapping[str, int] | None = None,
     ) -> None:
+        body_list = list(body or ())
+        for stmt in body_list:
+            if not isinstance(stmt, std.Stmt):
+                raise TypeError(f"Kernel body expects std.Stmt, got {type(stmt).__name__}")
+
         self.__ffi_init__(
             symbol,
             list(args or ()),
             std.normalize_ty(ret_type) if ret_type is not None else None,
-            list(body or ()),
-            constants=_normalize_constants(constants),
+            body_list,
+            constants=_validate_constants(constants),
             pipeline=pipeline,
             warps=warps,
             grid=grid,
@@ -182,20 +183,9 @@ class Kernel(std.BaseFunc, mnemonic="weave.Kernel"):
             barriers=tuple(barriers),
             smem_alloc=tuple(smem_alloc),
             tmem_alloc=tuple(tmem_alloc),
-            reg_budgets=_normalize_int_map(reg_budgets, field_name="reg_budgets"),
-            tma_param_ndims=_normalize_int_map(tma_param_ndims, field_name="tma_param_ndims"),
+            reg_budgets=_validate_int_map(reg_budgets, field_name="reg_budgets"),
+            tma_param_ndims=_validate_int_map(tma_param_ndims, field_name="tma_param_ndims"),
         )
-        self.__post_init__()
-
-    def __post_init__(self) -> None:
-        self.constants = _normalize_constants(self.constants)
-        self.reg_budgets = _normalize_int_map(self.reg_budgets, field_name="reg_budgets")
-        self.tma_param_ndims = _normalize_int_map(
-            self.tma_param_ndims, field_name="tma_param_ndims"
-        )
-        for stmt in self.body:
-            if not isinstance(stmt, std.Stmt):
-                raise TypeError(f"Kernel body expects std.Stmt, got {type(stmt).__name__}")
 
     @property
     def threads(self) -> int:

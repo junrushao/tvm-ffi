@@ -23,7 +23,7 @@ from tvm_ffi._std_lang import (
     std_generics,
 )
 
-from .ir import config, dtypes, handles
+from .ir import config, expr, handles, swizzle, types
 from .ir import kernel as kernel_ir
 from .ir import task as task_ir
 from .ir.ops import atomic, barriers, clc, elementwise, memory, mma
@@ -175,13 +175,60 @@ class ForLoopFactory(WeaveFrame):
         )
 
 
+class _LmNamespace:
+    """Parser and Python namespace that mirrors Loom's ``lm`` types."""
+
+    i8 = types.i8
+    i16 = types.i16
+    i32 = types.i32
+    i64 = types.i64
+    u8 = types.u8
+    u16 = types.u16
+    u32 = types.u32
+    u64 = types.u64
+    f16 = types.f16
+    bf16 = types.bf16
+    f32 = types.f32
+    f64 = types.f64
+    f8_e4m3 = types.f8_e4m3
+    f8_e5m2 = types.f8_e5m2
+    f8_e8m0fnu = types.f8_e8m0fnu
+    f4_e2m1fn = types.f4_e2m1fn
+    f32x2 = types.f32x2
+    bf16x2 = types.bf16x2
+    raw = types.RawTy()
+    ue4m3 = types.Ue4m3Ty()
+    constexpr = types.ConstexprTy()
+    tma2d = types.TmaTy(2)
+    tma3d = types.TmaTy(3)
+    tma4d = types.TmaTy(4)
+    tma5d = types.TmaTy(5)
+    tma_gather = types.TmaGatherTy()
+    tma_reduce = types.TmaReduceTy()
+    grid_counter = types.GridCounterTy()
+
+    @staticmethod
+    def ptr(
+        elem_ty: std.TyLike | None = None,
+        *,
+        const: bool = False,
+        volatile: bool = False,
+        space: str | None = None,
+    ) -> types.PtrTy:
+        return types.PtrTy(elem_ty, const=const, volatile=volatile, space=space)
+
+    @staticmethod
+    def uniform(base: std.TyLike) -> types.UniformTy:
+        return types.UniformTy(base)
+
+
 class WeaveLang:
     """Parser-visible Weave namespace."""
 
     __ffi_globals__: ClassVar[dict[str, Any]] = {}
     __ffi_generics__: ClassVar[dict[Any, Callable[..., Any]]] = {}
 
-    lm = dtypes.lm
+    lm = _LmNamespace()
     Kernel = KernelFactory
     kernel = KernelFactory
     TaskSpec = TaskSpecFactory
@@ -206,28 +253,28 @@ class WeaveLang:
     WarpConfig = config.WarpConfig
     WarpRole = config.WarpRole
 
-    AddrOf = dtypes.AddrOf
-    BarrierRef = dtypes.BarrierRef
-    BuiltinRef = dtypes.BuiltinRef
-    Const = dtypes.Const
-    ConstexprTy = dtypes.ConstexprTy
-    Deref = dtypes.Deref
-    Field = dtypes.Field
-    GridCounterTy = dtypes.GridCounterTy
-    PtrTy = dtypes.PtrTy
-    RawTy = dtypes.RawTy
-    ReinterpretCast = dtypes.ReinterpretCast
-    SmemDescRef = dtypes.SmemDescRef
-    SmemRef = dtypes.SmemRef
-    SmemSwizzleAddress = dtypes.SmemSwizzleAddress
-    SmemSwizzleOffset = dtypes.SmemSwizzleOffset
-    Swizzle = dtypes.Swizzle
-    TmaGatherTy = dtypes.TmaGatherTy
-    TmaReduceTy = dtypes.TmaReduceTy
-    TmaTy = dtypes.TmaTy
-    TmemRef = dtypes.TmemRef
-    Ue4m3Ty = dtypes.Ue4m3Ty
-    UniformTy = dtypes.UniformTy
+    AddrOf = expr.AddrOf
+    BarrierRef = expr.BarrierRef
+    BuiltinRef = expr.BuiltinRef
+    Const = expr.Const
+    ConstexprTy = types.ConstexprTy
+    Deref = expr.Deref
+    Field = expr.Field
+    GridCounterTy = types.GridCounterTy
+    PtrTy = types.PtrTy
+    RawTy = types.RawTy
+    ReinterpretCast = expr.ReinterpretCast
+    SmemDescRef = expr.SmemDescRef
+    SmemRef = expr.SmemRef
+    SmemSwizzleAddress = expr.SmemSwizzleAddress
+    SmemSwizzleOffset = expr.SmemSwizzleOffset
+    Swizzle = swizzle.Swizzle
+    TmaGatherTy = types.TmaGatherTy
+    TmaReduceTy = types.TmaReduceTy
+    TmaTy = types.TmaTy
+    TmemRef = expr.TmemRef
+    Ue4m3Ty = types.Ue4m3Ty
+    UniformTy = types.UniformTy
 
     Buffer = handles.BufferRef
     BufferRef = handles.BufferRef
@@ -324,7 +371,7 @@ class WeaveLang:
     ClcFenceRelease = clc.ClcFenceRelease
 
 
-WeaveLang.__ffi_globals__ = {"lm": dtypes.lm}
+WeaveLang.__ffi_globals__ = {"lm": WeaveLang.lm}
 WeaveLang.__ffi_generics__ = std_generics()
 
 register_dialect("weave", WeaveLang)

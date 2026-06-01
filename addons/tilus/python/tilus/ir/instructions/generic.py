@@ -18,11 +18,10 @@
 
 from __future__ import annotations
 
-from typing import cast
+from collections.abc import Sequence
 
 from tvm_ffi import dataclasses as dc
 from tvm_ffi import std
-from tvm_ffi.core import MISSING
 from tvm_ffi.structural import structural_equal
 
 from .. import tensor as tensor_mod
@@ -50,16 +49,14 @@ class LoadGlobalInst(Instruction, mnemonic="tilus.LoadGlobal"):
     def __init__(
         self,
         src: std.Expr,
-        offsets: list[std.ExprLike] | object = MISSING,
-        dims: list[int] | object = MISSING,
+        offsets: Sequence[std.ExprLike] = (),
+        dims: Sequence[int] = (),
         *,
         output: std.Var | None = None,
         ty: std.TyLike | None = None,
     ) -> None:
-        if MISSING.is_(offsets):
-            offsets = []
-        if MISSING.is_(dims):
-            dims = []
+        offsets = list(offsets)
+        dims = list(dims)
         if ty is not None and output is None:
             ty = std.normalize_ty(ty)
             if not isinstance(src, std.Var):
@@ -82,13 +79,10 @@ class LoadGlobalInst(Instruction, mnemonic="tilus.LoadGlobal"):
         output = make_output_var(output, ty)
         self.__ffi_init__(
             src,
-            offsets=cast(list[std.ExprLike], offsets),
-            dims=cast(list[int], dims),
+            offsets=offsets,
+            dims=dims,
             output=output,
         )
-        self.__post_init__()
-
-    def __post_init__(self) -> None:
         validate_matching_lengths(self, "offsets", "dims")
 
     def outputs(self) -> tuple[std.Var, ...]:
@@ -150,7 +144,6 @@ class LoadSharedInst(Instruction, mnemonic="tilus.LoadShared"):
             )
         output = make_output_var(output, ty)
         self.__ffi_init__(src, output=output)
-        self.__post_init__()
 
     def outputs(self) -> tuple[std.Var, ...]:
         return (self.output,)
@@ -187,7 +180,6 @@ class CastInst(Instruction, mnemonic="tilus.Cast"):
     ) -> None:
         output = make_output_var(output, ty)
         self.__ffi_init__(src, output=output)
-        self.__post_init__()
 
     def outputs(self) -> tuple[std.Var, ...]:
         return (self.output,)
@@ -215,7 +207,6 @@ class AddInst(Instruction, mnemonic="tilus.Add"):
     ) -> None:
         output = make_output_var(output, ty)
         self.__ffi_init__(lhs, rhs, output=output)
-        self.__post_init__()
 
     def outputs(self) -> tuple[std.Var, ...]:
         return (self.output,)
@@ -243,7 +234,6 @@ class SubInst(Instruction, mnemonic="tilus.Sub"):
     ) -> None:
         output = make_output_var(output, ty)
         self.__ffi_init__(lhs, rhs, output=output)
-        self.__post_init__()
 
     def outputs(self) -> tuple[std.Var, ...]:
         return (self.output,)
@@ -271,7 +261,6 @@ class MulInst(Instruction, mnemonic="tilus.Mul"):
     ) -> None:
         output = make_output_var(output, ty)
         self.__ffi_init__(lhs, rhs, output=output)
-        self.__post_init__()
 
     def outputs(self) -> tuple[std.Var, ...]:
         return (self.output,)
@@ -299,7 +288,6 @@ class DivInst(Instruction, mnemonic="tilus.Div"):
     ) -> None:
         output = make_output_var(output, ty)
         self.__ffi_init__(lhs, rhs, output=output)
-        self.__post_init__()
 
     def outputs(self) -> tuple[std.Var, ...]:
         return (self.output,)
@@ -329,15 +317,12 @@ class ReduceInst(Instruction, mnemonic="tilus.Reduce"):
         output: std.Var | None = None,
         ty: std.TyLike | None = None,
     ) -> None:
+        validate_string_attr(op, "op", ("sum", "max", "min"))
         output = make_output_var(output, ty)
         self.__ffi_init__(src, dim=dim, op=op, keepdim=keepdim, output=output)
-        self.__post_init__()
 
     def outputs(self) -> tuple[std.Var, ...]:
         return (self.output,)
-
-    def __post_init__(self) -> None:
-        validate_string_attr(self.op, "op", ("sum", "max", "min"))
 
 
 @dc.py_class("tilus.SyncThreadsInst", structural_eq="tree")

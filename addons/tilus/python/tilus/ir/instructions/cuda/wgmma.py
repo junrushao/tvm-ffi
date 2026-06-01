@@ -45,13 +45,9 @@ class WgmmaWaitGroupInst(Instruction, mnemonic="tilus.WgmmaWaitGroup"):
 
     def __init__(self, n: int) -> None:
         self.__ffi_init__(n=validate_nonnegative_int_attr(n, "n"))
-        self.__post_init__()
 
     def outputs(self) -> tuple[std.Var, ...]:
         return ()
-
-    def __post_init__(self) -> None:
-        self.n = validate_nonnegative_int_attr(self.n, "n")
 
 
 @py_class("tilus.WgmmaMmaSSInst", structural_eq="tree")
@@ -74,7 +70,6 @@ class WgmmaMmaSSInst(Instruction, mnemonic="tilus.WgmmaMmaSS"):
     ) -> None:
         output = make_output_var(output, ty)
         self.__ffi_init__(lhs, rhs, output=output)
-        self.__post_init__()
 
     def outputs(self) -> tuple[std.Var, ...]:
         return (self.output,)
@@ -100,7 +95,6 @@ class WgmmaMmaRSInst(Instruction, mnemonic="tilus.WgmmaMmaRS"):
     ) -> None:
         output = make_output_var(output, ty)
         self.__ffi_init__(lhs, rhs, output=output)
-        self.__post_init__()
 
     def outputs(self) -> tuple[std.Var, ...]:
         return (self.output,)

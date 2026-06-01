@@ -63,11 +63,7 @@ class CopyAsyncTensorGlobalToSharedInst(
             dims=dims,
             cta_group=validate_int_attr(cta_group, "cta_group", (1, 2)),
         )
-        self.__post_init__()
-
-    def __post_init__(self) -> None:
         validate_matching_lengths(self, "offsets", "dims")
-        self.cta_group = validate_int_attr(self.cta_group, "cta_group", (1, 2))
 
     def outputs(self) -> tuple[std.Var, ...]:
         return ()
@@ -99,9 +95,6 @@ class CopyAsyncTensorSharedToGlobalInst(
             cache_policy=cache_policy,
             dims=dims,
         )
-        self.__post_init__()
-
-    def __post_init__(self) -> None:
         validate_matching_lengths(self, "offsets", "dims")
 
     def outputs(self) -> tuple[std.Var, ...]:
@@ -121,10 +114,6 @@ class CopyAsyncTensorWaitGroupInst(Instruction, mnemonic="tilus.CopyAsyncTensorW
 
     def __init__(self, n: int, read: bool = False) -> None:
         self.__ffi_init__(n=validate_nonnegative_int_attr(n, "n"), read=read)
-        self.__post_init__()
-
-    def __post_init__(self) -> None:
-        self.n = validate_nonnegative_int_attr(self.n, "n")
 
     def outputs(self) -> tuple[std.Var, ...]:
         return ()

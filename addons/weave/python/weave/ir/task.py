@@ -147,17 +147,11 @@ class VarDecl(std.BaseVarDef, mnemonic="weave.VarDecl"):
             uniform=uniform,
             zero_init=zero_init,
         )
-        self.__post_init__()
-
-    def __post_init__(self) -> None:
-        if not isinstance(self.var, std.Var):
-            raise TypeError("var must be std.Var")
 
     def __ffi_update_var_name__(self, *name: str) -> tuple[std.Var, ...]:
         if len(name) != 1:
             raise TypeError(f"expected 1 binding target(s), got {len(name)}")
         self.var.name = name[0]
-        self.__post_init__()
         return (self.var,)
 
 

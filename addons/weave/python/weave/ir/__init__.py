@@ -19,12 +19,14 @@
 # ruff: noqa: F405, RUF022
 
 from .config import *
-from .dtypes import *
+from .expr import *
 from .functors import *
 from .handles import *
 from .kernel import *
 from .ops import *
+from .swizzle import *
 from .task import *
+from .types import *
 
 __all__ = [
     "BarrierEdge",
@@ -39,30 +41,13 @@ __all__ = [
     "TmemConfig",
     "WarpConfig",
     "WarpRole",
-    "SWIZZLE_32B",
-    "SWIZZLE_64B",
-    "SWIZZLE_128B",
-    "SWIZZLE_NONE",
-    "AddrOf",
-    "BarrierRef",
-    "BuiltinRef",
-    "Const",
     "ConstexprTy",
-    "Deref",
-    "Field",
     "GridCounterTy",
     "PtrTy",
     "RawTy",
-    "ReinterpretCast",
-    "SmemDescRef",
-    "SmemRef",
-    "SmemSwizzleAddress",
-    "SmemSwizzleOffset",
-    "Swizzle",
     "TmaGatherTy",
     "TmaReduceTy",
     "TmaTy",
-    "TmemRef",
     "Ue4m3Ty",
     "UniformTy",
     "bf16",
@@ -79,11 +64,27 @@ __all__ = [
     "i16",
     "i32",
     "i64",
-    "lm",
     "u8",
     "u16",
     "u32",
     "u64",
+    "AddrOf",
+    "BarrierRef",
+    "BuiltinRef",
+    "Const",
+    "Deref",
+    "Field",
+    "ReinterpretCast",
+    "SmemDescRef",
+    "SmemRef",
+    "SmemSwizzleAddress",
+    "SmemSwizzleOffset",
+    "TmemRef",
+    "SWIZZLE_32B",
+    "SWIZZLE_64B",
+    "SWIZZLE_128B",
+    "SWIZZLE_NONE",
+    "Swizzle",
     "DELETE_STMT",
     "IRFunctor",
     "IRRewriter",

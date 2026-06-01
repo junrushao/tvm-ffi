@@ -15,7 +15,7 @@ from __future__ import annotations
 from tvm_ffi import dataclasses as dc
 from tvm_ffi import std
 
-from ._utils import normalize_domain, validate_cta_group
+from ._utils import validate_candidate_value, validate_cta_group
 from .handles import TmemRegion
 
 PIPELINE_STYLES = ("sequential", "sw_pipelined", "warp_specialized", "none")
@@ -70,25 +70,22 @@ class PipelineSpec(std.Attrs, mnemonic="weave.Pipeline"):
         smem_region: str = "",
         kparam_name: str = "",
     ) -> None:
+        style = validate_candidate_value(style, PIPELINE_STYLES, field_name="style")
+        if num_stages <= 0:
+            raise ValueError("num_stages must be positive")
+        cta_group = validate_cta_group(cta_group)
         self.__ffi_init__(
             name,
             num_stages,
             style,
             smem_buffers,
-            validate_cta_group(cta_group),
+            cta_group,
             producer_barriers,
             consumer_barriers,
             release_barriers,
             smem_region,
             kparam_name,
         )
-        self.__post_init__()
-
-    def __post_init__(self) -> None:
-        self.style = normalize_domain(self.style, PIPELINE_STYLES, field_name="style")
-        if self.num_stages <= 0:
-            raise ValueError("num_stages must be positive")
-        self.cta_group = validate_cta_group(self.cta_group)
 
 
 @dc.py_class("weave.PipelineConfig", structural_eq="tree")
@@ -100,7 +97,7 @@ class PipelineConfig(std.Attrs, mnemonic="weave.PipelineConfig"):
     pipelines: tuple[PipelineSpec, ...] = dc.field(default_factory=tuple, lang_kind="attr")
 
     def __post_init__(self) -> None:
-        self.style = normalize_domain(self.style, PIPELINE_STYLES, field_name="style")
+        self.style = validate_candidate_value(self.style, PIPELINE_STYLES, field_name="style")
         if self.num_stages <= 0:
             raise ValueError("num_stages must be positive")
 
@@ -132,13 +129,9 @@ class GridConfig(std.Attrs, mnemonic="weave.GridConfig"):
         cluster_dims: tuple[int, int, int] = (1, 1, 1),
         cta_group: int = 1,
     ) -> None:
-        self.__ffi_init__(cluster_dims, validate_cta_group(cta_group))
-        self.__post_init__()
-
-    def __post_init__(self) -> None:
-        if len(self.cluster_dims) != 3:
+        if len(cluster_dims) != 3:
             raise ValueError("cluster_dims must have 3 entries")
-        self.cta_group = validate_cta_group(self.cta_group)
+        self.__ffi_init__(cluster_dims, validate_cta_group(cta_group))
 
 
 @dc.py_class("weave.TmemConfig", structural_eq="tree")
@@ -151,7 +144,9 @@ class TmemConfig(std.Attrs, mnemonic="weave.TmemConfig"):
     allocator_warp: int | None = dc.field(default=None, lang_kind="attr")
 
     def __post_init__(self) -> None:
-        self.buffering = normalize_domain(self.buffering, TMEM_BUFFERING, field_name="buffering")
+        self.buffering = validate_candidate_value(
+            self.buffering, TMEM_BUFFERING, field_name="buffering"
+        )
         if self.total_cols <= 0:
             raise ValueError("total_cols must be positive")
 
@@ -165,7 +160,7 @@ class EpilogueConfig(std.Attrs, mnemonic="weave.EpilogueConfig"):
     num_epilogue_warps: int = dc.field(default=0, lang_kind="attr")
 
     def __post_init__(self) -> None:
-        self.style = normalize_domain(self.style, EPILOGUE_STYLES, field_name="style")
+        self.style = validate_candidate_value(self.style, EPILOGUE_STYLES, field_name="style")
         if self.num_epilogue_warps < 0:
             raise ValueError("num_epilogue_warps must be non-negative")
 
@@ -179,9 +174,6 @@ class PipelineProtocol(std.Attrs, mnemonic="weave.PipelineProtocol"):
     compute_tasks: tuple[str, ...] = dc.field(default_factory=tuple, lang_kind="attr")
     empty_barrier: str = dc.field(default="", lang_kind="attr")
     full_barrier: str = dc.field(default="", lang_kind="attr")
-
-    def __post_init__(self) -> None:
-        pass
 
 
 @dc.py_class("weave.TaskTiming", structural_eq="tree")

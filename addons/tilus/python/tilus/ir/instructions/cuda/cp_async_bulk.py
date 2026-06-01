@@ -110,10 +110,6 @@ class CopyAsyncBulkWaitGroupInst(Instruction, mnemonic="tilus.CopyAsyncBulkWaitG
 
     def __init__(self, n: int) -> None:
         self.__ffi_init__(n=validate_nonnegative_int_attr(n, "n"))
-        self.__post_init__()
-
-    def __post_init__(self) -> None:
-        self.n = validate_nonnegative_int_attr(self.n, "n")
 
     def outputs(self) -> tuple[std.Var, ...]:
         return ()

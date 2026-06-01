@@ -14,40 +14,41 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
+"""Shared-memory swizzle metadata nodes."""
 
 from __future__ import annotations
 
+from tvm_ffi import dataclasses as dc
 from tvm_ffi import std
-from tvm_ffi.dataclasses import field, py_class
-
-from ...inst import Instruction, make_output_var
 
 
-@py_class("tilus.MapSharedAddrInst", structural_eq="tree")
-class MapSharedAddrInst(Instruction, mnemonic="tilus.MapSharedAddr"):
-    src: std.Expr = field(lang_kind="arg")
-    target_rank: std.Expr = field(lang_kind="arg")
-    output: std.Var = field(
-        kw_only=True,
-        lang_kind="out",
-        structural_eq="def-recursive",
-    )
+@dc.py_class("weave.Swizzle", structural_eq="tree")
+class Swizzle(std.Attrs, mnemonic="weave.Swizzle"):
+    """Shared-memory swizzle descriptor."""
 
-    def __init__(
-        self,
-        src: std.Expr,
-        target_rank: std.Expr,
-        *,
-        output: std.Var | None = None,
-        ty: std.TyLike | None = None,
-    ) -> None:
-        output = make_output_var(output, ty)
-        self.__ffi_init__(src, target_rank=target_rank, output=output)
+    base: int = dc.field(lang_kind="attr")
+    bits: int = dc.field(lang_kind="attr")
+    shift: int = dc.field(lang_kind="attr")
 
-    def outputs(self) -> tuple[std.Var, ...]:
-        return (self.output,)
+    def __post_init__(self) -> None:
+        if self.base < 0 or self.bits < 0 or self.shift < 0:
+            raise ValueError("swizzle fields must be non-negative")
+
+    @property
+    def num_bytes(self) -> int:
+        return 1 << self.base if self.base else 0
+
+
+SWIZZLE_NONE = Swizzle(0, 0, 0)
+SWIZZLE_32B = Swizzle(5, 4, 3)
+SWIZZLE_64B = Swizzle(6, 5, 3)
+SWIZZLE_128B = Swizzle(7, 6, 3)
 
 
 __all__ = [
-    "MapSharedAddrInst",
+    "SWIZZLE_32B",
+    "SWIZZLE_64B",
+    "SWIZZLE_128B",
+    "SWIZZLE_NONE",
+    "Swizzle",
 ]

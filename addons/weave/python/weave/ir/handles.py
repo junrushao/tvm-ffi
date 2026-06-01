@@ -16,8 +16,8 @@ from tvm_ffi import dataclasses as dc
 from tvm_ffi import dtype as tvm_dtype
 from tvm_ffi import std
 
-from ._utils import normalize_domain, normalize_dtype, normalize_required_dtype, validate_cta_group
-from .dtypes import Swizzle
+from ._utils import normalize_dtype, validate_candidate_value, validate_cta_group
+from .swizzle import Swizzle
 
 ShapeDim = int | str
 SwizzleSpec = str | Swizzle | None
@@ -48,6 +48,10 @@ class TmemRegion(std.Attrs, mnemonic="weave.TmemRegion"):
         var_name: str = "",
         dtype: std.TyLike | None = None,
     ) -> None:
+        if dtype is not None:
+            dtype = normalize_dtype(dtype, field_name="dtype")
+        if start_col < 0 or ncols <= 0 or num_buffers <= 0:
+            raise ValueError("invalid TMEM region extent")
         self.__ffi_init__(
             name,
             start_col,
@@ -55,14 +59,8 @@ class TmemRegion(std.Attrs, mnemonic="weave.TmemRegion"):
             num_buffers,
             kparam_name,
             var_name,
-            normalize_dtype(dtype, field_name="dtype"),
+            dtype,
         )
-        self.__post_init__()
-
-    def __post_init__(self) -> None:
-        self.dtype = normalize_dtype(self.dtype, field_name="dtype")
-        if self.start_col < 0 or self.ncols <= 0 or self.num_buffers <= 0:
-            raise ValueError("invalid TMEM region extent")
 
 
 @dc.py_class("weave.Mbarrier", structural_eq="tree")
@@ -86,7 +84,7 @@ class MbarrierSpec(std.Attrs, mnemonic="weave.Mbarrier"):
         if self.init_phase not in (0, 1):
             raise ValueError("init_phase must be 0 or 1")
         if self.signaling_mode is not None:
-            self.signaling_mode = normalize_domain(
+            self.signaling_mode = validate_candidate_value(
                 self.signaling_mode, SIGNALING_MODES, field_name="signaling_mode"
             )
 
@@ -150,7 +148,12 @@ class BufferRef(std.Attrs, mnemonic="weave.Buffer"):
         align: int = 1,
         volatile: bool = False,
     ) -> None:
-        dtype = normalize_required_dtype(dtype, field_name="dtype")
+        if dtype is None:
+            raise TypeError("dtype is required")
+        dtype = normalize_dtype(dtype, field_name="dtype")
+        space = validate_candidate_value(space, MEMORY_SPACES, field_name="space")
+        if align <= 0:
+            raise ValueError("align must be positive")
         self.__ffi_init__(
             name,
             dtype,
@@ -166,13 +169,6 @@ class BufferRef(std.Attrs, mnemonic="weave.Buffer"):
             align,
             volatile,
         )
-        self.__post_init__()
-
-    def __post_init__(self) -> None:
-        self.dtype = normalize_required_dtype(self.dtype, field_name="dtype")
-        self.space = normalize_domain(self.space, MEMORY_SPACES, field_name="space")
-        if self.align <= 0:
-            raise ValueError("align must be positive")
 
 
 @dc.py_class("weave.Param", structural_eq="tree")
@@ -224,7 +220,9 @@ class SmemView(std.Attrs, mnemonic="weave.SmemView"):
         layout: str = "",
         alias_of: str = "",
     ) -> None:
-        dtype = normalize_required_dtype(dtype, field_name="dtype")
+        if dtype is None:
+            raise TypeError("dtype is required")
+        dtype = normalize_dtype(dtype, field_name="dtype")
         self.__ffi_init__(
             name=name,
             pool=pool,
@@ -237,10 +235,6 @@ class SmemView(std.Attrs, mnemonic="weave.SmemView"):
             layout=layout,
             alias_of=alias_of,
         )
-        self.__post_init__()
-
-    def __post_init__(self) -> None:
-        self.dtype = normalize_required_dtype(self.dtype, field_name="dtype")
 
 
 @dc.py_class("weave.PhaseVar", structural_eq="tree")
@@ -262,7 +256,9 @@ class PhaseVar(std.Attrs, mnemonic="weave.PhaseVar"):
         rotation_rule: str = "",
         rotation_trigger: str = "",
     ) -> None:
-        dtype = normalize_required_dtype(dtype, field_name="dtype")
+        if dtype is None:
+            raise TypeError("dtype is required")
+        dtype = normalize_dtype(dtype, field_name="dtype")
         self.__ffi_init__(
             name=name,
             init_value=init_value,
@@ -270,10 +266,6 @@ class PhaseVar(std.Attrs, mnemonic="weave.PhaseVar"):
             rotation_rule=rotation_rule,
             rotation_trigger=rotation_trigger,
         )
-        self.__post_init__()
-
-    def __post_init__(self) -> None:
-        self.dtype = normalize_required_dtype(self.dtype, field_name="dtype")
 
 
 @dc.py_class("weave.PhaseDomain", structural_eq="tree")
@@ -315,22 +307,20 @@ class MmaParams(std.Attrs, mnemonic="weave.MmaParams"):
         tile_n: int = 0,
         dtype: std.TyLike | None = None,
     ) -> None:
+        cta_group = validate_cta_group(cta_group)
+        if dtype is not None:
+            dtype = normalize_dtype(dtype, field_name="dtype")
+        if k_steps_per_group <= 0 or k_groups <= 0:
+            raise ValueError("MMA step and group counts must be positive")
         self.__ffi_init__(
             k_steps_per_group,
             k_groups,
             group_lo_offset,
-            validate_cta_group(cta_group),
+            cta_group,
             tile_m,
             tile_n,
-            normalize_dtype(dtype, field_name="dtype"),
+            dtype,
         )
-        self.__post_init__()
-
-    def __post_init__(self) -> None:
-        self.dtype = normalize_dtype(self.dtype, field_name="dtype")
-        if self.k_steps_per_group <= 0 or self.k_groups <= 0:
-            raise ValueError("MMA step and group counts must be positive")
-        self.cta_group = validate_cta_group(self.cta_group)
 
 
 @dc.py_class("weave.SoftmaxParams", structural_eq="tree")
@@ -398,12 +388,10 @@ class SymmetricMemory(std.Attrs, mnemonic="weave.SymmetricMemory"):
         shape: tuple[ShapeDim, ...],
         group: ProcessGroup | str,
     ) -> None:
-        dtype = normalize_required_dtype(dtype, field_name="dtype")
+        if dtype is None:
+            raise TypeError("dtype is required")
+        dtype = normalize_dtype(dtype, field_name="dtype")
         self.__ffi_init__(name, dtype, shape, group)
-        self.__post_init__()
-
-    def __post_init__(self) -> None:
-        self.dtype = normalize_required_dtype(self.dtype, field_name="dtype")
 
 
 __all__ = [
