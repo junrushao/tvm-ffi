@@ -12,8 +12,6 @@
 
 from __future__ import annotations
 
-from typing import Any
-
 from tvm_ffi import dataclasses as dc
 from tvm_ffi import std
 
@@ -26,10 +24,10 @@ TMEM_BUFFERING = ("single", "double")
 
 
 @dc.py_class("weave.WarpRole", structural_eq="tree")
-class WarpRole(std.Node, mnemonic="weave.WarpRole"):
+class WarpRole(std.Attrs, mnemonic="weave.WarpRole"):
     """Named warp role with assigned warp ids."""
 
-    name: str = dc.field(lang_kind="arg")
+    name: str = dc.field(lang_kind="attr")
     warp_ids: tuple[int, ...] = dc.field(lang_kind="attr")
     register_budget: int | None = dc.field(default=None, lang_kind="attr")
     auto_warp_vars: bool = dc.field(default=False, lang_kind="attr")
@@ -38,8 +36,6 @@ class WarpRole(std.Node, mnemonic="weave.WarpRole"):
     instances: int = dc.field(default=1, lang_kind="attr")
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "warp_ids", tuple(self.warp_ids))
-        object.__setattr__(self, "tmem_var_regions", tuple(self.tmem_var_regions))
         if not self.name:
             raise ValueError("WarpRole.name must be non-empty")
         if self.instances <= 0:
@@ -47,33 +43,56 @@ class WarpRole(std.Node, mnemonic="weave.WarpRole"):
 
 
 @dc.py_class("weave.Pipeline", structural_eq="tree")
-class PipelineSpec(std.Node, mnemonic="weave.Pipeline"):
+class PipelineSpec(std.Attrs, mnemonic="weave.Pipeline"):
     """Named pipeline configuration."""
 
-    name: str = dc.field(lang_kind="arg")
-    num_stages: int = dc.field(lang_kind="arg")
+    name: str = dc.field(lang_kind="attr")
+    num_stages: int = dc.field(lang_kind="attr")
     style: str = dc.field(default="sequential", lang_kind="attr")
     smem_buffers: tuple[str, ...] = dc.field(default_factory=tuple, lang_kind="attr")
-    cta_group: Any = dc.field(default=1, lang_kind="attr")
+    cta_group: int = dc.field(default=1, lang_kind="attr")
     producer_barriers: tuple[str, ...] = dc.field(default_factory=tuple, lang_kind="attr")
     consumer_barriers: tuple[str, ...] = dc.field(default_factory=tuple, lang_kind="attr")
     release_barriers: tuple[str, ...] = dc.field(default_factory=tuple, lang_kind="attr")
     smem_region: str = dc.field(default="", lang_kind="attr")
     kparam_name: str = dc.field(default="", lang_kind="attr")
 
-    def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "style", normalize_domain(self.style, PIPELINE_STYLES, field_name="style")
+    def __init__(
+        self,
+        name: str,
+        num_stages: int,
+        style: str = "sequential",
+        smem_buffers: tuple[str, ...] = (),
+        cta_group: int = 1,
+        producer_barriers: tuple[str, ...] = (),
+        consumer_barriers: tuple[str, ...] = (),
+        release_barriers: tuple[str, ...] = (),
+        smem_region: str = "",
+        kparam_name: str = "",
+    ) -> None:
+        self.__ffi_init__(
+            name,
+            num_stages,
+            style,
+            smem_buffers,
+            validate_cta_group(cta_group),
+            producer_barriers,
+            consumer_barriers,
+            release_barriers,
+            smem_region,
+            kparam_name,
         )
-        for name in ("smem_buffers", "producer_barriers", "consumer_barriers", "release_barriers"):
-            object.__setattr__(self, name, tuple(getattr(self, name)))
+        self.__post_init__()
+
+    def __post_init__(self) -> None:
+        self.style = normalize_domain(self.style, PIPELINE_STYLES, field_name="style")
         if self.num_stages <= 0:
             raise ValueError("num_stages must be positive")
-        object.__setattr__(self, "cta_group", validate_cta_group(self.cta_group))
+        self.cta_group = validate_cta_group(self.cta_group)
 
 
 @dc.py_class("weave.PipelineConfig", structural_eq="tree")
-class PipelineConfig(std.Node, mnemonic="weave.PipelineConfig"):
+class PipelineConfig(std.Attrs, mnemonic="weave.PipelineConfig"):
     """Legacy or multi-pipeline configuration."""
 
     style: str = dc.field(default="sequential", lang_kind="attr")
@@ -81,47 +100,49 @@ class PipelineConfig(std.Node, mnemonic="weave.PipelineConfig"):
     pipelines: tuple[PipelineSpec, ...] = dc.field(default_factory=tuple, lang_kind="attr")
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "style", normalize_domain(self.style, PIPELINE_STYLES, field_name="style")
-        )
-        object.__setattr__(self, "pipelines", tuple(self.pipelines))
+        self.style = normalize_domain(self.style, PIPELINE_STYLES, field_name="style")
         if self.num_stages <= 0:
             raise ValueError("num_stages must be positive")
 
 
 @dc.py_class("weave.WarpConfig", structural_eq="tree")
-class WarpConfig(std.Node, mnemonic="weave.WarpConfig"):
+class WarpConfig(std.Attrs, mnemonic="weave.WarpConfig"):
     """Warp topology configuration."""
 
-    num_warps: int = dc.field(lang_kind="arg")
+    num_warps: int = dc.field(lang_kind="attr")
     roles: tuple[WarpRole, ...] = dc.field(default_factory=tuple, lang_kind="attr")
     tma_warp: int | None = dc.field(default=None, lang_kind="attr")
     mma_warp: int | None = dc.field(default=None, lang_kind="attr")
     epilogue_warps: tuple[int, ...] = dc.field(default_factory=tuple, lang_kind="attr")
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "roles", tuple(self.roles))
-        object.__setattr__(self, "epilogue_warps", tuple(self.epilogue_warps))
         if self.num_warps <= 0:
             raise ValueError("num_warps must be positive")
 
 
 @dc.py_class("weave.GridConfig", structural_eq="tree")
-class GridConfig(std.Node, mnemonic="weave.GridConfig"):
+class GridConfig(std.Attrs, mnemonic="weave.GridConfig"):
     """Grid and cluster topology."""
 
     cluster_dims: tuple[int, int, int] = dc.field(default=(1, 1, 1), lang_kind="attr")
-    cta_group: Any = dc.field(default=1, lang_kind="attr")
+    cta_group: int = dc.field(default=1, lang_kind="attr")
+
+    def __init__(
+        self,
+        cluster_dims: tuple[int, int, int] = (1, 1, 1),
+        cta_group: int = 1,
+    ) -> None:
+        self.__ffi_init__(cluster_dims, validate_cta_group(cta_group))
+        self.__post_init__()
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "cluster_dims", tuple(self.cluster_dims))
         if len(self.cluster_dims) != 3:
             raise ValueError("cluster_dims must have 3 entries")
-        object.__setattr__(self, "cta_group", validate_cta_group(self.cta_group))
+        self.cta_group = validate_cta_group(self.cta_group)
 
 
 @dc.py_class("weave.TmemConfig", structural_eq="tree")
-class TmemConfig(std.Node, mnemonic="weave.TmemConfig"):
+class TmemConfig(std.Attrs, mnemonic="weave.TmemConfig"):
     """Tensor-memory allocation configuration."""
 
     buffering: str = dc.field(default="single", lang_kind="attr")
@@ -130,49 +151,41 @@ class TmemConfig(std.Node, mnemonic="weave.TmemConfig"):
     allocator_warp: int | None = dc.field(default=None, lang_kind="attr")
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self,
-            "buffering",
-            normalize_domain(self.buffering, TMEM_BUFFERING, field_name="buffering"),
-        )
-        object.__setattr__(self, "regions", tuple(self.regions))
+        self.buffering = normalize_domain(self.buffering, TMEM_BUFFERING, field_name="buffering")
         if self.total_cols <= 0:
             raise ValueError("total_cols must be positive")
 
 
 @dc.py_class("weave.EpilogueConfig", structural_eq="tree")
-class EpilogueConfig(std.Node, mnemonic="weave.EpilogueConfig"):
+class EpilogueConfig(std.Attrs, mnemonic="weave.EpilogueConfig"):
     """Epilogue execution configuration."""
 
-    style: str = dc.field(default="inline", lang_kind="arg")
+    style: str = dc.field(default="inline", lang_kind="attr")
     vectorized: bool = dc.field(default=False, lang_kind="attr")
     num_epilogue_warps: int = dc.field(default=0, lang_kind="attr")
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "style", normalize_domain(self.style, EPILOGUE_STYLES, field_name="style")
-        )
+        self.style = normalize_domain(self.style, EPILOGUE_STYLES, field_name="style")
         if self.num_epilogue_warps < 0:
             raise ValueError("num_epilogue_warps must be non-negative")
 
 
 @dc.py_class("weave.PipelineProtocol", structural_eq="tree")
-class PipelineProtocol(std.Node, mnemonic="weave.PipelineProtocol"):
+class PipelineProtocol(std.Attrs, mnemonic="weave.PipelineProtocol"):
     """Pipeline fill/steady/drain protocol."""
 
-    pipeline: str = dc.field(lang_kind="arg")
+    pipeline: str = dc.field(lang_kind="attr")
     load_tasks: tuple[str, ...] = dc.field(default_factory=tuple, lang_kind="attr")
     compute_tasks: tuple[str, ...] = dc.field(default_factory=tuple, lang_kind="attr")
     empty_barrier: str = dc.field(default="", lang_kind="attr")
     full_barrier: str = dc.field(default="", lang_kind="attr")
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "load_tasks", tuple(self.load_tasks))
-        object.__setattr__(self, "compute_tasks", tuple(self.compute_tasks))
+        pass
 
 
 @dc.py_class("weave.TaskTiming", structural_eq="tree")
-class TaskTiming(std.Node, mnemonic="weave.TaskTiming"):
+class TaskTiming(std.Attrs, mnemonic="weave.TaskTiming"):
     """Estimated task timing metadata."""
 
     task: str = dc.field(default="", lang_kind="attr")
@@ -180,7 +193,7 @@ class TaskTiming(std.Node, mnemonic="weave.TaskTiming"):
 
 
 @dc.py_class("weave.BarrierEdge", structural_eq="tree")
-class BarrierEdge(std.Node, mnemonic="weave.BarrierEdge"):
+class BarrierEdge(std.Attrs, mnemonic="weave.BarrierEdge"):
     """Barrier dependency edge metadata."""
 
     producer: str = dc.field(default="", lang_kind="attr")
@@ -189,7 +202,7 @@ class BarrierEdge(std.Node, mnemonic="weave.BarrierEdge"):
 
 
 @dc.py_class("weave.SmemAllocation", structural_eq="tree")
-class SmemAllocation(std.Node, mnemonic="weave.SmemAllocation"):
+class SmemAllocation(std.Attrs, mnemonic="weave.SmemAllocation"):
     """Shared-memory allocation metadata."""
 
     name: str = dc.field(default="", lang_kind="attr")
@@ -198,7 +211,7 @@ class SmemAllocation(std.Node, mnemonic="weave.SmemAllocation"):
 
 
 @dc.py_class("weave.TmemAllocation", structural_eq="tree")
-class TmemAllocation(std.Node, mnemonic="weave.TmemAllocation"):
+class TmemAllocation(std.Attrs, mnemonic="weave.TmemAllocation"):
     """Tensor-memory allocation metadata."""
 
     name: str = dc.field(default="", lang_kind="attr")

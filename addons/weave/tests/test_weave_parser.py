@@ -102,7 +102,9 @@ def test_parse_lowercase_task_alias_canonicalizes() -> None:
     assert isinstance(parsed, TaskSpec)
     assert parsed.name == "compute"
     assert parsed.depends_on == ("load",)
-    assert parsed.text().startswith('with weave.TaskSpec("compute"')
+    printed = parsed.text()
+    assert printed.startswith("with weave.TaskSpec(")
+    assert 'name="compute"' in printed
 
 
 def test_parse_direct_constructor_mnemonics_and_lm_namespace() -> None:
@@ -257,11 +259,11 @@ def test_parse_direct_constructor_namespace() -> None:
         ),
         pytest.param(
             """
-            with weave.ConditionalIteration("stage"):
+            with weave.ConditionalIteration(object()):
                 pass
             """,
-            "iter_var expects std.Expr",
-            id="conditional-raw-string",
+            "expected ffi.std.Expr",
+            id="conditional-invalid-expr",
         ),
         pytest.param(
             """

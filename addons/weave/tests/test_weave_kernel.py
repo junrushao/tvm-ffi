@@ -68,7 +68,7 @@ def test_kernel_sequence_attrs_accept_lists_without_leaking_python_lists() -> No
     buffer = BufferRef("A", f32, (1,))
     mbarrier = MbarrierSpec("full", 1)
     smem_pool = SmemPool("pool", 1024)
-    smem_view = SmemView("tile", "pool", 0, shape=(1,), dtype=f32)
+    smem_view = SmemView(0, name="tile", pool="pool", shape=(1,), dtype=f32)
     protocol = PipelineProtocol("main")
     phase_domain = PhaseDomain("main", "stage", 1)
     task_timing = TaskTiming(task="load", cycles=1)

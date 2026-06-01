@@ -12,12 +12,11 @@
 
 from __future__ import annotations
 
-from typing import Any, ClassVar
-
 from tvm_ffi import dataclasses as dc
+from tvm_ffi import dtype as tvm_dtype
 from tvm_ffi import std
 
-from .._utils import Op, normalize_dtype
+from .._utils import Op, normalize_domain, normalize_dtype
 
 ATOMIC_OPS = ("add", "max", "min")
 MEM_SPACES = ("gmem", "smem")
@@ -29,32 +28,31 @@ MULTIMEM_SCOPES = ("gpu", "sys")
 
 @dc.py_class("weave.AtomicOp", structural_eq="tree")
 class AtomicOp(Op, mnemonic="weave.AtomicOp"):
-    op: str = dc.field(lang_kind="arg")
+    op: str = dc.field(kw_only=True, lang_kind="attr")
     src: std.Expr = dc.field(lang_kind="arg")
     dst: std.Expr = dc.field(lang_kind="arg")
     index: std.Expr | None = dc.field(default=None, lang_kind="arg")
-    space: str = dc.field(lang_kind="attr")
-    dtype: Any = dc.field(default=None, lang_kind="attr")
-
-    EXPR_FIELDS: ClassVar[frozenset[str]] = frozenset(("src", "dst", "index"))
-    VALID_DOMAINS: ClassVar[dict[str, tuple[str, ...]]] = {"op": ATOMIC_OPS, "space": MEM_SPACES}
+    space: str = dc.field(kw_only=True, lang_kind="attr")
+    dtype: tvm_dtype | None = dc.field(default=None, lang_kind="attr")
 
     def __init__(
         self,
-        op: str,
         src: std.Expr,
         dst: std.Expr,
         index: std.Expr | None = None,
         *,
+        op: str,
         space: str,
-        dtype: Any = None,
+        dtype: std.TyLike | None = None,
     ) -> None:
+        dtype = normalize_dtype(dtype, field_name="dtype")
         self.__ffi_init__(op=op, src=src, dst=dst, index=index, space=space, dtype=dtype)
         self.__post_init__()
 
     def __post_init__(self) -> None:
-        super().__post_init__()
-        object.__setattr__(self, "dtype", normalize_dtype(self.dtype, field_name="dtype"))
+        self.op = normalize_domain(self.op, ATOMIC_OPS, field_name="op")
+        self.space = normalize_domain(self.space, MEM_SPACES, field_name="space")
+        self.dtype = normalize_dtype(self.dtype, field_name="dtype")
 
 
 @dc.py_class("weave.AtomicFetchAdd", structural_eq="tree")
@@ -63,13 +61,27 @@ class AtomicFetchAdd(Op, mnemonic="weave.AtomicFetchAdd"):
     addr: std.Expr = dc.field(lang_kind="arg")
     val: std.Expr = dc.field(lang_kind="arg")
     index: std.Expr | None = dc.field(default=None, lang_kind="arg")
-    dtype: Any = dc.field(default=None, lang_kind="attr")
+    dtype: tvm_dtype | None = dc.field(default=None, lang_kind="attr")
 
-    EXPR_FIELDS: ClassVar[frozenset[str]] = frozenset(("dst", "addr", "val", "index"))
+    def __init__(
+        self,
+        dst: std.Expr,
+        addr: std.Expr,
+        val: std.Expr,
+        index: std.Expr | None = None,
+        dtype: std.TyLike | None = None,
+    ) -> None:
+        self.__ffi_init__(
+            dst,
+            addr,
+            val,
+            index,
+            normalize_dtype(dtype, field_name="dtype"),
+        )
+        self.__post_init__()
 
     def __post_init__(self) -> None:
-        super().__post_init__()
-        object.__setattr__(self, "dtype", normalize_dtype(self.dtype, field_name="dtype"))
+        self.dtype = normalize_dtype(self.dtype, field_name="dtype")
 
 
 @dc.py_class("weave.RelaxedFmax", structural_eq="tree")
@@ -78,8 +90,8 @@ class RelaxedFmax(Op, mnemonic="weave.RelaxedFmax"):
     val: std.Expr = dc.field(lang_kind="arg")
     space: str = dc.field(default="gmem", lang_kind="attr")
 
-    EXPR_FIELDS: ClassVar[frozenset[str]] = frozenset(("addr", "val"))
-    VALID_DOMAINS: ClassVar[dict[str, tuple[str, ...]]] = {"space": MEM_SPACES}
+    def __post_init__(self) -> None:
+        self.space = normalize_domain(self.space, MEM_SPACES, field_name="space")
 
 
 @dc.py_class("weave.AtomicMaxF32Positive", structural_eq="tree")
@@ -89,23 +101,17 @@ class AtomicMaxF32Positive(Op, mnemonic="weave.AtomicMaxF32Positive"):
     index: std.Expr | None = dc.field(default=None, lang_kind="arg")
     dst: std.Expr | None = dc.field(default=None, lang_kind="arg")
 
-    EXPR_FIELDS: ClassVar[frozenset[str]] = frozenset(("addr", "val", "index", "dst"))
-
 
 @dc.py_class("weave.SysVolatileLoad128", structural_eq="tree")
 class SysVolatileLoad128(Op, mnemonic="weave.SysVolatileLoad128"):
     addr: std.Expr = dc.field(lang_kind="arg")
     dst: std.Expr = dc.field(lang_kind="arg")
 
-    EXPR_FIELDS: ClassVar[frozenset[str]] = frozenset(("addr", "dst"))
-
 
 @dc.py_class("weave.SysVolatileStore128", structural_eq="tree")
 class SysVolatileStore128(Op, mnemonic="weave.SysVolatileStore128"):
     addr: std.Expr = dc.field(lang_kind="arg")
     src: std.Expr = dc.field(lang_kind="arg")
-
-    EXPR_FIELDS: ClassVar[frozenset[str]] = frozenset(("addr", "src"))
 
 
 @dc.py_class("weave.MultimemLdReduce", structural_eq="tree")
@@ -114,8 +120,8 @@ class MultimemLdReduce(Op, mnemonic="weave.MultimemLdReduce"):
     dst: std.Expr = dc.field(lang_kind="arg")
     payload: str = dc.field(default="f32x4", lang_kind="attr")
 
-    EXPR_FIELDS: ClassVar[frozenset[str]] = frozenset(("addr", "dst"))
-    VALID_DOMAINS: ClassVar[dict[str, tuple[str, ...]]] = {"payload": MULTIMEM_LOAD_PAYLOADS}
+    def __post_init__(self) -> None:
+        self.payload = normalize_domain(self.payload, MULTIMEM_LOAD_PAYLOADS, field_name="payload")
 
 
 @dc.py_class("weave.MultimemStore", structural_eq="tree")
@@ -124,8 +130,8 @@ class MultimemStore(Op, mnemonic="weave.MultimemStore"):
     src: std.Expr = dc.field(lang_kind="arg")
     payload: str = dc.field(default="f32x4", lang_kind="attr")
 
-    EXPR_FIELDS: ClassVar[frozenset[str]] = frozenset(("addr", "src"))
-    VALID_DOMAINS: ClassVar[dict[str, tuple[str, ...]]] = {"payload": MULTIMEM_STORE_PAYLOADS}
+    def __post_init__(self) -> None:
+        self.payload = normalize_domain(self.payload, MULTIMEM_STORE_PAYLOADS, field_name="payload")
 
 
 @dc.py_class("weave.MultimemRedAddI32", structural_eq="tree")
@@ -135,11 +141,9 @@ class MultimemRedAddI32(Op, mnemonic="weave.MultimemRedAddI32"):
     sem: str = dc.field(default="release", lang_kind="attr")
     scope: str = dc.field(default="sys", lang_kind="attr")
 
-    EXPR_FIELDS: ClassVar[frozenset[str]] = frozenset(("addr", "value"))
-    VALID_DOMAINS: ClassVar[dict[str, tuple[str, ...]]] = {
-        "sem": MULTIMEM_SEMS,
-        "scope": MULTIMEM_SCOPES,
-    }
+    def __post_init__(self) -> None:
+        self.sem = normalize_domain(self.sem, MULTIMEM_SEMS, field_name="sem")
+        self.scope = normalize_domain(self.scope, MULTIMEM_SCOPES, field_name="scope")
 
 
 @dc.py_class("weave.AtomicMaxFloatEncode", structural_eq="tree")
@@ -147,15 +151,11 @@ class AtomicMaxFloatEncode(Op, mnemonic="weave.AtomicMaxFloatEncode"):
     dst: std.Expr = dc.field(lang_kind="arg")
     src: std.Expr = dc.field(lang_kind="arg")
 
-    EXPR_FIELDS: ClassVar[frozenset[str]] = frozenset(("dst", "src"))
-
 
 @dc.py_class("weave.AtomicMaxFloatDecode", structural_eq="tree")
 class AtomicMaxFloatDecode(Op, mnemonic="weave.AtomicMaxFloatDecode"):
     dst: std.Expr = dc.field(lang_kind="arg")
     src: std.Expr = dc.field(lang_kind="arg")
-
-    EXPR_FIELDS: ClassVar[frozenset[str]] = frozenset(("dst", "src"))
 
 
 __all__ = [  # noqa: RUF022

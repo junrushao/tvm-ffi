@@ -48,12 +48,12 @@ def _barrier() -> wi.MbarrierSpec:
 @pytest.mark.parametrize(
     "node",
     [
-        pytest.param(wi.BuiltinVar("warp_in_role", dst=1), id="builtin-var"),
+        pytest.param(wi.BuiltinVar(1, name="warp_in_role"), id="builtin-var"),
         pytest.param(
             wi.TmemRegionLoad(
-                _region(),
                 dst=1,
                 col_offset=2,
+                region=_region(),
                 num=32,
                 dst_offset=4,
                 wait=False,
@@ -62,11 +62,13 @@ def _barrier() -> wi.MbarrierSpec:
             id="tmem-region-load-full",
         ),
         pytest.param(
-            wi.TmemRegionStore(_region(), src=1, col_offset=2, num=16, dtype=wi.f32, row_base=8),
+            wi.TmemRegionStore(
+                src=1, col_offset=2, region=_region(), num=16, dtype=wi.f32, row_base=8
+            ),
             id="tmem-region-store-full",
         ),
         pytest.param(
-            wi.SmemDesc("tile", k_idx=0, mode="mn", dst=1, step=2, offset=3),
+            wi.SmemDesc(0, dst=1, step=2, offset=3, buffer="tile", mode="mn"),
             id="smem-desc-full",
         ),
         pytest.param(
@@ -90,7 +92,7 @@ def _barrier() -> wi.MbarrierSpec:
         pytest.param(wi.SmemStore(1, 2, predicate=True, index=0), id="smem-store-full"),
         pytest.param(wi.SmemLoad(1, 2), id="smem-load"),
         pytest.param(wi.SmemRead(1, dst=2, index=0), id="smem-read-full"),
-        pytest.param(wi.SmemLoadRegs("regs", 1, count=4, dtype=wi.f32), id="smem-load-regs"),
+        pytest.param(wi.SmemLoadRegs(1, name="regs", count=4, dtype=wi.f32), id="smem-load-regs"),
         pytest.param(wi.SmemWrite(1, 2, index=0), id="smem-write-full"),
         pytest.param(wi.SmemLoadVec(1, 2, count=4, dst_offset=8), id="smem-load-vec-full"),
         pytest.param(wi.SmemStoreVec(1, 2), id="smem-store-vec"),
@@ -140,20 +142,20 @@ def test_elementwise_and_mask_ops_text_round_trip(node: Any) -> None:
     [
         pytest.param(wi.BarrierSync(barrier_id=1), id="barrier-sync"),
         pytest.param(
-            wi.BarrierTryWait(_barrier(), 0, 1, _v("tok"), stage_is_deterministic=False),
+            wi.BarrierTryWait(0, 1, _v("tok"), stage_is_deterministic=False, barrier=_barrier()),
             id="barrier-try-wait-out",
         ),
         pytest.param(
-            wi.BarrierWait(_barrier(), 0, 1, token=2, stage_is_deterministic=False),
+            wi.BarrierWait(0, 1, token=2, stage_is_deterministic=False, barrier=_barrier()),
             id="barrier-wait-full",
         ),
         pytest.param(
             wi.BarrierSignal(
-                _barrier(),
-                "arrive_expect_tx",
                 0,
                 tx_bytes=128,
                 arrive_count=2,
+                action="arrive_expect_tx",
+                barrier=_barrier(),
                 cta_group=2,
                 cluster=True,
                 elected=True,
@@ -163,13 +165,16 @@ def test_elementwise_and_mask_ops_text_round_trip(node: Any) -> None:
         ),
         pytest.param(wi.MBarrierArrive(1), id="mbarrier-arrive"),
         pytest.param(
-            wi.PeerArriveCommit(_barrier(), 0, cta_group=2, elected=True), id="peer-arrive"
+            wi.PeerArriveCommit(0, barrier=_barrier(), cta_group=2, elected=True), id="peer-arrive"
         ),
         pytest.param(
-            wi.MulticastCommit(_barrier(), 0, 3, cta_group=2, elected=True),
+            wi.MulticastCommit(0, 3, barrier=_barrier(), cta_group=2, elected=True),
             id="multicast-commit",
         ),
-        pytest.param(wi.DualCommit(_barrier(), _barrier(), 0, 1, cta_group=2), id="dual-commit"),
+        pytest.param(
+            wi.DualCommit(0, 1, barrier_0=_barrier(), barrier_1=_barrier(), cta_group=2),
+            id="dual-commit",
+        ),
         pytest.param(wi.Fence(kind="before_thread_sync"), id="fence"),
         pytest.param(wi.ThreadFence(scope="system"), id="thread-fence"),
         pytest.param(wi.ClusterSync(), id="cluster-sync"),
@@ -211,9 +216,9 @@ def test_barrier_sync_and_reduction_ops_text_round_trip(node: Any) -> None:
             wi.Tcgen05Cp(1, 2, shape="128x256b", cta_group=2, sbo=256, elected=True),
             id="tcgen05-cp-full",
         ),
-        pytest.param(wi.PackedF32x2("fma", inputs=[1, 2, 3], output=4), id="packed-f32x2"),
+        pytest.param(wi.PackedF32x2(inputs=[1, 2, 3], output=4, op="fma"), id="packed-f32x2"),
         pytest.param(
-            wi.FragmentOp("cvt_f32", 1, srcs=[2, 3], size=16, dtype=wi.f32), id="fragment-op"
+            wi.FragmentOp(1, srcs=[2, 3], op="cvt_f32", size=16, dtype=wi.f32), id="fragment-op"
         ),
         pytest.param(
             wi.MmaTile(
@@ -229,7 +234,9 @@ def test_barrier_sync_and_reduction_ops_text_round_trip(node: Any) -> None:
             ),
             id="mma-tile",
         ),
-        pytest.param(wi.AtomicOp("add", 1, 2, space="gmem", index=0, dtype=wi.f32), id="atomic-op"),
+        pytest.param(
+            wi.AtomicOp(1, 2, op="add", space="gmem", index=0, dtype=wi.f32), id="atomic-op"
+        ),
         pytest.param(wi.AtomicFetchAdd(1, 2, 3, index=4, dtype=wi.u32), id="atomic-fetch-add"),
         pytest.param(wi.RelaxedFmax(1, 2, space="smem"), id="relaxed-fmax"),
         pytest.param(wi.AtomicMaxF32Positive(1, 2, index=0, dst=3), id="atomic-max-f32-positive"),

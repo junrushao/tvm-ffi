@@ -17,7 +17,7 @@ from typing import Any
 
 from tvm_ffi import std
 from tvm_ffi.container import Array, Dict, List, Map
-from tvm_ffi.core import Object, _lookup_type_attr
+from tvm_ffi.core import Object
 from tvm_ffi.dataclasses import fields, is_dataclass, replace
 
 _CONSTANT_TYPES = (str, int, float, bool, type(None), bytes)
@@ -55,22 +55,6 @@ def _same(lhs: Any, rhs: Any) -> bool:
     if isinstance(lhs, Object) and isinstance(rhs, Object):
         return type(lhs) is type(rhs) and lhs.__chandle__() == rhs.__chandle__()
     return lhs is rhs
-
-
-def _dialect_field_collector(node: std.Node) -> Any:
-    type_info = getattr(type(node), "__tvm_ffi_type_info__", None)
-    if type_info is None:
-        return None
-    collector = _lookup_type_attr(type_info.type_index, "__ffi_dialect_field_collector__")
-    if collector is not None:
-        return collector
-    if type_info.type_key.startswith("ffi.std."):
-        return None
-    return _lookup_type_attr(
-        type_info.type_index,
-        "__ffi_dialect_field_collector__",
-        ancestor=True,
-    )
 
 
 class IRFunctor:
@@ -173,9 +157,6 @@ class IRRewriter(IRFunctor):
         return type(node)(updated)
 
     def visit_dataclass(self, node: Any) -> Any:
-        collector = _dialect_field_collector(node)
-        if collector is not None:
-            collector(node)
         changes: dict[str, Any] = {}
         for field in fields(node):
             if not field.init:

@@ -123,11 +123,9 @@ def test_ir_rewriter_rewrites_mapping_keys_and_values() -> None:
                 return Const("changed", i32)
             return node
 
-    kernel = Kernel("kernel", [], None, [], constants={"old": Const("value", i32)})
-    rewritten = RewriteMapping()(kernel)
-    items = list(rewritten.constants.items())
+    rewritten = RewriteMapping()({"old": Const("value", i32)})
+    items = list(rewritten.items())
 
-    assert rewritten is not kernel
     assert len(items) == 1
     assert items[0][0] == "new"
     assert tvm_ffi.structural_equal(items[0][1], Const("changed", i32))

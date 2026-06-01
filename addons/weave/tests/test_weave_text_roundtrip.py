@@ -158,9 +158,9 @@ def test_fully_decorated_kernel_source_round_trip() -> None:
             smem_pools=[weave.SmemPool("pool", 4096)],
             smem_views=[
                 weave.SmemView(
-                    "tile",
-                    "pool",
                     0,
+                    name="tile",
+                    pool="pool",
                     shape=[16, 64],
                     dtype=std.bf16,
                     swizzle=weave.Swizzle(7, 6, 3),
@@ -178,7 +178,7 @@ def test_fully_decorated_kernel_source_round_trip() -> None:
                     "main",
                     "stage",
                     2,
-                    phase_vars=[weave.PhaseVar("phase", dtype=std.i32)],
+                    phase_vars=[weave.PhaseVar(name="phase", dtype=std.i32)],
                 )
             ],
             params=[weave.Param("m", "int")],
@@ -203,15 +203,15 @@ def test_fully_decorated_kernel_source_round_trip() -> None:
                     dtype=std.bf16,
                     dst_dtype=std.f32,
                 )
-                tok = weave.BarrierTryWait(weave.Mbarrier("full", 2), 0, 1, ty=std.i32)
+                tok = weave.BarrierTryWait(0, 1, barrier=weave.Mbarrier("full", 2), ty=std.i32)
             return m
         """
     )
 
     assert "pipeline=weave.PipelineConfig" in printed
     assert "buffers=[weave.Buffer" in printed
-    assert '@weave.Kernel({"BLOCK_M": 64}' in printed
-    assert 'params=[weave.Param("m", "int")]' in printed
+    assert 'constants={"BLOCK_M": 64}' in printed
+    assert 'params=[weave.Param(ctype="int", name="m")]' in printed
     assert "tile_params=weave.MmaParams" in printed
     assert 'reg_budgets={"mma": 128}' in printed
     assert 'tma_param_ndims={"A": 2}' in printed
@@ -225,12 +225,12 @@ def test_task_scope_and_loop_source_round_trip() -> None:
         @weave.Kernel
         def body_kernel():
             with weave.task("compute", "consumer", "mma", depends_on=["load"]):
-                stage = weave.VarDecl("int", init=0, ty=std.i32)
+                stage = weave.VarDecl(0, ctype="int", ty=std.i32)
                 for k in weave.ForLoop(4, start=0, step=1, ty=std.i32):
                     with weave.Block():
                         weave.Assign(weave.Const("stage", result_ty=std.i32), k, op="+=")
                     with weave.LeaderCtaBlock():
-                        weave.BarrierSignal(weave.Mbarrier("full", 2), "arrive", stage)
+                        weave.BarrierSignal(stage, action="arrive", barrier=weave.Mbarrier("full", 2))
                     with weave.ElectedThreadBlock():
                         weave.ClusterSync()
                     with weave.ConditionalIteration(k, last_expr=k + 1):
@@ -251,7 +251,7 @@ def test_operation_source_round_trip() -> None:
         @weave.Kernel
         def ops_kernel():
             with weave.TaskSpec("compute", "consumer", "mma"):
-                weave.SmemDesc("tile", k_idx=0, mode="mn", dst=1, step=2, offset=3)
+                weave.SmemDesc(0, dst=1, step=2, offset=3, buffer="tile", mode="mn")
                 weave.Elementwise(op="fma", inputs=[1, 2, 3], output=4)
                 weave.PredicatedStore(
                     1,
@@ -277,7 +277,7 @@ def test_operation_source_round_trip() -> None:
                     b_dtype=std.bf16,
                     acc_dtype=std.f32,
                 )
-                weave.AtomicOp("max", 1, 2, space="smem", index=3, dtype=std.f32)
+                weave.AtomicOp(1, 2, op="max", space="smem", index=3, dtype=std.f32)
                 weave.MultimemLdReduce(1, 2, payload="bf16x8")
                 weave.ClcQueryCancelGetCtaId(1, 2, dim="z")
         """
@@ -300,16 +300,16 @@ def test_memory_barrier_and_reduction_source_round_trip() -> None:
         def ops_catalog():
             with weave.TaskSpec("ops", "consumer", "mma"):
                 weave.TmemRegionLoad(
-                    weave.TmemRegion("acc", 0, 128, dtype=std.f32),
                     dst=1,
                     col_offset=2,
+                    region=weave.TmemRegion("acc", 0, 128, dtype=std.f32),
                     num=16,
                     row_base=3,
                 )
                 weave.TmemRegionStore(
-                    weave.TmemRegion("acc", 0, 128, dtype=std.f32),
                     src=4,
                     col_offset=5,
+                    region=weave.TmemRegion("acc", 0, 128, dtype=std.f32),
                     num=8,
                     dtype=std.f32,
                     row_base=6,
@@ -322,14 +322,14 @@ def test_memory_barrier_and_reduction_source_round_trip() -> None:
                     mbar_expr=4,
                     token_offset=5,
                 )
-                weave.BarrierWait(weave.Mbarrier("full", 2), 0, 1, token=2)
-                weave.PeerArriveCommit(weave.Mbarrier("full", 2), 0, cta_group=2)
-                weave.MulticastCommit(weave.Mbarrier("full", 2), 0, 3, cta_group=2)
+                weave.BarrierWait(0, 1, token=2, barrier=weave.Mbarrier("full", 2))
+                weave.PeerArriveCommit(0, barrier=weave.Mbarrier("full", 2), cta_group=2)
+                weave.MulticastCommit(0, 3, barrier=weave.Mbarrier("full", 2), cta_group=2)
                 weave.DualCommit(
-                    weave.Mbarrier("full", 2),
-                    weave.Mbarrier("empty", 2),
                     0,
                     1,
+                    barrier_0=weave.Mbarrier("full", 2),
+                    barrier_1=weave.Mbarrier("empty", 2),
                     cta_group=2,
                 )
                 weave.GridSync()

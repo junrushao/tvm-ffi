@@ -12,77 +12,146 @@
 
 from __future__ import annotations
 
-from typing import Any, ClassVar
-
 from tvm_ffi import dataclasses as dc
+from tvm_ffi import dtype as tvm_dtype
 from tvm_ffi import std
 
-from .._utils import Op, normalize_dtype, validate_cta_group
-from ..dtypes import StringLike
+from .._utils import (
+    Op,
+    normalize_domain,
+    normalize_dtype,
+    normalize_required_dtype,
+    validate_cta_group,
+)
 from ..handles import BufferRef, SmemView, TmemRegion
 
 SMEM_DESC_MODES = ("k", "mn")
 GMEM_CACHE_HINTS = ("none", "no_allocate", "evict_first", "evict_last")
 TMA_REDUCE_OPS = ("add", "min", "max", "inc", "dec", "and", "or", "xor")
-TmemRegionRef = StringLike | TmemRegion
-SmemBufferRef = StringLike | BufferRef | SmemView
+TmemRegionRef = str | TmemRegion
+SmemBufferRef = str | BufferRef | SmemView
+
+
+def _check_named_ref(value: str | std.Attrs, *, field_name: str) -> None:
+    if isinstance(value, std.StringImm):
+        raise TypeError(f"{field_name} expects a structured handle or plain string, not StringImm")
 
 
 @dc.py_class("weave.BuiltinVar", structural_eq="tree")
 class BuiltinVar(Op, mnemonic="weave.BuiltinVar"):
-    name: str = dc.field(lang_kind="arg")
     dst: std.Expr | None = dc.field(default=None, lang_kind="arg")
+    name: str = dc.field(kw_only=True, lang_kind="attr")
 
-    EXPR_FIELDS: ClassVar[frozenset[str]] = frozenset(("dst",))
+    def __init__(self, dst: std.Expr | None = None, *, name: str) -> None:
+        self.__ffi_init__(dst=dst, name=name)
 
 
 @dc.py_class("weave.TmemRegionLoad", structural_eq="tree")
 class TmemRegionLoad(Op, mnemonic="weave.TmemRegionLoad"):
-    region: TmemRegionRef = dc.field(lang_kind="arg")
     dst: std.Expr | None = dc.field(default=None, lang_kind="arg")
     col_offset: std.Expr | None = dc.field(default=None, lang_kind="arg")
     row_base: std.Expr | None = dc.field(default=None, lang_kind="arg")
+    region: TmemRegionRef = dc.field(kw_only=True, lang_kind="attr")
     num: int = dc.field(default=16, lang_kind="attr")
     dst_offset: int = dc.field(default=0, lang_kind="attr")
     wait: bool = dc.field(default=True, lang_kind="attr")
 
-    EXPR_FIELDS: ClassVar[frozenset[str]] = frozenset(("dst", "col_offset", "row_base"))
+    def __init__(
+        self,
+        dst: std.Expr | None = None,
+        col_offset: std.Expr | None = None,
+        row_base: std.Expr | None = None,
+        *,
+        region: TmemRegionRef,
+        num: int = 16,
+        dst_offset: int = 0,
+        wait: bool = True,
+    ) -> None:
+        self.__ffi_init__(
+            dst=dst,
+            col_offset=col_offset,
+            row_base=row_base,
+            region=region,
+            num=num,
+            dst_offset=dst_offset,
+            wait=wait,
+        )
+        self.__post_init__()
 
     def __post_init__(self) -> None:
-        super().__post_init__()
+        _check_named_ref(self.region, field_name="region")
         if self.num not in (8, 16, 32):
             raise ValueError("num must be one of 8, 16, 32")
 
 
 @dc.py_class("weave.TmemRegionStore", structural_eq="tree")
 class TmemRegionStore(Op, mnemonic="weave.TmemRegionStore"):
-    region: TmemRegionRef = dc.field(lang_kind="arg")
     src: std.Expr | None = dc.field(default=None, lang_kind="arg")
     col_offset: std.Expr | None = dc.field(default=None, lang_kind="arg")
     row_base: std.Expr | None = dc.field(default=None, lang_kind="arg")
+    region: TmemRegionRef = dc.field(kw_only=True, lang_kind="attr")
     num: int = dc.field(default=8, lang_kind="attr")
-    dtype: Any = dc.field(default=None, lang_kind="attr")
+    dtype: tvm_dtype | None = dc.field(default=None, lang_kind="attr")
 
-    EXPR_FIELDS: ClassVar[frozenset[str]] = frozenset(("src", "col_offset", "row_base"))
+    def __init__(
+        self,
+        src: std.Expr | None = None,
+        col_offset: std.Expr | None = None,
+        row_base: std.Expr | None = None,
+        *,
+        region: TmemRegionRef,
+        num: int = 8,
+        dtype: std.TyLike | None = None,
+    ) -> None:
+        self.__ffi_init__(
+            src=src,
+            col_offset=col_offset,
+            row_base=row_base,
+            region=region,
+            num=num,
+            dtype=normalize_dtype(dtype, field_name="dtype"),
+        )
+        self.__post_init__()
 
     def __post_init__(self) -> None:
-        super().__post_init__()
+        _check_named_ref(self.region, field_name="region")
         if self.num not in (8, 16):
             raise ValueError("num must be 8 or 16")
-        object.__setattr__(self, "dtype", normalize_dtype(self.dtype, field_name="dtype"))
+        self.dtype = normalize_dtype(self.dtype, field_name="dtype")
 
 
 @dc.py_class("weave.SmemDesc", structural_eq="tree")
 class SmemDesc(Op, mnemonic="weave.SmemDesc"):
-    buffer: SmemBufferRef = dc.field(lang_kind="arg")
     k_idx: std.Expr | None = dc.field(default=None, lang_kind="arg")
     dst: std.Expr | None = dc.field(default=None, lang_kind="arg")
     step: std.Expr | None = dc.field(default=None, lang_kind="arg")
     offset: std.Expr | None = dc.field(default=None, lang_kind="arg")
+    buffer: SmemBufferRef = dc.field(kw_only=True, lang_kind="attr")
     mode: str = dc.field(default="k", lang_kind="attr")
 
-    EXPR_FIELDS: ClassVar[frozenset[str]] = frozenset(("k_idx", "dst", "step", "offset"))
-    VALID_DOMAINS: ClassVar[dict[str, tuple[str, ...]]] = {"mode": SMEM_DESC_MODES}
+    def __init__(
+        self,
+        k_idx: std.Expr | None = None,
+        dst: std.Expr | None = None,
+        step: std.Expr | None = None,
+        offset: std.Expr | None = None,
+        *,
+        buffer: SmemBufferRef,
+        mode: str = "k",
+    ) -> None:
+        self.__ffi_init__(
+            k_idx=k_idx,
+            dst=dst,
+            step=step,
+            offset=offset,
+            buffer=buffer,
+            mode=mode,
+        )
+        self.__post_init__()
+
+    def __post_init__(self) -> None:
+        _check_named_ref(self.buffer, field_name="buffer")
+        self.mode = normalize_domain(self.mode, SMEM_DESC_MODES, field_name="mode")
 
 
 @dc.py_class("weave.GmemLoad", structural_eq="tree")
@@ -91,11 +160,9 @@ class GmemLoad(Op, mnemonic="weave.GmemLoad"):
     dst: std.Expr = dc.field(lang_kind="arg")
     dst_offset: std.Expr | None = dc.field(default=None, lang_kind="arg")
     index: std.Expr | None = dc.field(default=None, lang_kind="arg")
-    count: int = dc.field(lang_kind="attr")
-    dtype: Any = dc.field(lang_kind="attr")
-    dst_dtype: Any = dc.field(lang_kind="attr")
-
-    EXPR_FIELDS: ClassVar[frozenset[str]] = frozenset(("src", "dst", "dst_offset", "index"))
+    count: int = dc.field(kw_only=True, lang_kind="attr")
+    dtype: tvm_dtype = dc.field(kw_only=True, lang_kind="attr")
+    dst_dtype: tvm_dtype = dc.field(kw_only=True, lang_kind="attr")
 
     def __init__(
         self,
@@ -105,9 +172,11 @@ class GmemLoad(Op, mnemonic="weave.GmemLoad"):
         index: std.Expr | None = None,
         *,
         count: int,
-        dtype: Any,
-        dst_dtype: Any,
+        dtype: std.TyLike,
+        dst_dtype: std.TyLike,
     ) -> None:
+        dtype = normalize_required_dtype(dtype, field_name="dtype")
+        dst_dtype = normalize_required_dtype(dst_dtype, field_name="dst_dtype")
         self.__ffi_init__(
             src=src,
             dst=dst,
@@ -120,11 +189,8 @@ class GmemLoad(Op, mnemonic="weave.GmemLoad"):
         self.__post_init__()
 
     def __post_init__(self) -> None:
-        super().__post_init__()
-        object.__setattr__(self, "dtype", normalize_dtype(self.dtype, field_name="dtype"))
-        object.__setattr__(
-            self, "dst_dtype", normalize_dtype(self.dst_dtype, field_name="dst_dtype")
-        )
+        self.dtype = normalize_required_dtype(self.dtype, field_name="dtype")
+        self.dst_dtype = normalize_required_dtype(self.dst_dtype, field_name="dst_dtype")
 
 
 @dc.py_class("weave.GmemStore", structural_eq="tree")
@@ -134,15 +200,10 @@ class GmemStore(Op, mnemonic="weave.GmemStore"):
     src_offset: std.Expr | None = dc.field(default=None, lang_kind="arg")
     index: std.Expr | None = dc.field(default=None, lang_kind="arg")
     scale: std.Expr | None = dc.field(default=None, lang_kind="arg")
-    count: int = dc.field(lang_kind="attr")
-    dtype: Any = dc.field(lang_kind="attr")
-    src_dtype: Any = dc.field(lang_kind="attr")
+    count: int = dc.field(kw_only=True, lang_kind="attr")
+    dtype: tvm_dtype = dc.field(kw_only=True, lang_kind="attr")
+    src_dtype: tvm_dtype = dc.field(kw_only=True, lang_kind="attr")
     cache_hint: str = dc.field(default="none", lang_kind="attr")
-
-    EXPR_FIELDS: ClassVar[frozenset[str]] = frozenset(
-        ("src", "dst", "src_offset", "index", "scale")
-    )
-    VALID_DOMAINS: ClassVar[dict[str, tuple[str, ...]]] = {"cache_hint": GMEM_CACHE_HINTS}
 
     def __init__(
         self,
@@ -153,10 +214,12 @@ class GmemStore(Op, mnemonic="weave.GmemStore"):
         scale: std.Expr | None = None,
         *,
         count: int,
-        dtype: Any,
-        src_dtype: Any,
+        dtype: std.TyLike,
+        src_dtype: std.TyLike,
         cache_hint: str = "none",
     ) -> None:
+        dtype = normalize_required_dtype(dtype, field_name="dtype")
+        src_dtype = normalize_required_dtype(src_dtype, field_name="src_dtype")
         self.__ffi_init__(
             src=src,
             dst=dst,
@@ -171,10 +234,10 @@ class GmemStore(Op, mnemonic="weave.GmemStore"):
         self.__post_init__()
 
     def __post_init__(self) -> None:
-        super().__post_init__()
-        object.__setattr__(self, "dtype", normalize_dtype(self.dtype, field_name="dtype"))
-        object.__setattr__(
-            self, "src_dtype", normalize_dtype(self.src_dtype, field_name="src_dtype")
+        self.dtype = normalize_required_dtype(self.dtype, field_name="dtype")
+        self.src_dtype = normalize_required_dtype(self.src_dtype, field_name="src_dtype")
+        self.cache_hint = normalize_domain(
+            self.cache_hint, GMEM_CACHE_HINTS, field_name="cache_hint"
         )
 
 
@@ -185,15 +248,11 @@ class SmemStore(Op, mnemonic="weave.SmemStore"):
     predicate: std.Expr | None = dc.field(default=None, lang_kind="arg")
     index: std.Expr | None = dc.field(default=None, lang_kind="arg")
 
-    EXPR_FIELDS: ClassVar[frozenset[str]] = frozenset(("src", "dst", "predicate", "index"))
-
 
 @dc.py_class("weave.SmemLoad", structural_eq="tree")
 class SmemLoad(Op, mnemonic="weave.SmemLoad"):
     src: std.Expr = dc.field(lang_kind="arg")
     dst: std.Expr = dc.field(lang_kind="arg")
-
-    EXPR_FIELDS: ClassVar[frozenset[str]] = frozenset(("src", "dst"))
 
 
 @dc.py_class("weave.SmemRead", structural_eq="tree")
@@ -202,21 +261,28 @@ class SmemRead(Op, mnemonic="weave.SmemRead"):
     dst: std.Expr | None = dc.field(default=None, lang_kind="arg")
     index: std.Expr | None = dc.field(default=None, lang_kind="arg")
 
-    EXPR_FIELDS: ClassVar[frozenset[str]] = frozenset(("src", "dst", "index"))
-
 
 @dc.py_class("weave.SmemLoadRegs", structural_eq="tree")
 class SmemLoadRegs(Op, mnemonic="weave.SmemLoadRegs"):
-    name: str = dc.field(lang_kind="arg")
     src_expr: std.Expr = dc.field(lang_kind="arg")
+    name: str = dc.field(kw_only=True, lang_kind="attr")
     count: int = dc.field(default=0, lang_kind="attr")
-    dtype: Any = dc.field(default_factory=lambda: std.PrimTy("float32"), lang_kind="attr")
+    dtype: tvm_dtype = dc.field(default_factory=lambda: tvm_dtype("float32"), lang_kind="attr")
 
-    EXPR_FIELDS: ClassVar[frozenset[str]] = frozenset(("src_expr",))
+    def __init__(
+        self,
+        src_expr: std.Expr,
+        *,
+        name: str,
+        count: int = 0,
+        dtype: std.TyLike = std.PrimTy("float32"),
+    ) -> None:
+        dtype = normalize_required_dtype(dtype, field_name="dtype")
+        self.__ffi_init__(src_expr=src_expr, name=name, count=count, dtype=dtype)
+        self.__post_init__()
 
     def __post_init__(self) -> None:
-        super().__post_init__()
-        object.__setattr__(self, "dtype", normalize_dtype(self.dtype, field_name="dtype"))
+        self.dtype = normalize_required_dtype(self.dtype, field_name="dtype")
         if self.count < 0:
             raise ValueError("count must be non-negative")
 
@@ -227,8 +293,6 @@ class SmemWrite(Op, mnemonic="weave.SmemWrite"):
     dst: std.Expr = dc.field(lang_kind="arg")
     index: std.Expr | None = dc.field(default=None, lang_kind="arg")
 
-    EXPR_FIELDS: ClassVar[frozenset[str]] = frozenset(("src", "dst", "index"))
-
 
 @dc.py_class("weave.SmemLoadVec", structural_eq="tree")
 class SmemLoadVec(Op, mnemonic="weave.SmemLoadVec"):
@@ -237,10 +301,7 @@ class SmemLoadVec(Op, mnemonic="weave.SmemLoadVec"):
     dst_offset: std.Expr | None = dc.field(default=None, lang_kind="arg")
     count: int = dc.field(default=1, lang_kind="attr")
 
-    EXPR_FIELDS: ClassVar[frozenset[str]] = frozenset(("dst", "src_addr", "dst_offset"))
-
     def __post_init__(self) -> None:
-        super().__post_init__()
         if self.count not in (1, 4):
             raise ValueError("count must be 1 or 4")
 
@@ -250,15 +311,11 @@ class SmemStoreVec(Op, mnemonic="weave.SmemStoreVec"):
     dst_addr: std.Expr = dc.field(lang_kind="arg")
     src: std.Expr = dc.field(lang_kind="arg")
 
-    EXPR_FIELDS: ClassVar[frozenset[str]] = frozenset(("dst_addr", "src"))
-
 
 @dc.py_class("weave.TmaStore", structural_eq="tree")
 class TmaStore(Op, mnemonic="weave.TmaStore"):
     src: std.Expr = dc.field(lang_kind="arg")
     dst: std.Expr = dc.field(lang_kind="arg")
-
-    EXPR_FIELDS: ClassVar[frozenset[str]] = frozenset(("src", "dst"))
 
 
 @dc.py_class("weave.TmaReduceOp", structural_eq="tree")
@@ -267,8 +324,8 @@ class TmaReduceOp(Op, mnemonic="weave.TmaReduceOp"):
     dst: std.Expr = dc.field(lang_kind="arg")
     op: str = dc.field(default="add", lang_kind="attr")
 
-    EXPR_FIELDS: ClassVar[frozenset[str]] = frozenset(("src", "dst"))
-    VALID_DOMAINS: ClassVar[dict[str, tuple[str, ...]]] = {"op": TMA_REDUCE_OPS}
+    def __post_init__(self) -> None:
+        self.op = normalize_domain(self.op, TMA_REDUCE_OPS, field_name="op")
 
 
 @dc.py_class("weave.TmaGatherLoad", structural_eq="tree")
@@ -280,24 +337,28 @@ class TmaGatherLoad(Op, mnemonic="weave.TmaGatherLoad"):
     token_offset: std.Expr | None = dc.field(default=None, lang_kind="arg")
     tokens_per_page: int = dc.field(default=64, lang_kind="attr")
 
-    EXPR_FIELDS: ClassVar[frozenset[str]] = frozenset(
-        ("src", "dst", "page_table", "mbar_expr", "token_offset")
-    )
-
 
 @dc.py_class("weave.ScaleFactorCopy", structural_eq="tree")
 class ScaleFactorCopy(Op, mnemonic="weave.ScaleFactorCopy"):
     src: std.Expr = dc.field(lang_kind="arg")
     dst: std.Expr = dc.field(lang_kind="arg")
-    cta_group: Any = dc.field(default=1, lang_kind="attr")
+    cta_group: int = dc.field(default=1, lang_kind="attr")
     sbo: int = dc.field(default=256, lang_kind="attr")
     elected: bool = dc.field(default=False, lang_kind="attr")
 
-    EXPR_FIELDS: ClassVar[frozenset[str]] = frozenset(("src", "dst"))
+    def __init__(
+        self,
+        src: std.Expr,
+        dst: std.Expr,
+        cta_group: int = 1,
+        sbo: int = 256,
+        elected: bool = False,
+    ) -> None:
+        self.__ffi_init__(src, dst, validate_cta_group(cta_group), sbo, elected)
+        self.__post_init__()
 
     def __post_init__(self) -> None:
-        super().__post_init__()
-        object.__setattr__(self, "cta_group", validate_cta_group(self.cta_group))
+        self.cta_group = validate_cta_group(self.cta_group)
         if self.sbo <= 0 or self.sbo % 16:
             raise ValueError("sbo must be a positive multiple of 16")
 
@@ -306,13 +367,14 @@ class ScaleFactorCopy(Op, mnemonic="weave.ScaleFactorCopy"):
 class MetadataCopy(Op, mnemonic="weave.MetadataCopy"):
     src: std.Expr = dc.field(lang_kind="arg")
     dst: std.Expr = dc.field(lang_kind="arg")
-    cta_group: Any = dc.field(default=1, lang_kind="attr")
+    cta_group: int = dc.field(default=1, lang_kind="attr")
 
-    EXPR_FIELDS: ClassVar[frozenset[str]] = frozenset(("src", "dst"))
+    def __init__(self, src: std.Expr, dst: std.Expr, cta_group: int = 1) -> None:
+        self.__ffi_init__(src, dst, validate_cta_group(cta_group))
+        self.__post_init__()
 
     def __post_init__(self) -> None:
-        super().__post_init__()
-        object.__setattr__(self, "cta_group", validate_cta_group(self.cta_group))
+        self.cta_group = validate_cta_group(self.cta_group)
 
 
 __all__ = [  # noqa: RUF022

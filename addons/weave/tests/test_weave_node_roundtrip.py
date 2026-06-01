@@ -107,7 +107,7 @@ def _pipeline() -> wi.PipelineSpec:
 
 def _phase() -> wi.PhaseVar:
     return wi.PhaseVar(
-        "phase",
+        name="phase",
         dtype=wi.i32,
         init_value=1,
         rotation_rule="xor",
@@ -156,10 +156,10 @@ def _task_body() -> list[std.Stmt]:
             ),
             id="smem-swizzle-address-full",
         ),
-        pytest.param(wi.TmemRef("acc", offset=1), id="tmem-ref"),
-        pytest.param(wi.SmemRef("tile", offset=2), id="smem-ref"),
-        pytest.param(wi.SmemDescRef("tile", 0, mode="mn"), id="smem-desc-ref"),
-        pytest.param(wi.BarrierRef("full", stage=0), id="barrier-ref"),
+        pytest.param(wi.TmemRef(1, region="acc"), id="tmem-ref"),
+        pytest.param(wi.SmemRef(2, buffer="tile"), id="smem-ref"),
+        pytest.param(wi.SmemDescRef(0, buffer="tile", mode="mn"), id="smem-desc-ref"),
+        pytest.param(wi.BarrierRef(0, barrier="full"), id="barrier-ref"),
         pytest.param(wi.BuiltinRef("warp_in_role", wi.i32), id="builtin-ref"),
     ],
 )
@@ -231,9 +231,9 @@ def test_type_and_expression_nodes_text_round_trip(node: Any) -> None:
         pytest.param(_pool(), id="smem-pool"),
         pytest.param(
             wi.SmemView(
-                "tile",
-                _pool(),
                 0,
+                name="tile",
+                pool=_pool(),
                 shape=(16, 64),
                 dtype=wi.bf16,
                 stage=1,
@@ -306,8 +306,8 @@ def test_config_and_handle_nodes_text_round_trip(node: Any) -> None:
                 inputs=("A",),
                 outputs=("tile",),
                 depends_on=("init",),
-                sync_before=(wi.BarrierRef("empty", stage=0),),
-                sync_after=(wi.BarrierRef("full", stage=0),),
+                sync_before=("empty",),
+                sync_after=("full",),
                 body=_task_body(),
             ),
             id="task-spec-full",
@@ -335,9 +335,9 @@ def test_config_and_handle_nodes_text_round_trip(node: Any) -> None:
         ),
         pytest.param(
             wi.VarDecl(
-                "int",
-                init=0,
+                0,
                 array_size=4,
+                ctype="int",
                 uniform=True,
                 zero_init=True,
                 var=_v("stage"),
@@ -375,7 +375,9 @@ def test_config_and_handle_nodes_text_round_trip(node: Any) -> None:
                 buffers=(_buffer(),),
                 mbarriers=(_barrier(),),
                 smem_pools=(_pool(),),
-                smem_views=(wi.SmemView("tile", "pool", 0, shape=(16, 64), dtype=wi.bf16),),
+                smem_views=(
+                    wi.SmemView(0, name="tile", pool="pool", shape=(16, 64), dtype=wi.bf16),
+                ),
                 protocols=(wi.PipelineProtocol("main", load_tasks=("load",)),),
                 phase_domains=(wi.PhaseDomain("main", "stage", 3, phase_vars=(_phase(),)),),
                 params=(wi.ScalarParam("m", "int"),),

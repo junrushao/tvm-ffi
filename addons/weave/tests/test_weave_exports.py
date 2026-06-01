@@ -18,15 +18,11 @@
 
 from __future__ import annotations
 
-from typing import get_origin
-
 import pytest
 import tvm_ffi
 import weave
 import weave.ir as wi
-from tvm_ffi import std
 from tvm_ffi._pyast_parser import parse
-from tvm_ffi.dataclasses import fields
 from weave.ir import config, dtypes, functors, handles, kernel, ops, task
 from weave.ir.ops import atomic, barriers, clc, elementwise, memory, mma
 
@@ -110,7 +106,7 @@ def test_op_module_exports_are_intentional(module: object, expected: set[str]) -
 
 
 def test_weave_ir_does_not_export_imported_typing_or_helper_names() -> None:
-    for leaked_name in ("Any", "ClassVar", "Op", "std", "dc", "normalize_expr"):
+    for leaked_name in ("Any", "ClassVar", "Op", "std", "dc"):
         assert leaked_name not in wi.__all__, leaked_name
         assert leaked_name not in weave.__all__, leaked_name
     assert not any(name.startswith("_") for name in wi.__all__)
@@ -196,21 +192,9 @@ def test_parser_namespace_aliases_roundtrip(source: str, expected: object) -> No
     assert tvm_ffi.structural_equal(parsed, expected)
 
 
-def _is_expr_annotation(annotation: object) -> bool:
-    if get_origin(annotation) is list:
-        return False
-    if annotation is std.Expr:
-        return True
-    return std.Expr in getattr(annotation, "__args__", ())
-
-
-def test_expr_typed_op_fields_are_declared_for_normalization() -> None:
+def test_op_classes_do_not_use_field_enumeration_contracts() -> None:
     for module in OP_EXPORTS:
         for name in module.__all__:
             cls = getattr(module, name)
-            expr_fields = {
-                field.name
-                for field in fields(cls)
-                if _is_expr_annotation(getattr(field, "type", None))
-            }
-            assert expr_fields <= cls.EXPR_FIELDS, f"{name}: {expr_fields - cls.EXPR_FIELDS}"
+            assert "EXPR_FIELDS" not in cls.__dict__, name
+            assert "VALID_DOMAINS" not in cls.__dict__, name

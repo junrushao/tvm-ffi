@@ -18,7 +18,6 @@ from collections.abc import Callable
 from typing import Any
 
 import pytest
-import tvm_ffi
 import weave  # noqa: F401
 from tvm_ffi import std
 from weave.ir import *
@@ -32,25 +31,26 @@ def _string_imm(value: str) -> std.StringImm:
     return std.StringImm.from_py(value)
 
 
-def test_expr_fields_reject_raw_strings() -> None:
+def test_expr_fields_reject_unconvertible_values() -> None:
     with pytest.raises(TypeError):
-        SmemStore("src", 1)
+        SmemStore(object(), 1)
     with pytest.raises(TypeError):
-        Elementwise(op="add", inputs=["a", 1])
+        Elementwise(op="add", inputs=[object(), 1])
 
 
 def test_domain_fields_are_validated() -> None:
     with pytest.raises(ValueError):
-        BarrierSignal(MbarrierSpec("full", 1), "bad", 0)
+        BarrierSignal(0, action="bad", barrier=MbarrierSpec("full", 1))
     with pytest.raises(ValueError):
-        AtomicOp("bad", 1, 2, space="gmem", dtype=i32)
+        AtomicOp(1, 2, op="bad", space="gmem", dtype=i32)
     with pytest.raises(ValueError):
         Tcgen05Cp(1, 2, shape="bad")
 
 
-def test_dtype_fields_reject_raw_strings() -> None:
-    with pytest.raises(TypeError):
-        GmemLoad(1, 2, count=1, dtype="f32", dst_dtype=i32)
+def test_dtype_fields_normalize_raw_strings() -> None:
+    load = GmemLoad(1, 2, count=1, dtype="int32", dst_dtype=i32)
+    assert load.dtype == i32.dtype
+    assert load.dst_dtype == i32.dtype
 
 
 @pytest.mark.parametrize(
@@ -58,11 +58,14 @@ def test_dtype_fields_reject_raw_strings() -> None:
     [
         pytest.param(lambda: TmemRegion("acc", 0, 16, dtype="f32"), id="tmem-region"),
         pytest.param(lambda: BufferRef("A", "f32", (16,)), id="buffer-ref"),
-        pytest.param(lambda: SmemView("tile", "pool", 0, (16,), "f32"), id="smem-view"),
-        pytest.param(lambda: PhaseVar("phase", dtype="int32"), id="phase-var"),
+        pytest.param(
+            lambda: SmemView(0, name="tile", pool="pool", shape=(16,), dtype="f32"),
+            id="smem-view",
+        ),
+        pytest.param(lambda: PhaseVar(name="phase", dtype="int32"), id="phase-var"),
         pytest.param(lambda: MmaParams(1, 1, 0, dtype="f32"), id="mma-params"),
         pytest.param(lambda: SymmetricMemory("sym", "f32", (16,), "pg"), id="symmetric-memory"),
-        pytest.param(lambda: AtomicOp("add", 1, 2, space="gmem", dtype="f32"), id="atomic-op"),
+        pytest.param(lambda: AtomicOp(1, 2, op="add", space="gmem", dtype="f32"), id="atomic-op"),
         pytest.param(lambda: AtomicFetchAdd(1, 2, 3, dtype="f32"), id="atomic-fetch-add"),
         pytest.param(
             lambda: GmemStore(1, 2, count=1, dtype="f32", src_dtype=i32),
@@ -73,19 +76,18 @@ def test_dtype_fields_reject_raw_strings() -> None:
             id="gmem-store-src-dtype",
         ),
         pytest.param(
-            lambda: TmemRegionStore(TmemRegion("acc", 0, 16), dtype="f32"),
+            lambda: TmemRegionStore(region=TmemRegion("acc", 0, 16), dtype="f32"),
             id="tmem-store",
         ),
-        pytest.param(lambda: SmemLoadRegs("regs", 1, dtype="f32"), id="smem-load-regs"),
+        pytest.param(lambda: SmemLoadRegs(1, name="regs", dtype="f32"), id="smem-load-regs"),
         pytest.param(lambda: RegArrayCast(1, 2, src_dtype="f32", dst_dtype=i32), id="reg-cast-src"),
         pytest.param(lambda: RegArrayCast(1, 2, src_dtype=i32, dst_dtype="f32"), id="reg-cast-dst"),
-        pytest.param(lambda: FragmentOp("add", 1, dtype="f32"), id="fragment-op"),
+        pytest.param(lambda: FragmentOp(1, op="add", dtype="f32"), id="fragment-op"),
         pytest.param(lambda: MmaTile(1, 2, 3, k_idx=4, a_dtype="f32"), id="mma-tile"),
     ],
 )
-def test_dtype_fields_reject_raw_strings_across_weave(ctor: Callable[[], Any]) -> None:
-    with pytest.raises(TypeError):
-        ctor()
+def test_dtype_fields_normalize_raw_strings_across_weave(ctor: Callable[[], Any]) -> None:
+    ctor()
 
 
 def test_op_dtype_fields_normalize_factory_values() -> None:
@@ -95,13 +97,13 @@ def test_op_dtype_fields_normalize_factory_values() -> None:
 
     load = GmemLoad(1, 2, count=1, dtype=DTypeProxy(), dst_dtype=DTypeProxy())
     store = GmemStore(1, 2, count=1, dtype=DTypeProxy(), src_dtype=DTypeProxy())
-    atom = AtomicOp("add", 1, 2, space="gmem", dtype=DTypeProxy())
+    atom = AtomicOp(1, 2, op="add", space="gmem", dtype=DTypeProxy())
     cast = RegArrayCast(1, 2, src_dtype=DTypeProxy(), dst_dtype=DTypeProxy())
 
     for value in (load.dtype, load.dst_dtype, store.dtype, store.src_dtype, atom.dtype):
-        assert tvm_ffi.structural_equal(value, i32)
-    assert tvm_ffi.structural_equal(cast.src_dtype, i32)
-    assert tvm_ffi.structural_equal(cast.dst_dtype, i32)
+        assert value == i32.dtype
+    assert cast.src_dtype == i32.dtype
+    assert cast.dst_dtype == i32.dtype
 
 
 def test_handle_dtype_fields_normalize_factory_values() -> None:
@@ -112,51 +114,57 @@ def test_handle_dtype_fields_normalize_factory_values() -> None:
     values = [
         TmemRegion("acc", 0, 16, dtype=DTypeProxy()).dtype,
         BufferRef("A", DTypeProxy(), (16,)).dtype,
-        SmemView("tile", "pool", 0, (16,), DTypeProxy()).dtype,
-        PhaseVar("phase", dtype=DTypeProxy()).dtype,
+        SmemView(0, name="tile", pool="pool", shape=(16,), dtype=DTypeProxy()).dtype,
+        PhaseVar(name="phase", dtype=DTypeProxy()).dtype,
         MmaParams(1, 1, 0, dtype=DTypeProxy()).dtype,
         SymmetricMemory("sym", DTypeProxy(), (16,), "pg").dtype,
-        TmemRegionStore(TmemRegion("acc", 0, 16), dtype=DTypeProxy()).dtype,
+        TmemRegionStore(region=TmemRegion("acc", 0, 16), dtype=DTypeProxy()).dtype,
     ]
 
     for value in values:
-        assert tvm_ffi.structural_equal(value, i32)
+        assert value == i32.dtype
 
 
-def test_string_like_narrowed_fields_accept_string_imm_values() -> None:
+def test_attr_string_fields_reject_string_imm_values() -> None:
     swizzle = _string_imm("128B")
     pool = _string_imm("pool")
     role = _string_imm("role")
 
-    TmaDescriptor(2, (16, 16), swizzle=swizzle)
-    BufferRef("A", i32, (16,), swizzle=swizzle)
-    SmemView("tile", pool, 0, (16,), i32, swizzle=swizzle)
-    TaskSpec("task", "producer", role, outputs=(_string_imm("out"),))
-    TmemRegionLoad(_string_imm("acc"))
-    SmemDesc(_string_imm("tile"))
+    for ctor in (
+        lambda: TmaDescriptor(2, (16, 16), swizzle=swizzle),
+        lambda: BufferRef("A", i32, (16,), swizzle=swizzle),
+        lambda: SmemView(0, name="tile", pool=pool, shape=(16,), dtype=i32),
+        lambda: SmemView(0, name="tile", pool="pool", shape=(16,), dtype=i32, swizzle=swizzle),
+        lambda: TaskSpec("task", "producer", role, outputs=("out",)),
+        lambda: TaskSpec("task", "producer", "role", outputs=(_string_imm("out"),)),
+        lambda: TmemRegionLoad(region=_string_imm("acc")),
+        lambda: SmemDesc(buffer=_string_imm("tile")),
+    ):
+        with pytest.raises(TypeError):
+            ctor()
 
 
 def test_structured_barrier_refs_reject_raw_strings() -> None:
     with pytest.raises(TypeError):
-        BarrierSignal("full", "arrive", Const("stage", i32))
+        BarrierSignal(Const("stage", i32), action="arrive", barrier="full")
     with pytest.raises(TypeError):
-        BarrierSignal(std.StringImm.from_py("full"), "arrive", Const("stage", i32))
+        BarrierSignal(Const("stage", i32), action="arrive", barrier=std.StringImm.from_py("full"))
     with pytest.raises(TypeError):
-        BarrierWait("full", Const("stage", i32), Const("phase", i32))
+        BarrierWait(Const("stage", i32), Const("phase", i32), barrier="full")
     with pytest.raises(TypeError):
-        BarrierTryWait("full", Const("stage", i32), Const("phase", i32), _var("tok"))
+        BarrierTryWait(Const("stage", i32), Const("phase", i32), _var("tok"), barrier="full")
     with pytest.raises(TypeError):
-        PeerArriveCommit(std.StringImm.from_py("full"), 0)
+        PeerArriveCommit(0, barrier=std.StringImm.from_py("full"))
     with pytest.raises(TypeError):
         CpAsyncBulkSmem2SmemCluster(1, 2, 16, barrier=std.StringImm.from_py("full"))
     with pytest.raises(TypeError):
-        PeerArriveCommit("full", 0)
+        PeerArriveCommit(0, barrier="full")
     with pytest.raises(TypeError):
-        MulticastCommit("full", 0, 1)
+        MulticastCommit(0, 1, barrier="full")
     with pytest.raises(TypeError):
-        DualCommit("full", MbarrierSpec("full", 1), 0, 1)
+        DualCommit(0, 1, barrier_0="full", barrier_1=MbarrierSpec("full", 1))
     with pytest.raises(TypeError):
-        DualCommit(MbarrierSpec("full", 1), "full", 0, 1)
+        DualCommit(0, 1, barrier_0=MbarrierSpec("full", 1), barrier_1="full")
     with pytest.raises(TypeError):
         CpAsyncBulkSmem2SmemCluster(1, 2, 16, barrier="full")
 
@@ -176,7 +184,7 @@ def test_structured_barrier_refs_reject_raw_strings() -> None:
         pytest.param(lambda: EpilogueConfig("bad"), id="epilogue-style"),
         pytest.param(lambda: MbarrierSpec("full", 1, signaling_mode="bad"), id="mbarrier-mode"),
         pytest.param(lambda: BufferRef("A", i32, (1,), space="bad"), id="buffer-space"),
-        pytest.param(lambda: SmemDesc("tile", mode="bad"), id="smem-desc-mode"),
+        pytest.param(lambda: SmemDesc(buffer="tile", mode="bad"), id="smem-desc-mode"),
         pytest.param(
             lambda: GmemStore(1, 2, count=1, dtype=i32, src_dtype=i32, cache_hint="bad"),
             id="gmem-cache-hint",
@@ -194,17 +202,22 @@ def test_structured_barrier_refs_reject_raw_strings() -> None:
             lambda: WarpGroupReduce(1, 2, _var("wg", f32), op="bad"),
             id="warpg-reduce-op",
         ),
-        pytest.param(lambda: PackedF32x2("bad"), id="packed-f32x2-op"),
-        pytest.param(lambda: FragmentOp("bad", 1), id="fragment-op-domain"),
-        pytest.param(lambda: AtomicOp("bad", 1, 2, space="gmem", dtype=i32), id="atomic-op-domain"),
-        pytest.param(lambda: AtomicOp("add", 1, 2, space="bad", dtype=i32), id="atomic-space"),
+        pytest.param(lambda: PackedF32x2(op="bad"), id="packed-f32x2-op"),
+        pytest.param(lambda: FragmentOp(1, op="bad"), id="fragment-op-domain"),
+        pytest.param(
+            lambda: AtomicOp(1, 2, op="bad", space="gmem", dtype=i32), id="atomic-op-domain"
+        ),
+        pytest.param(lambda: AtomicOp(1, 2, op="add", space="bad", dtype=i32), id="atomic-space"),
         pytest.param(lambda: RelaxedFmax(1, 2, space="bad"), id="relaxed-fmax-space"),
         pytest.param(lambda: MultimemLdReduce(1, 2, payload="bad"), id="multimem-load-payload"),
         pytest.param(lambda: MultimemStore(1, 2, payload="bf16x8"), id="multimem-store-payload"),
         pytest.param(lambda: MultimemRedAddI32(1, 2, sem="bad"), id="multimem-sem"),
         pytest.param(lambda: MultimemRedAddI32(1, 2, scope="bad"), id="multimem-scope"),
         pytest.param(lambda: ClcQueryCancelGetCtaId(1, 2, dim="bad"), id="clc-dim"),
-        pytest.param(lambda: BarrierSignal(MbarrierSpec("full", 1), "bad", 0), id="barrier-action"),
+        pytest.param(
+            lambda: BarrierSignal(0, action="bad", barrier=MbarrierSpec("full", 1)),
+            id="barrier-action",
+        ),
         pytest.param(lambda: Tcgen05Cp(1, 2, shape="bad"), id="tcgen-shape"),
         pytest.param(lambda: MmaTile(1, 2, 3, k_idx=4, mode="bad"), id="mma-tile-mode"),
     ],
@@ -240,11 +253,13 @@ def test_domain_validators_reject_unknown_values(ctor: Callable[[], Any]) -> Non
         pytest.param(lambda: MmaParams(1, 0, 0), id="mma-groups"),
         pytest.param(lambda: MmaParams(1, 1, 0, cta_group=3), id="mma-cta-group"),
         pytest.param(lambda: MmaParams(1, 1, 0, cta_group=True), id="mma-cta-group-bool"),
-        pytest.param(lambda: TmemRegionLoad(TmemRegion("acc", 0, 16), num=7), id="tmem-load-num"),
         pytest.param(
-            lambda: TmemRegionStore(TmemRegion("acc", 0, 16), num=32), id="tmem-store-num"
+            lambda: TmemRegionLoad(region=TmemRegion("acc", 0, 16), num=7), id="tmem-load-num"
         ),
-        pytest.param(lambda: SmemLoadRegs("regs", 1, count=-1), id="smem-load-regs-count"),
+        pytest.param(
+            lambda: TmemRegionStore(region=TmemRegion("acc", 0, 16), num=32), id="tmem-store-num"
+        ),
+        pytest.param(lambda: SmemLoadRegs(1, name="regs", count=-1), id="smem-load-regs-count"),
         pytest.param(lambda: SmemLoadVec(1, 2, count=2), id="smem-load-vec-count"),
         pytest.param(lambda: ScaleFactorCopy(1, 2, cta_group=3), id="scale-cta-group"),
         pytest.param(lambda: ScaleFactorCopy(1, 2, cta_group=True), id="scale-cta-group-bool"),
@@ -252,24 +267,30 @@ def test_domain_validators_reject_unknown_values(ctor: Callable[[], Any]) -> Non
         pytest.param(lambda: MetadataCopy(1, 2, cta_group=3), id="metadata-cta-group"),
         pytest.param(lambda: MetadataCopy(1, 2, cta_group=True), id="metadata-cta-group-bool"),
         pytest.param(
-            lambda: BarrierSignal(MbarrierSpec("full", 1), "arrive", 0, cta_group=3),
+            lambda: BarrierSignal(0, action="arrive", barrier=MbarrierSpec("full", 1), cta_group=3),
             id="signal-cta",
         ),
         pytest.param(
-            lambda: BarrierSignal(MbarrierSpec("full", 1), "arrive", 0, cta_group=True),
+            lambda: BarrierSignal(
+                0, action="arrive", barrier=MbarrierSpec("full", 1), cta_group=True
+            ),
             id="signal-cta-bool",
         ),
         pytest.param(
-            lambda: PeerArriveCommit(MbarrierSpec("full", 1), 0, cta_group=3),
+            lambda: PeerArriveCommit(0, barrier=MbarrierSpec("full", 1), cta_group=3),
             id="peer-arrive-cta",
         ),
         pytest.param(
-            lambda: MulticastCommit(MbarrierSpec("full", 1), 0, 1, cta_group=3),
+            lambda: MulticastCommit(0, 1, barrier=MbarrierSpec("full", 1), cta_group=3),
             id="multicast-cta",
         ),
         pytest.param(
             lambda: DualCommit(
-                MbarrierSpec("empty", 1), MbarrierSpec("full", 1), 0, 1, cta_group=3
+                0,
+                1,
+                barrier_0=MbarrierSpec("empty", 1),
+                barrier_1=MbarrierSpec("full", 1),
+                cta_group=3,
             ),
             id="dual-commit-cta",
         ),
@@ -284,7 +305,7 @@ def test_domain_validators_reject_unknown_values(ctor: Callable[[], Any]) -> Non
         pytest.param(lambda: Tcgen05Cp(1, 2, sbo=24), id="tcgen-sbo"),
         pytest.param(lambda: MmaTile(1, 2, 3, k_idx=4, cta_group=3), id="mma-tile-cta"),
         pytest.param(lambda: MmaTile(1, 2, 3, k_idx=4, cta_group=True), id="mma-tile-cta-bool"),
-        pytest.param(lambda: FragmentOp("add", 1, size=-1), id="fragment-size"),
+        pytest.param(lambda: FragmentOp(1, op="add", size=-1), id="fragment-size"),
         pytest.param(
             lambda: Kernel("k", [], None, [], reg_budgets={"mma": std.Var(i32, "n")}),
             id="kernel-reg-budget-expr",
@@ -294,8 +315,20 @@ def test_domain_validators_reject_unknown_values(ctor: Callable[[], Any]) -> Non
             id="kernel-reg-budget-bool",
         ),
         pytest.param(
+            lambda: Kernel("k", [], None, [], reg_budgets={"mma": 1.5}),
+            id="kernel-reg-budget-float",
+        ),
+        pytest.param(
             lambda: Kernel("k", [], None, [], tma_param_ndims={1: 2}),
             id="kernel-tma-param-key",
+        ),
+        pytest.param(
+            lambda: Kernel("k", [], None, [], tma_param_ndims={"A": True}),
+            id="kernel-tma-param-bool",
+        ),
+        pytest.param(
+            lambda: Kernel("k", [], None, [], tma_param_ndims={"A": 1.5}),
+            id="kernel-tma-param-float",
         ),
         pytest.param(
             lambda: Kernel("k", [], None, [], tma_param_ndims=std.IntImm.from_py(1)),
@@ -313,8 +346,8 @@ def test_numeric_and_cross_field_invariants(ctor: Callable[[], Any]) -> None:
     [
         pytest.param(lambda: Elementwise(op="add", inputs=b"abc"), id="elementwise-bytes"),
         pytest.param(lambda: Elementwise(op="add", inputs=42), id="elementwise-non-iterable"),
-        pytest.param(lambda: PackedF32x2("add", inputs=["src"]), id="packed-string-input"),
-        pytest.param(lambda: StAsync(1, srcs=["src"]), id="st-async-string-src"),
+        pytest.param(lambda: PackedF32x2(inputs=[object()], op="add"), id="packed-object-input"),
+        pytest.param(lambda: StAsync(1, srcs=[object()]), id="st-async-object-src"),
     ],
 )
 def test_expr_sequences_reject_invalid_inputs(ctor: Callable[[], Any]) -> None:
@@ -329,6 +362,37 @@ def test_dtype_proxy_cannot_return_raw_string() -> None:
 
     with pytest.raises(TypeError, match="dtype"):
         BufferRef("A", BadTyFactory(), (1,))
+
+
+def test_kernel_constants_preserve_primitive_python_values() -> None:
+    kernel = Kernel(
+        "k",
+        [],
+        None,
+        [],
+        constants={"i": 64, "f": 1.5, "s": "tile", "b": True},
+    )
+
+    constants = dict(kernel.constants.items())
+    assert constants == {"i": 64, "f": 1.5, "s": "tile", "b": True}
+    assert {key: type(value) for key, value in constants.items()} == {
+        "i": int,
+        "f": float,
+        "s": str,
+        "b": bool,
+    }
+
+
+@pytest.mark.parametrize("field_name", ["reg_budgets", "tma_param_ndims"])
+@pytest.mark.parametrize("bad_value", [True, 1.5])
+def test_kernel_int_maps_reject_invalid_values_after_field_conversion(
+    field_name: str, bad_value: object
+) -> None:
+    kernel = Kernel("k", [], None, [])
+    setattr(kernel, field_name, {"x": bad_value})
+
+    with pytest.raises(TypeError, match=rf"{field_name}\['x'\] must be an integer constant"):
+        kernel.__post_init__()
 
 
 @pytest.mark.parametrize(
@@ -365,9 +429,9 @@ def test_dtype_proxy_cannot_return_raw_string() -> None:
         pytest.param(lambda: ThreadFence(scope="block"), id="thread-block"),
         pytest.param(lambda: ThreadFence(scope="device"), id="thread-device"),
         pytest.param(lambda: ThreadFence(scope="system"), id="thread-system"),
-        pytest.param(lambda: WarpReduce(1, op="add"), id="reduce-add"),
-        pytest.param(lambda: WarpReduce(1, op="max"), id="reduce-max"),
-        pytest.param(lambda: WarpReduce(1, op="min"), id="reduce-min"),
+        pytest.param(lambda: WarpReduce(1, op="add", ty=i32), id="reduce-add"),
+        pytest.param(lambda: WarpReduce(1, op="max", ty=i32), id="reduce-max"),
+        pytest.param(lambda: WarpReduce(1, op="min", ty=i32), id="reduce-min"),
         pytest.param(lambda: ClcQueryCancelGetCtaId(1, 2, dim="x"), id="clc-x"),
         pytest.param(lambda: ClcQueryCancelGetCtaId(1, 2, dim="y"), id="clc-y"),
         pytest.param(lambda: ClcQueryCancelGetCtaId(1, 2, dim="z"), id="clc-z"),
@@ -412,13 +476,8 @@ def test_task_and_assignment_invariants() -> None:
     with pytest.raises(ValueError):
         ForLoop(extent=4, var=_var("i"), body=[], unroll=-1)
     with pytest.raises(TypeError):
-        ForLoop(extent=4, var=_var("i"), body=[], start="stage")
+        ForLoop(extent=4, var=_var("i"), body=[], start=object())
     with pytest.raises(TypeError):
-        VarDecl("not_a_var", "int")
+        VarDecl(ctype="int", var="not_a_var")
     with pytest.raises(ValueError):
         Assign(Const("x", i32), 1, op="??")
-
-
-def test_smem_swizzle_address_rejects_unknown_keywords() -> None:
-    with pytest.raises(TypeError, match="unexpected keyword argument"):
-        SmemSwizzleAddress(1, unknown=True)

@@ -12,47 +12,65 @@
 
 from __future__ import annotations
 
-from typing import Any
-
 from tvm_ffi import dataclasses as dc
+from tvm_ffi import dtype as tvm_dtype
 from tvm_ffi import std
 
-from ._utils import normalize_domain, normalize_dtype, validate_cta_group
-from .dtypes import StringLike, Swizzle
+from ._utils import normalize_domain, normalize_dtype, normalize_required_dtype, validate_cta_group
+from .dtypes import Swizzle
 
-ShapeDim = int | StringLike | std.Expr
-ExprOrInt = int | std.Expr
-SwizzleSpec = StringLike | Swizzle | None
+ShapeDim = int | str
+SwizzleSpec = str | Swizzle | None
 
 SIGNALING_MODES = ("elected", "hw_commit", "all_warps", "tma_expect_tx")
 MEMORY_SPACES = ("gmem", "smem", "tmem", "regs", "local", "param", "symm")
-_MISSING = object()
 
 
 @dc.py_class("weave.TmemRegion", structural_eq="tree")
-class TmemRegion(std.Node, mnemonic="weave.TmemRegion"):
+class TmemRegion(std.Attrs, mnemonic="weave.TmemRegion"):
     """Named tensor-memory column region."""
 
-    name: str = dc.field(lang_kind="arg")
-    start_col: int = dc.field(lang_kind="arg")
-    ncols: int = dc.field(lang_kind="arg")
+    name: str = dc.field(lang_kind="attr")
+    start_col: int = dc.field(lang_kind="attr")
+    ncols: int = dc.field(lang_kind="attr")
     num_buffers: int = dc.field(default=1, lang_kind="attr")
     kparam_name: str = dc.field(default="", lang_kind="attr")
     var_name: str = dc.field(default="", lang_kind="attr")
-    dtype: Any = dc.field(default=None, lang_kind="attr")
+    dtype: tvm_dtype | None = dc.field(default=None, lang_kind="attr")
+
+    def __init__(
+        self,
+        name: str,
+        start_col: int,
+        ncols: int,
+        num_buffers: int = 1,
+        kparam_name: str = "",
+        var_name: str = "",
+        dtype: std.TyLike | None = None,
+    ) -> None:
+        self.__ffi_init__(
+            name,
+            start_col,
+            ncols,
+            num_buffers,
+            kparam_name,
+            var_name,
+            normalize_dtype(dtype, field_name="dtype"),
+        )
+        self.__post_init__()
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "dtype", normalize_dtype(self.dtype, field_name="dtype"))
+        self.dtype = normalize_dtype(self.dtype, field_name="dtype")
         if self.start_col < 0 or self.ncols <= 0 or self.num_buffers <= 0:
             raise ValueError("invalid TMEM region extent")
 
 
 @dc.py_class("weave.Mbarrier", structural_eq="tree")
-class MbarrierSpec(std.Node, mnemonic="weave.Mbarrier"):
+class MbarrierSpec(std.Attrs, mnemonic="weave.Mbarrier"):
     """Mbarrier group specification."""
 
-    role: str = dc.field(lang_kind="arg")
-    count: int = dc.field(lang_kind="arg")
+    role: str = dc.field(lang_kind="attr")
+    count: int = dc.field(lang_kind="attr")
     init_count: int = dc.field(default=0, lang_kind="attr")
     producers: tuple[str, ...] = dc.field(default_factory=tuple, lang_kind="attr")
     consumers: tuple[str, ...] = dc.field(default_factory=tuple, lang_kind="attr")
@@ -63,17 +81,13 @@ class MbarrierSpec(std.Node, mnemonic="weave.Mbarrier"):
     init_phase: int = dc.field(default=0, lang_kind="attr")
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "producers", tuple(self.producers))
-        object.__setattr__(self, "consumers", tuple(self.consumers))
         if self.count <= 0:
             raise ValueError("count must be positive")
         if self.init_phase not in (0, 1):
             raise ValueError("init_phase must be 0 or 1")
         if self.signaling_mode is not None:
-            object.__setattr__(
-                self,
-                "signaling_mode",
-                normalize_domain(self.signaling_mode, SIGNALING_MODES, field_name="signaling_mode"),
+            self.signaling_mode = normalize_domain(
+                self.signaling_mode, SIGNALING_MODES, field_name="signaling_mode"
             )
 
     def derived_init_count(self) -> int:
@@ -86,19 +100,16 @@ class MbarrierSpec(std.Node, mnemonic="weave.Mbarrier"):
 
 
 @dc.py_class("weave.TmaDescriptor", structural_eq="tree")
-class TmaDescriptor(std.Node, mnemonic="weave.TmaDescriptor"):
+class TmaDescriptor(std.Attrs, mnemonic="weave.TmaDescriptor"):
     """TMA tensor map descriptor."""
 
-    ndim: int = dc.field(lang_kind="arg")
-    box_shape: tuple[ShapeDim, ...] = dc.field(lang_kind="arg")
+    ndim: int = dc.field(lang_kind="attr")
+    box_shape: tuple[ShapeDim, ...] = dc.field(lang_kind="attr")
     swizzle: SwizzleSpec = dc.field(default="128B", lang_kind="attr")
-    global_shape: tuple[StringLike, ...] = dc.field(default_factory=tuple, lang_kind="attr")
-    global_strides: tuple[StringLike, ...] = dc.field(default_factory=tuple, lang_kind="attr")
+    global_shape: tuple[str, ...] = dc.field(default_factory=tuple, lang_kind="attr")
+    global_strides: tuple[str, ...] = dc.field(default_factory=tuple, lang_kind="attr")
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "box_shape", tuple(self.box_shape))
-        object.__setattr__(self, "global_shape", tuple(self.global_shape))
-        object.__setattr__(self, "global_strides", tuple(self.global_strides))
         if self.ndim <= 0:
             raise ValueError("ndim must be positive")
         if len(self.box_shape) != self.ndim:
@@ -106,12 +117,12 @@ class TmaDescriptor(std.Node, mnemonic="weave.TmaDescriptor"):
 
 
 @dc.py_class("weave.Buffer", structural_eq="tree")
-class BufferRef(std.Node, mnemonic="weave.Buffer"):
+class BufferRef(std.Attrs, mnemonic="weave.Buffer"):
     """Typed memory buffer reference."""
 
-    name: str = dc.field(lang_kind="arg")
-    dtype: Any = dc.field(lang_kind="arg")
-    shape: tuple[ShapeDim, ...] = dc.field(lang_kind="arg")
+    name: str = dc.field(lang_kind="attr")
+    dtype: tvm_dtype = dc.field(lang_kind="attr")
+    shape: tuple[ShapeDim, ...] = dc.field(lang_kind="attr")
     space: str = dc.field(default="gmem", lang_kind="attr")
     tmem_col: int | None = dc.field(default=None, lang_kind="attr")
     smem_offset: int | None = dc.field(default=None, lang_kind="attr")
@@ -123,30 +134,61 @@ class BufferRef(std.Node, mnemonic="weave.Buffer"):
     align: int = dc.field(default=1, lang_kind="attr")
     volatile: bool = dc.field(default=False, lang_kind="attr")
 
-    def __post_init__(self) -> None:
-        object.__setattr__(self, "dtype", normalize_dtype(self.dtype, field_name="dtype"))
-        object.__setattr__(self, "shape", tuple(self.shape))
-        object.__setattr__(
-            self, "space", normalize_domain(self.space, MEMORY_SPACES, field_name="space")
+    def __init__(
+        self,
+        name: str,
+        dtype: std.TyLike,
+        shape: tuple[ShapeDim, ...],
+        space: str = "gmem",
+        tmem_col: int | None = None,
+        smem_offset: int | None = None,
+        swizzle: SwizzleSpec = None,
+        stage: int | None = None,
+        tma: TmaDescriptor | None = None,
+        source_gmem: str = "",
+        scale_buffer: str = "",
+        align: int = 1,
+        volatile: bool = False,
+    ) -> None:
+        dtype = normalize_required_dtype(dtype, field_name="dtype")
+        self.__ffi_init__(
+            name,
+            dtype,
+            shape,
+            space,
+            tmem_col,
+            smem_offset,
+            swizzle,
+            stage,
+            tma,
+            source_gmem,
+            scale_buffer,
+            align,
+            volatile,
         )
+        self.__post_init__()
+
+    def __post_init__(self) -> None:
+        self.dtype = normalize_required_dtype(self.dtype, field_name="dtype")
+        self.space = normalize_domain(self.space, MEMORY_SPACES, field_name="space")
         if self.align <= 0:
             raise ValueError("align must be positive")
 
 
 @dc.py_class("weave.Param", structural_eq="tree")
-class ScalarParam(std.Node, mnemonic="weave.Param"):
+class ScalarParam(std.Attrs, mnemonic="weave.Param"):
     """Scalar kernel parameter."""
 
-    name: str = dc.field(lang_kind="arg")
-    ctype: str = dc.field(lang_kind="arg")
+    name: str = dc.field(lang_kind="attr")
+    ctype: str = dc.field(lang_kind="attr")
 
 
 @dc.py_class("weave.SmemPool", structural_eq="tree")
-class SmemPool(std.Node, mnemonic="weave.SmemPool"):
+class SmemPool(std.Attrs, mnemonic="weave.SmemPool"):
     """Named shared-memory pool."""
 
-    name: str = dc.field(lang_kind="arg")
-    size: int = dc.field(lang_kind="arg")
+    name: str = dc.field(lang_kind="attr")
+    size: int = dc.field(lang_kind="attr")
 
     def __post_init__(self) -> None:
         if self.size < 0:
@@ -154,15 +196,15 @@ class SmemPool(std.Node, mnemonic="weave.SmemPool"):
 
 
 @dc.py_class("weave.SmemView", structural_eq="tree")
-class SmemView(std.Node, mnemonic="weave.SmemView"):
+class SmemView(std.Attrs, mnemonic="weave.SmemView"):
     """View into a shared-memory pool."""
 
-    name: str = dc.field(lang_kind="arg")
-    pool: SmemPool | StringLike = dc.field(lang_kind="arg")
-    offset: ExprOrInt = dc.field(lang_kind="arg")
-    shape: tuple[ShapeDim, ...] = dc.field(lang_kind="arg")
-    stride: ExprOrInt | None = dc.field(default=None, lang_kind="arg")
-    dtype: Any = dc.field(lang_kind="attr")
+    name: str = dc.field(kw_only=True, lang_kind="attr")
+    pool: SmemPool | str = dc.field(kw_only=True, lang_kind="attr")
+    offset: std.Expr = dc.field(lang_kind="arg")
+    shape: tuple[ShapeDim, ...] = dc.field(lang_kind="attr")
+    stride: int | None = dc.field(default=None, lang_kind="attr")
+    dtype: tvm_dtype = dc.field(kw_only=True, lang_kind="attr")
     stage: int | None = dc.field(default=None, lang_kind="attr")
     swizzle: SwizzleSpec = dc.field(default=None, lang_kind="attr")
     layout: str = dc.field(default="", lang_kind="attr")
@@ -170,31 +212,19 @@ class SmemView(std.Node, mnemonic="weave.SmemView"):
 
     def __init__(
         self,
+        offset: std.Expr | bool | int | float,
+        *,
         name: str,
-        pool: SmemPool | StringLike,
-        offset: ExprOrInt,
+        pool: SmemPool | str,
         shape: tuple[ShapeDim, ...],
-        *args: Any,
-        dtype: Any = _MISSING,
+        dtype: std.TyLike | tvm_dtype,
         stage: int | None = None,
-        stride: ExprOrInt | None = None,
+        stride: int | None = None,
         swizzle: SwizzleSpec = None,
         layout: str = "",
         alias_of: str = "",
     ) -> None:
-        if len(args) > 2:
-            raise TypeError(f"SmemView() takes at most 6 positional arguments, got {4 + len(args)}")
-        if args:
-            if dtype is _MISSING:
-                dtype = args[0]
-                if len(args) == 2:
-                    stage = args[1]
-            else:
-                stride = args[0]
-                if len(args) == 2:
-                    stage = args[1]
-        if dtype is _MISSING:
-            raise TypeError("SmemView() missing required argument: 'dtype'")
+        dtype = normalize_required_dtype(dtype, field_name="dtype")
         self.__ffi_init__(
             name=name,
             pool=pool,
@@ -210,84 +240,122 @@ class SmemView(std.Node, mnemonic="weave.SmemView"):
         self.__post_init__()
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "shape", tuple(self.shape))
-        object.__setattr__(self, "dtype", normalize_dtype(self.dtype, field_name="dtype"))
+        self.dtype = normalize_required_dtype(self.dtype, field_name="dtype")
 
 
 @dc.py_class("weave.PhaseVar", structural_eq="tree")
-class PhaseVar(std.Node, mnemonic="weave.PhaseVar"):
+class PhaseVar(std.Attrs, mnemonic="weave.PhaseVar"):
     """Rotating phase variable metadata."""
 
-    name: str = dc.field(lang_kind="arg")
-    init_value: ExprOrInt = dc.field(default=0, lang_kind="arg")
-    dtype: Any = dc.field(default_factory=lambda: std.PrimTy("int32"), lang_kind="attr")
+    name: str = dc.field(kw_only=True, lang_kind="attr")
+    init_value: std.Expr = dc.field(default=0, lang_kind="arg")
+    dtype: tvm_dtype = dc.field(default_factory=lambda: tvm_dtype("int32"), lang_kind="attr")
     rotation_rule: str = dc.field(default="", lang_kind="attr")
     rotation_trigger: str = dc.field(default="", lang_kind="attr")
 
+    def __init__(
+        self,
+        init_value: std.Expr | bool | int | float = 0,
+        *,
+        name: str,
+        dtype: std.TyLike | tvm_dtype = std.PrimTy("int32"),
+        rotation_rule: str = "",
+        rotation_trigger: str = "",
+    ) -> None:
+        dtype = normalize_required_dtype(dtype, field_name="dtype")
+        self.__ffi_init__(
+            name=name,
+            init_value=init_value,
+            dtype=dtype,
+            rotation_rule=rotation_rule,
+            rotation_trigger=rotation_trigger,
+        )
+        self.__post_init__()
+
     def __post_init__(self) -> None:
-        object.__setattr__(self, "dtype", normalize_dtype(self.dtype, field_name="dtype"))
+        self.dtype = normalize_required_dtype(self.dtype, field_name="dtype")
 
 
 @dc.py_class("weave.PhaseDomain", structural_eq="tree")
-class PhaseDomain(std.Node, mnemonic="weave.PhaseDomain"):
+class PhaseDomain(std.Attrs, mnemonic="weave.PhaseDomain"):
     """Pipeline phase domain."""
 
-    pipeline: str = dc.field(lang_kind="arg")
-    stage_var: str = dc.field(lang_kind="arg")
-    num_stages: int = dc.field(lang_kind="arg")
+    pipeline: str = dc.field(lang_kind="attr")
+    stage_var: str = dc.field(lang_kind="attr")
+    num_stages: int = dc.field(lang_kind="attr")
     phase_vars: tuple[PhaseVar, ...] = dc.field(default_factory=tuple, lang_kind="attr")
     owner_role: str = dc.field(default="", lang_kind="attr")
     stage_ctype: str = dc.field(default="int", lang_kind="attr")
     stage_init: int = dc.field(default=0, lang_kind="attr")
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "phase_vars", tuple(self.phase_vars))
         if self.num_stages <= 0:
             raise ValueError("num_stages must be positive")
 
 
 @dc.py_class("weave.MmaParams", structural_eq="tree")
-class MmaParams(std.Aggregate, mnemonic="weave.MmaParams"):
+class MmaParams(std.Attrs, mnemonic="weave.MmaParams"):
     """MMA loop parameter bundle."""
 
-    k_steps_per_group: int = dc.field(lang_kind="arg")
-    k_groups: int = dc.field(lang_kind="arg")
-    group_lo_offset: int = dc.field(lang_kind="arg")
-    cta_group: Any = dc.field(default=1, lang_kind="attr")
+    k_steps_per_group: int = dc.field(lang_kind="attr")
+    k_groups: int = dc.field(lang_kind="attr")
+    group_lo_offset: int = dc.field(lang_kind="attr")
+    cta_group: int = dc.field(default=1, lang_kind="attr")
     tile_m: int = dc.field(default=0, lang_kind="attr")
     tile_n: int = dc.field(default=0, lang_kind="attr")
-    dtype: Any = dc.field(default=None, lang_kind="attr")
+    dtype: tvm_dtype | None = dc.field(default=None, lang_kind="attr")
+
+    def __init__(
+        self,
+        k_steps_per_group: int,
+        k_groups: int,
+        group_lo_offset: int,
+        cta_group: int = 1,
+        tile_m: int = 0,
+        tile_n: int = 0,
+        dtype: std.TyLike | None = None,
+    ) -> None:
+        self.__ffi_init__(
+            k_steps_per_group,
+            k_groups,
+            group_lo_offset,
+            validate_cta_group(cta_group),
+            tile_m,
+            tile_n,
+            normalize_dtype(dtype, field_name="dtype"),
+        )
+        self.__post_init__()
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "dtype", normalize_dtype(self.dtype, field_name="dtype"))
+        self.dtype = normalize_dtype(self.dtype, field_name="dtype")
         if self.k_steps_per_group <= 0 or self.k_groups <= 0:
             raise ValueError("MMA step and group counts must be positive")
-        object.__setattr__(self, "cta_group", validate_cta_group(self.cta_group))
+        self.cta_group = validate_cta_group(self.cta_group)
 
 
 @dc.py_class("weave.SoftmaxParams", structural_eq="tree")
-class SoftmaxParams(std.Node, mnemonic="weave.SoftmaxParams"):
+class SoftmaxParams(std.Attrs, mnemonic="weave.SoftmaxParams"):
     """Softmax schedule parameters."""
 
-    tile_n: int = dc.field(lang_kind="arg")
+    tile_n: int = dc.field(lang_kind="attr")
     num_load_chunks: int = dc.field(default=0, lang_kind="attr")
     num_store_chunks: int = dc.field(default=0, lang_kind="attr")
 
 
 @dc.py_class("weave.EpilogueParams", structural_eq="tree")
-class EpilogueParams(std.Node, mnemonic="weave.EpilogueParams"):
+class EpilogueParams(std.Attrs, mnemonic="weave.EpilogueParams"):
     """Epilogue schedule parameters."""
 
-    head_dim: int = dc.field(lang_kind="arg")
-    num_chunks_16: int = dc.field(lang_kind="arg")
+    head_dim: int = dc.field(lang_kind="attr")
+    num_chunks_16: int = dc.field(lang_kind="attr")
     use_tma_store: bool = dc.field(default=False, lang_kind="attr")
 
 
 @dc.py_class("weave.TmaLoadParams", structural_eq="tree")
-class TmaLoadParams(std.Node, mnemonic="weave.TmaLoadParams"):
+class TmaLoadParams(std.Attrs, mnemonic="weave.TmaLoadParams"):
     """TMA load schedule parameters."""
 
-    pipeline_name: str = dc.field(lang_kind="arg")
+    pipeline_name: str = dc.field(lang_kind="attr")
     num_stages: int = dc.field(default=1, lang_kind="attr")
     src_buffers: tuple[str, ...] = dc.field(default_factory=tuple, lang_kind="attr")
     dst_buffers: tuple[str, ...] = dc.field(default_factory=tuple, lang_kind="attr")
@@ -296,41 +364,46 @@ class TmaLoadParams(std.Node, mnemonic="weave.TmaLoadParams"):
     stage_var: str = dc.field(default="", lang_kind="attr")
     phase_vars: tuple[str, ...] = dc.field(default_factory=tuple, lang_kind="attr")
 
-    def __post_init__(self) -> None:
-        object.__setattr__(self, "src_buffers", tuple(self.src_buffers))
-        object.__setattr__(self, "dst_buffers", tuple(self.dst_buffers))
-        object.__setattr__(self, "phase_vars", tuple(self.phase_vars))
-
 
 @dc.py_class("weave.NamedBarrierSpec", structural_eq="tree")
-class NamedBarrierSpec(std.Node, mnemonic="weave.NamedBarrierSpec"):
+class NamedBarrierSpec(std.Attrs, mnemonic="weave.NamedBarrierSpec"):
     """Reusable named CTA barrier specification."""
 
-    name: str = dc.field(lang_kind="arg")
-    bar_id: int = dc.field(lang_kind="arg")
-    thread_count: int = dc.field(lang_kind="arg")
+    name: str = dc.field(lang_kind="attr")
+    bar_id: int = dc.field(lang_kind="attr")
+    thread_count: int = dc.field(lang_kind="attr")
 
 
 @dc.py_class("weave.ProcessGroup", structural_eq="tree")
-class ProcessGroup(std.Node, mnemonic="weave.ProcessGroup"):
+class ProcessGroup(std.Attrs, mnemonic="weave.ProcessGroup"):
     """Distributed process group handle intent."""
 
-    name: str = dc.field(lang_kind="arg")
-    world_size: int = dc.field(lang_kind="arg")
+    name: str = dc.field(lang_kind="attr")
+    world_size: int = dc.field(lang_kind="attr")
 
 
 @dc.py_class("weave.SymmetricMemory", structural_eq="tree")
-class SymmetricMemory(std.Node, mnemonic="weave.SymmetricMemory"):
+class SymmetricMemory(std.Attrs, mnemonic="weave.SymmetricMemory"):
     """Symmetric-memory declaration intent."""
 
-    name: str = dc.field(lang_kind="arg")
-    dtype: Any = dc.field(lang_kind="arg")
-    shape: tuple[ShapeDim, ...] = dc.field(lang_kind="arg")
-    group: ProcessGroup | StringLike = dc.field(lang_kind="attr")
+    name: str = dc.field(lang_kind="attr")
+    dtype: tvm_dtype = dc.field(lang_kind="attr")
+    shape: tuple[ShapeDim, ...] = dc.field(lang_kind="attr")
+    group: ProcessGroup | str = dc.field(lang_kind="attr")
+
+    def __init__(
+        self,
+        name: str,
+        dtype: std.TyLike,
+        shape: tuple[ShapeDim, ...],
+        group: ProcessGroup | str,
+    ) -> None:
+        dtype = normalize_required_dtype(dtype, field_name="dtype")
+        self.__ffi_init__(name, dtype, shape, group)
+        self.__post_init__()
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "dtype", normalize_dtype(self.dtype, field_name="dtype"))
-        object.__setattr__(self, "shape", tuple(self.shape))
+        self.dtype = normalize_required_dtype(self.dtype, field_name="dtype")
 
 
 __all__ = [

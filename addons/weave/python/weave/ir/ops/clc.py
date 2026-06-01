@@ -12,12 +12,10 @@
 
 from __future__ import annotations
 
-from typing import ClassVar
-
 from tvm_ffi import dataclasses as dc
 from tvm_ffi import std
 
-from .._utils import Op
+from .._utils import Op, normalize_domain
 
 CTA_DIMS = ("x", "y", "z")
 
@@ -28,15 +26,11 @@ class ClcTryCancel(Op, mnemonic="weave.ClcTryCancel"):
     mbar_addr: std.Expr = dc.field(lang_kind="arg")
     multicast: bool = dc.field(default=False, lang_kind="attr")
 
-    EXPR_FIELDS: ClassVar[frozenset[str]] = frozenset(("response_addr", "mbar_addr"))
-
 
 @dc.py_class("weave.ClcQueryCancel", structural_eq="tree")
 class ClcQueryCancel(Op, mnemonic="weave.ClcQueryCancel"):
     response_addr: std.Expr = dc.field(lang_kind="arg")
     dst: std.Expr = dc.field(lang_kind="arg")
-
-    EXPR_FIELDS: ClassVar[frozenset[str]] = frozenset(("response_addr", "dst"))
 
 
 @dc.py_class("weave.ClcQueryCancelGetCtaId", structural_eq="tree")
@@ -45,8 +39,8 @@ class ClcQueryCancelGetCtaId(Op, mnemonic="weave.ClcQueryCancelGetCtaId"):
     dst: std.Expr = dc.field(lang_kind="arg")
     dim: str = dc.field(default="x", lang_kind="attr")
 
-    EXPR_FIELDS: ClassVar[frozenset[str]] = frozenset(("response_addr", "dst"))
-    VALID_DOMAINS: ClassVar[dict[str, tuple[str, ...]]] = {"dim": CTA_DIMS}
+    def __post_init__(self) -> None:
+        self.dim = normalize_domain(self.dim, CTA_DIMS, field_name="dim")
 
 
 @dc.py_class("weave.ClcFenceRelease", structural_eq="tree")
