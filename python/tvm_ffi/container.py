@@ -189,7 +189,10 @@ class Array(core.CContainerBase, core.Object, Sequence[T]):
 
     Notes
     -----
-    For structural equality and hashing, use ``structural_equal`` and ``structural_hash`` APIs.
+    Equality (``==``) and hashing use element-wise structural comparison,
+    consistent with Python's built-in ``tuple``. Two arrays are equal when
+    they have the same length and all corresponding elements are recursively
+    equal. Since ``Array`` is immutable, it is safely hashable.
 
     See Also
     --------
@@ -513,7 +516,6 @@ class ItemsView(ItemsViewBase[K, V]):
         actual_value = self._backend_map.get(key, MISSING)  # ty: ignore[invalid-argument-type]
         if actual_value is MISSING:
             return False
-        # TODO(@junrus): Is `__eq__` the right method to use here?
         return actual_value == value
 
 
@@ -541,7 +543,10 @@ class Map(core.CContainerBase, core.Object, Mapping[K, V]):
 
     Notes
     -----
-    For structural equality and hashing, use ``structural_equal`` and ``structural_hash`` APIs.
+    Equality (``==``) and hashing use structural comparison, consistent
+    with Python's built-in ``dict``. Two maps are equal when they have the
+    same keys and all corresponding values are recursively equal. Since
+    ``Map`` is immutable, it is safely hashable.
 
     See Also
     --------
